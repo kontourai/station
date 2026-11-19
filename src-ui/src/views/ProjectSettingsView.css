@@ -129,16 +129,16 @@
   padding-bottom: calc(var(--k-space-5) + var(--dock-bottom-clearance));
 }
 
-/* Sources own their scrollport between the header and the shell's dock reserve. */
-.route-transition:has(> .project-settings--sources) {
+/* Sources and Memory scroll within the shell's dock clearance. */
+.route-transition:has(> .project-settings--bounded-list) {
   min-height: 0;
   overflow: hidden;
 }
-.project-settings--sources,
-.project-settings--sources .project-settings__layout {
+.project-settings--bounded-list,
+.project-settings--bounded-list .project-settings__layout {
   overflow: hidden;
 }
-.project-settings--sources .project-settings__body {
+.project-settings--bounded-list .project-settings__body {
   margin-bottom: 0;
   padding-bottom: var(--k-space-5);
   scroll-padding-block: var(--k-space-4);
@@ -362,13 +362,6 @@
   font-size: var(--text-base);
 }
 
-/* The three New chats choices read as one group: one width, wide enough for
-   the longest option, never wider than the row. */
-.project-settings__new-chat-select {
-  width: 22rem;
-  max-width: 100%;
-}
-
 @media (max-width: 640px) {
   .project-settings__body {
     padding: var(--k-space-3);
@@ -389,10 +382,6 @@
   .project-settings__layout > .project-settings__body {
     padding-top: 0;
   }
-  .project-settings__layout .section-navigation__picker select {
-    min-height: 44px;
-  }
-
   /* Stop the identity preview / path strings from forcing horizontal scroll */
   .project-settings__identity-preview,
   .project-settings__identity-card,

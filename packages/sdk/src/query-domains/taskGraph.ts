@@ -221,35 +221,45 @@ export async function fetchTask(
   return readApiResult<TaskRecord>(response);
 }
 
-export async function createTask(
-  input: TaskCreateInput & { apiBase?: string },
-): Promise<TaskRecord> {
-  const resolvedApiBase = await resolveApiBase(input.apiBase);
-  const { apiBase: _apiBase, ...body } = input;
+type TaskMutationDestination = {
+  apiBase?: string;
+  requestScope?: ApiRequestScope;
+};
+
+export async function createTask({
+  apiBase,
+  requestScope,
+  ...body
+}: TaskCreateInput & TaskMutationDestination): Promise<TaskRecord> {
+  const resolvedApiBase =
+    requestScope?.apiBase ?? (await resolveApiBase(apiBase));
   const response = await authenticatedFetch(`${resolvedApiBase}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    ...(requestScope === undefined ? {} : { requestScope }),
   });
   return readApiResult<TaskRecord>(response);
 }
 
-export type CreateTaskReferenceInput = TaskReferenceInput & {
-  taskId: string;
-  apiBase?: string;
-};
+export type CreateTaskReferenceInput = TaskReferenceInput &
+  TaskMutationDestination & { taskId: string };
 
-export async function createTaskReference(
-  input: CreateTaskReferenceInput,
-): Promise<RelationGraphLink> {
-  const resolvedApiBase = await resolveApiBase(input.apiBase);
-  const { taskId, apiBase: _apiBase, ...body } = input;
+export async function createTaskReference({
+  apiBase,
+  requestScope,
+  taskId,
+  ...body
+}: CreateTaskReferenceInput): Promise<RelationGraphLink> {
+  const resolvedApiBase =
+    requestScope?.apiBase ?? (await resolveApiBase(apiBase));
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/tasks/${encodeURIComponent(taskId)}/references`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      ...(requestScope === undefined ? {} : { requestScope }),
     },
   );
   return readApiResult<RelationGraphLink>(response);
@@ -532,11 +542,31 @@ export function useTaskTurnReferencesQuery(
   };
 }
 
+function invalidateTaskLists(
+  client: ReturnType<typeof useQueryClient>,
+  scope?: ApiRequestScope,
+): void {
+  if (!scope) {
+    client.invalidateQueries({ queryKey: ['tasks'] });
+    return;
+  }
+  client.invalidateQueries({
+    queryKey: ['tasks'],
+    predicate: ({ queryKey }) =>
+      queryKey[2] === scope.apiBase && queryKey[3] === scope.authorityKey,
+  });
+  client.invalidateQueries({
+    queryKey: ['tasks'],
+    predicate: ({ queryKey }) => queryKey.length === 2,
+  });
+}
+
 function invalidateTaskReferenceScope(
   client: ReturnType<typeof useQueryClient>,
   taskId: string,
+  scope?: ApiRequestScope,
 ): void {
-  client.invalidateQueries({ queryKey: ['tasks'] });
+  invalidateTaskLists(client, scope);
   for (const queryKey of [
     taskQueries.task(taskId).queryKey,
     taskQueries.graph(taskId).queryKey,
@@ -544,7 +574,11 @@ function invalidateTaskReferenceScope(
     taskQueries.turnReferences(taskId).queryKey,
     taskQueries.userInputReferences(taskId).queryKey,
   ]) {
-    client.invalidateQueries({ queryKey, exact: true });
+    client.invalidateQueries({
+      queryKey,
+      exact: true,
+      ...(scope ? { refetchType: 'none' } : {}),
+    });
   }
 }
 
@@ -580,8 +614,10 @@ export function useTaskClaimQuery(
 }
 
 export function useCreateTaskMutation() {
+  const queryClient = useQueryClient();
   return useApiMutation(createTask, {
-    invalidateKeys: [['tasks']],
+    onSuccess: (_data, variables) =>
+      invalidateTaskLists(queryClient, variables.requestScope),
   });
 }
 
@@ -592,7 +628,11 @@ export function useCreateTaskReferenceMutation(
   return useMutation({
     mutationFn: createTaskReference,
     onSuccess: (data, variables) => {
-      invalidateTaskReferenceScope(queryClient, variables.taskId);
+      invalidateTaskReferenceScope(
+        queryClient,
+        variables.taskId,
+        variables.requestScope,
+      );
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {

@@ -15,6 +15,7 @@ import {
   runtimeEventContentForDisplay,
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  acpCompletionFailureMessage,
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
@@ -1522,7 +1523,8 @@ export function projectRuntimeEventsToMessages(
       case 'turn.completed': {
         turnSessionId ??= ev.threadId;
         adoptTerminalIdentity(ev.turnId);
-        turnAnswerEligible = ev.finishReason !== 'cancelled';
+        const failure = acpCompletionFailureMessage(ev);
+        turnAnswerEligible = !failure && ev.finishReason !== 'cancelled';
         stamp(ev.createdAt);
         // station#1182: some adapters (e.g. Claude — see
         // claude-adapter-events.ts) only learn the runtime-reported model
@@ -1599,7 +1601,11 @@ export function projectRuntimeEventsToMessages(
             textBuf = outputText;
           }
         }
-        emitAssistantTurn(true, 'completed');
+        if (failure) {
+          flushText();
+          parts.push(runtimeErrorPart(failure));
+        }
+        emitAssistantTurn(true, failure ? undefined : 'completed');
         break;
       }
       case 'session.configured': {

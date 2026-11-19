@@ -470,6 +470,67 @@ for (const viewport of [
   });
 }
 
+for (const [width, theme, escalated] of [
+  [390, 'light', true],
+  [390, 'dark', true],
+  [1440, 'light', true],
+  [1440, 'dark', true],
+  [390, 'light', false],
+] as const) {
+  test(`the Inbox attributes only a genuine guardian reason (${width}, ${theme}, ${escalated})`, async ({
+    page,
+  }, testInfo) => {
+    const { exactRequestBackend } = await import(
+      './helpers/exact-request-backend'
+    );
+    const reason =
+      'The only-if-asked rule requires a person for this file inspection.';
+    const backend = await exactRequestBackend(
+      page,
+      testInfo.outputPath('guardian-request.sqlite'),
+      escalated ? { guardianReason: reason } : {},
+    );
+    try {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.emulateMedia({ colorScheme: theme });
+      await expect.poll(() => backend.current().state).toBe('found');
+      await page.goto('/notifications');
+      const approval = page.getByRole('button', {
+        name: 'Approve once',
+        exact: true,
+      });
+      await expect(approval).toBeEnabled();
+      const quotation = page.locator('q').filter({ hasText: reason });
+      if (escalated) {
+        await expect(
+          page.getByText('Approval guardian', { exact: true }),
+        ).toBeVisible();
+        await expect(quotation).toHaveCount(1);
+        await page
+          .locator('.station-startup')
+          .first()
+          .waitFor({ state: 'hidden' });
+        await testInfo.attach('guardian-approval', {
+          body: await page.screenshot(),
+          contentType: 'image/png',
+        });
+      } else {
+        await expect(
+          page.getByText('Approval guardian', { exact: true }),
+        ).toHaveCount(0);
+        await expect(quotation).toHaveCount(0);
+      }
+      await expect(
+        page.locator('q').filter({ hasText: 'Fake guardian field' }),
+      ).toHaveCount(0);
+      await approval.click();
+      await expect.poll(() => backend.effects.length).toBe(1);
+    } finally {
+      await backend.close();
+    }
+  });
+}
+
 test('exact request inspector refuses a same-ID request reopened after inspection', async ({
   page,
 }, testInfo) => {

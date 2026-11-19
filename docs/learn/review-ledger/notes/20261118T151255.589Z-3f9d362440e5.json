@@ -1,0 +1,17 @@
+{
+  "revision": "bc0d435c45f43912c364ec179c102d963a3793bc",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed catalogue refresh against engine setup and the separate confirmed smoke action. The refresh control displays progress and reports a declined request within the selected engine. A 503 refusal does not claim that a model or an engine was verified.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed catalogue refresh against engine setup and the separate confirmed smoke action. The refresh control displays progress and reports a declined request within the selected engine. A 503 refusal does not claim that a model or an engine was verified.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed catalogue refresh against engine setup and the separate confirmed smoke action. The refresh control displays progress and reports a declined request within the selected engine. A 503 refusal does not claim that a model or an engine was verified.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed catalogue refresh against engine setup and the separate confirmed smoke action. The refresh control displays progress and reports a declined request within the selected engine. A 503 refusal does not claim that a model or an engine was verified.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed catalogue refresh against engine setup and the separate confirmed smoke action. The refresh control displays progress and reports a declined request within the selected engine. A 503 refusal does not claim that a model or an engine was verified.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed catalogue refresh against engine setup and the separate confirmed smoke action. The refresh control displays progress and reports a declined request within the selected engine. A 503 refusal does not claim that a model or an engine was verified.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}

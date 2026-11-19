@@ -1,0 +1,13 @@
+{
+  "revision": "88a27a5dcf9e88c6a696a7581eb8f190085b4d08",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Reviewed historical ACP completion and native OpenCode compatibility across transcript projection, notices, and delegation. Reusing the existing ACP family check preserves direct ACP failures and treats OpenCode as historical ACP only when a stop reason is present; no contract or operator guidance changes.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed historical ACP completion and native OpenCode compatibility across transcript projection, notices, and delegation. Reusing the existing ACP family check preserves direct ACP failures and treats OpenCode as historical ACP only when a stop reason is present; no contract or operator guidance changes.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed historical ACP completion and native OpenCode compatibility across transcript projection, notices, and delegation. Reusing the existing ACP family check preserves direct ACP failures and treats OpenCode as historical ACP only when a stop reason is present; no contract or operator guidance changes.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed historical ACP completion and native OpenCode compatibility across transcript projection, notices, and delegation. Reusing the existing ACP family check preserves direct ACP failures and treats OpenCode as historical ACP only when a stop reason is present; no contract or operator guidance changes.","inputs":["packages/contracts/src/runtime-events.ts"]}
+  ]
+}

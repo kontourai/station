@@ -8,6 +8,7 @@ import {
   usePatchNotificationPreferencesMutation,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
+import { Select } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
@@ -97,18 +98,24 @@ export function OverviewNotificationsSection({
   return (
     <PageSection
       id="section-overview"
-      className="project-settings__section"
+      className="project-settings__section page-section--choice-rows"
       title="Overview and notifications"
       description="How this Project files finished work and when it interrupts you."
     >
       <PageRow
-        label="Resolve idle Tasks"
-        description={`Moves an Idle Task to Resolved after this long without activity. Default: ${TASK_OVERVIEW_AUTO_RESOLVE_DEFAULT_DAYS} days.`}
+        className="page-row--choice"
+        label={
+          <label htmlFor="project-overview-auto-resolve">
+            Resolve idle Tasks
+          </label>
+        }
+        description={
+          <span id="project-overview-auto-resolve-hint">{`Moves an Idle Task to Resolved after this long without activity. Default: ${TASK_OVERVIEW_AUTO_RESOLVE_DEFAULT_DAYS} days.`}</span>
+        }
         control={
-          <select
+          <Select
             id="project-overview-auto-resolve"
-            className="editor-input project-settings__new-chat-select"
-            aria-label="Resolve idle Tasks"
+            aria-describedby="project-overview-auto-resolve-hint"
             value={days}
             disabled={updateProject.isPending}
             onChange={(event) => void saveDays(Number(event.target.value))}
@@ -118,7 +125,7 @@ export function OverviewNotificationsSection({
                 {daysLabel(choice)}
               </option>
             ))}
-          </select>
+          </Select>
         }
       />
       {preferences.isError ? (
@@ -132,13 +139,15 @@ export function OverviewNotificationsSection({
         />
       ) : (
         <PageRow
-          label="Notify me"
-          description={`${NOTIFICATION_DESCRIPTIONS[level]} Nothing is sent to a device while it shows this Project.`}
+          className="page-row--choice"
+          label={<label htmlFor="project-notification-level">Notify me</label>}
+          description={
+            <span id="project-notification-level-hint">{`${NOTIFICATION_DESCRIPTIONS[level]} Nothing is sent to a device while it shows this Project.`}</span>
+          }
           control={
-            <select
+            <Select
               id="project-notification-level"
-              className="editor-input project-settings__new-chat-select"
-              aria-label="Notify me"
+              aria-describedby="project-notification-level-hint"
               value={level}
               disabled={
                 !projectId || !preferences.data || patchPreferences.isPending
@@ -152,7 +161,7 @@ export function OverviewNotificationsSection({
                   {choice.label}
                 </option>
               ))}
-            </select>
+            </Select>
           }
         />
       )}

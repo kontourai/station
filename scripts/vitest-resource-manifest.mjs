@@ -47,6 +47,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4441: standalone scaffolds retain their real synchronous npm install
+  // and esbuild output under an explicit 30-second guard.
+  'packages/shared/src/__tests__/plugin-scaffold.test.ts',
+
   // Checks prompt closure and the room's real 15-second idle recheck bound.
   'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
@@ -1784,6 +1788,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // into the outcome they report, with the stylesheet resolved so the
   // presence-not-visibility guardrail is exercised rather than assumed.
   'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+  // Real React remount in Chromium isolates a possible renderer livelock.
+  'src-ui/src/__tests__/LazyBoundary.browser.test.tsx',
   // #1536 B2: same shape again — launches a real Chromium via
   // `@playwright/test` to prove the Task picker's dialog is not trapped by the
   // animating message row it opens from (containing block and stacking

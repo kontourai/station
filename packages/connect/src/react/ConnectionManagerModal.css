@@ -1,5 +1,10 @@
-/* Connection manager modal. Ships with @kontourai/station-connect and themes
-   against the host app's tokens, so every var() carries a standalone fallback. */
+/* Resolve the host's accent pair before the button declares its local
+   tokens. Standalone defaults stay inside the modal or discovery panel. */
+:where(.station-connect-modal-panel, .station-connect-discovery) {
+  --station-connect-action: var(--accent-primary, #2563eb);
+  --station-connect-action-hover: var(--accent-hover-fill, #1d4ed8);
+  --station-connect-action-text: var(--text-on-accent, #fff);
+}
 
 .station-connect-modal-overlay {
   --responsive-visual-viewport-height: 100dvh;
@@ -37,7 +42,8 @@
   color: var(--text-primary, #e5e5e5);
 }
 
-.station-connect-modal-panel :focus-visible {
+.station-connect-modal-panel :focus-visible,
+.station-connect-btn:focus-visible {
   outline: 2px solid var(--accent-primary, #3b82f6);
   outline-offset: 2px;
 }
@@ -67,7 +73,8 @@
 /* Mirrors src-ui's .responsive-dialog-close contract (PR #575): 44px target,
    SVG glyph, radius-md, border/hover treatment. Duplicated here because this
    package ships independently and must not import src-ui. */
-.station-connect-modal-close {
+.station-connect-modal-close,
+.station-connect-modal-back {
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
@@ -87,7 +94,26 @@
     border-color var(--motion-fast, 0.15s) ease;
 }
 
-.station-connect-modal-close svg {
+.station-connect-modal-back {
+  border-color: transparent;
+  background: transparent;
+}
+
+.station-connect-modal-back:hover {
+  color: var(--text-primary, #e5e5e5);
+  background: var(--bg-hover, #252525);
+}
+
+.station-connect-modal-back svg {
+  transform: scaleX(var(--station-connect-back-direction, 1));
+}
+
+.station-connect-modal-back:dir(rtl) {
+  --station-connect-back-direction: -1;
+}
+
+.station-connect-modal-close svg,
+.station-connect-modal-back svg {
   width: 18px;
   height: 18px;
   fill: none;
@@ -100,6 +126,145 @@
   color: var(--text-primary, #e5e5e5);
   border-color: var(--accent-primary, #3b82f6);
   background: var(--bg-hover, #252525);
+}
+
+/* Nearby discovery */
+
+.station-connect-discovery,
+.station-connect-discovery__candidates {
+  display: flex;
+  flex-direction: column;
+}
+
+.station-connect-discovery {
+  gap: var(--k-space-3, 12px);
+}
+
+.station-connect-discovery__intro,
+.station-connect-discovery__empty,
+.station-connect-discovery__status {
+  color: var(--text-secondary, #999);
+  font-size: var(--k-text-sm, 13px);
+}
+
+.station-connect-discovery__intro,
+.station-connect-discovery__empty {
+  line-height: 1.5;
+}
+
+.station-connect-discovery__intro {
+  margin: 0;
+}
+
+.station-connect-discovery__empty,
+.station-connect-discovery__candidate {
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  padding: var(--k-space-3, 12px);
+}
+
+.station-connect-discovery__toolbar,
+.station-connect-discovery__candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--k-space-2, 8px);
+  row-gap: var(--k-space-1, 4px);
+}
+
+.station-connect-discovery__status {
+  flex: 1 1 8rem;
+}
+
+.station-connect-discovery__back {
+  align-self: flex-start;
+}
+
+.station-connect-discovery__candidates {
+  gap: var(--k-space-2, 8px);
+}
+
+.station-connect-discovery__candidate {
+  background: var(--bg-primary, #0a0a0a);
+}
+
+.station-connect-discovery__candidate-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: var(--k-text-md, 14px);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.station-connect-discovery__candidate-meta,
+.station-connect-discovery__http-warning,
+.station-connect-discovery__identity,
+.station-connect-discovery__saved {
+  font-size: var(--k-text-sm, 13px);
+  line-height: var(--k-leading-normal, 1.45);
+}
+
+.station-connect-discovery__candidate-meta,
+.station-connect-discovery__http-warning {
+  margin: var(--k-space-1, 4px) 0 0;
+}
+
+.station-connect-discovery__candidate-meta,
+.station-connect-discovery__saved,
+.station-connect-discovery__identity dt {
+  color: var(--text-secondary, #999);
+}
+
+.station-connect-discovery__http-warning {
+  color: var(--warning-text, #fbbf24);
+}
+
+.station-connect-discovery__candidate-actions {
+  margin-top: var(--k-space-2, 8px);
+}
+
+.station-connect-discovery__candidate-actions > button,
+.station-connect-discovery__saved {
+  margin-inline-start: auto;
+}
+
+.station-connect-discovery__identity[open] {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.station-connect-discovery__identity > summary {
+  align-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.station-connect-discovery__identity > summary:focus-visible {
+  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+.station-connect-discovery__identity dl {
+  display: grid;
+  gap: var(--k-space-1, 4px);
+  margin: 0;
+  padding: var(--k-space-2, 8px);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+}
+
+.station-connect-discovery__identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.station-connect-discovery__identity dd + dt {
+  margin-top: var(--k-space-1, 4px);
 }
 
 /* Connection list */
@@ -435,16 +600,17 @@
 }
 
 .station-connect-btn--primary {
+  --accent-primary: var(--station-connect-action);
+  --accent-hover-fill: var(--station-connect-action-hover);
+  --text-on-accent: var(--station-connect-action-text);
   border: none;
-  background: var(--accent-primary, #3b82f6);
+  background: var(--accent-primary);
   color: var(--text-on-accent);
 }
 
 .station-connect-btn--primary:hover:not(:disabled) {
-  background: var(
-    --accent-hover-fill,
-    color-mix(in srgb, var(--accent-primary, #3b82f6) 86%, white 14%)
-  );
+  background: var(--accent-hover-fill);
+  color: var(--text-on-accent);
 }
 
 .station-connect-btn--primary:disabled {
@@ -463,7 +629,21 @@
   background: color-mix(in srgb, var(--text-primary, #e5e5e5) 5%, transparent);
 }
 
-.station-connect-btn--secondary:disabled {
+.station-connect-btn--quiet {
+  min-width: 44px;
+  padding-inline: var(--k-space-3, 12px);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #bbb);
+}
+
+.station-connect-btn--quiet:hover:not([aria-disabled="true"]) {
+  color: var(--text-primary, #e5e5e5);
+  background: var(--bg-hover, #252525);
+}
+
+.station-connect-btn--secondary:disabled,
+.station-connect-btn--quiet[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }

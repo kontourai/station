@@ -216,6 +216,7 @@ function ProjectAccentSwatch({
  * cards can never be open at once without a coordinator.
  */
 const INBOX_HOVER_OPEN_DELAY_MS = 300;
+const INBOX_HOVER_CLOSE_DELAY_MS = 180;
 
 function useInboxRowHoverCard() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -234,19 +235,27 @@ function useInboxRowHoverCard() {
     clearTimeout(timeout.current);
     setAnchor(null);
   }, []);
+  const cancelHoverTimer = useCallback(() => {
+    clearTimeout(timeout.current);
+  }, []);
   const onPointerEnter = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
       clearTimeout(timeout.current);
+      if (anchor) return;
       const target = event.currentTarget;
       timeout.current = setTimeout(
         () => setAnchor(target),
         INBOX_HOVER_OPEN_DELAY_MS,
       );
     },
-    [],
+    [anchor],
   );
-  const onPointerLeave = close;
+  // Keep the card open while the pointer crosses the gap beside the row.
+  const onPointerLeave = useCallback(() => {
+    clearTimeout(timeout.current);
+    if (anchor) timeout.current = setTimeout(close, INBOX_HOVER_CLOSE_DELAY_MS);
+  }, [anchor, close]);
   // focusin/focusout bubble, so a focus move BETWEEN the row's own controls
   // (open button → snooze) must not close the card: only a focus leaving the
   // row entirely does.
@@ -269,10 +278,13 @@ function useInboxRowHoverCard() {
     close,
     onPointerEnter,
     onPointerLeave,
+    cancelHoverTimer,
     onFocus,
     onBlur,
   };
 }
+
+const loadInboxRowApproval = () => import('./InboxRowApproval');
 
 const loadChatInboxHoverCard = () =>
   import('./ChatInboxHoverCard').then((module) => ({
@@ -416,6 +428,7 @@ function InboxCommandButton({
 }
 
 interface InboxRowProps {
+  inlineApproval?: boolean;
   item: HomeWorkItem;
   isCurrent: boolean;
   isSnoozed: boolean;
@@ -565,6 +578,7 @@ function InboxRowTitle({ title }: { title: string }) {
 
 export function InboxRow({
   item,
+  inlineApproval,
   isCurrent,
   isSnoozed,
   isOpenChat,
@@ -1117,6 +1131,18 @@ export function InboxRow({
             )}
         </div>
       )}
+      {inlineApproval &&
+        status.rung === 'approval' &&
+        !remoteProject &&
+        facts?.hostDetails !== false &&
+        item.controlMode !== 'read-only-attached' &&
+        item.orchestrationThreadId && (
+          <LazyBoundary
+            load={loadInboxRowApproval}
+            pending={null}
+            componentProps={{ threadId: item.orchestrationThreadId }}
+          />
+        )}
       {tooltip && hover.anchor && (
         <LazyBoundary
           load={loadChatInboxHoverCard}
@@ -1130,6 +1156,8 @@ export function InboxRow({
             projectIcon,
             anchor: hover.anchor,
             onClose: hover.close,
+            onPointerEnter: hover.cancelHoverTimer,
+            onPointerLeave: hover.onPointerLeave,
             id: hoverCardId,
           }}
         />
@@ -1422,6 +1450,7 @@ export function InboxGroupList({
     ) : (
       <InboxRow
         key={item.id}
+        inlineApproval={group.id === 'needsYou'}
         item={item}
         isCurrent={isCurrent(item)}
         isSnoozed={group.id === 'snoozed'}

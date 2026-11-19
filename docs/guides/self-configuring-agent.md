@@ -642,8 +642,9 @@ messages have no search index, so discovery scans their existing owner-scoped
 readers. Each call scans metadata for at most 2,000 conversations after Project,
 Agent and read admission filters, and reads at most 32 file-backed conversations
 (including title hits, which still need a readable transcript). Each transcript
-read follows at most 64 Session segments. Indexed native hits remain eligible
-after the metadata scan budget is exhausted. A scan or file-read budget reached,
+read follows at most 64 Session segments. Indexed native hits with no file record remain eligible after the metadata
+scan budget is exhausted. A file record still uses the metadata and transcript
+read budgets even when it also has an indexed hit. A scan or file-read budget reached,
 or a file lineage too long to read, yields `state: partial` with an
 `incompleteSources` entry; the unreadable conversation is skipped. Other reader
 errors report search unavailable. These budgets bound matching and transcript

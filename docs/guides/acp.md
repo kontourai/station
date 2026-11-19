@@ -362,6 +362,13 @@ Cursor's `cursor/update_todos` notification is not rendered as a message: the ad
 
 Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
+### Reply output during Stop
+
+ACP reply chunks carry a session identity without naming a prompt. Station
+publishes message and reasoning chunks only while it can attribute them to an
+active turn. If a cancelled prompt is still settling while a successor turns
+active, Station drops the ambiguous chunks until the earlier prompt settles.
+
 ### Turn-failure enrichment from a co-reported notification
 
 station#4084: a rejected `prompt()` can surface as a bare, uninformative error — a JSON-RPC `-32603` resolves to the literal string `"Internal error"` with no detail. Live evidence (kiro-cli, station#1860 verification): the engine had already sent `_kiro.dev/error/rate_limit` with `{ message: "The monthly usage limit has been reached" }` milliseconds earlier in the same turn, and that message was silently dropped.
@@ -1283,6 +1290,17 @@ Station reads the binary's `--version` to tell the two apart
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
+
+The turn outcome follows the engine’s reported stop reason. A refusal or
+request-budget limit ends the turn with a failure explanation. An unrecognized
+or missing stop reason records an unconfirmed result. Station retains the
+bounded provider reason when the engine supplied one, and these outcomes carry
+no automatic retry authority. A person can send a new turn in the same
+attached chat. History with an older ACP `other` completion is interpreted
+using its stored reason at read time. When that reason is absent, the result
+remains unconfirmed. OpenCode shares a provider ID across ACP and native
+Serve, so its older completions require a retained ACP stop reason before
+Station applies this interpretation.
 
 ### File System and Terminal Tools (Station → Runtime)
 
