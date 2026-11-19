@@ -32,7 +32,9 @@
 
     "src-server/services/acp/acp-process.ts",
 
-    "src-server/services/acp/opencode-project-config.ts"
+    "src-server/services/acp/opencode-project-config.ts",
+
+    "src-server/providers/adapters/opencode-adapter.ts"
   ],
 
   "checks": [
