@@ -1,0 +1,17 @@
+{
+  "revision": "2eb8129fb8f2afe317d0be4af4f45cd40dfe8165",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Clarified that the source status publisher uses the same bounded evidence-read policy as full qualification. Verified the real clients and their transient recovery, exhaustion, and single-attempt write controls. No fresh hosted verdict claimed.","inputs":["docs/guides/releasing.md","scripts/qualification-evidence.mjs","scripts/source-verification-policy.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the protected reconciler and its caller. GitHub evidence reads can recover from a transient gateway response under the original 30-second request deadline. Two complete matching snapshots, owner and attempt binding, and pending on unavailable evidence still govern publication. No status write is retried.","inputs":["scripts/source-verification-policy.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the protected reconciler and its caller. GitHub evidence reads can recover from a transient gateway response under the original 30-second request deadline. Two complete matching snapshots, owner and attempt binding, and pending on unavailable evidence still govern publication. No status write is retried.","inputs":["scripts/source-verification-policy.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the protected reconciler and its caller. GitHub evidence reads can recover from a transient gateway response under the original 30-second request deadline. Two complete matching snapshots, owner and attempt binding, and pending on unavailable evidence still govern publication. No status write is retried.","inputs":["scripts/source-verification-policy.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"The real HTTP fixture forces transient and persistent jobs read errors and checks the emitted status. Scope and admission controls remain covered by the same owner suite.","inputs":["scripts/__tests__/source-verification-policy.test.ts"]},
+
+    {"path":"docs/guides/releasing.md","note":"Moved the existing bounded read policy to a shared helper. Qualification parsing, reuse, redirect policy, deadlines, methods and fail-closed interpretation are preserved.","inputs":["scripts/qualification-evidence.mjs"]}
+  ]
+}
