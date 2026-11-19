@@ -1,3 +1,5 @@
+import { Button } from '../Button';
+
 export interface ConversationOpenRecoveryNoticeProps {
   title: string;
   /**
@@ -71,31 +73,11 @@ export function ConversationOpenRecoveryNotice({
       {onContinue || onRetry || onStartNew ? (
         <span className="conversation-open-recovery__actions">
           {onContinue ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onContinue}
-            >
-              Continue with another agent
-            </button>
+            <Button onClick={onContinue}>Continue with another agent</Button>
           ) : null}
-          {onRetry ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onRetry}
-            >
-              Retry
-            </button>
-          ) : null}
+          {onRetry ? <Button onClick={onRetry}>Retry</Button> : null}
           {onStartNew ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onStartNew}
-            >
-              Start new chat
-            </button>
+            <Button onClick={onStartNew}>Start new chat</Button>
           ) : null}
         </span>
       ) : null}

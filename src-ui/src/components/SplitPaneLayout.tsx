@@ -1569,6 +1569,7 @@ export function SplitPaneLayout({
                 );
                 const actionableRow = item.swipeAction ? (
                   <SwipeableSplitPaneRow
+                    key={item.id}
                     action={item.swipeAction}
                     itemKey={itemKey}
                   >
