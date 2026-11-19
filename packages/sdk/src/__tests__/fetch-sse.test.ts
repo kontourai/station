@@ -1385,6 +1385,67 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
     stream.close();
   });
 
+  it('removes body watchdog listeners when the page API retires during an open read', async () => {
+    const page = pagehideTarget();
+    const pageDocument = pagehideTarget();
+    const removePageListener = vi.spyOn(page.target, 'removeEventListener');
+    const removeDocumentListener = vi.spyOn(
+      pageDocument.target,
+      'removeEventListener',
+    );
+    const onMessage = vi.fn();
+    const onCancel = vi.fn();
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('document', pageDocument.target);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('data: ready\n\n'));
+              },
+              pull: () => new Promise<void>(() => undefined),
+              cancel: onCancel,
+            }),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      ),
+    );
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage,
+      timeoutMs: null,
+    });
+    try {
+      await vi.waitFor(() => expect(onMessage).toHaveBeenCalledOnce());
+      expect(removePageListener).not.toHaveBeenCalled();
+      expect(removeDocumentListener).not.toHaveBeenCalled();
+      Object.defineProperty(page.target, 'removeEventListener', {
+        value: undefined,
+      });
+      Object.defineProperty(pageDocument.target, 'removeEventListener', {
+        value: undefined,
+      });
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+
+    expect(onMessage).toHaveBeenCalledOnce();
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(removePageListener.mock.calls.map(([type]) => type)).toEqual([
+      'focus',
+      'online',
+      'pagehide',
+    ]);
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      'visibilitychange',
+      expect.any(Function),
+    );
+  });
+
   it('never trips while the server keeps writing heartbeats', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValueOnce(heartbeatSseResponse(100));

@@ -1898,7 +1898,11 @@ function listenToHost(
   type: string,
   listener: (event?: { persisted?: boolean }) => void,
 ): (() => void) | undefined {
-  if (!target) return;
+  if (
+    typeof target?.addEventListener !== 'function' ||
+    typeof target.removeEventListener !== 'function'
+  )
+    return;
   // The stream can settle after the page is torn down.
   const remove = target.removeEventListener.bind(target, type, listener);
   target.addEventListener(type, listener);
@@ -1976,8 +1980,6 @@ function interruptibleDelay(
       removeOnline?.();
       resolve();
     };
-    const timer = setTimeout(() => finish(), ms);
-    signal.addEventListener('abort', finish, { once: true });
     const page = browserWindow();
     const removeVisibility = listenToHost(
       browserDocument(),
@@ -1986,6 +1988,8 @@ function interruptibleDelay(
     );
     const removeFocus = listenToHost(page, 'focus', onWake);
     const removeOnline = listenToHost(page, 'online', onWake);
+    const timer = setTimeout(() => finish(), ms);
+    signal.addEventListener('abort', finish, { once: true });
   });
   return { promise, wake: () => finish() };
 }
@@ -2092,9 +2096,12 @@ async function consumeSseResponse(
       if (chunk.done) break;
     }
   } finally {
-    stopWatchdog.stop();
-    signal.removeEventListener('abort', cancelReader);
-    reader.releaseLock();
+    try {
+      stopWatchdog.stop();
+    } finally {
+      signal.removeEventListener('abort', cancelReader);
+      reader.releaseLock();
+    }
   }
   // Cancelling the reader resolves the pending read as `done`, which on its
   // own reads exactly like a server that closed cleanly. Name the cause.
@@ -2123,21 +2130,24 @@ function watchForStall(
     stalled = true;
     cancel();
   };
+  const page = browserWindow();
+  const removeVisibility = listenToHost(
+    browserDocument(),
+    'visibilitychange',
+    check,
+  );
+  const removeFocus = listenToHost(page, 'focus', check);
+  const removeOnline = listenToHost(page, 'online', check);
   const timer = setInterval(check, Math.max(1, Math.floor(stallTimeoutMs / 3)));
-  const doc = browserDocument();
-  const scope = browserWindow();
-  doc?.addEventListener('visibilitychange', check);
-  scope?.addEventListener('focus', check);
-  scope?.addEventListener('online', check);
   return {
     touch() {
       lastActivityAt = Date.now();
     },
     stop() {
       clearInterval(timer);
-      doc?.removeEventListener('visibilitychange', check);
-      scope?.removeEventListener('focus', check);
-      scope?.removeEventListener('online', check);
+      removeVisibility?.();
+      removeFocus?.();
+      removeOnline?.();
     },
     get stalled() {
       return stalled;
