@@ -154,6 +154,105 @@ describe('fetchSSE', () => {
     expect(stream.signal.aborted).toBe(true);
   });
 
+  it.each(['addEventListener', 'removeEventListener'] as const)(
+    'refuses a present page without %s before resolving request credentials',
+    async (method) => {
+      const page = pagehideTarget();
+      Object.defineProperty(page.target, method, { value: undefined });
+      vi.stubGlobal('window', page.target);
+      const fetchMock = vi.fn(async () => sseResponse('data: unexpected\n\n'));
+      const credential = vi.fn(() => ({
+        origin: 'https://station.example.test',
+        credential: CREDENTIAL,
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      setClientCredentialResolver(credential);
+
+      let stream: ReturnType<typeof fetchSSE> | undefined;
+      try {
+        expect(() => {
+          stream = fetchSSE('https://station.example.test/events', {
+            onMessage: () => undefined,
+            reconnect: false,
+          });
+        }).toThrow('SSE browser window cannot register pagehide');
+        expect(credential).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        stream?.close();
+        await stream?.completed;
+      }
+    },
+  );
+
+  it('does not reopen a stream whose browser window retired between attempts', async () => {
+    vi.useFakeTimers();
+    const page = pagehideTarget();
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('network down');
+    });
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage: () => undefined,
+      timeoutMs: null,
+      retryDelayMs: 100,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      Object.defineProperty(page.target, 'removeEventListener', {
+        value: undefined,
+      });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(stream.signal.aborted).toBe(true);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
+  it('checks the page again before dispatch after asynchronous credential resolution', async () => {
+    vi.useFakeTimers();
+    const page = pagehideTarget();
+    const requestCredential = {
+      origin: 'https://station.example.test',
+      credential: CREDENTIAL,
+    };
+    let finishCredential!: (credential: typeof requestCredential) => void;
+    const credential = vi.fn(
+      () =>
+        new Promise<typeof requestCredential>((resolve) => {
+          finishCredential = resolve;
+        }),
+    );
+    setClientCredentialResolver(credential);
+    vi.stubGlobal('window', page.target);
+    const fetchMock = vi.fn(async () => sseResponse('data: unexpected\n\n'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage: () => undefined,
+      reconnect: false,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(credential).toHaveBeenCalled();
+      Object.defineProperty(page.target, 'removeEventListener', {
+        value: undefined,
+      });
+      finishCredential(requestCredential);
+      await stream.completed;
+      expect(stream.signal.aborted).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
   it('aborts a browser-owned stream on a non-persisted pagehide', async () => {
     const page = pagehideTarget();
     const requestAborted = vi.fn();

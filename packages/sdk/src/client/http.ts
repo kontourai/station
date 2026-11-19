@@ -1893,16 +1893,21 @@ type HostEventTarget = {
   ): void;
 };
 
+function hostSupportsEvents(
+  target: HostEventTarget | undefined,
+): target is HostEventTarget {
+  return (
+    typeof target?.addEventListener === 'function' &&
+    typeof target.removeEventListener === 'function'
+  );
+}
+
 function listenToHost(
   target: HostEventTarget | undefined,
   type: string,
   listener: (event?: { persisted?: boolean }) => void,
 ): (() => void) | undefined {
-  if (
-    typeof target?.addEventListener !== 'function' ||
-    typeof target.removeEventListener !== 'function'
-  )
-    return;
+  if (!hostSupportsEvents(target)) return;
   // The stream can settle after the page is torn down.
   const remove = target.removeEventListener.bind(target, type, listener);
   target.addEventListener(type, listener);
@@ -2204,9 +2209,16 @@ export function fetchSSE(
   // terminal for this document; keeping an SSE reader alive after navigation
   // can retain a stale UI tree and its credentials. BFCache entry is different:
   // the same page may resume, so it intentionally keeps the stream alive.
-  const removePageHide = listenToHost(browserWindow(), 'pagehide', (event) => {
+  const page = browserWindow();
+  const pageIsCurrent = () =>
+    page === undefined ||
+    (browserWindow() === page && hostSupportsEvents(page));
+  const removePageHide = listenToHost(page, 'pagehide', (event) => {
     if (!event?.persisted) abort();
   });
+  if (page !== undefined && !removePageHide) {
+    throw new TypeError('SSE browser window cannot register pagehide');
+  }
   opts.signal?.addEventListener('abort', abort, { once: true });
   const origin = requestOrigin(url);
   const initialRetryDelay = opts.retryDelayMs ?? 1000;
@@ -2242,6 +2254,10 @@ export function fetchSSE(
     let retryCount = 0;
     const resetAfterMessages = Math.max(1, opts.retryResetAfterMessages ?? 1);
     while (!controller.signal.aborted) {
+      if (!pageIsCurrent()) {
+        abort();
+        break;
+      }
       if (restartPending) {
         restartPending = false;
         retryDelay = baseRetryDelay;
@@ -2270,17 +2286,26 @@ export function fetchSSE(
         });
         let response: Response;
         try {
-          response = await waitForSseResponse(
-            getJson(url, {
-              ...opts,
-              headers,
-              signal: attemptSignal,
-              // The opening watchdog ends at headers; a healthy body's lifetime is open-ended.
-              timeoutMs: null,
-              progressTimeoutMs: undefined,
-            }),
-            attemptSignal,
+          const requestOptions = {
+            ...opts,
+            headers,
+            signal: attemptSignal,
+            // The opening watchdog ends at headers; a healthy body's lifetime is open-ended.
+            timeoutMs: null,
+            progressTimeoutMs: undefined,
+          };
+          const opening = resolveRequestCredential(url, requestOptions).then(
+            (credential) => {
+              if (!pageIsCurrent()) abort();
+              attemptSignal.throwIfAborted();
+              return getJsonWithResolvedCredential(
+                url,
+                requestOptions,
+                credential,
+              );
+            },
           );
+          response = await waitForSseResponse(opening, attemptSignal);
         } finally {
           openingWatchdog.stop();
         }
