@@ -632,7 +632,9 @@ export class FlowRunService {
       return {
         ...projection,
         gates: projection.gates.map((gate) => {
-          const diagnostics = projectFlowGateDiagnostics(gate.diagnostics);
+          const diagnostics = gate.evaluation_ref
+            ? projectFlowGateDiagnostics(gate.diagnostics)
+            : undefined;
           return diagnostics
             ? { ...gate, display_diagnostics: diagnostics }
             : gate;
