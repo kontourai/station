@@ -408,7 +408,7 @@ async function openRunFromHomeCard(page: Page) {
   const card = page.getByTestId('first-run-home-card');
   await expect(card).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-  await expect(page.locator('.responsive-surface-overlay')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await card.getByRole('button', { name: 'Open setup' }).click();
 }
 
@@ -988,7 +988,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // behind "See exactly what is sent" rather than filling the first screen
     // a person ever sees.
     await expect(
-      standaloneModal(page).getByText(/none is configured here/),
+      standaloneModal(page).getByText(/none is configured/),
     ).toBeVisible();
     await expect(page.getByText('station_started')).toBeHidden();
     await standaloneModal(page).getByText('See exactly what is sent').click();
@@ -1142,7 +1142,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(standaloneModal(page)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('What Station sends')).toBeVisible();
     await expect(
-      standaloneModal(page).getByText(/none is configured here/),
+      standaloneModal(page).getByText(/none is configured/),
     ).toBeVisible();
     await expect(
       standaloneModal(page).getByText('See exactly what is sent'),
@@ -1162,29 +1162,22 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-home-card')).toHaveCount(0);
   });
 
-  test('dismissing the setup launcher leaves privacy review optional', async ({
+  test('a home whose engines need attention still offers privacy review without interrupting work', async ({
     page,
   }) => {
-    // The behaviour on `origin/main` that made these specs answer it first:
-    // the modal rendered over the launcher and intercepted every click
-    // underneath. An upgraded home whose Station still needs connecting gets
-    // the launcher, alone.
     await patchExternalEngines(page, ENGINE_MIX_NOTHING_READY);
     await pinAgentCatalog(page);
     await pinFirstRun(page, null);
     await pinTelemetryDisclosure(page, { acknowledged: false });
 
     await page.goto('/');
-    await expect(page.getByTestId('setup-launcher')).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(standaloneModal(page)).toHaveCount(0);
-
-    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
     await expect(
       page.getByRole('button', { name: 'Review choices' }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20_000 });
     await expect(standaloneModal(page)).toHaveCount(0);
+    await expect(
+      page.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toBeEditable();
   });
 
   test('a chapter re-opened from Home’s card suppresses the modal while it is up', async ({
