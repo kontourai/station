@@ -1,0 +1,7 @@
+{
+  "revision": "f3fa8a05a656ed83019ea48f13e14ded7ef5ddbd",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Reviewed the macOS libproc counter read and the exact-birth join at the endpoints of the idle CPU window. Interrupt wakeups and package-idle wakeups are separate counts. Endpoint-only processes are excluded and reported, and an untrusted shared process makes the value not measured. The 65 focused tests include an isolated macOS source run with real measured counters. A removed birth check failed the gap assertion and passed again after restoration. The report remains outside the budget and does not establish energy use or packaged Track A.","inputs":["docs/reference/station-weight.md","scripts/__tests__/station-weight.end-to-end.process.test.ts","scripts/__tests__/station-weight.test.ts","scripts/bench/station-weight.mjs","scripts/bench/station-weight-wakeups.mjs"]}
+  ]
+}
