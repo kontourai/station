@@ -658,6 +658,7 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
           ...base,
           method: 'content.text-delta',
           eventId: `delta-${index}`,
+          itemId: 'assistant',
           delta: 'x',
         });
       writeUnresolved(store, 'old-result');
