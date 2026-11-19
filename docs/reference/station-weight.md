@@ -400,7 +400,7 @@ revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
 
 ## Gaps
 
-- **Wakeups on macOS.** Libproc counts only processes with matching kernel
+- **Wakeups on macOS.** The [sampler](../../scripts/bench/station-weight-wakeups.mjs) counts only processes with matching kernel
   birth identities at both ends of the idle window. Processes present at only
   one endpoint are counted separately and omitted from the wakeup sum. An
   unreadable counter, mismatched birth, or decreasing count on a shared PID
