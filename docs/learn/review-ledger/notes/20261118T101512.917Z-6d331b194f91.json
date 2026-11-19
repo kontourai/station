@@ -1,0 +1,7 @@
+{
+  "revision": "36e618a8679713fad65e2786c5a1f1d4f8c7b9c5",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked Enable and Unsubscribe using the canonical Button owner and their existing callbacks. The production SDK/Settings Chromium fixture renders the same branch-specific feedback, and component-style hygiene passed.","inputs":["src-ui/src/views/settings/BrowserPushStatus.tsx"]}
+  ]
+}

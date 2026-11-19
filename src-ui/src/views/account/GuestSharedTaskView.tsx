@@ -8,13 +8,14 @@ import {
   listProjectSharedTasks,
   readProjectSharedTaskDocument,
   readProjectSharedTaskHistory,
+  watchProjectSharedTaskHistory,
 } from '@kontourai/station-sdk/project-shared-tasks';
 import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import {
@@ -23,8 +24,14 @@ import {
 } from '../../components/conversation/SharedTaskHistoryList';
 import { IconButton } from '../../components/IconButton';
 import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
+import {
+  PageFrameActions,
+  useIsPageFramed,
+  usePageHeader,
+} from '../../components/page-frame';
 import { Empty, SkeletonBlock, SkeletonList } from '../../components/state';
 import { nextTabIndex } from '../../utils/tab-navigation';
+import { GuestTaskReply } from './GuestTaskReply';
 import {
   GuestAccountRequired,
   requireGuestAccount,
@@ -71,16 +78,29 @@ export function GuestSharedTaskView({
   apiBase,
   principalId,
   project,
+  initialShareId,
+  onSelectShare,
   onScopeLost,
 }: {
   apiBase: string;
   principalId: string;
-  project: { id: string; slug: string };
+  project: { id: string; slug: string; name?: string };
+  initialShareId?: string;
+  onSelectShare?: (shareId?: string) => void;
   onScopeLost: () => void;
 }) {
   const client = useQueryClient();
-  const [selectedTaskId, setSelectedTaskId] = useState<string>();
-  const [tab, setTab] = useState('Chat');
+  const [manualTaskId, setManualTaskId] = useState<string>();
+  const [selectedShareId, setSelectedShareId] = useState(initialShareId);
+  const selectShare = useCallback(
+    (shareId?: string) => {
+      setSelectedShareId(shareId);
+      if (!shareId) setManualTaskId(undefined);
+      onSelectShare?.(shareId);
+    },
+    [onSelectShare],
+  );
+  const [tab, setTab] = useState(initialShareId ? 'Brief' : 'Chat');
   const [notice, setNotice] = useState<string>();
   const taskTriggers = useRef(new Map<string, HTMLButtonElement>());
   const onScopeLostRef = useRef(onScopeLost);
@@ -108,8 +128,10 @@ export function GuestSharedTaskView({
     retry: false,
     gcTime: 0,
   });
-  const selected = tasks.data?.find(
-    (candidate) => candidate.task.id === selectedTaskId,
+  const selected = tasks.data?.find((candidate) =>
+    manualTaskId
+      ? candidate.task.id === manualTaskId
+      : candidate.shareId === selectedShareId,
   );
   const selectedKey = selected
     ? [
@@ -158,6 +180,7 @@ export function GuestSharedTaskView({
           selected.task.id,
           {
             ...requestOptions(signal),
+            expectedShareId: selected.shareId,
             ...(pageParam ? { cursor: pageParam } : {}),
           },
         );
@@ -169,6 +192,23 @@ export function GuestSharedTaskView({
     retry: false,
     gcTime: 0,
   });
+  const refreshHistory = historyPages.refetch;
+  useEffect(() => {
+    if (!selected || tab !== 'Chat' || !historyPages.isSuccess) return;
+    const controller = new AbortController();
+    const stream = watchProjectSharedTaskHistory(
+      apiBase,
+      selected,
+      () => {
+        if (!controller.signal.aborted) void refreshHistory();
+      },
+      requestOptions(controller.signal),
+    );
+    return () => {
+      controller.abort();
+      stream.close();
+    };
+  }, [apiBase, selected, tab, refreshHistory, historyPages.isSuccess]);
   const history = historyPages;
   const historyProjection = projectTaskHistory(history.data?.pages ?? []);
   const document = useQuery({
@@ -181,7 +221,7 @@ export function GuestSharedTaskView({
           apiBase,
           project.slug,
           selected.task.id,
-          requestOptions(signal),
+          { ...requestOptions(signal), expectedShareId: selected.shareId },
         );
         if (
           value.kind === 'snapshot' &&
@@ -200,7 +240,7 @@ export function GuestSharedTaskView({
     gcTime: 0,
   });
   const publicationMissing =
-    !!selectedTaskId && tasks.isSuccess && selected === undefined;
+    !!selectedShareId && tasks.isSuccess && selected === undefined;
   const scopeLost =
     publicationMissing ||
     [tasks.error, history.error, document.error].some(
@@ -214,10 +254,10 @@ export function GuestSharedTaskView({
     document.data?.kind === 'not-found';
   useEffect(() => {
     if (!taskUnshared) return;
-    setSelectedTaskId(undefined);
+    selectShare();
     setNotice('This Task is no longer shared. Shared Tasks were refreshed.');
     void tasks.refetch();
-  }, [taskUnshared, tasks]);
+  }, [taskUnshared, tasks, selectShare]);
   useEffect(
     () => () => {
       for (const queryKey of [
@@ -247,7 +287,22 @@ export function GuestSharedTaskView({
   const refreshTasks = () => {
     setNotice(undefined);
     void tasks.refetch();
+    if (selected) {
+      void history.refetch();
+      void document.refetch();
+    }
   };
+  const framedTask =
+    useIsPageFramed() &&
+    !!initialShareId &&
+    !!selected &&
+    !scopeLost &&
+    tasks.isSuccess;
+  usePageHeader(
+    framedTask
+      ? { title: selected.task.title, eyebrow: project.name, subtitle: '' }
+      : null,
+  );
   if (scopeLost) return null;
   if (tasks.isPending)
     return <SkeletonList count={1} label="Reading shared Tasks" />;
@@ -259,6 +314,11 @@ export function GuestSharedTaskView({
       </div>
     );
 
+  const refreshAction = (
+    <IconButton aria-label="Refresh shared Tasks" onClick={refreshTasks}>
+      <RefreshGlyph />
+    </IconButton>
+  );
   return (
     <section
       className="account-entry__shared-tasks"
@@ -291,7 +351,8 @@ export function GuestSharedTaskView({
                   }}
                   onClick={() => {
                     setNotice(undefined);
-                    setSelectedTaskId(summary.task.id);
+                    setManualTaskId(summary.task.id);
+                    selectShare(summary.shareId);
                     setTab('Chat');
                   }}
                 >
@@ -307,54 +368,55 @@ export function GuestSharedTaskView({
           className="account-entry__shared-task-detail task-room-guest"
           aria-label={`${selected.task.title} shared content`}
         >
-          <div className="account-entry__shared-task-heading">
-            <h5>{selected.task.title}</h5>
-            <IconButton
-              aria-label="Refresh shared Tasks"
-              onClick={refreshTasks}
-            >
-              <RefreshGlyph />
-            </IconButton>
-            <IconButton
-              aria-label="Close"
-              onClick={() => {
-                const taskId = selected.task.id;
-                setSelectedTaskId(undefined);
-                requestAnimationFrame(() =>
-                  taskTriggers.current.get(taskId)?.focus(),
-                );
-              }}
-            >
-              <CloseGlyph />
-            </IconButton>
-          </div>
+          {framedTask ? (
+            <PageFrameActions>{refreshAction}</PageFrameActions>
+          ) : (
+            <div className="account-entry__shared-task-heading">
+              <h5>{selected.task.title}</h5>
+              {refreshAction}
+              <IconButton
+                aria-label="Close"
+                onClick={() => {
+                  const taskId = selected.task.id;
+                  selectShare();
+                  requestAnimationFrame(() =>
+                    taskTriggers.current.get(taskId)?.focus(),
+                  );
+                }}
+              >
+                <CloseGlyph />
+              </IconButton>
+            </div>
+          )}
           <div
             className="task-room-tabs"
             role="tablist"
             aria-label="Shared Task views"
           >
-            {['Chat', 'Brief'].map((name, index, names) => (
-              <Button
-                key={name}
-                role="tab"
-                tabIndex={tab === name ? 0 : -1}
-                aria-selected={tab === name}
-                onClick={() => setTab(name)}
-                onKeyDown={(event) => {
-                  const next = nextTabIndex(index, names.length, event.key);
-                  if (next === null) return;
-                  event.preventDefault();
-                  setTab(names[next]);
-                  const tabs =
-                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                      '[role="tab"]',
-                    );
-                  tabs?.[next]?.focus();
-                }}
-              >
-                {name}
-              </Button>
-            ))}
+            {(framedTask ? ['Brief', 'Chat'] : ['Chat', 'Brief']).map(
+              (name, index, names) => (
+                <Button
+                  key={name}
+                  role="tab"
+                  tabIndex={tab === name ? 0 : -1}
+                  aria-selected={tab === name}
+                  onClick={() => setTab(name)}
+                  onKeyDown={(event) => {
+                    const next = nextTabIndex(index, names.length, event.key);
+                    if (next === null) return;
+                    event.preventDefault();
+                    setTab(names[next]);
+                    const tabs =
+                      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                        '[role="tab"]',
+                      );
+                    tabs?.[next]?.focus();
+                  }}
+                >
+                  {name}
+                </Button>
+              ),
+            )}
           </div>
           {tab === 'Chat' && (
             <SharedTaskHistoryList
@@ -396,6 +458,16 @@ export function GuestSharedTaskView({
           ) : document.data && tab === 'Brief' ? (
             <p role="status">{documentState(document.data.kind)}</p>
           ) : null}
+          <GuestTaskReply
+            key={selected.shareId}
+            apiBase={apiBase}
+            principalId={principalId}
+            shared={selected}
+            onSent={() => {
+              setTab('Chat');
+              void history.refetch();
+            }}
+          />
         </section>
       )}
     </section>

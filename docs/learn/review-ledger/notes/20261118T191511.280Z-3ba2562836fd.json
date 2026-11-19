@@ -1,0 +1,7 @@
+{
+  "revision": "684b4ced86194618430cfb42bf398cffe1443d40",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Resolved the Settings merge hunk by keeping both paragraphs. Browser notification Settings confirms the selected Station and reports cleanup separately from local unsubscribe. Keyboard shortcuts still exposes focus conditions and editing on larger screens, with read-only presentation on small screens.","inputs":["docs/user/settings.md"]}
+  ]
+}

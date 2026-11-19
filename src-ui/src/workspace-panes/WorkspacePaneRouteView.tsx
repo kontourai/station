@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts';
 import { withWorkspacePaneInstanceLayoutBinding } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
+import { matchesLegacyProjectLayoutPaneId } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '../components/Button';
@@ -105,7 +106,9 @@ export function WorkspacePaneRouteView({
   const entry = catalog.entries.find(
     (candidate) =>
       candidate.descriptor.id === descriptorId &&
-      candidate.instance?.instanceId === instanceId,
+      candidate.instance &&
+      (candidate.instance.instanceId === instanceId ||
+        matchesLegacyProjectLayoutPaneId(candidate.instance, instanceId)),
   );
   const requiresSelectedLayout = entry
     ? workspacePaneRequiresLayoutIdentity(entry.descriptor)

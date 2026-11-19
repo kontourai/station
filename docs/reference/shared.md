@@ -820,9 +820,10 @@ Re-exported from `@kontourai/station-contracts/notification` for compatibility.
 `delivered` is the notification service's record state, not a receipt that a
 browser or phone displayed it. For example, an immediate record receives
 `deliveredAt` when it is stored, before downstream surface delivery.
-Scheduling more than about 24.9 days ahead currently exceeds the service's
-native timer range and can leave a pending row without a live wakeup. This
-known limit is tracked in [#2810](https://github.com/kontourai/station/issues/2810).
+The service preserves scheduled delivery and expiry beyond Node's
+approximately 24.9-day timer range by waking in bounded intervals and
+rechecking the persisted deadline. Replacing a record's schedule retires
+the earlier wakeup.
 
 ```ts
 type NotificationStatus =

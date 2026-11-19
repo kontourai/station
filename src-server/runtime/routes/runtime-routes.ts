@@ -6384,6 +6384,17 @@ export function configureRuntimeRoutes(
         // back to any default identity.
         resolve: async (request, taskId, capability) =>
           resolveRoomPerson(request, taskId, capability),
+        matchesMemberPublication: (request, taskId, expected) => {
+          const admitted = taskMemberAdmission.admit(
+            request,
+            taskId,
+            'discuss',
+          );
+          return (
+            admitted?.member.principal.id === expected.principalId &&
+            admitted.shareId === expected.shareId
+          );
+        },
         isCurrent: (request, expected, taskId, capability) => {
           if (!isRequestPrincipalCurrent(request)) return false;
           const now = resolveRoomPerson(request, taskId, capability);
@@ -13342,8 +13353,13 @@ export function configureRuntimeRoutes(
           deviceId,
           subscription,
         ),
-      clearPushSubscription: (deviceId) =>
+      clearPushSubscription: (deviceId, endpoint) =>
         context.environmentSecurityService.devicePairing.clearPushSubscription(
+          deviceId,
+          { endpoint },
+        ),
+      readPushSubscriptionFingerprint: (deviceId) =>
+        context.environmentSecurityService.devicePairing.readPushSubscriptionFingerprint(
           deviceId,
         ),
     }),

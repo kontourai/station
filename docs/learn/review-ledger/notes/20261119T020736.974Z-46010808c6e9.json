@@ -1,0 +1,9 @@
+{
+  "revision": "972bdc97c9efd7492043432b7891966e11fb982a",
+
+  "notes": [
+    {"path":"docs/guides/workspace-pane-authoring.md","note":"Reviewed the SDK README and Pane authoring guide against the opt-in workspace-pane entry point. It forwards the current contract identities and former bookmark matcher unchanged. The SDK root still keeps these runtime helpers out of ordinary consumers. The public barrel suite caught the missing forwarders and passed all 15 tests after the repair.","inputs":["packages/sdk/src/workspace-pane.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed the SDK README and Pane authoring guide against the opt-in workspace-pane entry point. It forwards the current contract identities and former bookmark matcher unchanged. The SDK root still keeps these runtime helpers out of ordinary consumers. The public barrel suite caught the missing forwarders and passed all 15 tests after the repair.","inputs":["packages/sdk/src/workspace-pane.ts"]}
+  ]
+}

@@ -337,6 +337,12 @@
   text-align: center;
 }
 
+.sidebar__project-live-count.sidebar__project-attention-count {
+  background: var(--k-caution-soft);
+  color: var(--k-text);
+  box-shadow: inset 0 0 0 1px var(--k-caution);
+}
+
 .sidebar__project-waiting {
   display: inline-flex;
   flex: 0 0 auto;
@@ -370,6 +376,12 @@
    clip off the rail's left edge) and overflowing the badge past the right
    edge. Overlay it on the tile's corner instead; `.sidebar__project-row-main`
    is the positioned ancestor. */
+.sidebar__rail-project-badges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .sidebar--collapsed .sidebar__project-live-count {
   position: absolute;
   top: 2px;
@@ -546,6 +558,11 @@
   background: transparent;
   color: var(--k-text-muted);
   cursor: pointer;
+}
+
+.sidebar--collapsed .sidebar__project-attention-count {
+  right: auto;
+  left: 2px;
 }
 
 .sidebar__views-message {

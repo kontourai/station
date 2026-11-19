@@ -1,8 +1,9 @@
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty } from '../../components/state';
 import {
   effectiveChordSignature,
+  formatShortcutChord,
   type KeyboardShortcut,
   type ShortcutContextKey,
   type ShortcutWhen,
@@ -13,6 +14,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   browserReservedReason,
   normalizeShortcutKey,
+  readSkillShortcuts,
   type ShortcutBinding,
   type ShortcutModifier,
 } from '../../settings/shortcutPreferences';
@@ -94,8 +96,15 @@ export function KeyboardShortcutsSection() {
         .includes(query);
     });
   }, [search, shortcuts]);
-  const firstSkillIndex = filtered.findIndex((shortcut) =>
+  const registeredIds = new Set(shortcuts.map((shortcut) => shortcut.id));
+  const savedUnavailable = Object.entries(readSkillShortcuts()).filter(
+    ([name]) => !registeredIds.has(`skill.${name}.run`),
+  );
+  const skills = filtered.filter((shortcut) =>
     shortcut.id.startsWith('skill.'),
+  );
+  const commands = filtered.filter(
+    (shortcut) => !shortcut.id.startsWith('skill.'),
   );
 
   function applyCapture(
@@ -117,6 +126,87 @@ export function KeyboardShortcutsSection() {
     if (restoreDefault) restoreBinding(shortcut.id);
     else setBinding(shortcut.id, binding);
   }
+
+  const renderShortcut = (shortcut: KeyboardShortcut) => {
+    const condition = shortcut.when;
+    const warning = shortcut.disabled ? null : browserReservedReason(shortcut);
+    const isCapturing = capturingId === shortcut.id;
+    return (
+      <article key={shortcut.id} className="shortcut-editor__row">
+        <div className="shortcut-editor__command">
+          <strong>{shortcut.description}</strong>
+          <span>
+            {condition ? describeCondition(condition) : 'No extra condition'}
+          </span>
+          {warning && (
+            <span className="shortcut-editor__warning">{warning}</span>
+          )}
+          <details>
+            <summary>Advanced</summary>
+            {condition ? (
+              <code>{JSON.stringify(condition)}</code>
+            ) : (
+              <span>Condition unset</span>
+            )}
+            <span>
+              Open dialogs pause shortcuts. A focused control may own the key.
+            </span>
+          </details>
+        </div>
+        <div className="shortcut-editor__controls">
+          <button
+            type="button"
+            className={`shortcut-editor__capture${
+              isCapturing ? ' shortcut-editor__capture--active' : ''
+            }`}
+            disabled={isMobile}
+            aria-label={`Shortcut for ${shortcut.description}`}
+            onClick={() =>
+              setCapturingId((current) =>
+                current === shortcut.id ? null : shortcut.id,
+              )
+            }
+            onKeyDown={(event) => {
+              if (!isCapturing) return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (event.key === 'Escape') {
+                setCapturingId(null);
+                return;
+              }
+              const binding = capturedBinding(event, isMac);
+              if (!binding) return;
+              setCapturingId(null);
+              applyCapture(shortcut, binding);
+            }}
+          >
+            {isCapturing ? 'Press keys…' : getDisplay(shortcut.id)}
+          </button>
+          {!isMobile && (
+            <div className="shortcut-editor__actions">
+              <button
+                type="button"
+                onClick={() => setBinding(shortcut.id, null)}
+                disabled={shortcut.disabled}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const binding = getDefaultBinding(shortcut.id);
+                  if (binding) applyCapture(shortcut, binding, true);
+                  else restoreBinding(shortcut.id);
+                }}
+              >
+                Restore default
+              </button>
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  };
 
   return (
     <div {...settingsRow('keyboard-shortcuts')} tabIndex={-1}>
@@ -149,96 +239,32 @@ export function KeyboardShortcutsSection() {
         />
         <div className="shortcut-editor__list">
           <h3>Commands</h3>
-          {filtered.map((shortcut, index) => {
-            const condition = shortcut.when;
-            const warning = shortcut.disabled
-              ? null
-              : browserReservedReason(shortcut);
-            const isCapturing = capturingId === shortcut.id;
-            return (
-              <Fragment key={shortcut.id}>
-                {index === firstSkillIndex && <h3>Command Skills</h3>}
-                <article className="shortcut-editor__row">
-                  <div className="shortcut-editor__command">
-                    <strong>{shortcut.description}</strong>
-                    <span>
-                      {condition
-                        ? describeCondition(condition)
-                        : 'No extra condition'}
-                    </span>
-                    {warning && (
-                      <span className="shortcut-editor__warning">
-                        {warning}
-                      </span>
-                    )}
-                    <details>
-                      <summary>Advanced</summary>
-                      {condition ? (
-                        <code>{JSON.stringify(condition)}</code>
-                      ) : (
-                        <span>Condition unset</span>
-                      )}
-                      <span>
-                        Open dialogs pause shortcuts. A focused control may own
-                        the key.
-                      </span>
-                    </details>
-                  </div>
-                  <div className="shortcut-editor__controls">
-                    <button
-                      type="button"
-                      className={`shortcut-editor__capture${
-                        isCapturing ? ' shortcut-editor__capture--active' : ''
-                      }`}
-                      disabled={isMobile}
-                      aria-label={`Shortcut for ${shortcut.description}`}
-                      onClick={() =>
-                        setCapturingId((current) =>
-                          current === shortcut.id ? null : shortcut.id,
-                        )
-                      }
-                      onKeyDown={(event) => {
-                        if (!isCapturing) return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (event.key === 'Escape') {
-                          setCapturingId(null);
-                          return;
-                        }
-                        const binding = capturedBinding(event, isMac);
-                        if (!binding) return;
-                        setCapturingId(null);
-                        applyCapture(shortcut, binding);
-                      }}
-                    >
-                      {isCapturing ? 'Press keys…' : getDisplay(shortcut.id)}
-                    </button>
-                    {!isMobile && (
-                      <div className="shortcut-editor__actions">
-                        <button
-                          type="button"
-                          onClick={() => setBinding(shortcut.id, null)}
-                          disabled={shortcut.disabled}
-                        >
-                          Clear
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const binding = getDefaultBinding(shortcut.id);
-                            if (binding) applyCapture(shortcut, binding, true);
-                            else restoreBinding(shortcut.id);
-                          }}
-                        >
-                          Restore default
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </article>
-              </Fragment>
-            );
-          })}
+          {commands.map(renderShortcut)}
+          <section {...settingsRow('skill-shortcuts')} tabIndex={-1}>
+            <h3>Skill shortcuts</h3>
+            <p>
+              Skills on this device run from the keys assigned to them here.
+            </p>
+            {skills.map(renderShortcut)}
+            {skills.length === 0 && (
+              <Empty
+                variant="compact"
+                label="Open a view that makes the skill available to edit its shortcut."
+              />
+            )}
+            {savedUnavailable.length > 0 && (
+              <ul aria-label="Saved shortcuts for unavailable skills">
+                {savedUnavailable.map(([skill, binding]) => (
+                  <li key={skill}>
+                    {skill}:{' '}
+                    {binding
+                      ? formatShortcutChord(binding.modifiers, binding.key)
+                      : 'Not set'}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
           {filtered.length === 0 && (
             <Empty
               variant="compact"

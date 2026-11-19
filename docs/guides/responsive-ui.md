@@ -351,12 +351,18 @@ cannot add a scroll row below a dock that fills the viewport.
 ### Phone app toolbar
 
 On a phone the Station chip shows its dot and the connected Station's name in
-every state. Its width fits short names and caps long names with an ellipsis.
-State changes and overlaid Station notices preserve that width, keeping nearby
-controls still. That name takes priority over the app wordmark:
-the wordmark wraps away whole wherever the row cannot hold it, and the logo
-stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
-measures the row at every phone width it supports.
+every state. The app wordmark wraps away whole before the Station name yields
+space, and the home logo stays. The Station name can then ellipsize to keep
+the toolbar's controls inside the side gutters. Holding the Station chip
+reveals the full name. The notification badge shows `9+` above nine, and the
+button's accessible name states the exact count.
+
+[`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts) checks
+each visible control's center and the right gutter with a long Station name
+and the capped badge, including widths on either side of the tight-gap rule.
+
+Shared tooltips use Station's 12px label size. Secondary metadata such as
+message timestamps may use 11px.
 
 ### Action rows
 

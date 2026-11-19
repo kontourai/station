@@ -171,13 +171,10 @@ its layout definition (#2995):
 ```
 
 An unknown value (`primary: "terminal"`), a drill-in that is not one of the
-layout's own panes, or `drillIns` without `"stack"` is refused by name. So is
-a drill-in whose Project occurrence id would exceed the 128 characters the
-pane host and the navigation store accept; that id embeds the plugin id and
-layout slug twice, so keep them short (#4130). Install refuses such a plugin.
-A plugin copied straight into `plugins/` without installing skips that
-check, and the catalog then leaves its whole layout out, not just the
-drill-in. Each
+layout's own panes, or `drillIns` without `"stack"` is refused by name.
+A drill-in's descriptor and bound source must fit the pane host's
+128-character identity limit. The Project catalog issues compact occurrence
+IDs and state keys when the composed values exceed that limit. Each
 drill-in still goes through the ordinary pane availability check, so one the
 Project's catalog does not issue is simply not on the rail. Station states
 the declaration on every layout read; it is not stored in the Project's

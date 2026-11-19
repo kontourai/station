@@ -1,0 +1,13 @@
+{
+  "revision": "81abeacbbc63c1d541f686b5437e110e9aca18d6",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"The member page still uses the same role and request scope for Project agents. Only the shared Task reader import moved.","inputs":["docs/guides/agent-configuration.md","src-ui/src/views/project-page/MemberProjectPage.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced the member page to its route-local shared-work queries. Scope capture, cancellation, publication identity and SDK transport are unchanged; updated the owner link.","inputs":["docs/guides/connections.md","src-ui/src/views/project-page/useMemberProjectSharedWork.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The connections guide now links the moved reader. Project membership and independent browser approval requirements still apply.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified the existing public SDK entry points, scoped Project context queries and member publication checks. The shared-work hooks now load with their member page; they call the same SDK operations.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/ProjectsContext.tsx","src-ui/src/views/project-page/MemberProjectPage.tsx","src-ui/src/views/project-page/useMemberProjectSharedWork.ts"]}
+  ]
+}
