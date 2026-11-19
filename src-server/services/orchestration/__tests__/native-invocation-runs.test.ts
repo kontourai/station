@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -71,7 +71,8 @@ async function spawnNativeInvocationOwner(
 
 async function constructNativeInvocationStore(
   databasePath: string,
-  raceDirectory: string,
+  readyPath: string,
+  peerReadyPath: string,
 ): Promise<'constructed'> {
   const eventStorePath = new URL('../event-store.ts', import.meta.url).pathname;
   const child = spawn(
@@ -83,8 +84,7 @@ async function constructNativeInvocationStore(
       '-e',
       `import { EventStore } from ${JSON.stringify(eventStorePath)};
        import { DatabaseSync } from 'node:sqlite';
-       import { readdirSync, writeFileSync } from 'node:fs';
-       import { join } from 'node:path';
+       import { existsSync, writeFileSync } from 'node:fs';
        const originalExec = DatabaseSync.prototype.exec;
        const sleep = new Int32Array(new SharedArrayBuffer(4));
        DatabaseSync.prototype.exec = function (sql) {
@@ -92,9 +92,9 @@ async function constructNativeInvocationStore(
          // transactional migration goes straight to the real SQLite driver.
          if (sql === 'ALTER TABLE orchestration_prepared_turns ADD COLUMN terminal_retirement TEXT'
              && !this.isTransaction) {
-           writeFileSync(join(process.argv[2], String(process.pid)), '');
+           writeFileSync(process.argv[2], '');
            const deadline = Date.now() + 2500;
-           while (readdirSync(process.argv[2]).length < 2) {
+           while (!existsSync(process.argv[3])) {
              if (Date.now() >= deadline) throw new Error('Both unprotected ALTERs must arrive');
              Atomics.wait(sleep, 0, 0, 10);
            }
@@ -104,7 +104,8 @@ async function constructNativeInvocationStore(
        const store = new EventStore(process.argv[1]);
        store.close();`,
       databasePath,
-      raceDirectory,
+      readyPath,
+      peerReadyPath,
     ],
     { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
   );
@@ -349,8 +350,8 @@ describe('native invocation runs', () => {
       join(tmpdir(), 'native-invocation-legacy-sequence-'),
     );
     const path = join(directory, 'events.sqlite');
-    const raceDirectory = join(directory, 'unprotected-alters');
-    mkdirSync(raceDirectory);
+    const firstReady = join(directory, 'first-alter-ready');
+    const secondReady = join(directory, 'second-alter-ready');
     const legacy = new DatabaseSync(path);
     legacy.exec(`CREATE TABLE native_invocation_runs (
       run_id TEXT PRIMARY KEY,
@@ -370,8 +371,8 @@ describe('native invocation runs', () => {
     legacy.close();
 
     const outcomes = await Promise.all([
-      constructNativeInvocationStore(path, raceDirectory),
-      constructNativeInvocationStore(path, raceDirectory),
+      constructNativeInvocationStore(path, firstReady, secondReady),
+      constructNativeInvocationStore(path, secondReady, firstReady),
     ]);
     expect(outcomes).toEqual(['constructed', 'constructed']);
     const upgraded = new DatabaseSync(path);
