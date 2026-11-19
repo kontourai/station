@@ -1221,6 +1221,7 @@ Use the example `agent.json` as a starting point:
       "station-control_list_delegation_environments",
       "station-control_list_delegation_targets",
       "station-control_list_delegated_tasks",
+      "station-control_delegate_task",
       "station-control_get_task",
       "station-control_get_task_events",
       "station-control_continue_task",
