@@ -108,7 +108,7 @@ const fixtures = vi.hoisted(() => ({
   >,
   projectsLoading: false,
   sessions: [] as any[],
-  conversationInventory: [] as ConversationListItem[],
+  conversationInventory: Array.of<ConversationListItem>(),
   tasks: [] as any[],
   chats: {} as Record<string, any>,
   agents: [{ slug: 'codex-agent', name: 'Codex', model: 'gpt-5.3-codex' }],

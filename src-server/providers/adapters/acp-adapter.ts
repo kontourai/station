@@ -9,7 +9,11 @@ import {
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
-import { ProviderRefusalError, providerFailure } from '../provider-failure.js';
+import {
+  ProviderRefusalError,
+  providerFailure,
+  providerFailureForCode,
+} from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
@@ -6521,7 +6525,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             turnId,
             ...this.turnOrigin(record, turnId),
             method: 'runtime.error',
-            ...providerFailure('unavailable'),
+            ...providerFailureForCode(ACP_TRANSPORT_CLOSED_CODE),
             severity: 'error',
             code: ACP_TRANSPORT_CLOSED_CODE,
             message: ACP_TRANSPORT_CLOSED_GUIDANCE,

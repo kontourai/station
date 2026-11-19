@@ -8668,6 +8668,9 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
       severity: 'error',
       turnId: turn.turnId,
       code: 'acp-transport-closed',
+      kind: 'unavailable',
+      failurePhase: 'failed',
+      retryable: true,
       message: expect.stringContaining('provider outcome is unknown'),
     });
     expect(errorEvent).not.toMatchObject({
