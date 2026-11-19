@@ -18,6 +18,7 @@ const fixture = `
   import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
   import {ChatDockInboxPanel} from './src-ui/src/components/chat-dock/ChatDockInboxPanel';
   import {MobileInboxPanel} from './src-ui/src/components/chat-dock/MobileInboxPanel';
+  import {useListRefresh} from './src-ui/src/components/refresh/ListRefresh';
   import {deviceSettingsStore} from './src-ui/src/lib/device-settings-store';
   import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
   import {ToastProvider} from './src-ui/src/contexts/ToastContext';
@@ -26,6 +27,23 @@ const fixture = `
     {id:'saved', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectSlug:'station', projectLabel:'Station', agentSlug:'codex', agentLabel:'Codex', provider:'codex', executionProviders:['codex','claude','pi','kiro'], modelLabel:'GPT', updatedAt:Date.now(), lifecycleLabel:'Running'},
     {id:'idle', kind:'orchestration', kindLabel:'Conversation', title:'Plan the next release', projectSlug:'station', projectLabel:'Station', agentSlug:'claude', agentLabel:'Claude', provider:'claude', modelLabel:'Sonnet', updatedAt:Date.now(), lifecycleLabel:'Ready'},
   ];
+  function RefreshableInbox(props) {
+    const [updating, setUpdating] = React.useState(false);
+    window.setInboxUpdating = setUpdating;
+    const refresh = useListRefresh({
+      scope: 'screen',
+      refresh: () => {
+        window.inboxRefreshes++;
+        return new Promise((resolve, reject) => {
+          window.finishInboxRefresh = (success) => {
+            if (success) resolve();
+            else reject(new Error('Offline'));
+          };
+        });
+      },
+    });
+    return <MobileInboxPanel {...props} updating={updating} refresh={refresh} />;
+  }
   let root;
   window.mount = (preview, mobile) => {
     root?.unmount();
@@ -34,13 +52,13 @@ const fixture = `
     deviceSettingsStore.set('developerToolsEnabled', preview);
     deviceSettingsStore.set('experimentalSheetGesturesEnabled', preview);
     document.body.dataset.theme = document.documentElement.dataset.theme;
-    window.opens = 0; window.closes = 0;
+    window.opens = 0; window.closes = 0; window.inboxRefreshes = 0;
     const props = { agents:[{slug:'codex',name:'Codex',engineId:'codex'},{slug:'claude',name:'Claude',engineId:'claude'}], projectIconBySlug:new Map([['station',${JSON.stringify(projectArtwork)}]]), activeChatSessionId:null, openChatSessionIds:[], onFocusChat:()=>window.opens++, onOpenConversation:()=>{window.opens++;return true}, onOpenSession:()=>window.opens++, onCloseChat:()=>window.closes++ };
     root = createRoot(document.getElementById('root'));
     // Dismissal Undo is a toast action (#4377), so the host renders toasts.
     root.render(<QueryClientProvider client={new QueryClient()}><NavigationProvider><ToastProvider>
       <NotificationContainer/>
-      {mobile ? <MobileInboxPanel {...props} open tasks={items} triggerRef={React.createRef()}  onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
+      {mobile ? <RefreshableInbox {...props} open tasks={items} triggerRef={React.createRef()}  onClose={()=>{}} /> : <div style={{width:340}}><ChatDockInboxPanel {...props} items={items} onOpenHistory={()=>{}} /></div>}
     </ToastProvider></NavigationProvider></QueryClientProvider>);
   };
 `;
@@ -108,7 +126,7 @@ async function swipe(
     cancel = false,
   }: {
     name?: string | RegExp;
-    during?: () => Promise<void>;
+    during?: (start: { x: number; y: number }) => Promise<void>;
     cancel?: boolean;
   } = {},
 ) {
@@ -130,7 +148,7 @@ async function swipe(
       touchPoints: [{ x: x + (dx * step) / 5, y: y + (dy * step) / 5 }],
     });
   }
-  await during?.();
+  await during?.({ x, y });
   await cdp.send('Input.dispatchTouchEvent', {
     type: cancel ? 'touchCancel' : 'touchEnd',
     touchPoints: [],
@@ -150,6 +168,82 @@ async function mount(page: Page, preview: boolean, mobile = true) {
   );
   await page.getByRole('button', { name: /^Review the inbox\b/ }).waitFor();
 }
+
+test('Inbox pulls and its menu join one refresh while keeping rows usable', async () => {
+  const { page, browser, errors } = await scrollBrowserFixture(
+    fixture,
+    [scopeStub],
+    { hasTouch: true, isMobile: true },
+  );
+  try {
+    const css = ['src-ui/src/index.css', 'src-ui/src/components/chat/chat.css']
+      .map((path) => resolveCssImports(resolve(path)))
+      .join('\n');
+    await page.addStyleTag({ content: css });
+    await mount(page, true);
+    const cdp = await page.context().newCDPSession(page);
+    const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
+    const row = inbox.getByRole('button', { name: /^Review the inbox\b/ });
+    const refreshes = () =>
+      page.evaluate(() => Reflect.get(window, 'inboxRefreshes'));
+    const setUpdating = (value: boolean) =>
+      page.evaluate(
+        (updating) => Reflect.get(window, 'setInboxUpdating')(updating),
+        value,
+      );
+    const status = inbox.locator('.list-refresh__indicator');
+
+    await setUpdating(true);
+    await expectBrowser(status).toHaveAttribute('title', 'Updating…');
+    await expectBrowser(row).toBeVisible();
+    await setUpdating(false);
+    await expectBrowser(status).toHaveAttribute('title', '');
+
+    await swipe(cdp, page, 0, 30);
+    await swipe(cdp, page, 0, 110, { cancel: true });
+    await swipe(cdp, page, 0, 110, {
+      during: async ({ x, y }) => {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x, y: y + 3 }],
+        });
+      },
+    });
+    expect(await refreshes()).toBe(0);
+    await swipe(cdp, page, 0, 110, {
+      during: async () => expect(await refreshes()).toBe(0),
+    });
+    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
+      'Refreshing…',
+    );
+    await expectBrowser(row).toBeVisible();
+
+    await swipe(cdp, page, 0, 110);
+    await inbox.getByRole('button', { name: 'Inbox actions' }).click();
+    await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
+    expect(await refreshes()).toBe(1);
+    await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(true));
+    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
+      'Updated',
+    );
+    await expectBrowser(row).toBeVisible();
+
+    await inbox.getByRole('button', { name: 'Inbox actions' }).click();
+    await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
+    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
+      'Refreshing…',
+    );
+    await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(false));
+    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
+      'Couldn’t refresh',
+    );
+    await expectBrowser(row).toBeVisible();
+    expect(await page.evaluate(() => Reflect.get(window, 'opens'))).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+}, 30_000);
 
 test('mobile swipes reveal existing actions without opening or stopping a conversation; desktop retains hover controls', async () => {
   const { page, browser, errors } = await scrollBrowserFixture(fixture, [

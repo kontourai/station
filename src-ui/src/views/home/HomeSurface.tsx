@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   HomeActionSection,
   HomeContinueCard,
@@ -5,6 +6,7 @@ import {
 import { HomeCoordinatorCard } from '../../components/home/HomeCoordinatorCard';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
+import { usePullToRefresh } from '../../components/refresh/ListRefresh';
 import { SkeletonBlock } from '../../components/state';
 import { OVERVIEW_PRODUCT_NAME } from '../../lib/productNames';
 import type { NavigationView } from '../../types';
@@ -104,14 +106,6 @@ export function HomeSurface({
   // With Continue holding the only item, Recent work would be a heading
   // over nothing, so omit it while retaining loading and failure notes.
   // Loading, failure and remote notes still need the section.
-  const continueCard =
-    !model.actionsLoading && model.primaryWorkItem ? (
-      <HomeContinueCard
-        model={model}
-        childrenById={lanes.childrenById}
-        id={CONTINUE_SECTION_ID}
-      />
-    ) : null;
   const hasRemoteWorkNotice =
     Boolean(model.remoteReadError) ||
     model.remoteUnavailable.length > 0 ||
@@ -132,6 +126,19 @@ export function HomeSurface({
       listedLanes.snoozed,
       listedLanes.settled,
     ].some((items) => items.length > 0);
+  const continueCard = continued ? (
+    <HomeContinueCard
+      model={model}
+      childrenById={lanes.childrenById}
+      id={CONTINUE_SECTION_ID}
+      offerRefresh={!showRecentWork}
+    />
+  ) : null;
+  const startRef = useRef<HTMLDivElement>(null);
+  usePullToRefresh(
+    startRef,
+    model.firstSession ? undefined : model.refreshWork?.run,
+  );
   const recentWork = showRecentWork && (
     <HomeRecentWorkSection
       id={RECENT_WORK_SECTION_ID}
@@ -147,6 +154,8 @@ export function HomeSurface({
       remoteAuthenticationRequired={model.remoteAuthenticationRequired}
       onOpen={model.continueWork}
       onRetry={model.retryWork}
+      refresh={model.refreshWork}
+      updating={model.workUpdating}
     />
   );
   // One bar is not a comparison. The chart earns its height past one row.
@@ -188,6 +197,7 @@ export function HomeSurface({
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
+        ref={startRef}
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}${model.firstSession ? ' home-view__welcome' : ''}`}
       >
         <HomeStartComposer

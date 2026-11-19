@@ -1,0 +1,53 @@
+.list-refresh__indicator {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  inline-size: var(--k-space-4);
+  block-size: var(--k-space-4);
+  color: var(--k-text-muted);
+}
+
+.list-refresh__indicator svg {
+  display: block;
+  inline-size: var(--k-space-4);
+  block-size: var(--k-space-4);
+}
+
+.list-refresh__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.list-refresh__indicator[data-state="updating"] svg,
+.list-refresh__indicator[data-state="refreshing"] svg {
+  animation: list-refresh-spin var(--motion-status-spin) var(--ease-linear)
+    infinite;
+}
+
+[data-list-refresh-pull] {
+  box-shadow: inset 0 var(--k-border-thin) var(--k-line);
+}
+
+[data-list-refresh-pull="ready"] {
+  box-shadow: inset 0 var(--k-border-thin) var(--accent-primary);
+}
+
+@keyframes list-refresh-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-refresh__indicator svg {
+    animation: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .list-refresh__actions .action-overflow__trigger {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+}

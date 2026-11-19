@@ -12,6 +12,11 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { Button } from '../Button';
 import { SearchGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
+import {
+  type ListRefresh,
+  ListRefreshActions,
+  usePullToRefresh,
+} from '../refresh/ListRefresh';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import { InboxGroupList, type InboxGroupListProps } from './ChatDockInboxRows';
@@ -46,7 +51,8 @@ export function MobileInboxPanel({
   projectIconBySlug,
   pending = false,
   loadError = false,
-  onRetryLoad,
+  updating,
+  refresh,
 }: {
   open: boolean;
   tasks: HomeWorkItem[];
@@ -83,9 +89,13 @@ export function MobileInboxPanel({
   /** True until every read contributing rows has settled. */
   pending?: boolean;
   loadError?: boolean;
-  onRetryLoad?: () => void;
+  updating?: boolean;
+  refresh?: ListRefresh;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  usePullToRefresh(listRef, open ? refresh?.run : undefined);
+  const showLoadError = loadError || refresh?.recovering;
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const { inboxSections } = useDeviceSettings();
@@ -187,6 +197,14 @@ export function MobileInboxPanel({
         >
           <SearchGlyph />
         </Button>
+        {open && refresh && (
+          <ListRefreshActions
+            label="Inbox actions"
+            refreshLabel="Refresh inbox"
+            refresh={refresh}
+            updating={updating && (hasVisibleItems || !pending)}
+          />
+        )}
       </div>
       {searchOpen && (
         <input
@@ -199,18 +217,23 @@ export function MobileInboxPanel({
           onChange={(event) => setQuery(event.target.value)}
         />
       )}
-      <div className="mobile-inbox__list">
-        {loadError && !hasVisibleItems ? (
+      <div className="mobile-inbox__list" ref={listRef}>
+        {showLoadError && !hasVisibleItems ? (
           <ErrorState
             variant="compact"
             title="Unable to load chats and tasks"
             action={
-              onRetryLoad ? (
-                <Button onClick={onRetryLoad}>Retry</Button>
-              ) : undefined
+              refresh && (
+                <Button
+                  disabled={refresh.phase === 'refreshing'}
+                  onClick={() => void refresh.run(true)}
+                >
+                  {refresh.recovering ? 'Retrying…' : 'Retry'}
+                </Button>
+              )
             }
           />
-        ) : pending ? (
+        ) : pending && !hasVisibleItems ? (
           <div
             role="status"
             aria-busy="true"
@@ -239,15 +262,21 @@ export function MobileInboxPanel({
             }
           />
         ) : null}
-        {loadError && hasVisibleItems && (
-          <p role="status">
-            Some chats may be out of date.{' '}
-            {onRetryLoad && (
-              <button type="button" onClick={onRetryLoad}>
-                Retry
-              </button>
-            )}
-          </p>
+        {showLoadError && hasVisibleItems && (
+          <ErrorState
+            variant="compact"
+            title="Showing last known results"
+            action={
+              refresh && (
+                <Button
+                  disabled={refresh.phase === 'refreshing'}
+                  onClick={() => void refresh.run(true)}
+                >
+                  {refresh.recovering ? 'Retrying…' : 'Retry'}
+                </Button>
+              )
+            }
+          />
         )}
         <ReadStatusNote items={tasks} />
         <InboxGroupList

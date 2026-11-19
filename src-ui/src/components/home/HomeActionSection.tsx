@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
@@ -13,6 +13,7 @@ import type {
 } from '../../views/home/useHomeViewModel';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import { agentRunnability } from '../agent-runnability';
+import { ListRefreshActions, usePullToRefresh } from '../refresh/ListRefresh';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -189,7 +190,9 @@ export function HomeContinueCard({
   model,
   id,
   childrenById,
+  offerRefresh = false,
 }: {
+  offerRefresh?: boolean;
   model: HomeViewModel;
   childrenById?: HomeWorkLanes['childrenById'];
   id?: string;
@@ -207,11 +210,15 @@ export function HomeContinueCard({
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
   const projectIconBySlug = useProjectIcons();
+  const sectionRef = useRef<HTMLElement>(null);
+  const refresh = offerRefresh ? model.refreshWork : undefined;
+  usePullToRefresh(sectionRef, refresh?.run);
   const primary = model.primaryWorkItem;
   if (!primary) return null;
   return (
     <section
       id={id}
+      ref={sectionRef}
       className="home-view__continue"
       aria-labelledby="home-continue-label"
       tabIndex={-1}
@@ -220,6 +227,14 @@ export function HomeContinueCard({
           here, not under a smaller label. */}
       <div className="home-view__section-heading">
         <h2 id="home-continue-label">Continue</h2>
+        {refresh && (
+          <ListRefreshActions
+            label="Recent work actions"
+            refreshLabel="Refresh recent work"
+            refresh={refresh}
+            updating={model.workUpdating}
+          />
+        )}
       </div>
       <ul className="home-view__task-list home-view__continue-list">
         {renderHomeWorkRow({
