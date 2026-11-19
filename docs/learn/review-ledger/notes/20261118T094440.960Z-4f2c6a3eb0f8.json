@@ -1,0 +1,33 @@
+{
+  "revision": "6639e6e6f5cee502057ad392e57b00cdecf2f438",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked the Session API history and attached-configuration paragraphs against current EventStore and follower code. They describe retained scope while the original managed-chat ADR remains historical.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced legacy conversation-index startup, existing Project label repair, and public history owner and tenant reads. The four JSON predicates now select typed text before latest-row ordering. Both SQLite layouts and reopen were exercised.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/event-store.test.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked startup order and schema migration boundaries. Legacy history selects typed metadata and existing Project repair uses its current bounded batch; no schema migration or history traversal was added.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked EventStore persistence and content egress against the two history repair paths. They read configuration metadata and do not alter attachment bytes, inline UI provenance, or route authority.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked conversation history indexing against the placement design's Session identity boundary. Project display-label recovery does not select a pane or grant its placement authority.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked Project-filtered history and attached summary readers against SQLite restart and follower fixtures. Typed old metadata stays linked to its own thread and tenant. A capped window leaves earlier labels intact until a committed correction.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked EventStore changes against immutable revision evidence and retained event identity. Existing transition IDs stay stable, while the fallback derives a recovery key from an observed configuration row without changing that row.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed external attachment ownership and Project mapping against the follower change. An observed Project may recover attribution after a capped window; a missing claim alone gives no Project or execution authority.","inputs":["docs/guides/agent-configuration.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the SQL metadata selector and attached summaries against monitoring's attribution descriptions. Existing owner and Agent scope remains intact during a Project repair, and follower persistence records only committed configuration changes.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked history label recovery against Project storage and external attachment settings. The change adds no setting, path normalization rule, or permission to follow a source.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified the four SQLite metadata predicates and the 64-event cold-follow reader through real disposable stores. Recovery preserves known transition IDs, records an observed Project correction once, and does not infer lack of a Project from an incomplete history window.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked external Session and Project visibility descriptions against the revised follower. The bounded recovery leaves the current attachment and original terminal control boundary intact.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/attached-session-follow-service.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the EventStore diff against Monument's table and command ownership. The typed conversation-index selectors and attachment envelope update are in Station's history and follower layers.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the EventStore bindings described by the README. The delta uses existing SQLite history and event append paths without changing Monument's published commands or idempotency table bindings.","inputs":["packages/monument/README.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

@@ -187,6 +187,21 @@ conversation (Automations) rather than as a Station-engine file run. MonitoringE
 and persistence callback, not the orchestration EventBus. Follow each owner
 before treating a similarly named helper as the current implementation.
 
+During shutdown, the runtime stops admitting deferred Task worktree retries
+and joins those already running before stopping orchestration. Real session
+exits published during orchestration shutdown can still release assignment
+claims, write room history, and settle session-owned worktrees. The runtime
+joins those operations and startup claim reconciliation before stopping Git
+process groups or closing the EventStore. Both waits use the configuration
+drain deadline. If an operation is still running at its deadline, shutdown
+reports failure and retains the Station home runtime lease. See
+[StationRuntime shutdown](../src-server/runtime/bootstrap/station-runtime.ts).
+
+Runtime shutdown also stops admitting automatic conversation titles. A title
+model response can still arrive after shutdown begins. The
+[title generator](../src-server/services/orchestration/conversation-title-generation.ts)
+discards it before opening a write, so the prompt-derived title stays in place.
+
 ## Self-Configuring Loop
 
 An admitted Agent can inspect and request supported Station changes through
@@ -352,6 +367,12 @@ the browser-visible UI port. The CLI's same-origin HTTP/SSE proxy and a single
 container port mapping do not establish reachability or TLS termination for
 that socket. Terminal has a similar dedicated-listener boundary. No networking
 change or live voice qualification is implied by this diagram review.
+
+The selected Station's authority query supplies capability observations to
+[`useServerCapabilities`](../src-ui/src/hooks/useServerCapabilities.ts).
+Each successful observation owns its STT/TTS placeholders and retires them
+when the observation is superseded, fails, or unmounts. The shared registry
+keeps provider objects owned by browser and plugin registrations.
 
 The SDK's [voiceRegistry](../packages/sdk/src/voice/registry.ts) registers
 Device-side STT/TTS implementations; its other public voice session/realtime

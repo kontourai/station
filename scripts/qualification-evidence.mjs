@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { fetchGitHubEvidence } from './lib/github-evidence-fetch.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const QUALIFICATION_JOBS = Object.freeze([
@@ -85,17 +86,19 @@ export async function github(
     !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
   )
     throw new Error('GitHub API must use HTTPS');
-  const response = await fetch(`${base}/repos/${repository}/${path}`, {
-    method,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      ...(env.GH_TOKEN ? { Authorization: `Bearer ${env.GH_TOKEN}` } : {}),
-      'Content-Type': 'application/json',
+  const response = await fetchGitHubEvidence(
+    `${base}/repos/${repository}/${path}`,
+    {
+      method,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        ...(env.GH_TOKEN ? { Authorization: `Bearer ${env.GH_TOKEN}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: 'error',
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-    redirect: 'error',
-  });
+  );
   if (!response.ok)
     throw new Error(
       `GitHub ${method} ${path.split('?')[0]}: HTTP ${response.status}`,

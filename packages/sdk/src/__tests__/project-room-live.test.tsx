@@ -14,7 +14,30 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { setClientCredentialResolver } from '../client/http';
+import {
+  type FetchSseConnection,
+  setClientCredentialResolver,
+} from '../client/http';
+
+const transports = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('../client/http', async (original) => {
+  const http = await original<typeof import('../client/http')>();
+  return {
+    ...http,
+    fetchSSE: (...args: Parameters<typeof http.fetchSSE>) => {
+      const transport = http.fetchSSE(...args);
+      const state = { settled: false };
+      transports.set(transport, state);
+      const settle = () => {
+        state.settled = true;
+      };
+      void transport.completed.then(settle, settle);
+      return transport;
+    },
+  };
+});
 
 // The host's capability handshake has its own suite; here the host serves
 // the shared stream.
@@ -159,15 +182,30 @@ beforeEach(async () => {
   }));
 });
 afterEach(async () => {
-  cleanup();
-  for (const client of clients) client.clear();
-  setClientCredentialResolver(undefined);
-  for (const connection of connections) connection.response.end();
-  server.closeAllConnections();
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-  db.close();
+  try {
+    cleanup();
+    // The last subscriber leaves the connection open during the reuse grace.
+    await vi.waitFor(() => {
+      expect([...transports.values()].every((state) => state.settled)).toBe(
+        true,
+      );
+    });
+    await Promise.all([...transports.keys()].map((stream) => stream.completed));
+  } finally {
+    for (const stream of transports.keys()) stream.close();
+    await Promise.allSettled(
+      [...transports.keys()].map((stream) => stream.completed),
+    );
+    transports.clear();
+    for (const client of clients) client.clear();
+    setClientCredentialResolver(undefined);
+    for (const connection of connections) connection.response.end();
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    db.close();
+  }
 });
 
 function wrapper() {
@@ -480,6 +518,48 @@ test('a history read already in flight never undoes a live append, in the cache 
   expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual([1, 2]);
 });
 
+test('ordinary refetch keeps the same recent rows after 2,600 live appends and can still load earlier', async () => {
+  seed(1);
+  const hook = await openRoom();
+  for (let index = 0; index < 2600; index++)
+    push('append', { key: roomId, message: append(`long room ${index}`) });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(2601), {
+    timeout: 10_000,
+  });
+
+  const before = seqs(hook);
+  const readStart = reads.length;
+  const answer = await hook.result.current.history.refetch();
+  expect(answer.isSuccess).toBe(true);
+  expect(reads.length - readStart).toBeLessThanOrEqual(25);
+  expect(before).toEqual(allSeqs(2601).slice(-500));
+  expect(seqs(hook)).toEqual(before);
+  expect(
+    answer.data?.pages.flatMap((page) =>
+      page.messages.map((message) => message.seq),
+    ),
+  ).toEqual(before);
+
+  const earlier = await hook.result.current.history.fetchNextPage();
+  expect(earlier.isSuccess).toBe(true);
+  expect(
+    earlier.data?.pages[1]?.messages.map((message) => message.seq),
+  ).toEqual(allSeqs(2101).slice(-25));
+  const withEarlier = seqs(hook);
+  const reread = await hook.result.current.history.refetch();
+  expect(reread.isSuccess).toBe(true);
+  expect(seqs(hook)).toEqual(withEarlier);
+  expect(
+    reread.data?.pages.flatMap((page) =>
+      page.messages.map((message) => message.seq),
+    ),
+  ).toEqual(
+    earlier.data?.pages.flatMap((page) =>
+      page.messages.map((message) => message.seq),
+    ),
+  );
+}, 20_000);
+
 // #4985 delta review: the hook remembers at most 500 merged rows. A read that
 // began before more merges than that must not be trusted with what it read.
 async function appendDuringHeldRead(count: number) {
@@ -501,63 +581,76 @@ async function appendDuringHeldRead(count: number) {
   return { hook, answer };
 }
 const allSeqs = (to: number) => Array.from({ length: to }, (_, i) => i + 1);
+const rollingSeqs = (to: number) => allSeqs(to).slice(-500);
 
-test('a read held across as many merges as the hook remembers keeps every row (control)', async () => {
+test('a read held across as many merges as the hook remembers keeps the entire rolling tail', async () => {
   const { hook, answer } = await appendDuringHeldRead(500);
-  expect(seqs(hook)).toEqual(allSeqs(501));
+  expect(seqs(hook)).toEqual(rollingSeqs(501));
   expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual(
-    allSeqs(501),
+    rollingSeqs(501),
   );
 });
 
 test('a read held across more merges than the hook remembers is read again, never trusted to drop one', async () => {
   const { hook, answer } = await appendDuringHeldRead(501);
-  expect(seqs(hook)).toEqual(allSeqs(502));
+  expect(seqs(hook)).toEqual(rollingSeqs(502));
   expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual(
-    allSeqs(502),
+    rollingSeqs(502),
   );
   push('append', { key: roomId, message: append('after read') });
   await waitFor(() => expect(hook.result.current.lastSeq).toBe(503));
-  expect(seqs(hook)).toEqual(allSeqs(503));
+  expect(seqs(hook)).toEqual(rollingSeqs(503));
 });
 
-test('a deletion merged during a held read stays deleted however many merges follow it', async () => {
-  seed(1);
+test('a retained tombstone survives a read that outlives its live update', async () => {
+  seed(501);
   const hook = await openRoom();
-  const one = store.history(scope).messages[0]!;
+  const watched = store.history(scope, 500, 1).messages[0]!;
+  const oldRows = Array.from(
+    { length: 5 },
+    (_, index) => store.history(scope, index * 100, 100).messages,
+  ).flat();
   holdNextHistory = true;
   const waiting = hook.result.current.history.refetch();
   await waitFor(() => expect(heldHistory).toBeDefined());
-  const tombstone = store.deleteMessage(
-    scope,
-    other,
-    one.messageId,
-    { intentId: randomUUID() },
-    current,
-  );
-  push('update', {
-    key: roomId,
-    fromActivity: 0,
-    activity: 1,
-    messages: [tombstone],
-  });
+  const deleteRow = (message: ProjectRoomMessage, fromActivity: number) =>
+    push('update', {
+      key: roomId,
+      fromActivity,
+      activity: fromActivity + 1,
+      messages: [
+        store.deleteMessage(
+          scope,
+          other,
+          message.messageId,
+          { intentId: randomUUID() },
+          current,
+        ),
+      ],
+    });
+  deleteRow(watched, 0);
+  const findWatched = (messages: ProjectRoomMessage[] | undefined) =>
+    messages?.find((message) => message.messageId === watched.messageId);
   await waitFor(() =>
     expect(
-      hook.result.current.history.data?.pages[0]?.messages[0]?.deletedAt,
+      findWatched(hook.result.current.history.data?.pages[0]?.messages)
+        ?.deletedAt,
     ).toBeDefined(),
   );
-  for (let index = 0; index < 500; index++)
-    push('append', { key: roomId, message: append(`after delete ${index}`) });
-  await waitFor(() => expect(hook.result.current.lastSeq).toBe(501), {
-    timeout: 10_000,
-  });
+
+  // Earlier rows drive the edit journal beyond its bound without moving the
+  // watched row out of the current tail.
+  for (const [index, message] of oldRows.entries())
+    deleteRow(message, index + 1);
+  push('append', { key: roomId, message: append('after delete') });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(502));
   heldHistory!();
   const answer = await waiting;
-  await waitFor(() =>
-    expect(hook.result.current.history.isFetching).toBe(false),
+  expect(answer.isSuccess).toBe(true);
+  const cached = findWatched(
+    hook.result.current.history.data?.pages[0]?.messages,
   );
-  const cached = hook.result.current.history.data?.pages[0]?.messages[0];
-  const read = answer.data?.pages[0]?.messages[0];
+  const read = findWatched(answer.data?.pages[0]?.messages);
   expect(cached?.deletedAt).toBeDefined();
   expect(cached?.text).toBe('');
   expect(read?.deletedAt).toBeDefined();
@@ -587,6 +680,7 @@ test('a read outlived on every attempt fails rather than answer with rows it los
     await waitFor(() => expect(hook.result.current.lastSeq).toBe(lastSeq), {
       timeout: 10_000,
     });
+    holdOnlyAfter = Math.max(0, lastSeq - 500);
     holdNextHistory = attempt < 2;
     release();
   }
@@ -595,7 +689,7 @@ test('a read outlived on every attempt fails rather than answer with rows it los
   expect(String(answer.error)).toContain(
     'changed faster than it could be read',
   );
-  expect(seqs(hook)).toEqual(allSeqs(lastSeq));
+  expect(seqs(hook)).toEqual(rollingSeqs(lastSeq));
 });
 
 // #4985 delta review 2: a re-read's wider window is what the next ordinary
@@ -603,7 +697,7 @@ test('a read outlived on every attempt fails rather than answer with rows it los
 test('a window widened by a re-read stays wide for the next ordinary read and the append after it', async () => {
   const { hook, answer } = await appendDuringHeldRead(501);
   expect(answer.isSuccess).toBe(true);
-  expect(seqs(hook)).toEqual(allSeqs(502));
+  expect(seqs(hook)).toEqual(rollingSeqs(502));
   let again:
     | Awaited<ReturnType<typeof hook.result.current.history.refetch>>
     | undefined;
@@ -612,11 +706,11 @@ test('a window widened by a re-read stays wide for the next ordinary read and th
   });
   expect(again?.isSuccess).toBe(true);
   expect(again?.data?.pages[0]?.messages.map((m) => m.seq)).toEqual(
-    allSeqs(502),
+    rollingSeqs(502),
   );
   push('append', { key: roomId, message: append('after later read') });
   await waitFor(() => expect(hook.result.current.lastSeq).toBe(503));
-  await waitFor(() => expect(seqs(hook)).toEqual(allSeqs(503)));
+  await waitFor(() => expect(seqs(hook)).toEqual(rollingSeqs(503)));
 });
 
 test('a read that failed after three outlived attempts recovers on the next resync', async () => {
@@ -639,11 +733,12 @@ test('a read that failed after three outlived attempts recovers on the next resy
     await waitFor(() => expect(hook.result.current.lastSeq).toBe(lastSeq), {
       timeout: 10_000,
     });
+    holdOnlyAfter = Math.max(0, lastSeq - 500);
     holdNextHistory = attempt < 2;
     release();
   }
   expect((await waiting).isError).toBe(true);
-  expect(seqs(hook)).toEqual(allSeqs(lastSeq));
+  expect(seqs(hook)).toEqual(rollingSeqs(lastSeq));
   push('resync', { key: roomId, lastSeq, activity: 0 });
   await waitFor(
     () => {

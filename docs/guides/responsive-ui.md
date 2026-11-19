@@ -287,10 +287,10 @@ with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share
 [ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
-Agent/model trigger opens Run setup, containing the existing
+Agent/model trigger opens Agent & model, containing the existing
 [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
 trigger labels truncate; the sheet owns the full choices. On desktop a picker
-opened from Run setup takes the panel's place (`yieldToChildPopover` on
+opened from Agent & model takes the panel's place (`yieldToChildPopover` on
 `ResponsiveDialogSurface`) and is clamped inside the composer column
 (`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge
@@ -351,18 +351,31 @@ cannot add a scroll row below a dock that fills the viewport.
 ### Phone app toolbar
 
 On a phone the Station chip shows its dot and the connected Station's name in
-every state. Its width fits short names and caps long names with an ellipsis.
-State changes and overlaid Station notices preserve that width, keeping nearby
-controls still. That name takes priority over the app wordmark:
-the wordmark wraps away whole wherever the row cannot hold it, and the logo
-stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
-measures the row at every phone width it supports.
+every state. The app wordmark wraps away whole before the Station name yields
+space, and the home logo stays. The Station name can then ellipsize to keep
+the toolbar's controls inside the side gutters. Holding the Station chip
+reveals the full name. The notification badge shows `9+` above nine, and the
+button's accessible name states the exact count.
+
+[`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts) checks
+each visible control's center and the right gutter with a long Station name
+and the capped badge, including widths on either side of the tight-gap rule.
+
+Shared tooltips use Station's 12px label size. Secondary metadata such as
+message timestamps may use 11px.
 
 ### Action rows
 
 A header, toolbar or action row shows at most two labelled actions. Further
 actions go into an overflow menu; an icon-only button with an accessible name
 does not count.
+
+Check action placement in the clean, edited and pending states. In Project
+settings, Back stays beside the Project name and Save appears at the
+trailing edge for a pending draft, including while viewing an autosaving
+section. In a wizard, keep Continue in the same place across steps. Verify
+the actual clickable area of adjacent compact actions and the keyboard focus
+destination after an action disappears.
 
 Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
@@ -512,6 +525,9 @@ instead of Dismiss, and Hide records a third-party Session on the host for the
 person rather than in the browser; the action keeps the same row, tray and
 Details placement.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+On desktop, move the pointer from an Inbox row into its preview to scroll
+long content such as Basis. The preview stays inside the window as late
+details arrive. Escape or scrolling the Inbox closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains

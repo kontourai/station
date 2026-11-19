@@ -65,7 +65,7 @@ export const REGISTRY_SOURCE_PATHS = Object.freeze([
  * deep links agents were told about. Pinning the exact count instead would
  * red on every ordinary settings addition.
  */
-export const MINIMUM_REGISTRY_ENTRIES = 40;
+export const MINIMUM_REGISTRY_ENTRIES = 104;
 
 /**
  * The second floor, for the degraded case the first one cannot see: 32 of

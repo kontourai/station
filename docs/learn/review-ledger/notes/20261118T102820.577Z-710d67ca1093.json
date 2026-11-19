@@ -1,0 +1,9 @@
+{
+  "revision": "10f7a45d399916989d453d4d3686285b352b44ad",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed consumers of the SDK reference. The local Project repository list can include its already-admitted containing checkout, while query inputs, confinement and the documented SDK entry points retain their contracts.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed consumers of the SDK reference. The local Project repository list can include its already-admitted containing checkout, while query inputs, confinement and the documented SDK entry points retain their contracts.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

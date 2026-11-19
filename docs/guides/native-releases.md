@@ -81,9 +81,10 @@ the authoritative lock graph rather than guessing from installed layout.
 `@cyclonedx/cyclonedx-npm` remains pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
-`3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
+`66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c` and Syft `1.51.0`: after push it
 scans `ghcr.io/kontourai/station@sha256:...` (never a mutable tag) as
-CycloneDX JSON. Its nonempty package inventory is bound to the recorded image
+CycloneDX 1.6 JSON, the version the release validator requires. Its nonempty
+package inventory is bound to the recorded image
 digest, source SHA, and two-platform descriptor, transferred as a runner
 scratch artifact, and converted to the canonical `container/image` fragment.
 Scratch source is never admitted to `release-assets` or uploaded to the draft;
@@ -136,6 +137,11 @@ signing notice from the inventory and appends it to the generated changelog and 
 claims, a Windows claim that differs from its receipt, missing bytes, duplicate
 variants, source/tag disagreement, invalid checksums, and missing updater
 signatures.
+
+Release Stage invokes the same `npm run build:desktop` wrapper as Windows
+Nightly. It supplies the Stable signing and version overlays. The wrapper
+appends the generated WiX resource overlay, which uses shallow source paths
+while preserving the installed Node dependency layout.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
@@ -424,6 +430,9 @@ completion remains `NOT_VERIFIED`.
 
 ## macOS installer disk image
 
+Tagged builds ask Tauri to produce only the application bundle. The release
+packager seals that app and owns disk image creation.
+
 Stable RC/final and Nightly disk images open as an installer window: fixed
 660×400 icon view, toolbar, sidebar, path bar and status bar hidden, 128-point
 icons, the application on the left at (170, 210), and an `Applications` link on
@@ -622,20 +631,14 @@ safe for the staged vendor executables in the Node dependency tree.
 
 The release job therefore builds `.deb` and `.rpm` first with the ordinary
 `tauri.linux.conf.json` resource layout. It then invokes Tauri again for only
-the AppImage with `tauri.linux-appimage.conf.json`. The merge overlay deletes
-only the inherited server and raw `node_modules` resources, then colocates them
-at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
-`usr/lib/Station` remains free of the vendor tree.
-
-**Current source mismatch:** the
-[AppImage overlay](../../src-desktop/tauri.linux-appimage.conf.json) places the
-server and dependencies under `usr/share/Station`, but the
-[native host](../../src-desktop/src/lib.rs) currently joins both the registry
-bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
-The pinned `tauri-utils` 2.10.1 resolves the AppImage resource directory under
-`usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
-callers. Package-layout checks alone therefore do not establish a working
-AppImage startup; this source mismatch needs repair and an actual Linux launch.
+the AppImage with `tauri.linux-appimage.conf.json`. The merge overlay moves
+the server, Node dependencies, examples, and schemas to `usr/share/Station`
+and enables the Rust `appimage-runtime` feature. The
+[native host](../../src-desktop/src/lib.rs) resolves that runtime relative to
+the executable in the same AppDir. The registry bridge, desktop sidecar,
+and tray build label use this path. The packaging check extracts the AppImage
+and verifies the resource layout and build identity. A working startup still
+requires a launch on Linux.
 
 The staged server and `node_modules` are adjacent for ordinary Node module
 resolution once the correct entrypoint is selected. Desktop releases also ship
@@ -692,7 +695,7 @@ before any protected signing run:
 npm run dependencies:ci
 npm run build:sdk && npm run build:connect
 npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles deb,rpm
-npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage --config tauri.linux-appimage.conf.json
+npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage --config "$PWD/src-desktop/tauri.linux-appimage.conf.json"
 
 appimage=$(find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
 test -n "$appimage"
@@ -701,6 +704,7 @@ test ! -e squashfs-root/usr/lib/Station/node_modules
 test ! -e squashfs-root/usr/lib/Station/dist-server
 test -f squashfs-root/usr/share/Station/dist-server/command-station.js
 test -d squashfs-root/usr/share/Station/node_modules/@kontourai/flow-agents
+test -d squashfs-root/usr/share/Station/schemas/agent-plugins
 rm -rf squashfs-root
 ```
 
@@ -728,7 +732,7 @@ TAURI_SIGNING_PRIVATE_KEY="$(cat "$test_root/updater.key")" \
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD=test-only \
   npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage \
   --config "$test_root/tauri.release.conf.json" \
-  --config tauri.linux-appimage.conf.json
+  --config "$PWD/src-desktop/tauri.linux-appimage.conf.json"
 ```
 
 Never publish artifacts signed by that disposable key. The protected tag

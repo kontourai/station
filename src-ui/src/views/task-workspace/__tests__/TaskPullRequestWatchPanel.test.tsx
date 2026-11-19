@@ -11,6 +11,10 @@ const state = vi.hoisted(() => ({
   view: undefined as TaskPullRequestWatchView | undefined,
   queryEnabled: [] as boolean[],
   mutate: vi.fn(),
+  navigate: vi.fn(),
+}));
+vi.mock('../../../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate: state.navigate }),
 }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
@@ -45,6 +49,7 @@ const task: TaskRecord = {
   description: '',
   priority: 'normal',
   status: 'in_progress',
+  sessionId: 'task-run',
   createdBy: 'user',
   createdAt: '2026-11-17T00:00:00.000Z',
   updatedAt: '2026-11-17T00:00:00.000Z',
@@ -142,6 +147,47 @@ test('Stop watching sends off; a Task off by its own choice can follow its Proje
   expect(state.mutate).toHaveBeenLastCalledWith('on');
   fireEvent.click(screen.getByRole('button', { name: 'Use Project setting' }));
   expect(state.mutate).toHaveBeenLastCalledWith('project');
+});
+
+test('a head waiting for review or needing recovery never says Ready for you', () => {
+  state.view = {
+    ...watching,
+    pullRequests: [
+      {
+        ...watching.pullRequests[0]!,
+        watch: {
+          state: 'reviewing',
+          headSha: 'a1b2c3d',
+          detail: 'Reviewing this head before reporting it ready.',
+        },
+      },
+    ],
+  };
+  const { rerender } = render(<TaskPullRequestWatchPanel task={task} />);
+  expect(screen.getByText('Review pending')).toBeTruthy();
+  expect(screen.queryByText('Ready for you')).toBeNull();
+  state.view = {
+    ...state.view,
+    pullRequests: [
+      {
+        ...watching.pullRequests[0]!,
+        watch: {
+          state: 'review-needed',
+          headSha: 'a1b2c3d',
+          detail:
+            'Required findings were dismissed. Open the pull request in its chat and choose Review again.',
+        },
+      },
+    ],
+  };
+  rerender(<TaskPullRequestWatchPanel task={task} />);
+  expect(screen.getByText('Review needs you')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(state.navigate).toHaveBeenCalledWith(
+    '/tasks/task-1?taskView=conversation',
+  );
+  expect(screen.getByText(/Required findings were dismissed/)).toBeTruthy();
+  expect(screen.queryByText('Ready for you')).toBeNull();
 });
 
 test('a done Task offers no watch controls', () => {

@@ -129,11 +129,6 @@
   min-width: 44px;
 }
 
-.child-chat-pane
-  .tool-call__status-footer:not(.tool-call__status-footer--error) {
-  color: var(--k-text);
-}
-
 .child-chat-trail__segment:not(:last-child) {
   min-width: 44px;
   max-width: 60%;

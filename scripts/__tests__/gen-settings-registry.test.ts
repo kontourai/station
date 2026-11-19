@@ -77,7 +77,7 @@ describe('settings registry generator', () => {
         ...sources,
         catalog: keyedFirst.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
       };
-      expect(short.catalog).toHaveLength(39);
+      expect(short.catalog).toHaveLength(MINIMUM_REGISTRY_ENTRIES - 1);
       await expect(
         generateSettingsRegistry({ sources: short, outputPath }),
       ).rejects.toThrow(/below the floor/);
@@ -241,6 +241,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'approval-guardian': 'station',
   'usage-telemetry': 'station',
   'telemetry-destination': 'informational',
+  'usage-disclosure': 'informational',
   'product-telemetry-delivery': 'station',
   productTelemetryEndpoint: 'station',
   productTelemetryKeyRef: 'station',
@@ -281,6 +282,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'deployed-build': 'informational',
   'log-level': 'station',
   'backup-restore': 'mixed',
+  'local-accounts': 'station',
   'reset-defaults': 'station',
   'reset-device-defaults': 'device',
   'feature-previews': 'station',
@@ -291,6 +293,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'experimental-station-routes': 'device',
   'experimental-sheet-gestures': 'device',
   'shared-answers': 'station',
+  'github-automations': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
   'diagnostics-bundle': 'informational',
@@ -315,6 +318,8 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'confirm-conversation-delete': 'account',
   'accent-color': 'account',
   'keyboard-shortcuts': 'device',
+  'skill-shortcuts': 'device',
+  'model-picker-preferences': 'account',
   'push-notifications': 'device',
   'speech-to-text': 'device',
   'text-to-speech': 'device',

@@ -7,13 +7,14 @@ import {
 import {
   downloadProjectLibraryContent,
   type ProjectLibraryContent,
+  projectLibraryQueries,
   readProjectLibraryCapability,
+  uploadProjectLibraryFile,
   useDeleteProjectLibraryFileMutation,
   useProjectLibraryQuery,
-  useUploadProjectLibraryFileMutation,
 } from '@kontourai/station-sdk/project-library';
 import { Badge, Select } from '@kontourai/ui/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
@@ -93,7 +94,11 @@ function ProjectLibraryGate({ slug }: { slug: string }) {
         />
       ) : (
         <ProjectLibrary
-          key={authority.authorityKey}
+          key={JSON.stringify([
+            slug,
+            authority.apiBase,
+            authority.authorityKey,
+          ])}
           slug={slug}
           scope={authority}
         />
@@ -105,7 +110,7 @@ function ProjectLibraryGate({ slug }: { slug: string }) {
 function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
   const { navigate } = useNavigation();
   const library = useProjectLibraryQuery(slug, { requestScope: scope });
-  const upload = useUploadProjectLibraryFileMutation();
+  const queryClient = useQueryClient();
   const remove = useDeleteProjectLibraryFileMutation();
   const [source, setSource] = useState<ProjectLibrarySourceFilter>('all');
   const [taskId, setTaskId] = useState<string>('');
@@ -120,26 +125,42 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
   const taskFilterId = useId();
 
   async function addFiles(list: FileList | null) {
-    if (!list || list.length === 0) return;
+    if (!list || list.length === 0 || !scope.isCurrent()) return;
     const plan = planLibraryUpload(Array.from(list));
     setFailure(undefined);
     setNotice(undefined);
     const failed: string[] = [];
-    setProgress({ done: 0, total: plan.accepted.length });
     for (const [index, entry] of plan.accepted.entries()) {
+      if (!scope.isCurrent()) break;
+      setProgress({ done: index, total: plan.accepted.length });
       try {
-        await upload.mutateAsync({
+        await uploadProjectLibraryFile(
+          scope.apiBase,
           slug,
-          requestScope: scope,
-          relativePath: entry.relativePath,
-          file: entry.file,
-        });
+          entry.relativePath,
+          entry.file,
+          {
+            requestScope: scope,
+          },
+        );
       } catch {
         failed.push(entry.relativePath);
       }
-      setProgress({ done: index + 1, total: plan.accepted.length });
+    }
+    if (plan.accepted.length > 0) {
+      const target = {
+        queryKey: projectLibraryQueries.library(slug, scope).queryKey,
+        exact: true,
+      };
+      // An initial read with no cached data is reused by invalidation unless cancelled.
+      await queryClient.cancelQueries(target);
+      void queryClient.invalidateQueries({
+        ...target,
+        refetchType: scope.isCurrent() ? 'active' : 'none',
+      });
     }
     setProgress(undefined);
+    if (!scope.isCurrent()) return;
     const added = plan.accepted.length - failed.length;
     setNotice(
       [

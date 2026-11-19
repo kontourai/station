@@ -72,6 +72,7 @@ export type AttentionRequestInspection =
       requestType: 'approval' | 'permission';
       provider: string;
       title: string;
+      guardianReason?: string;
       body?: string;
       openedAt: string;
       answerability: RequestAnswerability;
@@ -149,6 +150,7 @@ export type AttentionRequestType = RequestOpenedEvent['requestType'];
  */
 export interface ApprovalAttentionItem extends AttentionItemBase {
   kind: 'approval';
+  guardianReason?: string;
   requestReference?: AttentionRequestReference;
   source: { notificationId: string; notificationSource: string };
   actions: NotificationAction[];

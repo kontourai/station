@@ -369,6 +369,27 @@ function diagnosticFailedTestFiles(result) {
 }
 
 function tailFallback(bounded, stdoutTail) {
+  const {
+    firstCausalExcerpt,
+    causeStream,
+    infrastructureCause,
+    diagnosticExcerpts,
+  } = bounded.summary ?? {};
+  const excerptFields = {
+    // The excerpt retains its attribution alongside it in the fallback.
+    ...(typeof firstCausalExcerpt === 'string'
+      ? {
+          firstCausalExcerpt,
+          ...(causeStream ? { causeStream } : {}),
+          ...(typeof infrastructureCause === 'string'
+            ? { infrastructureCause }
+            : {}),
+        }
+      : {}),
+    ...(typeof diagnosticExcerpts?.[0] === 'string'
+      ? { diagnosticExcerpts: [diagnosticExcerpts[0]] }
+      : {}),
+  };
   const buildEnvelope = (tail, { withExcerpt }) => ({
     disposition: bounded.disposition,
     request: bounded.request,
@@ -383,36 +404,7 @@ function tailFallback(bounded, stdoutTail) {
       ...(typeof bounded.summary?.failingStep === 'string'
         ? { failingStep: bounded.summary.failingStep }
         : {}),
-      // Carried through truncation for the same reason as the file list below
-      // it, and ahead of it: this is the sentence that says WHAT broke, and
-      // dropping it is what made a red hosted nightly annotate itself "no
-      // causal excerpt; read the artifact" while the FAIL line sat in its own
-      // capture (station#1471). It is a single bounded line — the summary's
-      // own byte budget already capped it — so it costs the tail very little.
-      ...(withExcerpt && typeof bounded.summary?.firstCausalExcerpt === 'string'
-        ? {
-            firstCausalExcerpt: bounded.summary.firstCausalExcerpt,
-            // The caveat travels with the excerpt or not at all: carrying the
-            // excerpt while dropping the note that says it was picked off an
-            // unattributed stream would state a stronger claim than the run
-            // supports, exactly the trade the reporter refuses at its own cap.
-            ...(bounded.summary?.causeStream
-              ? { causeStream: bounded.summary.causeStream }
-              : {}),
-            // station#1827: the same rule for the positive marker. This
-            // repeats the excerpt's own bytes, which is the one place in this
-            // envelope that costs the tail something real (at most
-            // DECLARED_CAUSE_BYTE_CAP, against an 8 KiB cap that the tail
-            // then shrinks to fit). It is still the right trade for exactly
-            // the reason the caveat above is: an excerpt carried without the
-            // field that says how it was selected reads as a scanned guess,
-            // and a truncated document is where a reader is least able to go
-            // look for themselves.
-            ...(typeof bounded.summary?.infrastructureCause === 'string'
-              ? { infrastructureCause: bounded.summary.infrastructureCause }
-              : {}),
-          }
-        : {}),
+      ...(withExcerpt ? excerptFields : {}),
       // Carried through truncation: a capped list of file names is small, and
       // it is the field that says where to look. Dropping it here would
       // reproduce #1139 for exactly the largest, least readable failures.

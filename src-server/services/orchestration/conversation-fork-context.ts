@@ -827,13 +827,18 @@ export class ConversationForkContextModule {
       );
   }
 
-  deleteUnstarted(id: string, scope: SessionReadScope): boolean {
+  deleteUnstarted(
+    id: string,
+    scope: SessionReadScope,
+    isCurrent?: () => boolean,
+  ): boolean {
     const reference = this.reference(id, scope);
     if (reference === undefined) return false;
     if (!reference)
       throw new ConversationForkContextError(
         'The requested fork was not found.',
       );
+    if (isCurrent && !isCurrent()) return false;
     this.deps.store()!.deleteUnstartedConversationForkContext(id);
     return true;
   }

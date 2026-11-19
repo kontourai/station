@@ -21,17 +21,22 @@ const fixtures: Plugin = {
           useKnowledgeSaveMutation=mutation,useKnowledgeScanMutation=mutation,
           useMigratePreIndexKnowledgeMutation=mutation,useApplyProjectLayoutMutation=mutation,
           useDeleteProjectLayoutMutation=mutation,useProjectLifecycleMutation=mutation,
-          useSetProjectPullRequestWatchMutation=mutation,
-          usePatchNotificationPreferencesMutation=mutation;
+          useSetProjectPullRequestWatchMutation=mutation;
+        export const usePatchNotificationPreferencesMutation=()=>({
+          ...mutation(),mutateAsync:async({perProject})=>{
+            document.documentElement.dataset.fixtureNotification=perProject['demo-id'];
+          },
+        });
         export const useNotificationPreferencesQuery=()=>query({perProject:{}});
         export const useProjectDeletionPreviewQuery=()=>query(undefined);
+        export const usePullRequestContextQuery=()=>query({available:false,reason:'The project has no repository connection.'});
         export const useProjectIconCandidatesQuery=()=>query([]),useModelConnectionsQuery=()=>query([]),
           useEngineConnectionsQuery=()=>query([]),useAgentsQuery=()=>query(agents),
           useProjectLayoutsQuery=()=>query([{id:'code',slug:'code',name:'Coding',type:'coding'}]),
           useAvailableProjectLayoutsQuery=()=>query([]),useKnowledgeDocsQuery=()=>query([{id:'readme',filename:'README.md',chunkCount:4}]),
           useKnowledgeStatusQuery=()=>query({totalChunks:4,documentCount:1}),
           useIntegrationsQuery=()=>query([]),useKnowledgeRootsQuery=()=>query([]),
-          useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true}]);
+          useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true},{id:'project-overview',enabled:true},{id:'project-coordination',enabled:true}]);
         // #4518: the managed policy read every approval picker imports
         // (ManagedPolicyContext); this host has none.
         export const useManagedPolicyStatusQuery=()=>query({state:'none'});
@@ -79,6 +84,138 @@ import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHo
 import {ProjectSettingsView} from './src-ui/src/views/ProjectSettingsView';
 createRoot(document.getElementById('root')).render(<NavigationProvider><DialogHistoryHostBoundary><div style={{position:'fixed',inset:0,height:'calc(100dvh - 72px)',display:'flex',flexDirection:'column',overflow:'visible','--dock-bottom-clearance':'72px'}}><ProjectSettingsView slug="demo"/></div></DialogHistoryHostBoundary></NavigationProvider>);
 `;
+
+test('phone Memory keeps its header in place while the last note scrolls above the dock', async () => {
+  const memoryFixture = `
+    import React from 'react';
+    import {createRoot} from 'react-dom/client';
+    import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+    import {setClientCredentialResolver} from '@kontourai/station-sdk/client';
+    import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+    import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
+    import {ProjectSettingsView} from './src-ui/src/views/ProjectSettingsView';
+    setClientCredentialResolver(() => ({
+      origin: 'http://station.test',
+      requestAuthority: {
+        apiBase: 'http://station.test',
+        authorityKey: 'fixture',
+        isCurrent: () => true,
+      },
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    createRoot(document.getElementById('root')).render(
+      <QueryClientProvider client={client}>
+        <NavigationProvider>
+          <DialogHistoryHostBoundary>
+            <main className="main-content" style={{ height: '100dvh', '--dock-slot-size': '53px' }}>
+              <div className="content-view">
+                <div className="route-transition"><ProjectSettingsView slug="demo" /></div>
+              </div>
+              <div data-testid="fixture-dock" style={{
+                position: 'fixed', inset: 'auto 0 0', height: 'var(--dock-bottom-clearance)', zIndex: 9200,
+              }}>Inbox</div>
+            </main>
+          </DialogHistoryHostBoundary>
+        </NavigationProvider>
+      </QueryClientProvider>
+    );
+  `;
+  const { browser, page, errors } = await scrollBrowserFixture(
+    memoryFixture,
+    [fixtures],
+    {
+      viewport: { width: 390, height: 680 },
+      isMobile: true,
+      hasTouch: true,
+      reducedMotion: 'reduce',
+    },
+    async (browserPage) => {
+      await browserPage.route(
+        'http://station.test/api/projects/demo/memory',
+        (route) =>
+          route.fulfill({
+            json: {
+              success: true,
+              data: {
+                notes: ['First note', 'Second note', 'Third note'].map(
+                  (title, index) => ({
+                    id: String(index),
+                    title,
+                    updatedAt: '2026-11-17T00:00:00Z',
+                    updatedBy: { kind: 'person', label: 'Project owner' },
+                  }),
+                ),
+              },
+            },
+          }),
+      );
+    },
+  );
+  try {
+    const baseStyles = await page.addStyleTag({
+      content:
+        resolveCssImports(resolve(import.meta.dirname, '../index.css')) +
+        resolveCssImports(
+          resolve(import.meta.dirname, '../app-shell/route-transition.css'),
+        ),
+    });
+    await baseStyles.evaluate((element) => document.head.prepend(element));
+    await page
+      .getByLabel('Project settings section', { exact: true })
+      .selectOption('memory');
+    const edit = page.getByRole('button', { name: 'Edit note: Third note' });
+    const remove = page.getByRole('button', {
+      name: 'Delete note: Third note',
+    });
+    await edit.waitFor();
+    const heading = page.getByRole('heading', {
+      name: 'Demo project',
+      exact: true,
+    });
+    const pane = page.locator('.project-settings__body');
+    const dock = page.getByTestId('fixture-dock');
+    const dockTop = (await dock.boundingBox())!.y;
+    const headingTop = (await heading.boundingBox())!.y;
+    const paneBox = (await pane.boundingBox())!;
+    expect(paneBox.y + paneBox.height).toBeLessThanOrEqual(dockTop);
+    const hittableAboveDock = (control: typeof edit) =>
+      control.evaluate((element, boundary) => {
+        const { left, top, width, height, bottom } =
+          element.getBoundingClientRect();
+        return (
+          bottom <= boundary &&
+          element.contains(
+            document.elementFromPoint(left + width / 2, top + height / 2),
+          )
+        );
+      }, dockTop);
+    await pane.hover();
+    await page.mouse.wheel(0, 1000);
+    await expect.poll(() => hittableAboveDock(edit)).toBe(true);
+    expect(await hittableAboveDock(remove)).toBe(true);
+    expect((await heading.boundingBox())!.y).toBeCloseTo(headingTop, 0);
+    await page.mouse.wheel(0, -1000);
+    await expect
+      .poll(() => pane.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    await page
+      .getByRole('button', { name: 'Delete note: Second note' })
+      .focus();
+    await page.keyboard.press('Tab');
+    expect(
+      await edit.evaluate((element) => element === document.activeElement),
+    ).toBe(true);
+    expect(await hittableAboveDock(edit)).toBe(true);
+    await page.keyboard.press('Tab');
+    expect(
+      await remove.evaluate((element) => element === document.activeElement),
+    ).toBe(true);
+    expect(await hittableAboveDock(remove)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
 
 test('project settings remain usable above the dock at phone and desktop widths in both themes', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(fixture, [
@@ -210,7 +347,16 @@ test('project settings remain usable above the dock at phone and desktop widths 
           false,
         );
         const name = page.getByRole('textbox', { name: 'Name *' });
+        const save = page.getByRole('button', {
+          name: 'Save',
+          exact: true,
+        });
+        const header = page.locator('.detail-header');
+        const cleanHeader = await header.boundingBox();
+        expect(await save.isVisible()).toBe(false);
         await name.fill('Unsaved project title');
+        await save.waitFor();
+        expect((await header.boundingBox())?.height).toBe(cleanHeader?.height);
         const icon = await page
           .getByRole('button', { name: 'Choose project icon' })
           .boundingBox();
@@ -223,6 +369,31 @@ test('project settings remain usable above the dock at phone and desktop widths 
         else
           await page.getByRole('link', { name: 'Agents', exact: true }).click();
         expect(await name.isVisible()).toBe(false);
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('overview');
+        else
+          await page
+            .getByRole('link', {
+              name: 'Overview and notifications',
+              exact: true,
+            })
+            .click();
+        await page
+          .getByRole('combobox', { name: 'Notify me', exact: true })
+          .selectOption('all');
+        expect(
+          await page.locator('html').getAttribute('data-fixture-notification'),
+        ).toBe('all');
+        expect(await save.isVisible()).toBe(true);
+        await page.getByRole('button', { name: 'Back to project' }).click();
+        const discardDraft = page.getByRole('dialog', {
+          name: 'Unsaved Changes',
+        });
+        await discardDraft.getByRole('button', { name: 'Cancel' }).click();
+        expect(await save.isVisible()).toBe(true);
+
         if (width <= 768)
           await page
             .getByLabel('Project settings section', { exact: true })
@@ -244,8 +415,102 @@ test('project settings remain usable above the dock at phone and desktop widths 
         await page.locator('label[for="project-agent-builder"]').click();
         expect(await agent.isChecked()).toBe(false);
         await page.locator('label[for="project-agent-builder"]').click();
-        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        await save.press('Enter');
+        await save.waitFor({ state: 'hidden' });
+        expect(
+          await page
+            .getByRole('button', { name: 'Back to project' })
+            .evaluate((element) => element === document.activeElement),
+        ).toBe(true);
         await page.screenshot({ path: `${out}/agents-${width}-${theme}.png` });
+        for (const [key, sectionName, labels] of [
+          [
+            'overview',
+            'Overview and notifications',
+            [
+              ['Resolve idle Tasks', /Moves an Idle Task to Resolved/],
+              ['Notify me', /Nothing is sent to a device/],
+            ],
+          ],
+          [
+            'new-chat',
+            'New chats',
+            [
+              [
+                'Starting model',
+                /AI model above|Agent’s own model|starting model/,
+              ],
+              ['Starting approval mode', /approval mode below/],
+              ['Set approval mode', /Full access requires permission/],
+            ],
+          ],
+        ] as const) {
+          if (width <= 768)
+            await page
+              .getByLabel('Project settings section', { exact: true })
+              .selectOption(key);
+          else
+            await page
+              .getByRole('link', { name: sectionName, exact: true })
+              .click();
+
+          for (const [label, hint] of labels) {
+            const choice = page.getByRole('combobox', {
+              name: label,
+              exact: true,
+            });
+            await page
+              .locator('label')
+              .filter({ hasText: new RegExp(`^${label}$`) })
+              .click();
+            expect(
+              await choice.evaluate(
+                (element) => document.activeElement === element,
+              ),
+            ).toBe(true);
+            expect(
+              await choice.evaluate((element) => {
+                const id = element.getAttribute('aria-describedby');
+                const description = id ? document.getElementById(id) : null;
+                return description?.textContent;
+              }),
+            ).toMatch(hint);
+            await choice.scrollIntoViewIfNeeded();
+            const measure = () =>
+              choice.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                const chevron =
+                  element.nextElementSibling?.getBoundingClientRect();
+                if (!chevron) throw new Error('Expected an inset chevron');
+                return {
+                  appearance: getComputedStyle(element).appearance,
+                  start: chevron.left - box.left,
+                  end: box.right - chevron.right,
+                  width: chevron.width,
+                  hits44: [-21, 21].every(
+                    (offset) =>
+                      document.elementFromPoint(
+                        box.x + box.width / 2,
+                        box.y + box.height / 2 + offset,
+                      ) === element,
+                  ),
+                };
+              });
+            const ltr = await measure();
+            expect(ltr.appearance).toBe('none');
+            expect(ltr.end).toBeGreaterThan(8);
+            expect(ltr.width).toBeGreaterThan(8);
+            if (width <= 768) expect(ltr.hits44).toBe(true);
+            await page.evaluate(() => {
+              document.documentElement.dir = 'rtl';
+            });
+            expect((await measure()).start).toBeCloseTo(ltr.end, 0);
+            await page.evaluate(() => {
+              document.documentElement.dir = '';
+            });
+          }
+        }
+
         if (width <= 768)
           await page
             .getByLabel('Project settings section', { exact: true })

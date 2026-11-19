@@ -47,6 +47,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4441: standalone scaffolds retain their real synchronous npm install
+  // and esbuild output under an explicit 30-second guard.
+  'packages/shared/src/__tests__/plugin-scaffold.test.ts',
+
   // Checks prompt closure and the room's real 15-second idle recheck bound.
   'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
@@ -374,6 +378,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
+  // Real MCP stdio child and a loopback Station session-read fixture.
+  'examples/station-sessions-mcp/__tests__/server.process.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.
   'scripts/__tests__/portable-smoke-diagnostics.test.ts',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
@@ -1034,6 +1040,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // resource classification the manifest gate requires for any direct
   // child_process importer.
   'src-server/services/connections/__tests__/credential-enrolment.integration.test.ts',
+  // #2036: runs a synthetic launcher and a TERM-resistant child in a private profile.
+  'src-server/services/connections/__tests__/device-code-login.process.test.ts',
   // #2787: drives the bounded-capture helper against real single-shot
   // children, one of which writes 64 MiB to prove the rejection path. It
   // imports no child_process itself; the helper under test does.
@@ -1784,6 +1792,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // into the outcome they report, with the stylesheet resolved so the
   // presence-not-visibility guardrail is exercised rather than assumed.
   'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+  // Real Chromium verification of Web Push Settings with controlled VAPID responses.
+  'src-ui/src/__tests__/browser-push-settings.browser.test.tsx',
+  // Real React remount in Chromium isolates a possible renderer livelock.
+  'src-ui/src/__tests__/LazyBoundary.browser.test.tsx',
   // #1536 B2: same shape again — launches a real Chromium via
   // `@playwright/test` to prove the Task picker's dialog is not trapped by the
   // animating message row it opens from (containing block and stacking

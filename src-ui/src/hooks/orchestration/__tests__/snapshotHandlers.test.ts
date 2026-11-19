@@ -1012,6 +1012,52 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     );
   });
 
+  test('snapshot restores the confirmed engine mode and leaves another pending control alone', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'acp',
+            threadId: 'mode-thread',
+            status: 'running',
+            currentModeId: 'code',
+          },
+        ],
+      },
+      {
+        'mode-thread': {
+          requestedProviderOptions: { mode: 'code', effort: 'high' },
+        },
+      },
+    );
+    expect(updates['mode-thread']).toMatchObject({
+      currentModeId: 'code',
+      requestedProviderOptions: { effort: 'high' },
+      orchestrationStatus: 'running',
+    });
+  });
+
+  test('snapshot restores a Codex reviewer independently of approval mode', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'reviewer-thread',
+            status: 'ready',
+            reportedApprovalReviewer: 'automatic',
+            appliedApprovalMode: 'ask',
+          },
+        ],
+      },
+      { 'reviewer-thread': {} },
+    );
+    expect(updates['reviewer-thread']).toMatchObject({
+      reportedApprovalReviewer: 'automatic',
+      lastAppliedApprovalMode: 'ask',
+    });
+  });
+
   test('snapshot updates the reported model without eroding a pending picker request', () => {
     const updates = applyOrdinarySnapshot(
       {

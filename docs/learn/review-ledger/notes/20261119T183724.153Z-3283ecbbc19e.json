@@ -1,0 +1,21 @@
+{
+  "revision": "3fd23607cba8c53a175940b4e75d0035ac9d0ee6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the mobile Inbox content and toolbar deltas. The pull cue and list feedback are scoped to the list and do not change composer, draft, focus, or Back ownership.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed mobile and desktop Inbox placement and mounting. The status pill floats within the Inbox and leaves the dock actions, reader switch, and saved panel state in place.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the existing overflow control, visible list bottom, shared Working glyph, and the reduced-motion behavior against the Inbox Chromium fixture. The cue uses transform and opacity and yields to horizontal and multi-touch input.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the Project Tasks list wrapper, partial and failure states, and the list-local status outlet. Starter readiness, correlation, creation, and dispatch ownership remain as described.","inputs":["docs/guides/starter-work.md","src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked existing query refresh admission, shared mobile pull and bottom pill callers, reduced motion, and in-flight coalescing. Inbox stream recovery remains on its existing Retry action.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked gesture and menu callers for Inbox, Recent work, and Project Tasks. Chromium confirmed that the Inbox ring fills with drag, retracts at release, and reports refresh activity and outcomes in the bottom pill without shifting rows. Physical-device haptics were not measured.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/home/HomeActionSection.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the inventory update against the shared Working glyph and theme tokens. The overlay retains compact sizing, shared contrast tokens and reduced motion. The menu continues to use the existing touch target.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the inventory wording update against the refresh read boundary. Moving the local status off the toolbar adds no API, storage or execution effect.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

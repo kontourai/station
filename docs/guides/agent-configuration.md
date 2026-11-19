@@ -17,7 +17,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | Field | Description |
 |-------|-------------|
 | `name` | Display name |
-| `prompt` | Agent instructions (supports `{{key}}` template variables); delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
+| `prompt` | Agent instructions. Station expands `{{key}}` when it builds the prompt. External engines receive authored text. Delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
 | `model` | Station-engine model preference; see resolution order below |
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
@@ -25,7 +25,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.sharedTurns` | Optional operator declaration for separately negotiated shared model-only turns; shared execution is not yet available |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | (Station guidance) | With the `station-orchestration-instructions` Feature Preview on, Agents offered `station-control` also get Station-written guidance on using it, kept separate from `prompt`. See [orchestration instructions](self-configuring-agent.md#orchestration-instructions) |
-| `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| Step cap | Top-level `maxSteps` for VoltAgent, 1–100 |
+| `guardrails` | `maxTokens`, `temperature` |
 | `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
@@ -227,7 +228,7 @@ Station guardrail declaration does not establish external enforcement:
 }
 ```
 
-- `maxSteps` — top-level Agent step cap applied by VoltAgent; the Agent file schema rejects it inside `guardrails`. Strands does not apply this configured cap.
+- `maxSteps` — top-level model-step cap per VoltAgent turn. Set 1–100 or leave it unset to inherit the Station fallback. Strands and external engines use their own limits.
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
 - `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.
@@ -460,6 +461,12 @@ legacy `autoApprove` against the runtime name only, so the usual
 that match the runtime name, including `*`, keep working as before. Effective
 Ask rules still require a person.
 
+The Agent editor's Tools tab shows the configured patterns under **Unattended
+approvals**. Removing an integration clears its integration-specific patterns.
+Disabling tools narrows those patterns to the remaining selected tools.
+Agent-wide patterns such as `*` remain in effect. Copies start without
+unattended approval patterns.
+
 To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
 a scheduled job, an operator can instead record an unattended tool grant for
 that job alone through `/api/agents/unattended-grants`, keyed by the exact
@@ -560,10 +567,9 @@ grant approvals. Otherwise the denial stands, as before. The counts are kept
 per conversation, so a successor Session continues them. They live in server
 memory, so a restart starts them again.
 
-An escalated request does not show the guardian's reason yet (#4849). It
-reads like any other approval for the call, with nothing saying the guardian
-refused it. The reason is only in the server log ("Approval guardian kept
-refusing; asking the person instead").
+An escalated request quotes the guardian’s reason under **Approval guardian**
+in the Inbox and request inspector. The quote is separate from the tool’s
+description. It carries the rule the guardian named in its explanation.
 
 Structured generation now reaches the configured model on both VoltAgent and
 Strands. Previously, their schema adapter errors made guardian reviews fall back
@@ -576,10 +582,12 @@ Tool names, descriptions and arguments remain untrusted model input. Fencing
 keeps them separate from the guardian's instructions, but a prompt-injected tool
 argument can still persuade the model to return `allow`.
 
-Attended chat ignores `unattendedAutoApprove`; when the guardian defers, it asks
-the person as before. External engines (Claude Code, ACP) do not deliver Station's
-unattended checks ([delivery boundary](../conformance/tool-policy-delivery.md)),
-so the opt-in has no effect on them.
+Attended chat ignores `unattendedAutoApprove`. An enforce-mode defer in
+attended chat leaves the ordinary approval path in charge. When the configured
+external policy hook observes an unattended turn, an enforce-mode defer denies
+the call before it reaches the engine’s approval flow. The managed unattended
+opt-in still applies only to Station’s own engine. See the
+[tool policy delivery boundary](../conformance/tool-policy-delivery.md).
 
 ### Tool purpose display support
 

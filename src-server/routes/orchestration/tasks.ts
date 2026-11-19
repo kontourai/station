@@ -435,6 +435,11 @@ export function createTaskRoutes(
   options: {
     logger?: { warn(message: string, meta?: Record<string, unknown>): void };
     onStatusChanged?: (task: TaskRecord, request: Request) => Promise<void>;
+    /**
+     * #4511: the read-only automation mandate for an automation-started
+     * Task. Server-derived; a failure to read it omits it, never the Task.
+     */
+    readAutomationTask?: (task: TaskRecord) => TaskRecord['automation'];
     onRoomSystemLine?: (input: {
       task: TaskRecord;
       request: Request;
@@ -1788,6 +1793,7 @@ export function createTaskRoutes(
           ? await options.answerNarrativeBindingModule.withTaskReferencePin({
               sessionId: input.sessionId,
               turnId: input.turnId,
+              taskProjectId: referenceCommitAuthorization!.expectedProjectId,
               authority: options.readAuthorityForRequest!(c.req.raw),
               current: () =>
                 (options.isRequestPrincipalCurrent?.(c.req.raw) ?? true) &&
@@ -2510,6 +2516,22 @@ export function createTaskRoutes(
     return c.json({ success: true });
   });
 
+  /**
+   * #4511: the read-only automation mandate rides the Task reads. A failure
+   * to read it omits it (logged), never the Task.
+   */
+  const withAutomation = (task: TaskRecord): TaskRecord => {
+    try {
+      const automation = options.readAutomationTask?.(task);
+      return automation ? { ...task, automation } : task;
+    } catch (error) {
+      options.logger?.warn('Automation mandate unavailable for Task read', {
+        error: errorMessage(error),
+      });
+      return task;
+    }
+  };
+
   app.get('/:taskId/graph', async (c) => {
     const service = serviceForRequest(c.req.raw);
     if (!service) return hostedNotFound(c);
@@ -2520,6 +2542,7 @@ export function createTaskRoutes(
     // turn-reference endpoint, so graph consumers receive no tuple to replay.
     const safeGraph: TaskGraph = {
       ...data,
+      task: withAutomation(data.task),
       links: data.links.filter(
         (link) =>
           !(
@@ -2559,7 +2582,7 @@ export function createTaskRoutes(
     if (!service) return hostedNotFound(c);
     const data = await service.readTaskForOpen(param(c, 'taskId'));
     if (!data) return c.json({ success: false, error: 'Task not found' }, 404);
-    return c.json({ success: true, data });
+    return c.json({ success: true, data: withAutomation(data) });
   });
 
   app.get('/:taskId/kept-pull-requests', async (c) => {

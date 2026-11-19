@@ -347,29 +347,58 @@ describe('AutomationStore', () => {
       },
     );
 
-    test('a grant for notify does not authorize dispatch, and vice versa', async () => {
-      const { source } = await store.createSource({
-        kind: 'github-poll',
-        name: 'notify only',
-        repository: 'kontourai/station',
-        grants: [{ ...GRANT, actions: ['notify'] }],
-      });
-      await expect(store.createRule(ruleInput(source.id))).rejects.toThrow(
-        /not granted/,
+    test('notify is not an action (#4513): a stored notify grant is dropped on read, a notify rule fails closed', async () => {
+      const { source } = await grantedSource();
+      const rule = await store.createRule(ruleInput(source.id));
+      const config = JSON.parse(readFileSync(store.path, 'utf8'));
+      // A source written before #4513 may list `notify` beside a real grant.
+      writeFileSync(
+        store.path,
+        JSON.stringify({
+          ...config,
+          sources: [
+            {
+              ...config.sources[0],
+              grants: [
+                { ...GRANT, actions: ['dispatch-task', 'notify'] },
+                { ...GRANT, agentId: 'other', actions: ['notify'] },
+              ],
+            },
+          ],
+        }),
+        { mode: 0o600 },
       );
-      const notify = await store.createRule(
-        ruleInput(source.id, { action: { kind: 'notify', priority: 'high' } }),
-      );
-      expect(notify.action).toEqual({ kind: 'notify', priority: 'high' });
+      expect(store.read().sources[0].grants).toEqual([
+        { ...GRANT, actions: ['dispatch-task'] },
+        { ...GRANT, agentId: 'other', actions: [] },
+      ]);
+      expect(store.read().rules.map(({ id }) => id)).toEqual([rule.id]);
 
-      const { source: dispatchOnly } = await grantedSource();
+      // A stored notify rule named work Station never did: the whole
+      // configuration is refused rather than silently dropping the rule.
+      writeFileSync(
+        store.path,
+        JSON.stringify({
+          ...config,
+          rules: [
+            ...config.rules,
+            {
+              ...config.rules[0],
+              id: 'notify-rule',
+              action: { kind: 'notify', priority: 'high' },
+            },
+          ],
+        }),
+        { mode: 0o600 },
+      );
+      expect(() => store.read()).toThrow(AutomationPolicyUnavailableError);
       await expect(
         store.createRule(
-          ruleInput(dispatchOnly.id, {
-            action: { kind: 'notify', priority: 'high' },
+          ruleInput(source.id, {
+            action: { kind: 'notify', priority: 'high' } as never,
           }),
         ),
-      ).rejects.toThrow(/not granted/);
+      ).rejects.toThrow();
     });
 
     test('a revoked or disabled source grants nothing at run time', async () => {

@@ -128,10 +128,18 @@ async function expectCardReportsModel(
   page: Page,
   turnId: string,
   model: string,
+  answer: string,
 ) {
+  const turn = transcriptLocator(page)
+    .getByRole('article')
+    .filter({
+      has: page.getByText(answer, { exact: true }),
+    });
+  await turn.locator('.turn-footer').hover();
+  await turn.getByRole('button', { name: 'More answer actions' }).click();
+  await page.getByRole('menuitem', { name: 'Answer details' }).click();
   const card = provenanceCardForTurn(page, turnId);
   await expect(card).toBeVisible({ timeout: 10_000 });
-  await card.locator('.turn-provenance__summary').click();
   const reportedRow = card.locator('.turn-provenance__row', {
     hasText: 'Model reported by engine',
   });
@@ -143,7 +151,7 @@ async function expectCardReportsModel(
     hasText: 'Model requested',
   });
   await expect(requestedRow).toContainText(model);
-  await card.locator('.turn-provenance__summary').click();
+  await page.getByRole('button', { name: 'Close provenance' }).click();
 }
 
 /** Picks a model through the composer's real picker. */
@@ -228,7 +236,12 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       transcript.getByText('First reply before the switch.', { exact: true }),
     ).toBeVisible({ timeout: 5_000 });
     await expectSettled(page);
-    await expectCardReportsModel(page, 'dd-switch-turn-1', MODEL_ALPHA);
+    await expectCardReportsModel(
+      page,
+      'dd-switch-turn-1',
+      MODEL_ALPHA,
+      'First reply before the switch.',
+    );
     // The shared shell's dispatch table (`daily-driver-shell.ts`) mirrors the
     // real product's one-Session-per-turn continuation contract: it 409s
     // ("Current Session is not terminal") a second dispatch on the same
@@ -247,7 +260,10 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
       ),
       'the composer must name the model the next turn will ask for',
-    ).toHaveAccessibleName(/^Claude Haiku Mid Switch/, { timeout: 5_000 });
+    ).toHaveAccessibleName(
+      /^(?:Model:|Engine & model:).*Claude Haiku Mid Switch.*session override/i,
+      { timeout: 5_000 },
+    );
 
     // Turn 2 in the SAME conversation must dispatch the new model, and the
     // switched turn's provenance card must report it.
@@ -287,10 +303,20 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       transcript.getByText('Second reply after the switch.', { exact: true }),
     ).toBeVisible({ timeout: 5_000 });
     await expectSettled(page);
-    await expectCardReportsModel(page, 'dd-switch-turn-2', MODEL_BRAVO);
+    await expectCardReportsModel(
+      page,
+      'dd-switch-turn-2',
+      MODEL_BRAVO,
+      'Second reply after the switch.',
+    );
     // The earlier turn's provenance still names the model IT ran on — a
     // switch must not rewrite history.
-    await expectCardReportsModel(page, 'dd-switch-turn-1', MODEL_ALPHA);
+    await expectCardReportsModel(
+      page,
+      'dd-switch-turn-1',
+      MODEL_ALPHA,
+      'First reply before the switch.',
+    );
   });
 
   test('same-provider fork retries idempotently, opens one child, and then diverges without replacing its parent', async ({
@@ -377,9 +403,42 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await expect(dialog).toContainText('tool state');
     await expect(dialog).toContainText('approval state do not carry');
     const sourceAgent = dialog.locator('button[data-agent-slug="claude"]');
-    // Choose the source Agent explicitly; the accepted request below proves its identity.
-    await sourceAgent.click();
-    await expect(dialog.getByRole('alert')).toContainText(/failed|fetch/i);
+    const alternateAgent = dialog.locator('button[data-agent-slug="codex"]');
+    const bounds = await alternateAgent.boundingBox();
+    if (!bounds) throw new Error('Alternate Agent has no pointer target');
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await page.mouse.move(x, y);
+    await page
+      .getByRole('button', { name: 'More answer actions' })
+      .press('Enter');
+    await page.getByRole('menuitem', { name: 'Fork from here' }).press('Enter');
+    await expect(dialog).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          ([x, y]) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest('[data-agent-slug]')
+              ?.getAttribute('data-agent-slug'),
+          [x, y],
+        ),
+      )
+      .toBe('codex');
+    await expect(sourceAgent).toHaveClass(/new-chat-modal__agent--selected/);
+
+    await page.mouse.move(x + 4, y);
+    await expect(alternateAgent).toHaveClass(/new-chat-modal__agent--selected/);
+    const search = dialog.getByPlaceholder('Search agents…');
+    await search.press('ArrowUp');
+    await expect(sourceAgent).toHaveClass(/new-chat-modal__agent--selected/);
+    await search.press('Enter');
+    await expect(dialog.getByRole('alert')).toContainText(
+      /Could not reach Station/i,
+    );
     await sourceAgent.click();
 
     await expect
@@ -398,11 +457,25 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     ).toBeVisible();
 
     await closeRunSetup(page);
+    const childSession = () =>
+      page.evaluate((conversationId) => {
+        const chats = JSON.parse(
+          sessionStorage.getItem('activeChats') ?? '[]',
+        ) as Array<{ conversationId?: string; currentSessionId?: string }>;
+        const chat = chats.find(
+          (entry) => entry.conversationId === conversationId,
+        );
+        return chat
+          ? { currentSessionId: chat.currentSessionId ?? null }
+          : undefined;
+      }, childId);
+    await expect.poll(childSession).toEqual({ currentSessionId: null });
     await textarea.fill('Child-only divergent turn.');
     await closeRunSetup(page);
     await textarea.press('Enter');
     await expect.poll(() => shell.executionRequests.length).toBe(2);
     expect(shell.executionRequests[1]?.conversationId).toBe(childId);
+    await expect.poll(childSession).toEqual({ currentSessionId: childId });
     expect(shell.executionRequests[1]?.target?.model?.override).toBe(
       MODEL_BRAVO,
     );
@@ -670,6 +743,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         panel.locator('.chat-input__agent-btn'),
       ),
     ).toBeFocused();
+    await closeRunSetup(page);
     await boundary.getByText('What carried and reset').click();
     await expect(boundary).toContainText(
       CONVERSATION_HANDOFF_DISCLOSURE_LABELS.authorizedTranscript,

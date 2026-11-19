@@ -118,11 +118,16 @@ export function InboxRowStatusLine({
   status,
   now,
   id,
+  reasonId,
+  durationId,
   lastActivityAt,
 }: {
   status: WorkStatus;
   now: number;
   id: string;
+  /** References from a control whose visible content already includes the status. */
+  reasonId?: string;
+  durationId?: string;
   /**
    * A host that hides the row's time slot (the phone picker puts the status
    * where the time was) hands the time here, and it trails the line in the
@@ -144,9 +149,11 @@ export function InboxRowStatusLine({
       <span className="inbox-row__word">{status.word}</span>
       {status.reason && (
         <>
-          <span className="sr-only">{' · '}</span>
+          {!reasonId && <span className="sr-only">{' · '}</span>}
           <span
+            id={reasonId}
             className="sr-only"
+            aria-hidden={reasonId ? true : undefined}
             data-testid={REASON_TEST_IDS[status.rung]}
             title={status.reason}
           >
@@ -156,7 +163,8 @@ export function InboxRowStatusLine({
       )}
       {status.detail && (
         <>
-          <span className="inbox-row__sep">{' · '}</span>
+          {' '}
+          <span className="inbox-row__sep">·</span>{' '}
           <span
             className="inbox-row__detail"
             data-testid={DETAIL_TEST_IDS[status.rung]}
@@ -196,8 +204,14 @@ export function InboxRowStatusLine({
               <ElapsedDuration since={status.since} />
             </span>
           </span>
-          <span className="sr-only">
-            {`, ${coarseDuration(now - status.since)}`}
+          <span
+            id={durationId}
+            className="sr-only"
+            aria-hidden={durationId ? true : undefined}
+          >
+            {durationId
+              ? coarseDuration(now - status.since)
+              : `, ${coarseDuration(now - status.since)}`}
           </span>
         </>
       )}
@@ -229,8 +243,7 @@ export function InboxRowChips({ chips }: { chips: readonly InboxRowChip[] }) {
             data-chip={chip.kind}
             title={chip.title ?? chip.label}
           >
-            <Glyph />
-            <bdi>{chip.label}</bdi>
+            <Glyph /> <bdi>{chip.label}</bdi>
           </span>
         );
       })}

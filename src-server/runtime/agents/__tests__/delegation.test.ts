@@ -19,7 +19,7 @@ describe('delegation helpers', () => {
         delegation: {
           maxDepth: 3,
           allowedTools: ['github_*'],
-          blockedTools: ['station-control_update_*'],
+          blockedTools: ['shell_*'],
         },
       },
       current: {
@@ -41,10 +41,7 @@ describe('delegation helpers', () => {
       rootAgentSlug: 'root',
       rootConversationId: 'conv-root',
       allowedTools: ['github_*'],
-      blockedTools: [
-        ...DEFAULT_CHILD_BLOCKED_TOOLS,
-        'station-control_update_*',
-      ],
+      blockedTools: [...DEFAULT_CHILD_BLOCKED_TOOLS, 'shell_*'],
       denyApprovals: true,
     });
   });

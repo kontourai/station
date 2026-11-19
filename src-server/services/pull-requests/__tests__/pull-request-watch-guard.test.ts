@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isCiConfigPath,
+  matchPullRequestOpen,
   matchPullRequestWatchRefusal,
 } from '../pull-request-watch-guard.js';
 
@@ -86,5 +87,41 @@ describe('what a watching Task’s agent may not do (#5066)', () => {
     expect(isCiConfigPath('Jenkinsfile')).toBe(true);
     expect(isCiConfigPath('.github/CODEOWNERS')).toBe(false);
     expect(isCiConfigPath('docs/workflows/ci.md')).toBe(false);
+  });
+});
+
+describe('what opens a pull request (#5063)', () => {
+  const opens = (command: string) => matchPullRequestOpen('Bash', { command });
+  it.each([
+    'gh pr create --fill',
+    'cd repo && gh pr create --title "Fix" --body x',
+    'GH_TOKEN=x gh pr create',
+    'gh api repos/o/r/pulls -f title=Fix -f head=b -f base=main',
+    'gh api --method POST repos/o/r/pulls --input body.json',
+    'gh api graphql -f query="mutation { createPullRequest(input: {}) { pullRequest { id } } }"',
+    'glab mr create --fill',
+    'hub pull-request -m Fix',
+    'git push -o merge_request.create origin HEAD',
+  ])('opens: %s', (command) => {
+    expect(opens(command)).toBe(true);
+  });
+  it.each([
+    'gh pr list',
+    'gh pr view 42',
+    'gh api repos/o/r/pulls',
+    'git push origin HEAD',
+    'echo gh pr create',
+    'gh pr merge 42',
+  ])('does not open: %s', (command) => {
+    // `echo gh pr create` runs `echo`, not `gh`.
+    expect(opens(command)).toBe(false);
+  });
+  it('matches a forge MCP tool by its own name', () => {
+    expect(matchPullRequestOpen('create_pull_request', {})).toBe(true);
+    expect(matchPullRequestOpen('mcp__github__create_pull_request', {})).toBe(
+      true,
+    );
+    expect(matchPullRequestOpen('get_pull_request', {})).toBe(false);
+    expect(matchPullRequestOpen('Write', { file_path: 'pr.md' })).toBe(false);
   });
 });

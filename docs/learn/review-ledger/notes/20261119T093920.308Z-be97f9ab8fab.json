@@ -1,0 +1,27 @@
+{
+  "revision": "40ed7318efed25b9cfd8a041295e124c2363c8fc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced fixed and rolling history windows, live merges, retained rows, and retry order from the mounted SDK to ProjectRoom. The 2,600-append case and before, fault, and restored controls checked both cache and waiting reader.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx","packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the latest 500 rows, bounded ordinary refetch, exact older cursor, and mount retention. The SDK test exercised cache and waiting caller agreement plus Load earlier. The transport and authorization contract remains the same.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The shared Room documentation now describes rolling history pagination and its retained reader. Existing integration and SDK authoring directions remain accurate.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The shared Room documentation now describes rolling history pagination and its retained reader. Existing integration and SDK authoring directions remain accurate.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the retained renderer after a contiguous live roll and after ordinary replacement. Existing history, message, and agent APIs keep their current request and authorization shapes.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the retained renderer after a contiguous live roll and after ordinary replacement. Existing history, message, and agent APIs keep their current request and authorization shapes.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the retained renderer after a contiguous live roll and after ordinary replacement. Existing history, message, and agent APIs keep their current request and authorization shapes.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the retained renderer after a contiguous live roll and after ordinary replacement. Existing history, message, and agent APIs keep their current request and authorization shapes.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed anchor movement, stack pagination from the effective cursor, merge ordering and abort handling. On the mounted Room fixture the bounded live roll retired a row to the existing retained reader without immediately requesting it.","inputs":["packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed anchor movement, stack pagination from the effective cursor, merge ordering and abort handling. On the mounted Room fixture the bounded live roll retired a row to the existing retained reader without immediately requesting it.","inputs":["packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the ProjectRoom architecture topic from the canonical module map and checked the generated documentation inventory.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -67,6 +67,25 @@ test('unsupported providers and pages refuse while command failures give a fixed
   const response = await app.request('/repository-providers/gitlab');
   expect(response.status).toBe(503);
   const text = await response.text();
-  expect(text).toContain('glab auth login');
+  expect(text).toContain('repository_catalog_unavailable');
   expect(text).not.toContain('private command error');
+});
+
+test.each([
+  [{ code: 'ENOENT' }, 'repository_cli_missing'],
+  [{ stderr: 'gh: Bad credentials (HTTP 401)' }, 'repository_sign_in_required'],
+])('publishes provider recovery code %j', async (failure, code) => {
+  const transport = vi
+    .fn()
+    .mockRejectedValue(
+      Object.assign(new Error('private command error'), failure),
+    );
+  const app = createRepositoryAcquisitionRoutes(
+    temp('catalog-recovery-'),
+    () => true,
+    new RepositoryProviderCatalog(transport),
+  );
+  const response = await app.request('/repository-providers/github');
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ success: false, code });
 });

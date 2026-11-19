@@ -28,6 +28,7 @@ export function showEnvelopeNotificationToast(
   const notification: Pick<Notification, 'id' | 'metadata'> | undefined =
     typeof data.id === 'string' ? { id: data.id, metadata } : undefined;
   const envelope = readNotificationEnvelope(notification);
+  if (envelope?.interrupt === 'silent') return;
   const source = envelope?.source.kind === 'agent' ? envelope.source : null;
   toastStore.show(
     title + (body ? ` — ${body}` : ''),

@@ -352,12 +352,12 @@ authority and withdraw cached success during refresh or failure. The
 own these contracts and evidence limits.
 
 ### S2. Defaults — workspace-wide fallbacks that entities override
-Default model, default region, default system prompt, template variables — the
-current "Agent defaults" section, kept distinct from S1 because these are not
-controls *for Station*; they are the bottom of an override chain
-(default → project → agent → per-invocation `modelOptions`). Each field renders
-with its **effective-value chain** so the region trap (global vs agent vs
-`AWS_REGION`) becomes visible instead of silent.
+The default model and region participate in the effective-value chain, from
+Station defaults through Project, Agent, and per-invocation model options.
+Station composes Default Agent Instructions ahead of an authored Agent’s
+prompt and uses them in place of the built-in Station prompt. It expands
+template variables when building those prompts. External engines use the
+authored Agent prompt through their own delivery channel.
 
 ### S3. Device — this browser/client
 Theme, accent color, chat font size, voice STT/TTS providers, feature toggles

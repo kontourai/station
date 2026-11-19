@@ -20,7 +20,6 @@ import type { ChatSession } from '../../types';
 import { ConversationContextResetDialog } from './ConversationContextResetDialog';
 import { ConversationHandoffDialog } from './ConversationHandoffDialog';
 import type { ContinuedOnStation } from './ConversationStationHandoff';
-import { writeConversationContextBoundaryUiState } from './conversationContextBoundaryUiState';
 import {
   acceptConversationHandoffUiState,
   beginConversationHandoffUiState,
@@ -99,7 +98,7 @@ export function ConversationBoundaryDialogs({
     contextResetSource,
     setContextResetSource,
     contextBoundarySessionId,
-    setContextBoundaryStored,
+    contextBoundaryAuthority,
     hasLocalDeferredMessages,
   } = dialogs;
   const handoffIsActive = handoffSession?.id === activeSession?.id;
@@ -245,6 +244,12 @@ export function ConversationBoundaryDialogs({
       {contextResetSource &&
         activeSession?.conversationId === contextResetSource.id && (
           <ConversationContextResetDialog
+            key={JSON.stringify([
+              contextBoundaryAuthority?.namespace,
+              activeSession.conversationId,
+              contextBoundarySessionId,
+            ])}
+            authority={contextBoundaryAuthority}
             apiBase={apiBase}
             conversationId={activeSession.conversationId}
             sessionId={contextBoundarySessionId ?? activeSession.id}
@@ -268,13 +273,7 @@ export function ConversationBoundaryDialogs({
                 composerMenuTriggerRef.current?.focus(),
               );
             }}
-            onReserved={(boundary, idempotencyKey) => {
-              setContextBoundaryStored(
-                writeConversationContextBoundaryUiState(
-                  idempotencyKey,
-                  boundary,
-                ),
-              );
+            onReserved={(boundary) => {
               invalidate(orchestrationQueries.sessions().queryKey);
               if (boundary.status === 'reserved')
                 showToast('Agent context reset is ready', 'success');

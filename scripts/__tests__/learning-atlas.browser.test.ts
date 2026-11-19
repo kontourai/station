@@ -404,6 +404,26 @@ test.each([390, 1440])(
   30_000,
 );
 
+test('skill metadata stays searchable while the browser uses the body title and outline', async () => {
+  const page = await pageAt(1440);
+  await page.getByRole('searchbox').fill('name: deslop');
+  await page
+    .getByRole('navigation', { name: 'Search results' })
+    .getByRole('link', {
+      name: 'Deslop .agents/skills/deslop/SKILL.md',
+      exact: true,
+    })
+    .click();
+  const article = page.getByRole('article');
+  await browserExpect(article.getByRole('heading').first()).toHaveText(
+    'Deslop',
+  );
+  const outline = page.getByRole('navigation', { name: 'Document sections' });
+  await browserExpect(outline.getByRole('link').first()).toHaveText('Deslop');
+  await outline.getByRole('link', { name: 'Deslop', exact: true }).click();
+  await browserExpect(page).toHaveURL(/section=deslop$/);
+});
+
 test('narrow reading, keyboard disclosure, and section links preserve visible content', async () => {
   const page = await pageAt(390);
   await browserExpect(

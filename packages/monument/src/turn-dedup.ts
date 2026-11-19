@@ -1,5 +1,8 @@
 import type { KernelCommand, KernelResult } from './commands.js';
-import { turnClaimIsReclaimable } from './decisions/turn-dedup.js';
+import {
+  compareTurnInput,
+  turnClaimIsReclaimable,
+} from './decisions/turn-dedup.js';
 import {
   type OwnerIdentity,
   type OwnerLiveness,
@@ -286,14 +289,12 @@ export class TurnIdempotencyStore {
     const record = result.record;
     if (record.settlement)
       throw new TurnIdempotencySettledError(record.settlement.disposition);
-    if (
-      inputDigest !== undefined &&
-      record.inputDigest !== undefined &&
-      inputDigest !== record.inputDigest
-    )
-      throw this.options.conflictError();
-    if (record.value !== null)
+    const comparison = compareTurnInput(record, inputDigest);
+    if (comparison === 'conflict') throw this.options.conflictError();
+    if (record.value !== null) {
+      if (comparison === 'unwitnessed') throw this.options.conflictError();
       return { state: 'resolved', value: record.value };
+    }
     if (record.owner?.id === this.owner.id && this.retained.has(key))
       return { state: 'indeterminate' };
     const liveness = record.owner ? this.liveness(record.owner) : 'unknown';
@@ -301,6 +302,7 @@ export class TurnIdempotencyStore {
       return turnClaimIsReclaimable(record)
         ? { state: 'reclaimable' }
         : { state: 'indeterminate' };
+    if (comparison === 'unwitnessed') throw this.options.conflictError();
     // A provider accepts a turn in seconds: an unresolved claim this old is
     // not a send in flight, whoever owns it (and an abandoned claim the
     // bounded `retained` memory has forgotten still lands here).
@@ -358,9 +360,7 @@ export class TurnIdempotencyStore {
     );
     if (
       result.kind === 'found' &&
-      inputDigest !== undefined &&
-      result.record.inputDigest !== undefined &&
-      inputDigest !== result.record.inputDigest
+      compareTurnInput(result.record, inputDigest) !== 'compatible'
     )
       throw this.options.conflictError();
     return result.kind === 'found'

@@ -5,7 +5,7 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
-  followUpTargetMatchesBinding,
+  matchFollowUpTargetBinding,
   observeDelegatedTask,
 } from '../../../tools/station-control-delegation.js';
 import { EventBus } from '../event-bus.js';
@@ -116,13 +116,13 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
     lifecycleState: full?.session.lifecycleState,
   });
   expect(
-    await followUpTargetMatchesBinding(
+    await matchFollowUpTargetBinding(
       service,
       'thread',
       { environment: { kind: 'current' }, agent: agentId('helper') },
       authority(),
     ),
-  ).toBe(true);
+  ).toEqual({});
   const messages = service.readSessionMessages('thread', authority());
   expect(messages.length).toBeGreaterThan(0);
   expect(JSON.stringify(messages)).toContain('blobRef');

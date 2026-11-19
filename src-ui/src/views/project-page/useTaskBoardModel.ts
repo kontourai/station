@@ -30,7 +30,11 @@ export interface TaskBoardModel {
   presentations: ReadonlyMap<string, TaskStatusPresentation>;
   partition: TaskLanePartition;
   sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>;
-  sessions: { failed: boolean; refetch(): void };
+  sessions: {
+    failed: boolean;
+    fetching: boolean;
+    refetch: ReturnType<typeof useOrchestrationSessionsQuery>['refetch'];
+  };
   pullRequests: {
     /** The first read has not answered yet. */
     checking: boolean;
@@ -183,7 +187,8 @@ export function useTaskBoardModel({
     sessionsById,
     sessions: {
       failed: sessionsQuery.isError,
-      refetch: () => void sessionsQuery.refetch(),
+      fetching: sessionsQuery.isFetching,
+      refetch: sessionsQuery.refetch,
     },
     pullRequests: {
       checking: !factsSettled,

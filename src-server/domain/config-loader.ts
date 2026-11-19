@@ -559,13 +559,21 @@ export class ConfigLoader {
   /**
    * Create a new agent (generates slug from name)
    */
-  async createAgent(spec: Parameters<typeof createAgentConfig>[1]) {
+  async createAgent(
+    spec: Parameters<typeof createAgentConfig>[1],
+    signal?: AbortSignal,
+  ) {
+    signal?.throwIfAborted();
     await this.ensureHomeSchema();
     const slug = resolveAgentConfigSlug(spec);
     return this.withInternalAgentWrite(
       join(this.projectHomeDir, 'agents', slug, 'agent.json'),
       async () => {
-        const created = await createAgentConfig(this.projectHomeDir, spec);
+        const created = await createAgentConfig(
+          this.projectHomeDir,
+          spec,
+          signal,
+        );
         return {
           result: created,
           expectedContentSignature: this.agentConfigContentSignature(
@@ -614,7 +622,9 @@ export class ConfigLoader {
   async mutateAgent(
     slug: string,
     updater: Parameters<typeof mutateAgentConfig>[2],
+    signal?: AbortSignal,
   ) {
+    signal?.throwIfAborted();
     await this.ensureHomeSchema();
     return this.withInternalAgentWrite(
       join(this.projectHomeDir, 'agents', slug, 'agent.json'),
@@ -623,6 +633,7 @@ export class ConfigLoader {
           this.projectHomeDir,
           slug,
           updater,
+          signal,
         );
         return {
           result: updated,

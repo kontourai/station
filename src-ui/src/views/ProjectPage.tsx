@@ -53,14 +53,16 @@ import {
 import { ProjectOverviewSection } from './project-page/ProjectOverviewSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
-import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { useProjectSearch } from './project-page/project-room-navigation';
 import { SetupRecommendationsCard } from './project-page/SetupRecommendationsCard';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
-import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import {
+  ProjectRepositoriesSection,
+  ProjectSourcesSection,
+} from './project-settings/ProjectSourcesSection';
 import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import './project-page-frame.css';
 import './ProjectPage.css';
@@ -215,7 +217,9 @@ function ProjectOperatorPage({
 }: {
   slug: string;
   project: ProjectConfig;
-  requestScope: ProjectRoomProps['requestScope'];
+  requestScope: NonNullable<
+    ReturnType<typeof useScopedProjectPageViewQuery>['requestScope']
+  >;
 }) {
   const { setLayout, navigate, updateParams } = useNavigation();
   // #5072: this Project's own alerts are not sent here while it is shown.
@@ -253,9 +257,19 @@ function ProjectOperatorPage({
   const {
     data: layouts = [],
     isLoading: layoutsLoading,
+    isFetching: layoutsFetching,
     isError: layoutsError,
     refetch: refetchLayouts,
-  } = useProjectLayoutsQuery(slug);
+  } = useProjectLayoutsQuery(slug, {
+    // IndexedDB can still hold the list from before an applied layout.
+    refetchOnMount: 'always',
+  });
+  const layoutsPending = layoutsLoading || layoutsFetching;
+  const layoutOpenNotice = layoutsPending
+    ? 'Layouts are still loading.'
+    : layoutsError
+      ? 'Could not load layouts. Close this picker and retry.'
+      : undefined;
   const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
@@ -273,6 +287,7 @@ function ProjectOperatorPage({
 
   const [showAddLayout, setShowAddLayout] = useState(false);
   const [showAddPane, setShowAddPane] = useState(false);
+  const [layoutOpenBlocked, setLayoutOpenBlocked] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<unknown>(null);
 
@@ -300,10 +315,14 @@ function ProjectOperatorPage({
 
   function openPane(entry: WorkspacePaneAvailabilityCatalogEntry) {
     if (!entry.instance) return;
-    setShowAddPane(false);
     const requiresLayout = workspacePaneRequiresLayoutIdentity(
       entry.descriptor,
     );
+    if (requiresLayout && layoutOpenNotice) {
+      setLayoutOpenBlocked(true);
+      return;
+    }
+    setShowAddPane(false);
     // Every renderer in today's closed `requiresLayout` set reads Coding
     // layout configuration, so Coding is the intentional host capability.
     // Making this generic requires a versioned descriptor field naming its
@@ -371,6 +390,9 @@ function ProjectOperatorPage({
               ? { goal: project.goal }
               : {})}
             gitStatus={gitStatus}
+            invitePeople={() =>
+              navigate(`/projects/${slug}/edit`, { section: 'access' })
+            }
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
         )}
@@ -415,6 +437,7 @@ function ProjectOperatorPage({
                 />
               )}
               <SetupRecommendationsCard
+                requestScope={requestScope}
                 project={{
                   id: project.id,
                   slug,
@@ -438,6 +461,13 @@ function ProjectOperatorPage({
                   Add files
                 </Button>
               </div>
+              {destination === 'overview' && (
+                <ProjectRepositoriesSection
+                  slug={slug}
+                  projectId={project.id}
+                  onManageSources={() => selectDestination('sources')}
+                />
+              )}
               <ProjectOverviewSection
                 slug={slug}
                 projectId={project.id}
@@ -562,7 +592,10 @@ function ProjectOperatorPage({
                     <button
                       type="button"
                       className="project-page__add-btn"
-                      onClick={() => setShowAddPane(true)}
+                      onClick={() => {
+                        setLayoutOpenBlocked(false);
+                        setShowAddPane(true);
+                      }}
                     >
                       + Add pane
                     </button>
@@ -583,7 +616,7 @@ function ProjectOperatorPage({
                 <ProjectLayoutsSection
                   slug={slug}
                   layouts={layouts}
-                  loading={layoutsLoading}
+                  loading={layoutsPending}
                   error={layoutsError}
                   onRetry={() => void refetchLayouts()}
                   setLayout={setLayout}
@@ -613,7 +646,11 @@ function ProjectOperatorPage({
               aria-label="Files and connections"
             >
               <ProjectLibrarySection slug={slug} />
-              <ProjectSourcesSection slug={slug} projectId={project.id} />
+              <ProjectSourcesSection
+                slug={slug}
+                projectId={project.id}
+                showRepositories={destination === 'sources'}
+              />
               {namespacesQuery.isError && (
                 <ErrorState
                   title="Could not load document categories"
@@ -669,6 +706,7 @@ function ProjectOperatorPage({
         {extensionAccess.dialog}
         <ProjectWorkspacePaneModal
           show={showAddPane}
+          notice={layoutOpenBlocked ? layoutOpenNotice : undefined}
           entries={paneCatalog.entries}
           loading={paneCatalog.isLoading}
           error={paneCatalog.isError}

@@ -42,7 +42,7 @@ const AGENTS: AgentSummary[] = [
 /** The row's accessible name: its title and its project. The chat is bound
  *  to Project B and the session reports no slug, so the merge must name the
  *  chat's project, not the session side's "No project" fallback. */
-const ROW_NAME = 'Mismatch demo chat, Project B';
+const ROW_NAME = /^Mismatch demo chat.*Project B/;
 
 /** The server's own fold of a turn that opened an approval (#3042). */
 const SESSIONS: OrchestrationSessionSummary[] = [
@@ -247,7 +247,11 @@ describe('open chat approval status in the dock and mobile inbox', () => {
     expect(within(dock.container).getByTestId('inbox-row').dataset.lane).toBe(
       'needsYou',
     );
-    expect(dockRow.getAttribute('aria-label')).toBe(ROW_NAME);
+    expect(dockRow).toBe(
+      within(dock.container).getByRole('button', {
+        name: /^Mismatch demo chat.*Needs approval.*Project B/,
+      }),
+    );
     expect(
       within(dock.container).getByText('Project B', {
         selector: '.inbox-row__project',

@@ -163,6 +163,7 @@ import {
   isSessionLifecycleStateAtRest,
   SESSION_ENDED_REJECTION_CODE,
   SESSION_LIFECYCLE_TRANSITIONS,
+  validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import type {
@@ -1545,6 +1546,13 @@ function peerDelegationLifecyclePath(
  */
 export type OrchestrationTurnAdmission = (input: {
   threadId: string;
+  /**
+   * #4511: who caused the turn, classified by the server
+   * (`classifyTurnDispatchOrigin`): `interactive` only for a person's own
+   * authenticated send. Absent where the seam cannot know (a prepared-turn
+   * resume), which an observer must treat as not a person's turn.
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
 }) => { allowed: true } | { allowed: false; reason: string };
 
 /**
@@ -3561,6 +3569,9 @@ export class OrchestrationService {
       this.conversationHistoryReader = new ConversationHistoryReadService({
         readDurabilityProfile: this.durabilityProfileForProvider,
         eventStore: options.eventStore,
+        ownerUserIdsFor: (authority) =>
+          this.sessionAuthz.transcriptOwnerConstraint(authority).ownerUserIds ??
+          [],
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
         hydratePersistedSession: (threadId) => {
@@ -6159,7 +6170,11 @@ export class OrchestrationService {
     threadId: string;
     turnId: string;
     clientInputId: string;
-    payload: { message: string; clientOrigin?: ClientOrigin };
+    payload: {
+      message: string;
+      clientOrigin?: ClientOrigin;
+      authoredBy?: 'person';
+    };
   }): void {
     const store = this.options.eventStore;
     const session =
@@ -6179,6 +6194,9 @@ export class OrchestrationService {
         createdAt: new Date().toISOString(),
         prompt: input.payload.message,
         inputKind: 'steer',
+        ...(input.payload.authoredBy === 'person'
+          ? { authoredBy: input.payload.authoredBy }
+          : {}),
         ...(input.payload.clientOrigin
           ? { clientOrigin: input.payload.clientOrigin }
           : {}),
@@ -6478,6 +6496,7 @@ export class OrchestrationService {
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ): Promise<{
     sessionId: string;
@@ -7489,6 +7508,7 @@ export class OrchestrationService {
   async deleteUnstartedConversationForkContext(
     id: string,
     authority: SessionReadScope,
+    isCurrent?: () => boolean,
   ): Promise<boolean> {
     this.initialize();
     if (this.startsUnderway.has(id))
@@ -7502,7 +7522,7 @@ export class OrchestrationService {
           throw new ConversationForkContextError(
             'The fork has a provider start in progress.',
           );
-        return this.forkContexts.deleteUnstarted(id, authority);
+        return this.forkContexts.deleteUnstarted(id, authority, isCurrent);
       },
     );
   }
@@ -9670,14 +9690,73 @@ export class OrchestrationService {
     return () => this.turnAdmissions.delete(admission);
   }
 
-  private assertTurnAdmitted(threadId: string): void {
+  private assertTurnAdmitted(
+    threadId: string,
+    dispatchOrigin?: TurnDispatchOrigin,
+  ): void {
     assertInheritedDelegationToolPolicy(
       this.firstStartedMetadataOfThread(threadId)?.delegation,
     );
     for (const admission of this.turnAdmissions) {
-      const result = admission({ threadId });
+      const result = admission({
+        threadId,
+        ...(dispatchOrigin ? { dispatchOrigin } : {}),
+      });
       if (!result.allowed) throw new Error(result.reason);
     }
+  }
+
+  /**
+   * #4511: marks a Session blocked with a server-written reason, so it reads
+   * "Session blocked: <reason>" in Needs you. Only from a state that may move
+   * to `blocked`; a Session already blocked or ended keeps its state.
+   * Returns whether the transition was recorded.
+   */
+  recordSessionBlocked(input: { threadId: string; message: string }): boolean {
+    this.initialize();
+    const session =
+      this.sessionReadModel.get(input.threadId) ??
+      this.options.eventStore?.readSessionByThread(input.threadId);
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(input.threadId)
+        .map((event) => event.payload) ?? [];
+    const current = projectSessionLifecycle({ session, events }).lifecycleState;
+    if (
+      current === 'blocked' ||
+      !validateSessionLifecycleTransition(current, 'blocked').ok
+    )
+      return false;
+    this.projectAndPublishEvent(
+      createManualSessionTransitionEvent({
+        provider: session.provider,
+        threadId: input.threadId,
+        from: current,
+        to: 'blocked',
+        reason: 'manual_update',
+        source: 'system_recovery',
+        message: input.message,
+      }),
+    );
+    return true;
+  }
+
+  /**
+   * #4511: a person's turn into a Session an automation started at `auto`
+   * must not inherit that posture. Records Ask unless a decision was already
+   * recorded for the conversation (a person's own pick stands).
+   */
+  recordAskWhereUndecided(threadId: string): void {
+    if (this.approvalPosture.decision(threadId)) return;
+    const provider = this.threadProviderForPosture(threadId);
+    if (!provider || !this.approvalKnobForThread(threadId, provider)) return;
+    this.recordApprovalModeDecision({
+      threadId,
+      provider,
+      approvalMode: 'ask',
+      basedOnSequence: null,
+    });
   }
 
   /**
@@ -9927,7 +10006,13 @@ export class OrchestrationService {
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
-          this.assertTurnAdmitted(submittedInput.threadId);
+          this.assertTurnAdmitted(
+            submittedInput.threadId,
+            classifyTurnDispatchOrigin(
+              internal?.dispatchOrigin,
+              context?.clientOrigin,
+            ),
+          );
           await this.authorizedConversationWorkspace(submittedInput.threadId);
           const current = await this.readSession(
             submittedInput.threadId,
@@ -10749,7 +10834,10 @@ export class OrchestrationService {
                             );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
-                            this.assertTurnAdmitted(turnInput.threadId);
+                            this.assertTurnAdmitted(
+                              turnInput.threadId,
+                              dispatchOrigin,
+                            );
                             this.assertForkContextAtProviderTurn(
                               turnInput,
                               context,
@@ -16272,6 +16360,40 @@ export class OrchestrationService {
   /** Owned execution activity for summaries and idle parking. */
   private readonly readOwnedWork = (threadId: string) =>
     this.options.eventStore?.ownedSessionActivities([threadId]).get(threadId);
+
+  /** A start command is preparing this thread before its turn can run. */
+  isSessionStartUnderway(threadId: string): boolean {
+    return this.startsUnderway.has(threadId);
+  }
+
+  /** Follow only the current plain reservation back to its readable predecessor. */
+  async readPreparingContinuationPredecessor(
+    conversationId: string,
+    sessionId: string,
+    authority: SessionReadScope,
+  ): Promise<OrchestrationSessionDetail | null> {
+    const unmaterialized = () =>
+      !this.sessionReadModel.has(sessionId) &&
+      !this.options.eventStore?.readSessionByThread(sessionId);
+    if (!this.startsUnderway.has(sessionId) || !unmaterialized()) return null;
+    const predecessor =
+      this.conversationLineage.plainReservationPredecessor(conversationId);
+    if (
+      !predecessor ||
+      this.currentConversationSessionId(conversationId) !== sessionId
+    )
+      return null;
+    const detail = await this.readSession(predecessor, authority, {
+      eventMethods: ['session.started', 'session.configured'],
+    });
+    return this.startsUnderway.has(sessionId) &&
+      unmaterialized() &&
+      this.currentConversationSessionId(conversationId) === sessionId &&
+      this.conversationLineage.plainReservationPredecessor(conversationId) ===
+        predecessor
+      ? detail
+      : null;
+  }
 
   /** Read-only quiescence seam for derived projections that must not race a turn. */
   hasActiveTurn(threadId: string): boolean {

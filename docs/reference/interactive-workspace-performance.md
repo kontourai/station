@@ -155,6 +155,15 @@ fixture's authenticated contexts before proceeding. The collaboration fixture dr
 leave/join/announce and cursor controls from the peer while the owner records
 server-identity-bound participant and cursor layout commits.
 
+The reference sweep starts with a report entry for each selected fixture and
+updates that report after each attempt. A budget miss or unavailable fixture
+does not stop later eligible fixtures. A missing prerequisite or attempt that
+could not produce measurement evidence is listed as `NOT_VERIFIED`. Only
+observations with matching production build receipts enter the combined
+evaluation. Unfinished fixtures remain visible if the worker exits early. The
+test reports collected failures after retaining the combined result, and the
+workflow prints its bounded receipt even when the job fails.
+
 The same browser spec also has an opt-in, untimed functional control:
 `STATION_PERFORMANCE_BRIEF_FUNCTIONAL=1 node scripts/heavy-check-slot.mjs brief-functional scripts/run-e2e-suite.mjs --suite=smoke-live --spec=tests/interactive-workspace-performance-bridge.spec.ts --grep='Brief driver follows'`.
 It owns a temporary Station and repository, exercises the mounted production

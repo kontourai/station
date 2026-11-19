@@ -24,10 +24,10 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
-Credential recovery ignores successful responses declared as `text/html` or
-`application/xhtml+xml`: a sign-in page or a stale address's HTML fallback
-must not clear a recorded credential rejection or restart authority checks.
-The response remains available to the caller for normal content validation.
+Automatic credential recovery requires a successful JSON response with
+Station's `X-Station-Envelope: 1` marker from the configured origin. Redirected
+responses, proxy fallbacks, and unmarked successes leave the existing credential
+state in place. The response remains available for the caller's content validation.
 
 
 `dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
@@ -49,8 +49,11 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
 
 - `open(target, {cols, rows, launch?, legacyTerminalId?})` asks the server for a
   new session in `target` (`{projectId, bindingKey}`). `launch` names a
-  server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
-  mode}`); no executable, argument or directory is sent. `legacyTerminalId`
+  server-resolved program (`{kind: 'shell'}`, `{kind: 'agent', connectionId,
+  mode}`, or `{kind: 'repository-sign-in', provider}`). The repository sign-in
+  profile runs a fixed GitHub or GitLab browser login in an interactive terminal
+  when the Station operator has command authority. The client supplies no executable
+  or arguments. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
@@ -512,7 +515,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `STATION_AGENT_ID`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -565,7 +568,11 @@ Browser visibility, focus and online signals can shorten a transient backoff
 once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
-are unchanged.
+are unchanged. Leaving the page aborts the stream unless the browser is
+preserving it in the back-forward cache. When a stream or retry wait settles,
+the SDK removes its listeners from the host targets where it registered them.
+A browser stream needs a window that supports page lifecycle events. The SDK
+stops before reconnecting if that window has retired.
 A stream opening has a 30-second deadline until response headers arrive,
 including credential resolution. `timeoutMs` changes that opening deadline;
 `null` or `0` explicitly disables it. The deadline stops at headers, so it never
@@ -810,6 +817,10 @@ this Station does not have (`project_room_project_not_found`, also read by
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
+The newest live window rolls within the 500-message span. Ordinary refetch
+reads that range in bounded 25-message spans and pages earlier from its
+actual start. The Room keeps recently departed rows through its retained
+history reader. A contiguous live rollover does not start a history request.
 The hook follows forward continuations when the server's byte limit splits a
 window, then loads older windows; it retains up to 20 windows.
 `useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
@@ -1021,6 +1032,24 @@ result reads capture the reference and Task scope before dispatch, require the
 sequence and both digests, and verify the returned Markdown content digest. No
 shared provider execution is enabled by this SDK surface.
 
+### Project Room coordinator
+
+`@kontourai/station-sdk/project-room-coordinator` reaches the `#general`
+coordinator's [routes](api.md#the-coordinator-in-general):
+`getProjectRoomCoordinator`, `startProjectRoomCoordinatorTasks` (some rows,
+or every proposed row when none are named), `runProjectRoomStatusSweep` and
+`setProjectRoomCoordinatorSettings`. Room calls take the room's
+`ApiRequestScope` and guards, like the other room clients. Its React hooks are
+`useProjectRoomCoordinatorCapability` (the `projectRoomCoordinator` flag,
+asked only when enabled), `useProjectRoomCoordinator` (one query per
+Project's `#general`, rechecked every five seconds while a Task waits, starts
+or works), `useStartProjectRoomCoordinatorTasks`, `useProjectRoomStatusSweep`
+and `useSetProjectRoomCoordinatorSettingsMutation`. Gate on the capability and
+the `project-room-coordinator` Feature Preview; with the preview off every
+route answers `feature_preview_disabled`. See the
+[client](../../packages/sdk/src/client/project-room-coordinator.ts) and
+[hooks](../../packages/sdk/src/query-domains/projectRoomCoordinator.ts).
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
@@ -1079,7 +1108,18 @@ omitting config still use the ambient API base; other room read/edit hooks
 retain their existing contracts. An old receiver that rejects the additive
 message field cannot silently accept it for a different Task.
 
-These personal-Station clients do not establish invited,
+While the recipient reads Chat, `watchProjectSharedTaskHistory` requests an
+event stream from the selected publication’s history endpoint. A change frame
+contains only `{}`. The client re-reads the authorized human history for text.
+Older hosts can still serve the ordinary history read and manual refresh.
+
+For a human reply from account entry, `appendProjectTaskRoomHumanMessage`
+accepts `expectedMember: { principalId, shareId }` alongside
+`expectedTaskCreatedAt`. Capture these from the signed-in account and selected
+publication. The receiver requires matching current member and publication
+authority. Retry an unconfirmed reply with the same proposal ID, time and text.
+
+These personal-Station agent clients do not establish invited,
 remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
 
 
@@ -1321,9 +1361,11 @@ Convenience hook. Returns a function that creates a session, shows Chat, and sen
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
-that Agent; a reference naming another plugin is refused. A clean Agent id from
-`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
-no Agent matches, the function warns and sends nothing.
+that Agent; a reference naming another plugin is refused. Use `agentId()`
+from `@kontourai/station-sdk/agent` for a clean Agent ID. This entry also
+exports `STATION_AGENT_ID`, the reserved ID for Station's Agent. A plugin
+using this export should account for older hosts whose shared SDK lacks it.
+When no Agent matches, the function warns and sends nothing.
 
 ```tsx
 const sendToChat = useSendToChat('my-plugin:assistant');
@@ -1404,12 +1446,11 @@ caller must review the result before presenting the request as approved.
 `useRevokeStationPersonTokenMutation` make the operator's changes. A person's
 own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
-`StationAccessError` with the HTTP `status` and the server's `code`:
-`isOperatorCredentialRequired` detects the current 401 refusal. Only the operator
-credential (host CLI) or an operator passkey session with step-up can change groups
-and manage other people’s tokens. The current refusal status for other callers
-is tracked in [#4109](https://github.com/kontourai/station/issues/4109): the SDK
-treats that 401 as a dead credential and removes it.
+`StationAccessError` with the HTTP `status` and the server's `code`.
+`isOperatorCredentialRequired` recognizes `403 operator_credential_required`.
+This refusal preserves the Device credential. Group changes and management of
+other people’s tokens require the host operator credential or an operator
+passkey session with step-up. HTTP 401 still signals authentication failure.
 `isStationAccessUnavailable` is a read refused as not for this caller (401, 403 or
 404), which a surface hides rather than shows. A mint
 answers the secret once. The mint mutation holds that answer while observed, so
@@ -1971,7 +2012,10 @@ scope contract rather than assuming every SDK query is interchangeable.
 { apiBase?, requestScope?, signal? })` reads one read-only history page of a
 session on a connected SSH environment's Station. A conversation surface
 passes its owning connection's `apiBase` and `requestScope`; without them
-the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
+the host's configured Station is used. `useRemoteSessionsQuery` lists these rows.
+A rejected inventory read carries its HTTP status as a `StationHttpError`.
+A successful inventory can have zero remote sessions and can identify individual
+unavailable environments.
 This Station relays the remote's bounded `window-v1` read over the
 environment's tunnel and peer bearer, and labels the page with its own
 `environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
@@ -2362,10 +2406,9 @@ separate live request admission from persisted data identity.
 
 ### `useProjectConversationsQuery(projectSlug: string, limit?, config?)`
 
-Fetches recent conversations for a project. Default limit: 10. This legacy
-reader can turn a non-OK response or invalid/failed envelope into `[]`; an empty
-result does not distinguish no conversations from those failures. Transport or
-JSON-decoding failures can still reject. See `fetchProjectConversations` below.
+Wraps the legacy `fetchProjectConversations` endpoint. The query reports HTTP
+and response failures through its error state. The current Project view uses
+the scoped channel and Task room queries. See `fetchProjectConversations` below.
 
 ### `useRenameConversationMutation()`
 
@@ -2435,7 +2478,9 @@ Creates a new project. Invalidates `['projects']` on success.
 
 ### `useUpdateProjectMutation()`
 
-Updates a project. Invalidates `['projects']` on success.
+Updates a Project. Pass the host-captured `requestScope` in the mutation
+variables to bind the update and its cache refresh to the selected Station
+and account. Calls without a scope invalidate `['projects']` on success.
 
 ### `useDeleteProjectMutation()`
 
@@ -2549,14 +2594,14 @@ returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 and the current `branch` reported by Git (which can be `HEAD` when detached),
 or an empty string when the branch read fails or the repository is not owned by
 the Project. Discovery is bounded: the walk stops at 24 repositories and skips
-heavy directories, so an over-broad folder is sampled rather than exhaustively
-enumerated, and identical concurrent asks share one scan. `location` is a
-`ReposLocation`, `{ projectSlug?, workingDir }`: the
-same shape as the git reads, except that `projectSlug` is optional because a
-folder may not be a Project yet. With a Project the server confines the folder
-to it; without one only the operator in person gets an answer. Disabled
-without a `workingDir`. A `success: false` envelope currently becomes an empty
-result, so no repositories is not proof the folder holds none.
+heavy directories, so an over-broad folder is sampled, and identical
+concurrent asks share one scan. For a Project rooted inside a repository,
+the list also includes that enclosing checkout when the same confined Git
+read used by Diff accepts it. It counts toward the 24-repository limit.
+`location` is a `ReposLocation`, `{ projectSlug?, workingDir }`. The existing
+Project read policy governs the named folder. Only the operator in person
+can discover repositories in a prospective folder. The query requires a
+`workingDir`. A `success: false` envelope currently becomes an empty result.
 
 ### `useGitCheckoutMutation(location)`
 
@@ -2951,11 +2996,13 @@ does not mean a layout is installed and ready to load.
 
 ### `fetchProjectConversations(projectSlug: string, limit?: number): Promise<any[]>`
 
-Fetches recent conversations for a project, with a default limit of 10. The
-underlying [legacy helper](../../packages/sdk/src/api-knowledge-utils.ts) uses
-`allowFailure`, returning `[]` for HTTP refusals, false or malformed envelopes,
-or missing `data`. Network and JSON-decoding errors still reject. Consumers
-must not use this helper's empty array as proof that the Project has no history.
+Reads the legacy Project conversation endpoint on the selected Station. The
+default limit is 10. A valid array response is returned unchanged. HTTP and
+response failures reject with `StationHttpError`, which keeps the observed
+status and any server-supplied code, details, or `Retry-After`. The current
+Station refuses this legacy read with `project_conversations_unavailable`
+because its file-memory records lack a trusted Project binding. Use the scoped
+Project Room and Task room query surfaces for Project conversations.
 
 ### `addProjectLayoutFromPlugin(projectSlug: string, plugin: string): Promise<any>`
 
@@ -3545,6 +3592,14 @@ unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
 
+### Update discovery
+
+`usePluginUpdateCheckQuery()` exposes the update records and a
+`complete`, `partial`, or `unavailable` status. Hosts that omit the status
+produce `unknown` coverage. Non-OK responses surface as query errors with the
+HTTP status. The existing `usePluginUpdatesQuery()` still returns the update
+array. Use the status-aware hook when presenting whether the scan completed.
+
 ### Marketplace source hooks
 
 `useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
@@ -3613,7 +3668,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
-paths forward it; it is an opaque precondition, not caller-supplied verification.
+paths forward it as an opaque precondition. A preview dependency's
+`registryTrust` is the host's display receipt for that dependency.
+Put its pin in consent and keep the display receipt out of the decision.
 `listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
 when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
@@ -3703,8 +3760,8 @@ The preview carries the exact installation, retained content digest, opaque
 `recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
 and dependency installation/consent rows. A signed retained package reuses its
 original journal-bound verification under the same applied policy, without
-contacting its registry/source; ready retained children carry their own trust
-revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
+contacting its registry/source. Ready retained children carry their own trust
+revision and display receipt. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
 `usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
 recovery consent requires the fresh grant revision, including each dependency
 approval. Never derive approval merely from a cached preview or retry an old
@@ -4261,9 +4318,10 @@ publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 Stores per-tab strings in browser `sessionStorage` under
 `layout-<layoutSlug>-tab-<tabId>` and updates the page hash for the active tab.
-Use a stable, distinct layout identity. Stored state may be restored on mount
-when the hash is empty, and on tab switches. This is browser UI state, not
-durable Project state; storage failures are not caught here.
+Use a stable, distinct layout identity. On mount, an empty hash is restored
+from the active tab's saved state before child plugins render. An incoming
+hash takes precedence. A tab switch restores the selected tab's saved state.
+This browser UI state lives in session storage for the current browser session.
 
 ```tsx
 <LayoutNavigationProvider layoutSlug="my-layout" activeTabId={activeTab}>
@@ -4283,10 +4341,9 @@ type LayoutNavigationExcerpt = {
 }
 ```
 
-`clearTabState` currently removes storage for an inactive tab, but clears only
-the URL hash for the active tab. It is not a reliable way to erase that active
-tab's saved string; a later restoration can read it again. Tracked in
-[#2806](https://github.com/kontourai/station/issues/2806).
+`clearTabState` removes the specified tab's saved string. For the active tab
+it also clears the URL hash and cancels its pending restoration. Other tabs
+keep their saved state.
 
 To hand state to another tab of the same Layout, write it for that tab and then
 select the tab. The state is a URL search-params string. `setTabState` stores
@@ -4321,7 +4378,7 @@ namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
 import { getAgentDisplayName } from '@kontourai/station-sdk';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId } from '@kontourai/station-sdk/agent';
 
 const id = agentId('my-agent');
 getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'
@@ -4438,17 +4495,21 @@ interface ConversationalOptions {
 }
 ```
 
+The [ElevenLabs example](../../examples/elevenlabs-voice/README.md) uses a
+server-held API key to mint browser WebSocket authorization and closes active
+resources when its registrations retire. Its scripted protocol checks and
+live provider acceptance are tracked separately.
+
 ### `ProviderCapability`
 
 Shape used in the voice lists returned by `GET /api/system/capabilities`.
 `configured` is the server's capability observation, not a successful live
 provider probe. Station can register configured server entries as display
 stubs whose methods warn that a plugin bundle is still needed; presence in the
-registry alone does not establish a working provider. The current capability
-hook does not retire its stubs when a later Station observation omits them, so
-a retained selection can still appear supported after changing connections.
-Lifecycle ownership for these entries is tracked in
-[#2807](https://github.com/kontourai/station/issues/2807).
+registry alone does not establish a working provider. The hook disposes its
+stubs when the observation is empty or fails, or its selected Station scope
+unmounts. A plugin that has replaced a stub with its own provider keeps that
+registration.
 
 ```ts
 interface ProviderCapability {
@@ -4814,6 +4875,16 @@ list route reports that person notifications are unsupported and suggests an
 update. A mutation's 404 can also mean the notification was not found, so it
 reports both possibilities. See [person notification routes](api.md#person-notifications).
 
+### `fetchWebPushRegistration(apiBase?, options?)`
+
+Reads the selected Station's VAPID public key and its optional paired-device
+registration status. The status contains an opaque fingerprint of the
+subscription or a null fingerprint when the current device is unregistered.
+Older Stations can omit the status. Request options can carry a bound
+`requestScope` and an abort signal, including when subscribing or
+unsubscribing. The discovery read retains HTTP status and raises
+`DevicePairingRequiredError` for an explicit pairing refusal.
+
 ### `NotificationsAPI`
 
 Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,
@@ -4832,11 +4903,9 @@ await api.dismiss(notificationId);
 const notifications = await api.list({ status: ['pending'] });
 ```
 
-Known scheduling limit: a `scheduledAt` more than about 24.9 days ahead exceeds
-Node's native timer range. The current service can then retain the notification
-as pending without a live wakeup until it is rescheduled or the service starts
-again. See [#2810](https://github.com/kontourai/station/issues/2810); successful
-creation alone does not establish future delivery.
+Scheduled deliveries and expiries beyond the native timer range retain their
+persisted deadlines. The server wakes at bounded intervals, rechecks the
+current record, and arms the remaining time when needed.
 
 ---
 
@@ -4929,6 +4998,10 @@ content, while retaining the observed HTTP status (usually 200).
   claims nothing about pull requests. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
+- `createTask` and `createTaskReference` accept an optional `requestScope`
+  in their input, including when called through `useCreateTaskMutation` or
+  `useCreateTaskReferenceMutation`. Pass the same captured scope to both
+  steps when creating a Task and adding its first reference.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -5134,7 +5207,8 @@ option for conversations without a multi-session lineage.
 ## Workspace checkpoint restore
 
 `previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
-short-lived, owner-bound preview for the turn's settle checkpoint. It includes
+short-lived, owner-bound preview for the turn's settle checkpoint. Pass
+`'baseline'` as the fifth argument to preview the turn-start checkpoint. It includes
 the preview id, repository root, target and currently observed tree hashes,
 up to 200 changed paths with a truncation flag, and a five-minute expiry.
 `confirmCheckpointRestore` submits that
@@ -5326,6 +5400,12 @@ It checks truthiness, not a literal-boolean schema, and does not validate the
 returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`.
+
+Skill save and registry removal mutations expose the HTTP status, code, and
+details on `StationHttpError`. When the code is `skill-not-owned`, the details
+carry the Skill package refusal reason and the separately labelled directory.
+Older hosts can send a plain failure envelope without these fields. Its failure
+still rejects the mutation, and its text remains diagnostic.
 
 Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
 builds it through the same helper (#2708); the plugin command-effect client
@@ -6241,20 +6321,16 @@ update functions:
 `scopeKey` is present it joins the query key. The caller must derive a distinct
 key for each connection/boot it wants to keep separate; the hook does not derive
 that identity.
-`assertCurrent` is checked immediately before the request is issued and again
-after it resolves — throwing rejects the fetch, so an obsolete or superseded
-scope's completion never resolves as current data. Both fields are
-secret-free: credentials and credential-evidence objects must never enter a
-query key or these callbacks. Existing two-argument callers are unaffected.
+`assertCurrent` runs before dispatch and after the response. Return `false`
+to reject with `StationRequestAuthorityError`, or throw to reject with your
+own error. Returning `true` or nothing allows the check to proceed. The query
+keeps its per-scope key and abort signal. Both fields are secret-free.
+Existing two-argument callers are unaffected.
 
-The current Settings callers pass `context.isCurrent` directly, which returns
-a boolean. The hook ignores that return value, so `false` alone does not reject
-the query through this guard. Other scope keys, transport checks and UI
-availability checks still apply. Callers needing this pre/post refusal must
-supply a callback that throws when stale. See the
-[hook](../../packages/sdk/src/query-domains/systemRuntime.ts),
-[host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts),
-and [Settings caller](../../src-ui/src/views/settings/CoreUpdateCheck.tsx).
+The [update check](../../src-ui/src/views/settings/CoreUpdateCheck.tsx) and
+[source installer](../../src-ui/src/views/settings/SourceInstallerDisclosure.tsx)
+both pass the [host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts)
+to the [shared hook](../../packages/sdk/src/query-domains/systemRuntime.ts).
 
 ## Saved answer quotations
 
@@ -7191,19 +7267,37 @@ consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
 for expiry, source/Device revalidation and remaining qualification limits.
 
-### Observe-only Automation deliveries
+### Automation operator surface
 
-`listAutomationDeliveries(apiBase, { limit? }, options?)` from
-`@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
-management caller. It returns `AutomationDeliveryPage` with `deliveries` and
-`polls`, including partial coverage and source failures. Each delivery may
+`@kontourai/station-sdk/client` has one function per
+`AUTOMATION_OPERATOR_SURFACE` verb (#4513): `listAutomationDeliveries(apiBase,
+{ limit? })`, `listAutomationEpisodes`, `retryAutomationEpisode(apiBase,
+{ ruleId, episodeId })`, `listAutomationSources`, `createAutomationSource`,
+`enableAutomationSource(apiBase, id, expectedFingerprint)`,
+`disableAutomationSource`, `deleteAutomationSource`, `listAutomationRules`,
+`createAutomationRule`, `updateAutomationRule(apiBase, id, { ...rule,
+expectedFingerprint })`, `enableAutomationRule(apiBase, id,
+expectedFingerprint)`, `disableAutomationRule` and `deleteAutomationRule`.
+Each accepts `ClientRequestOptions`.
+
+`listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
+and `polls`, including partial coverage and source failures. Each delivery may
 carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
 rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
-`intent-retained`) and a bounded action snapshot. The server requires
-**GitHub automation observations** in Feature previews. A `StationHttpError`
-preserves the preview refusal's code and Settings link; a 404 from an older
-host reports the unsupported capability. No mutation or agent invocation is
-performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+`intent-retained`) and a bounded action snapshot. `listAutomationRules` and
+`listAutomationSources` return the `configurationFingerprint` the enable and
+update functions name. Rule functions take `AutomationDispatchRuleInput`
+(`dispatch-task` only); sources are disabled `github-poll` sources
+(`AutomationPollSourceInput`).
+
+Reads need a management caller; every change is refused unless the operator
+makes it in person (never an agent session). Everything except the disable and
+delete functions needs **GitHub automation observations** in Feature previews.
+A `StationHttpError` preserves the server's code: `feature_preview_disabled`
+with its Settings link, `automation_not_found` for a missing rule, source or
+episode, `operator_required`, or a retry refusal such as `not-exhausted`. Any
+other 404 (an older host) reports the unsupported capability. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Personal conversation resolution and turn directory
 

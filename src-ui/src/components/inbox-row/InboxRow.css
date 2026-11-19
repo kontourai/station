@@ -39,6 +39,11 @@
   animation: inbox-row-enter var(--motion-base) var(--ease-standard);
 }
 
+.inbox-row__approval {
+  padding-inline: var(--inbox-row-pad-inline);
+  padding-block-end: var(--inbox-row-pad-block);
+}
+
 @keyframes inbox-row-enter {
   from {
     opacity: 0;
@@ -270,10 +275,8 @@
   white-space: nowrap;
 }
 
-/* A failure or unanswerable REASON is the one place the line budget yields:
- * the line flows as text and may take a second line rather than cut off
- * what the user needs to read. Anything longer than two lines is in full in
- * the row's details and is always the whole of its accessible description. */
+/* Let an actionable reason wrap. The row's name or description still carries
+ * the untruncated wording, as does its Details surface. */
 .inbox-row__status--reason {
   display: -webkit-box;
   height: auto;

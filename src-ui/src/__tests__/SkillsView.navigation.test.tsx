@@ -488,7 +488,9 @@ test('a refused removal preserves the filtered selection and its retry trigger',
   await requestRemoval();
   await act(async () => removal.reject());
   await waitFor(() =>
-    expect(showToastMock).toHaveBeenCalledWith('Failed to remove skill'),
+    expect(showToastMock).toHaveBeenCalledExactlyOnceWith(
+      'The skill could not be removed.',
+    ),
   );
   await waitFor(() => expect(queryClient.isMutating()).toBe(0));
   await act(

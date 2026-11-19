@@ -502,15 +502,28 @@ describe('the Nightly source gate workflow', () => {
     );
     expect(install).toBeGreaterThanOrEqual(0);
     expect(install).toBeLessThan(ciSteps.indexOf(lane as Step));
-    // Every other Nightly check is a member of the statics command list.
     const staticsCommands = FAST_STATIC_COMMANDS.map(
       ([command, args]) =>
         `${command === process.execPath ? 'node' : command} ${[args].flat().join(' ')}`,
     );
+    // Readiness owns the lint verdict that Nightly reuses on this exact tree.
+    expect(staticsCommands).toContain(
+      'npm run veritas:readiness -- --format json',
+    );
+    const { evidence } = JSON.parse(
+      readFileSync(join(root, '.veritas/repo-map.json'), 'utf8'),
+    );
+    const style = evidence.evidenceChecks.find(
+      (check: { id: string }) => check.id === 'style-standard',
+    );
+    expect(evidence.requiredEvidenceCheckIds).toContain('style-standard');
+    expect(style?.runner ?? 'bash').toBe('bash');
+    expect(style?.command).toBe('npm run lint:check');
+    const verifiedCommands = [...staticsCommands, style.command];
     for (const step of checks) {
       const command = step.run?.trim() ?? '';
       if (command === journeys?.run) continue;
-      expect(staticsCommands, command).toContain(command);
+      expect(verifiedCommands, command).toContain(command);
     }
   });
 

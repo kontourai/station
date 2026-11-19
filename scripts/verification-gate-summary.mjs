@@ -277,6 +277,14 @@ export function causalExcerptsOf(summary) {
     : [];
 }
 
+function diagnosticExcerptsOf(summary) {
+  return Array.isArray(summary?.diagnosticExcerpts)
+    ? summary.diagnosticExcerpts
+        .filter((entry) => typeof entry === 'string')
+        .slice(0, MAX_ANNOTATIONS)
+    : [];
+}
+
 function countsTable(counts) {
   if (!counts || typeof counts !== 'object' || Array.isArray(counts))
     return null;
@@ -400,6 +408,17 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
       '',
     );
   }
+  const diagnostics = diagnosticExcerptsOf(summary);
+  if (diagnostics.length) {
+    lines.push(
+      '### Diagnostic context',
+      '',
+      'The capture contains these lower-severity lines. They may come from an earlier step.',
+      '',
+      fencedBlock(diagnostics.map((entry) => plainText(entry)).join('\n')),
+      '',
+    );
+  }
   if (
     Array.isArray(summary.failedCheckTestFiles) &&
     summary.failedCheckTestFiles.length
@@ -459,11 +478,18 @@ export function annotationsFor(document) {
       `::error title=full-regression::${annotationMessage(summary.phaseAdmission)}`,
     ];
   const excerpts = causalExcerptsOf(summary);
+  const notes = diagnosticExcerptsOf(summary).map(
+    (excerpt) =>
+      `::warning title=full-regression diagnostic context::${annotationMessage(excerpt)}`,
+  );
   if (excerpts.length)
-    return excerpts.map(
-      (excerpt) =>
-        `::error title=full-regression::${annotationMessage(excerpt)}`,
-    );
+    return [
+      ...excerpts.map(
+        (excerpt) =>
+          `::error title=full-regression::${annotationMessage(excerpt)}`,
+      ),
+      ...notes,
+    ].slice(0, MAX_ANNOTATIONS);
   // A non-pass with no excerpt still gets exactly one annotation: silence
   // here is what sent readers to the artifact in the first place.
   const status = terminalStatus(summary) ?? 'non-passing';
@@ -473,7 +499,8 @@ export function annotationsFor(document) {
       : '';
   return [
     `::error title=full-regression::${annotationMessage(`the completion gate reported ${status}${step} with no causal excerpt; read the full-regression artifact`)}`,
-  ];
+    ...notes,
+  ].slice(0, MAX_ANNOTATIONS);
 }
 
 export function main(argv, { log = console.log, warn = console.error } = {}) {

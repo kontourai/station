@@ -20,6 +20,24 @@ import { resolveHomeDir } from '../../../utils/paths.js';
 import { CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES } from '../../schemas/schemas.js';
 import { createAppHomeRoutes } from '../app-home.js';
 
+const claudeAuthFixture = vi.hoisted(() => ({ fileOnly: false }));
+
+vi.mock('node:os', async (original) => {
+  const os = await original<typeof import('node:os')>();
+  return {
+    ...os,
+    platform: () => (claudeAuthFixture.fileOnly ? 'linux' : os.platform()),
+  };
+});
+
+function useClaudeProfileFile() {
+  claudeAuthFixture.fileOnly = true;
+  vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+  vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+  vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
+  vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
+}
+
 /**
  * The enrolment routes ask the installed CLI how it signs in. Route tests
  * inject that observation instead of spawning: what is under test here is the
@@ -43,6 +61,8 @@ function loginCapabilitiesStub(
 }
 
 afterEach(() => {
+  claudeAuthFixture.fileOnly = false;
+  vi.unstubAllEnvs();
   rmSync(appHomesRootDir(), { recursive: true, force: true });
 });
 
@@ -94,6 +114,7 @@ function credentialRecoveryFixture(
 
 describe('App home profile routes (#896)', () => {
   test('reports profile status with the profile-scoped auth state', async () => {
+    useClaudeProfileFile();
     const app = createAppHomeRoutes();
 
     const res = await app.request('/agent/claude/app-home');
@@ -117,6 +138,7 @@ describe('App home profile routes (#896)', () => {
   });
 
   test('reports an authenticated profile-scoped auth state once credentials are imported', async () => {
+    useClaudeProfileFile();
     const app = createAppHomeRoutes();
     const fakeGlobalDir = await mkdtemp(join(tmpdir(), 'station-fake-claude-'));
     try {
@@ -1152,7 +1174,7 @@ describe('device-code enrolment routes', () => {
 
   function fakeChild() {
     let onData: ((chunk: unknown) => void) | undefined;
-    const signals: string[] = [];
+    const stop = vi.fn<() => Promise<void>>(async () => undefined);
     const stream = {
       on(_event: 'data', listener: (chunk: unknown) => void) {
         onData = listener;
@@ -1160,16 +1182,13 @@ describe('device-code enrolment routes', () => {
       },
     };
     return {
-      signals,
+      stop,
       emitPrompt: () => onData?.(Buffer.from(CODEX_PROMPT, 'utf8')),
       child: {
         stdout: stream as unknown as NodeJS.ReadableStream,
         stderr: null,
         on: () => undefined,
-        kill: (signal?: NodeJS.Signals) => {
-          signals.push(signal ?? 'SIGTERM');
-          return true;
-        },
+        stop,
       } as unknown as DeviceCodeChildProcess,
     };
   }
@@ -1180,6 +1199,7 @@ describe('device-code enrolment routes', () => {
       signedIn?: boolean;
       /** Hold environment preparation open, so a cancel can land before the spawn. */
       holdBaseEnv?: boolean;
+      holdAuthCheck?: boolean;
       /**
        * `by-directory` mirrors codex-cli 0.154.0: pointed at a CODEX_HOME that
        * does not exist, `codex login status` reports a configuration error
@@ -1189,6 +1209,7 @@ describe('device-code enrolment routes', () => {
     } = {},
   ) {
     const envGate: { release?: () => void } = {};
+    const authGate: { release?: () => void } = {};
     const { service } = credentialRecoveryFixture();
     const spawned = fakeChild();
     const spawnLogin = vi.fn(() => spawned.child);
@@ -1216,6 +1237,11 @@ describe('device-code enrolment routes', () => {
               ],
       }),
       verify: async (_engine: string, dir: string) => {
+        if (options.holdAuthCheck) {
+          await new Promise<void>((resolve) => {
+            authGate.release = resolve;
+          });
+        }
         if (options.status === 'by-directory') {
           return {
             state: existsSync(dir)
@@ -1238,7 +1264,14 @@ describe('device-code enrolment routes', () => {
       loginCapabilities: loginCapabilitiesStub(),
       deviceCodeLogins,
     });
-    return { app, spawned, spawnLogin, deviceCodeLogins, envGate };
+    return {
+      app,
+      spawned,
+      spawnLogin,
+      deviceCodeLogins,
+      envGate,
+      authGate,
+    };
   }
 
   test('starts a login and relays the URL and code the CLI printed', async () => {
@@ -1407,21 +1440,63 @@ describe('device-code enrolment routes', () => {
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 
-  test('cancelling kills the login process', async () => {
-    const { app, spawned } = routes();
-    await app.request('/agent/codex/enrolment/profile-a/device-code', {
-      method: 'POST',
+  test('DELETE acknowledges a pending login and POST reports the same cancellation', async () => {
+    const { app, spawnLogin, authGate } = routes({
+      holdAuthCheck: true,
+      signedIn: true,
     });
+    const path = '/agent/codex/enrolment/profile-a/device-code';
+    const started = app.request(path, { method: 'POST' });
+    let cancelled: Response;
+    try {
+      await vi.waitFor(() => expect(authGate.release).toBeTypeOf('function'));
+      cancelled = await app.request(path, { method: 'DELETE' });
+    } finally {
+      authGate.release?.();
+    }
+
+    expect(cancelled.status).toBe(200);
+    const { data } = await readJson<{ data: { login: unknown } }>(cancelled);
+    expect(data.login).toMatchObject({ engine: 'codex', phase: 'cancelled' });
+    const result = await started;
+    expect(result.status).toBe(409);
+    expect(await result.json()).toMatchObject({
+      success: false,
+      data: { outcome: 'cancelled', login: data.login },
+    });
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('DELETE acknowledges cancellation and a replacement POST is busy until the process stops', async () => {
+    const { app, spawned, spawnLogin } = routes();
+    const stopGate: { release?: () => void } = {};
+    spawned.stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          stopGate.release = resolve;
+        }),
+    );
+    const path = '/agent/codex/enrolment/profile-a/device-code';
+    await app.request(path, { method: 'POST' });
     spawned.emitPrompt();
 
-    const res = await app.request(
-      '/agent/codex/enrolment/profile-a/device-code',
-      { method: 'DELETE' },
-    );
-    const body = await readJson<{ data: { login: { phase: string } } }>(res);
+    try {
+      const cancelled = await app.request(path, { method: 'DELETE' });
+      expect(cancelled.status).toBe(200);
+      expect(await cancelled.json()).toMatchObject({
+        data: { login: { phase: 'cancelled' } },
+      });
+      expect(spawned.stop).toHaveBeenCalledOnce();
 
-    expect(body.data.login.phase).toBe('cancelled');
-    expect(spawned.signals).toContain('SIGTERM');
+      const replacement = await app.request(path, { method: 'POST' });
+      expect(replacement.status).toBe(429);
+      expect(await replacement.json()).toMatchObject({
+        data: { outcome: 'busy' },
+      });
+      expect(spawnLogin).toHaveBeenCalledOnce();
+    } finally {
+      stopGate.release?.();
+    }
   });
 
   test('reading a login nobody started is a 404, not an invented record', async () => {

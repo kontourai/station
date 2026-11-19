@@ -15,6 +15,7 @@
  * writability coincide proves nothing at all: it passes under the projection
  * and under the `source === 'local'` derivation the projection replaces.
  */
+
 import {
   existsSync,
   mkdirSync,
@@ -28,6 +29,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ConfigLoader } from '../../../domain/config-loader.js';
+import { loadSkillConfig } from '../../../domain/config-loader-storage.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   skillDiscoveries: { add: vi.fn() },
@@ -120,11 +122,7 @@ type StubbedConfigLoader = Pick<
 
 const configLoader: StubbedConfigLoader = {
   getProjectHomeDir: () => home,
-  loadSkill: vi.fn(async (name: string) => {
-    const record = join(home, 'skills', name, 'skill.json');
-    if (!existsSync(record)) throw new Error(`Skill '${name}' not found`);
-    return JSON.parse(readFileSync(record, 'utf-8'));
-  }),
+  loadSkill: vi.fn((name: string) => loadSkillConfig(home, name)),
   // The write path resolves the package's own directory and writes the record
   // THERE (#1619) rather than deriving a path from the name. Stubbing this is
   // not optional: without it every write throws after `SKILL.md` is already on
@@ -654,6 +652,49 @@ describe('packages in the project-scoped root, which the rule now writes', () =>
  * survives the #1619 policy change for the same reason the agreement assertions
  * do — whichever answer the rule gives, the effect has to match it.
  */
+test('all ownership refusals separate the package path from public copy', async () => {
+  const { app } = await setup({ servedInPlace: true });
+  const variants = [
+    { method: 'PUT', body: JSON.stringify({ body: 'Edited' }) },
+    { method: 'PUT', body: JSON.stringify({ command: { enabled: true } }) },
+    { method: 'DELETE' },
+  ];
+  for (const init of variants) {
+    const response = await app.request('/vendor-prompt', {
+      ...init,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const body = await json(response);
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      success: false,
+      code: 'skill-not-owned',
+      details: {
+        reason: 'served-in-place',
+        packageDirectory: expect.stringContaining(
+          'vendor--verify-at-evil.example',
+        ),
+      },
+    });
+    expect(body.error).not.toContain('vendor--verify-at-evil.example');
+    expect(body.details.detail).not.toContain('vendor--verify-at-evil.example');
+    expect(existsSync(join(home, 'skills', 'vendor-prompt'))).toBe(false);
+  }
+  for (const path of ['/missing', '/invalid%2Fname']) {
+    for (const init of [variants[0]!, variants[2]!]) {
+      const response = await app.request(path, {
+        ...init,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      expect(response.status).toBe(path === '/missing' ? 404 : 400);
+      expect(await json(response)).not.toHaveProperty(
+        'code',
+        'skill-not-owned',
+      );
+    }
+  }
+});
+
 describe('writable iff the write lands in that package and nowhere else', () => {
   /**
    * The effect a `writable` value PREDICTS, as a whole tuple.
@@ -708,7 +749,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
         body: 'Edited body',
       }),
     });
-    const answer = await response.text();
+    const answer = await json(response);
     return {
       status: response.status,
       succeeded: response.ok,
@@ -722,13 +763,8 @@ describe('writable iff the write lands in that package and nowhere else', () => 
       // and every "nothing happened" assertion stayed green. This is what makes
       // that fixture discriminate.
       //
-      // Keyed on the gate's own sentence OPENER, not on a phrase inside its
-      // variable clause. The first version matched "does not own", which is
-      // wording the rule owns and duly reworded — so the probe reported "not
-      // stopped by the gate" for writes the gate had stopped. A discriminator
-      // that parses prose it does not own is a discriminator with a shelf life.
       stoppedByTheOwnershipGate:
-        response.status === 400 && answer.includes(`Cannot edit '${name}':`),
+        response.status === 409 && answer.code === 'skill-not-owned',
       // A shadow package under the machine root is the specific damage the
       // refusal exists to prevent, so it is asserted rather than inferred from
       // the response.

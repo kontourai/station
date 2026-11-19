@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -152,6 +152,8 @@ describe.skipIf(process.platform === 'win32')(
       () => {
         const run = runSpec({
           STATION_PERFORMANCE_NON_REFERENCE_DIAGNOSTIC: '1',
+          STATION_PERFORMANCE_E2E_FIXTURES:
+            'local-input-apply,reconnect-10k-operations',
         });
 
         expect(run.result.status, run.output).not.toBe(0);
@@ -166,7 +168,26 @@ describe.skipIf(process.platform === 'win32')(
         expect(
           namedResult(run.playwrightReport, HOST_GATE_CASE, run.output).status,
         ).toBe('skipped');
-        expect(existsSync(run.report)).toBe(false);
+        // Browser setup failed before the first fixture body. The retained
+        // receipt still names exactly the selected fixtures as unmeasured.
+        const report = JSON.parse(readFileSync(run.report, 'utf8'));
+        expect(report.fixtures).toMatchObject([
+          {
+            fixtureId: 'local-input-apply',
+            status: 'NOT_VERIFIED',
+            reasonCodes: ['REFERENCE_FIXTURE_NOT_RUN'],
+          },
+          {
+            fixtureId: 'reconnect-10k-operations',
+            status: 'NOT_VERIFIED',
+            reasonCodes: ['REFERENCE_FIXTURE_NOT_RUN'],
+          },
+        ]);
+        expect(report.summary).toMatchObject({
+          PASS: 0,
+          FAIL: 0,
+          NOT_VERIFIED: 2,
+        });
       },
       TEST_TIMEOUT_MS,
     );

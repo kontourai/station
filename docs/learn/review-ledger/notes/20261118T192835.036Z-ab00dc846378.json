@@ -1,0 +1,91 @@
+{
+  "revision": "74e1fd6558c8578a0a7569bfa7f314376949d727",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Traced reset through launcher and home registry observations under the maintenance lease. A generated service protected all selected-home bytes, and an inactive incompatible home archived with byte preservation. Two real CLI races exercised admission before and after the reset's archive rename. Traced import ownership, exact-source progress, per-item publication and the completion ledger. Actual CLI faults at the first progress publish, later integration manifest rename, and final receipt rename produced the documented status and exact retry behavior on generated homes.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/portability.test.ts","packages/cli/src/cli.ts","packages/cli/src/commands/import.ts","packages/cli/src/commands/lifecycle.ts","packages/cli/src/commands/portability-io.ts","packages/cli/src/help.ts","packages/cli/src/commands/import-progress.ts"]},
+
+    {"path":"README.md","note":"The CLI reference now describes both reset liveness sources and the import status and retry path. Existing links to the CLI reference and command groups continue to address their owning sections.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The CLI reference now describes both reset liveness sources and the import status and retry path. Existing links to the CLI reference and command groups continue to address their owning sections.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The CLI reference now describes both reset liveness sources and the import status and retry path. Existing links to the CLI reference and command groups continue to address their owning sections.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The CLI reference now describes both reset liveness sources and the import status and retry path. Existing links to the CLI reference and command groups continue to address their owning sections.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"The CLI reference now describes both reset liveness sources and the import status and retry path. Existing links to the CLI reference and command groups continue to address their owning sections.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"README.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"packages/cli/README.md","note":"The command dispatch adds only the read-only import status invocation beside the existing import action. The legacy file invocation, home selection and the other command paths retain their prior dispatch.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"The import help adds the local status command. Other command families use their existing entries.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"The import help adds the local status command. Other command families use their existing entries.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The import help adds the local status command. Other command families use their existing entries.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"The import help adds the local status command. Other command families use their existing entries.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"README.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/cli-product.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The home mutation check now includes registry liveness for reset. The check refuses uncertainty before renaming while holding the established maintenance lease. The normal backup, restore and clean paths already consulted the registry. The delta does not touch startup, service publication, packaging, remote access, or release behavior.","inputs":["packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

@@ -68,6 +68,7 @@ const expectedDependencies = new Map(
     // sign-in method; the server chose the program and its arguments.
     'src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx':
       'terminal-process',
+    'src-ui/src/components/TerminalCommandAction.tsx': 'terminal-process',
     // Installer setup attaches to a server-created terminal; it cannot open a shell.
     'src-ui/src/components/engine-install/EngineInstallTerminal.tsx':
       'terminal-process',

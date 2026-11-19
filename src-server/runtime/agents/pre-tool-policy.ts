@@ -26,7 +26,11 @@ import type {
   UnattendedGrantResolution,
 } from '../types.js';
 import { isDelegatedToolAllowed } from './delegation.js';
-import { type QuotedDenialText, stationDenial } from './denial-message.js';
+import {
+  approvalGuardianReason,
+  type QuotedDenialText,
+  stationDenial,
+} from './denial-message.js';
 
 type ToolDenialReason =
   | 'stale_generation'
@@ -71,8 +75,8 @@ export type PreToolPolicyDecision =
        */
       toolGrant?: true;
     }
-  | { behavior: 'deny'; denial: ToolCallDenial }
-  | { behavior: 'ask'; required?: true }
+  | { behavior: 'deny'; denial: ToolCallDenial; staleGeneration?: true }
+  | { behavior: 'ask'; required?: true; guardianReason?: string }
   | { behavior: 'defer' };
 
 /**
@@ -361,6 +365,15 @@ function nobodyPresent(
   );
 }
 
+function guardianDeferralDenial(toolName: string, reason: string) {
+  return deny(
+    'guardian_deferred_unattended',
+    toolName,
+    'was not run: the approval guardian did not approve it, and nobody is present to decide.',
+    { source: 'approval guardian', text: reason },
+  );
+}
+
 type GuardianOutcome =
   | { kind: 'decided'; decision: PreToolPolicyDecision }
   | { kind: 'undecided'; enforceDeferral?: string };
@@ -456,9 +469,14 @@ async function reviewWithGuardian(
           reason: review.reason,
         },
       );
+      const guardianReason = approvalGuardianReason(review.reason);
       return {
         kind: 'decided',
-        decision: { behavior: 'ask', required: true },
+        decision: {
+          behavior: 'ask',
+          required: true,
+          ...(guardianReason ? { guardianReason } : {}),
+        },
       };
     }
     deps.logger.warn('Approval guardian denied tool execution', {
@@ -478,6 +496,15 @@ async function reviewWithGuardian(
         'was denied by the approval guardian.',
         { source: 'approval guardian', text: review.reason ?? '' },
       ),
+    };
+  }
+  if (
+    options.interaction === 'external' &&
+    !personCanDecide(invocation, options, conversation.currentTurnInteractive)
+  ) {
+    return {
+      kind: 'decided',
+      decision: guardianDeferralDenial(tool.toolName, review.reason ?? ''),
     };
   }
   return { kind: 'undecided', enforceDeferral: review.reason ?? '' };
@@ -506,11 +533,14 @@ export function createStagedPreToolPolicyEvaluator(
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
       });
-      return deny(
-        'stale_generation',
-        tool.toolName,
-        "was blocked because the agent's runtime configuration changed mid-run. Retry the request.",
-      );
+      return {
+        ...deny(
+          'stale_generation',
+          tool.toolName,
+          "was blocked because the agent's runtime configuration changed mid-run. Start a new chat.",
+        ),
+        staleGeneration: true,
+      };
     }
 
     if (
@@ -587,7 +617,11 @@ export function createStagedPreToolPolicyEvaluator(
     ): Promise<PreToolPolicyDecision> => {
       const review =
         reviewed ?? (await reviewWithGuardian(deps, tool, invocation, options));
-      if (review.kind === 'decided' && review.decision.behavior === 'deny')
+      if (
+        review.kind === 'decided' &&
+        (review.decision.behavior === 'deny' ||
+          review.decision.behavior === 'ask')
+      )
         return review.decision;
       if (invocation.delegation?.denyApprovals)
         return delegatedApprovalDenial(tool.toolName, options.interaction);
@@ -768,12 +802,7 @@ export function createStagedPreToolPolicyEvaluator(
           agentSlug: invocation.agentSlug,
           conversationId: invocation.conversationId,
         });
-        return deny(
-          'guardian_deferred_unattended',
-          tool.toolName,
-          'was not run: the approval guardian did not approve it, and nobody is present to decide.',
-          { source: 'approval guardian', text: guardian.enforceDeferral },
-        );
+        return guardianDeferralDenial(tool.toolName, guardian.enforceDeferral);
       }
       if (deps.isUnattendedGranted?.(tool) === true) {
         deps.logger.info('Unattended auto-approval allowed tool execution', {
@@ -799,9 +828,8 @@ export function createStagedPreToolPolicyEvaluator(
     // `defer` is Station declining to decide — see `PreToolPolicyDecision`: it
     // is never Claude's `permissionDecision: 'defer'`.
     //
-    // KNOWN GAP (#1536 follow-up): this returns before the unattended stages
-    // below, so an external session with nobody to ask waits on an approval
-    // request instead of taking their fail-fast denial.
+    // Enforce-mode guardian deferrals with no person were denied above.
+    // General external unattended grants remain a separate gap (#1536).
     //
     // What blocks a straight reorder is not that the signal is unavailable —
     // it exists and has three writers (`strands-adapter.ts`,

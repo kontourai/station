@@ -52,6 +52,16 @@ asked for:
   General with no error, which is the deliberate cost of letting sections be
   renamed at all.
 
+Four examples from the catalog show how a row can open an editor or an
+informational disclosure:
+
+| Setting | Section id | Highlight id |
+| --- | --- | --- |
+| Accounts and sign-in | `system` | `local-accounts` |
+| What usage sharing includes | `telemetry` | `usage-disclosure` |
+| Skill shortcuts | `keyboard-shortcuts` | `skill-shortcuts` |
+| Model picker preferences | `chat` | `model-picker-preferences` |
+
 ### When a control changes section
 
 A control id never moves, but the section holding it can. If `highlight` names
@@ -114,7 +124,7 @@ one-sentence consequence of setting it.
 
 **Scope**: `orchestration:read`. The response carries no stored configuration
 value — only labels, help sentences, scope names, section ids, and URL paths.
-Read `GET /config/app` for values.
+Read `GET /config/app` for Station configuration values. Account and device preferences use their own stores.
 
 ```json
 {

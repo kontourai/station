@@ -13,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
+import { DIALOG_HISTORY_KEY } from '../src-ui/src/components/dialog-history';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
@@ -68,6 +69,7 @@ import {
   emulateKeyboard,
   installKeyboardEmulation,
 } from './helpers/keyboard-emulation';
+import { memberProjectChannelScreens } from './helpers/member-project-channel-gallery';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
   GALLERY_DESIGN_ROOM_ID,
@@ -1073,9 +1075,15 @@ function seedActiveChatSession(
     title: string;
     projectSlug?: string;
     projectName?: string;
+    urlScoped?: boolean;
   },
 ) {
   return page.addInitScript((entry) => {
+    if (
+      entry.urlScoped &&
+      new URLSearchParams(location.search).get('chat') !== entry.conversationId
+    )
+      return;
     window.sessionStorage.setItem(
       'activeChats',
       JSON.stringify([
@@ -2952,6 +2960,18 @@ function pullRequestWatchScreens(): Screen[] {
                   fixAttempts: 3,
                   maxFixAttempts: 3,
                 },
+                {
+                  identity: identity('63'),
+                  url: 'https://github.com/acme/widgets/pull/63',
+                  watch: {
+                    state: 'review-needed',
+                    headSha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
+                    detail:
+                      'Required findings were dismissed. Choose Review again.',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
               ],
               refusals: [
                 {
@@ -3022,6 +3042,7 @@ function pullRequestWatchScreens(): Screen[] {
           });
           await expect(panel).toBeVisible();
           await expect(panel.getByText('Ready for you')).toBeVisible();
+          await expect(panel.getByText('Review needs you')).toBeVisible();
           await expect(
             panel.getByText('Still failing: ci / unit-tests, ci / lint'),
           ).toBeVisible();
@@ -3056,6 +3077,7 @@ function pullRequestWatchScreens(): Screen[] {
       const projectSlug = `gallery-pr-setting-${theme}-${viewport.width}`;
       let projectFixture: ReturnType<typeof preview> | undefined;
       let projectCreated = false;
+      let previousHeadReview = false;
       const projectScreen: Screen = {
         name: `project-pull-requests-${theme}-${form}`,
         title: `Project pull request setting — ${theme}, ${viewport.width}px`,
@@ -3065,9 +3087,29 @@ function pullRequestWatchScreens(): Screen[] {
         async beforeGoto(page) {
           projectFixture = preview(page);
           await projectFixture.enable();
+          const flags = await projectFixture.request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          previousHeadReview = (await flags.json()).data.find(
+            (entry: { id: string }) => entry.id === 'pull-request-head-review',
+          ).enabled;
+          expect(
+            (
+              await projectFixture.request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                { data: { enabled: true } },
+              )
+            ).ok(),
+          ).toBe(true);
           const project = await projectFixture.request.post(
             `${resolveE2EApiBase()}/api/projects`,
-            { data: { name: projectSlug, slug: projectSlug } },
+            {
+              data: {
+                name: projectSlug,
+                slug: projectSlug,
+                workingDirectory: process.cwd(),
+              },
+            },
           );
           expect(project.ok()).toBe(true);
           projectCreated = true;
@@ -3076,6 +3118,19 @@ function pullRequestWatchScreens(): Screen[] {
             { data: { enabled: true, maxFixAttempts: 3 } },
           );
           expect(set.ok()).toBe(true);
+          const defaults = await projectFixture.request.put(
+            `${resolveE2EApiBase()}/api/pull-request-feedback/projects/${projectSlug}/defaults`,
+            {
+              data: {
+                settings: {
+                  fixFailingChecks: true,
+                  addressReviewComments: true,
+                  reviewEachHead: true,
+                },
+              },
+            },
+          );
+          expect(defaults.ok(), await defaults.text()).toBe(true);
         },
         async afterGoto(page) {
           const toggle = page.getByRole('switch', {
@@ -3087,6 +3142,27 @@ function pullRequestWatchScreens(): Screen[] {
           await expect(
             page.getByRole('combobox', { name: 'Fix attempts' }),
           ).toHaveValue('3');
+          await expect(
+            page.getByRole('heading', { name: 'Other Task pull requests' }),
+          ).toBeVisible();
+          const groupHeading = page.getByRole('heading', {
+            name: 'Other Task pull requests',
+          });
+          const headingBox = await groupHeading.boundingBox();
+          expect(headingBox).not.toBeNull();
+          const rowBottom = await page
+            .getByRole('combobox', { name: 'Fix attempts' })
+            .evaluate(
+              (element) =>
+                element.closest('.page-row')!.getBoundingClientRect().bottom,
+            );
+          expect(headingBox!.y - rowBottom).toBeGreaterThanOrEqual(16);
+          await expect(
+            page.getByRole('switch', { name: 'Review each new head' }),
+          ).toBeChecked();
+          await expect(
+            page.getByRole('link', { name: 'Agent feedback', exact: true }),
+          ).toHaveCount(0);
         },
         async cleanup() {
           try {
@@ -3097,11 +3173,67 @@ function pullRequestWatchScreens(): Screen[] {
               expect(deleted.ok()).toBe(true);
             }
           } finally {
+            expect(
+              (
+                await projectFixture!.request.put(
+                  `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                  { data: { enabled: previousHeadReview } },
+                )
+              ).ok(),
+            ).toBe(true);
             await projectFixture?.restore();
           }
         },
       };
-      return [taskScreen, projectScreen];
+      const noRepositorySlug = `gallery-pr-no-repo-${theme}-${viewport.width}`;
+      let noRepositoryFixture: ReturnType<typeof preview> | undefined;
+      let noRepositoryCreated = false;
+      const noRepositoryScreen: Screen = {
+        name: `project-pull-requests-no-repository-${theme}-${form}`,
+        title: `Project pull requests setup — ${theme}, ${viewport.width}px`,
+        path: `/projects/${noRepositorySlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          noRepositoryFixture = preview(page);
+          await noRepositoryFixture.enable();
+          const created = await noRepositoryFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Design notes', slug: noRepositorySlug } },
+          );
+          expect(created.ok(), await created.text()).toBe(true);
+          noRepositoryCreated = true;
+        },
+        async afterGoto(page) {
+          await expect(
+            page.getByText('Add a repository to use pull requests'),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Open Sources' }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('switch', { name: 'Watch Task pull requests' }),
+          ).toHaveCount(0);
+          await expect(
+            page.getByRole('button', { name: 'Save', exact: true }),
+          ).toHaveCount(0);
+        },
+        async cleanup() {
+          try {
+            if (noRepositoryCreated)
+              expect(
+                (
+                  await noRepositoryFixture!.request.delete(
+                    `${resolveE2EApiBase()}/api/projects/${noRepositorySlug}`,
+                  )
+                ).ok(),
+              ).toBe(true);
+          } finally {
+            await noRepositoryFixture?.restore();
+          }
+        },
+      };
+      return [taskScreen, projectScreen, noRepositoryScreen];
     }),
   );
 }
@@ -4060,7 +4192,7 @@ function projectRepositorySourceScreens(): Screen[] {
               ]) {
                 const summary = section
                   .locator('summary')
-                  .filter({ hasText: new RegExp(`^${label}$`) });
+                  .and(section.getByText(label, { exact: true }));
                 await summary.click();
                 await expect(
                   section
@@ -4068,6 +4200,20 @@ function projectRepositorySourceScreens(): Screen[] {
                     .filter({ hasText: label }),
                 ).toHaveCount(1);
                 await expect(summary).toBeInViewport({ ratio: 1 });
+                if (label === 'Add a repository') {
+                  await expect(
+                    section.getByRole('button', {
+                      name: 'GitHub',
+                      exact: true,
+                    }),
+                  ).toBeVisible();
+                  await expect(
+                    section.getByRole('button', {
+                      name: 'Git URL',
+                      exact: true,
+                    }),
+                  ).toBeVisible();
+                }
                 await summary.click();
               }
               await sources
@@ -4087,7 +4233,7 @@ function projectRepositorySourceScreens(): Screen[] {
             const target = accessDetails
               ? first.locator('.project-repositories__access')
               : sources.getByRole('heading', {
-                  name: 'Repositories and folders',
+                  name: 'Repositories',
                   exact: true,
                 });
             const header = await page.locator('.detail-header').boundingBox();
@@ -4238,6 +4384,7 @@ function roomConversationScreens(): Screen[] {
           | undefined;
         let cleanupTask: (() => Promise<void>) | undefined;
         let restoreHandshake: (() => Promise<void>) | undefined;
+        let closeChannelDialogs: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `room-${room === 'task' ? 'task-' : ''}${scene}-${theme}-${width}`,
           title: `${room === 'task' ? 'Task' : 'Project'} room, ${scene} — ${theme}, ${viewport.width}px`,
@@ -4290,6 +4437,35 @@ function roomConversationScreens(): Screen[] {
             screen.path = `/tasks/${encodeURIComponent(installed.taskId)}?taskView=conversation`;
           },
           async afterGoto(page) {
+            if (scene === 'channels') {
+              await expect(page).toHaveURL(
+                (url) => url.pathname === `/projects/${slug}`,
+              );
+              closeChannelDialogs = async () => {
+                for (const name of [
+                  'Close channels',
+                  'Close channel options',
+                ]) {
+                  const close = page.getByRole('dialog').getByRole('button', {
+                    name,
+                    exact: true,
+                  });
+                  if (await close.isVisible()) {
+                    await close.click({ timeout: 5000 });
+                    await expect(close).toBeHidden();
+                  }
+                }
+                // A drawer can disappear before its cleanup Back commits.
+                await expect
+                  .poll(() =>
+                    page.evaluate(
+                      (key) => window.history.state?.[key] ?? null,
+                      DIALOG_HISTORY_KEY,
+                    ),
+                  )
+                  .toBeNull();
+              };
+            }
             await page.evaluate(
               (selected) =>
                 document.documentElement.setAttribute('data-theme', selected),
@@ -4916,7 +5092,24 @@ function roomConversationScreens(): Screen[] {
             }
             await expectSeparateFaces();
           },
+          async afterAudit() {
+            const close = closeChannelDialogs;
+            closeChannelDialogs = undefined;
+            await close?.();
+          },
           async cleanup() {
+            const close = closeChannelDialogs;
+            closeChannelDialogs = undefined;
+            if (close) {
+              // A failed capture still has its original error. Record a
+              // secondary dialog cleanup failure with the test artifacts.
+              await close().catch((error: unknown) =>
+                test.info().attach('Channel dialog cleanup failure', {
+                  body: String(error),
+                  contentType: 'text/plain',
+                }),
+              );
+            }
             await fixture?.cleanup();
             await restoreHandshake?.();
             await cleanupTask?.();
@@ -4935,58 +5128,199 @@ function roomConversationScreens(): Screen[] {
 }
 
 /**
+ * #5063: `#general` with its coordinator, at 1440 and 390 in both themes: a
+ * routed reply with its suggested-Tasks card (one Task done, two to start,
+ * so Start all shows), a settled Task's result and the coordinator bar. The
+ * `project-room-coordinator` preview is turned on on the e2e Station and the
+ * handshake advertises `projectRoomCoordinator`; the room and its card come
+ * from the room fixture.
+ */
+function roomCoordinatorScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      const slug = `gallery-coordinator-${theme}-${viewport.width}`;
+      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+      let created = false;
+      let previousPreview: boolean | undefined;
+      let fixture:
+        | Awaited<ReturnType<typeof installProjectRoomFixture>>
+        | undefined;
+      let restoreHandshake: (() => Promise<void>) | undefined;
+      return {
+        name: `room-coordinator-${theme}-${width}`,
+        title: `Project room coordinator — ${theme}, ${viewport.width}px`,
+        path: `/projects/${slug}?section=room`,
+        viewport,
+        async beforeGoto(page) {
+          request = createAuthenticatedE2ERequest(page.request);
+          const previews = await request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          expect(previews.ok()).toBe(true);
+          const preview = (await previews.json()).data.find(
+            (item: { id: string }) => item.id === 'project-room-coordinator',
+          );
+          expect(preview).toBeDefined();
+          previousPreview = preview.enabled;
+          const enabled = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+            { data: { enabled: true } },
+          );
+          expect(enabled.ok()).toBe(true);
+          const response = await request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Onboarding revamp', slug } },
+          );
+          expect(response.ok()).toBe(true);
+          created = true;
+          const project = (await response.json()).data;
+          restoreHandshake = await withRoute(
+            page,
+            '**/.well-known/station/v1',
+            (route) =>
+              fulfillGalleryStationHandshake(route, false, {
+                projectRoomMessageActions: true,
+                projectRoomCoordinator: true,
+              }),
+          );
+          fixture = await installProjectRoomFixture(page, {
+            slug,
+            projectId: project.id,
+            scene: 'coordinator',
+          });
+        },
+        async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const roomRegion = page.getByRole('region', {
+            name: 'Project room',
+            exact: true,
+          });
+          await expect(roomRegion).toBeVisible();
+          const card = roomRegion.getByRole('region', {
+            name: 'Suggested Tasks, 3',
+          });
+          await expect(card).toBeVisible();
+          await expect(card.getByText('Done')).toBeVisible();
+          await expect(
+            card.getByRole('button', {
+              name: 'Start Document the redirect flag',
+            }),
+          ).toBeVisible();
+          const startAll = card.getByRole('button', { name: 'Start all 2' });
+          await expect(startAll).toBeVisible();
+          await expect(
+            roomRegion.getByText('0 working · 0 waiting · up to 2 at once'),
+          ).toBeVisible();
+          const sweep = roomRegion.getByRole('button', {
+            name: 'Status sweep',
+          });
+          await expect(sweep).toBeVisible();
+          await expect(
+            roomRegion.getByText('Task finished:', { exact: false }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width) {
+            await expectTouchTarget(startAll, 'Start all');
+            await expectTouchTarget(sweep, 'Status sweep');
+          }
+          // The card's own row sits in view for the shot.
+          await card.scrollIntoViewIfNeeded();
+          await page.mouse.move(0, 0);
+        },
+        async cleanup() {
+          await fixture?.cleanup();
+          await restoreHandshake?.();
+          if (created) {
+            const removed = await request.delete(
+              `${resolveE2EApiBase()}/api/projects/${slug}`,
+            );
+            expect(removed.ok()).toBe(true);
+          }
+          if (previousPreview !== undefined) {
+            const restored = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+              { data: { enabled: previousPreview } },
+            );
+            expect(restored.ok()).toBe(true);
+          }
+        },
+      };
+    }),
+  );
+}
+
+/**
  * Channel navigation (#4794, #4795): the Project's channel list (the phone's
  * Project page; at 1440 the sidebar with one Project expanded and one
  * collapsed), a channel opened by its address, and a thread. Unread state
  * comes from the read-marker fixture.
  *
- * The phone list is shot in a tall phone frame, the whole page at once: the
- * collapsed dock overlays the bottom band of the page's scrollport, and in
- * a 844px frame some control of this page always sits behind it.
+ * The channel list is captured in a frame tall enough to show the Project's
+ * overview and its Room preview above the collapsed dock.
  */
-const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
+const CHANNEL_NAV_SCENES = [
+  'list',
+  'conversation',
+  'thread',
+  'rail',
+  'attention',
+] as const;
 const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
+const DESKTOP_CHANNEL_LIST_PAGE = {
+  width: DESKTOP.width,
+  height: 1500,
+} as const;
 
 function channelNavigationScreens(): Screen[] {
   return CHANNEL_NAV_SCENES.flatMap((scene) =>
     (['dark', 'light'] as const).flatMap((theme) =>
-      [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE].map(
-        (viewport): Screen => {
-          const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
-          const phone = viewport.width === MOBILE.width;
-          const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
-          const other = `${slug}-site`;
-          let request: ReturnType<typeof createAuthenticatedE2ERequest>;
-          const created: string[] = [];
-          const cleanups: (() => Promise<void>)[] = [];
-          const query =
-            scene === 'conversation'
-              ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
-              : scene === 'thread'
-                ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
-                : '';
-          const screen: Screen = {
-            name: `channel-nav-${scene}-${theme}-${width}`,
-            title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
-            path: `/projects/${slug}${query}`,
-            viewport,
-            async beforeGoto(page) {
-              request = createAuthenticatedE2ERequest(page.request);
-              const createProject = async (
-                name: string,
-                projectSlug: string,
-              ) => {
-                const response = await request.post(
-                  `${resolveE2EApiBase()}/api/projects`,
-                  { data: { name, slug: projectSlug } },
-                );
-                expect(response.ok()).toBe(true);
-                created.push(projectSlug);
-                return (await response.json()).data as { id: string };
-              };
-              const project = await createProject('Onboarding revamp', slug);
-              // A second Project stays collapsed in the sidebar.
-              await createProject('Kontour site', other);
+      (scene === 'rail'
+        ? [DESKTOP]
+        : [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE]
+      ).map((viewport): Screen => {
+        const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const phone = viewport.width === MOBILE.width;
+        const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
+        const other = `${slug}-site`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const created: string[] = [];
+        const cleanups: (() => Promise<void>)[] = [];
+        const query =
+          scene === 'conversation'
+            ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
+            : scene === 'thread'
+              ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
+              : '';
+        const screen: Screen = {
+          name: `channel-nav-${scene}-${theme}-${width}`,
+          title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
+          path: scene === 'attention' ? '/' : `/projects/${slug}${query}`,
+          viewport:
+            !phone && (scene === 'list' || scene === 'rail')
+              ? DESKTOP_CHANNEL_LIST_PAGE
+              : viewport,
+          ...(scene === 'rail' || scene === 'attention'
+            ? { captureTheme: theme }
+            : {}),
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const createProject = async (name: string, projectSlug: string) => {
+              const response = await request.post(
+                `${resolveE2EApiBase()}/api/projects`,
+                { data: { name, slug: projectSlug } },
+              );
+              expect(response.ok()).toBe(true);
+              created.push(projectSlug);
+              return (await response.json()).data as { id: string };
+            };
+            const project = await createProject('Onboarding revamp', slug);
+            // A second Project stays collapsed in the sidebar.
+            await createProject('Kontour site', other);
+            if (scene !== 'attention') {
               const room = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -4998,120 +5332,199 @@ function channelNavigationScreens(): Screen[] {
                 { slug, projectId: project.id },
               );
               cleanups.push(conversations.cleanup);
-            },
-            async afterGoto(page) {
-              await page.evaluate(
-                (selected) =>
-                  document.documentElement.setAttribute('data-theme', selected),
-                theme,
-              );
-              const sidebar = page.getByRole('navigation', {
-                name: 'Primary navigation',
-              });
-              // Unread and working come from the read-marker and session
-              // fixtures; the rows below are the server's answer.
-              const expectProjectList = async (list: Locator) => {
-                await expect(
-                  list.getByRole('button', { name: 'general, 3 unread' }),
-                ).toHaveClass(/conversation-list__row--unread/);
-                await expect(
-                  list.getByRole('button', { name: 'design', exact: true }),
-                ).toBeVisible();
-                await expect(
-                  list.getByRole('button', {
-                    name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
-                  }),
-                ).toBeVisible();
-                // A Task whose room never opened is not a Task room.
-                await expect(
-                  list.getByRole('button', { name: /Rename the onboarding/ }),
-                ).toHaveCount(0);
-              };
-              const room = page.getByRole('region', {
-                name: 'Project room',
-                exact: true,
-              });
-              if (scene === 'conversation' || scene === 'thread') {
-                await expect(room).toBeVisible();
-                if (scene === 'conversation') {
-                  await expect(
-                    room.getByText('New checkout screens are up for review.'),
-                  ).toBeVisible();
-                  if (phone) {
-                    await expect(
-                      room.getByRole('heading', { level: 2, name: 'design' }),
-                    ).toBeVisible();
-                    await expectTouchTarget(
-                      room.getByRole('button', {
-                        name: 'Back to Onboarding revamp',
-                      }),
-                      'Back',
-                    );
-                    await expectTouchTarget(
-                      room.getByRole('button', { name: 'Channel options' }),
-                      'Channel options',
-                    );
-                  } else {
-                    // Opening #design marked it read: the sidebar's row is
-                    // current and plain.
-                    const row = sidebar.getByRole('button', {
-                      name: 'design',
-                      exact: true,
+            }
+            if (scene === 'rail' || scene === 'attention') {
+              const pattern = '**/api/attention';
+              const handler = (route: Route) =>
+                route.request().method() !== 'GET'
+                  ? rejectUnexpectedFixtureRequest(route)
+                  : route.fulfill({
+                      json: {
+                        success: true,
+                        data: {
+                          pendingCount: 1,
+                          items: [
+                            {
+                              id: 'approval:gallery-sidebar',
+                              kind: 'approval',
+                              title: 'Approve workspace check',
+                              projectSlug: slug,
+                              createdAt: '2026-10-20T12:00:00Z',
+                              updatedAt: '2026-10-20T12:00:00Z',
+                              source: {
+                                notificationId: 'gallery-sidebar',
+                                notificationSource: 'approval-inbox',
+                              },
+                              actions: [],
+                            },
+                          ],
+                        },
+                      },
                     });
-                    await expect(row).toHaveAttribute('aria-current', 'page');
-                    await expect(row).not.toHaveClass(
-                      /conversation-list__row--unread/,
-                    );
-                  }
-                } else {
-                  await expect(
-                    room.getByText('Both fixes are in the branch now.'),
-                  ).toBeVisible();
-                  await expect(
-                    room.getByRole('heading', { name: 'Thread' }),
-                  ).toBeVisible();
-                  await expect(
-                    room.getByRole('textbox', { name: 'Reply in thread' }),
-                  ).toBeVisible();
-                }
-                await page.mouse.move(0, 0);
-                return;
-              }
-              if (phone) {
-                const list = page.getByRole('main');
-                await expectProjectList(list);
-                await expectTouchTarget(
-                  list.getByRole('button', { name: 'design', exact: true }),
-                  'Channel row',
-                );
-              } else {
-                await expectProjectList(sidebar);
-                // The other Project stays collapsed: no rows of its own.
+              await page.route(pattern, handler);
+              cleanups.push(() => page.unroute(pattern, handler));
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const sidebar = page.getByRole('navigation', {
+              name: phone ? 'Mobile navigation' : 'Primary navigation',
+            });
+            // Unread and working come from the read-marker and session
+            // fixtures; the rows below are the server's answer.
+            const expectProjectList = async (list: Locator) => {
+              await expect(
+                list.getByRole('button', { name: 'general, 3 unread' }),
+              ).toHaveClass(/conversation-list__row--unread/);
+              await expect(
+                list.getByRole('button', { name: 'design', exact: true }),
+              ).toBeVisible();
+              await expect(
+                list.getByRole('button', {
+                  name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
+                }),
+              ).toBeVisible();
+              // A Task whose room never opened is not a Task room.
+              await expect(
+                list.getByRole('button', { name: /Rename the onboarding/ }),
+              ).toHaveCount(0);
+            };
+            const room = page.getByRole('region', {
+              name: 'Project room',
+              exact: true,
+            });
+            if (scene === 'conversation' || scene === 'thread') {
+              await expect(room).toBeVisible();
+              if (scene === 'conversation') {
                 await expect(
-                  sidebar.getByRole('button', {
-                    name: 'Kontour site',
+                  room.getByText('New checkout screens are up for review.'),
+                ).toBeVisible();
+                if (phone) {
+                  await expect(
+                    room.getByRole('heading', { level: 2, name: 'design' }),
+                  ).toBeVisible();
+                  await expectTouchTarget(
+                    room.getByRole('button', {
+                      name: 'Back to Onboarding revamp',
+                    }),
+                    'Back',
+                  );
+                  await expectTouchTarget(
+                    room.getByRole('button', { name: 'Channel options' }),
+                    'Channel options',
+                  );
+                } else {
+                  // Opening #design marked it read: the sidebar's row is
+                  // current and plain.
+                  const row = sidebar.getByRole('button', {
+                    name: 'design',
                     exact: true,
-                  }),
+                  });
+                  await expect(row).toHaveAttribute('aria-current', 'page');
+                  await expect(row).not.toHaveClass(
+                    /conversation-list__row--unread/,
+                  );
+                }
+              } else {
+                await expect(
+                  room.getByText('Both fixes are in the branch now.'),
                 ).toBeVisible();
                 await expect(
-                  sidebar.getByRole('list', { name: 'Channels' }),
-                ).toHaveCount(1);
+                  room.getByRole('heading', { name: 'Thread' }),
+                ).toBeVisible();
+                await expect(
+                  room.getByRole('textbox', { name: 'Reply in thread' }),
+                ).toBeVisible();
               }
               await page.mouse.move(0, 0);
-            },
-            async cleanup() {
-              for (const release of cleanups.splice(0)) await release();
-              for (const projectSlug of created.splice(0)) {
-                const removed = await request.delete(
-                  `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              return;
+            }
+            if (scene === 'rail' || scene === 'attention') {
+              if (scene === 'rail') {
+                const collapse = page.getByRole('button', {
+                  name: 'Collapse workspace map',
+                });
+                const expand = page.getByRole('button', {
+                  name: 'Expand workspace map',
+                });
+                if (await collapse.isVisible()) {
+                  await collapse.click();
+                  cleanups.push(() => expand.click());
+                }
+                await expect(expand).toBeVisible();
+                const project = sidebar.getByRole('button', {
+                  name: /^Onboarding revamp views/,
+                });
+                await expect(project).toHaveAccessibleName(
+                  /Needs attention: 1/,
                 );
-                expect(removed.ok()).toBe(true);
+                await project.click();
+                const views = page.getByRole('dialog', {
+                  name: 'Onboarding revamp views',
+                });
+                await expectProjectList(views);
+                await expect(
+                  views.locator('[data-conversation-row][tabindex="0"]'),
+                ).toHaveCount(1);
+              } else {
+                if (phone)
+                  await page
+                    .getByRole('button', { name: 'Toggle menu' })
+                    .click();
+                const project = sidebar.getByRole('button', {
+                  name: /^Onboarding revamp/,
+                });
+                await expect(project).toHaveAccessibleName(
+                  /Needs attention: 1/,
+                );
+                await expect(
+                  project.locator('[title="Needs attention: 1"]'),
+                ).toBeVisible();
+                await expect(
+                  sidebar.getByRole('button', { name: /^Kontour site/ }),
+                ).not.toHaveAccessibleName(/Needs attention/);
               }
-            },
-          };
-          return screen;
-        },
-      ),
+              await page.mouse.move(0, 0);
+              return;
+            }
+            if (phone) {
+              const list = page.getByRole('main');
+              await expectProjectList(list);
+              await expectTouchTarget(
+                list.getByRole('button', { name: 'design', exact: true }),
+                'Channel row',
+              );
+            } else {
+              await expectProjectList(sidebar);
+              // The other Project stays collapsed: no rows of its own.
+              await expect(
+                sidebar.getByRole('button', {
+                  name: 'Kontour site',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(
+                sidebar.getByRole('list', { name: 'Channels' }),
+              ).toHaveCount(1);
+            }
+            await page.mouse.move(0, 0);
+          },
+          async cleanup() {
+            for (const release of cleanups.splice(0)) await release();
+            for (const projectSlug of created.splice(0)) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+        return screen;
+      }),
     ),
   );
 }
@@ -5128,12 +5541,92 @@ function channelNavigationScreens(): Screen[] {
 const PROJECT_LIBRARY_SCENES = ['library', 'setup'] as const;
 const PROJECT_LIBRARY_DESKTOP_PAGE = {
   width: DESKTOP.width,
-  height: 2500,
+  height: 3000,
 } as const;
 const PROJECT_SETUP_DESKTOP_PAGE = {
   width: DESKTOP.width,
-  height: 1000,
+  height: 1350,
 } as const;
+const PROJECT_SETUP_PHONE_PAGE = { width: MOBILE.width, height: 1520 } as const;
+
+async function createGalleryProjectFromChat(
+  page: Page,
+  conversationId: string,
+  onCreated: (slug: string) => void,
+) {
+  const title = 'Quarterly research plan';
+  const answer = 'Start by reviewing the customer interviews.';
+  const viewport = page.viewportSize();
+  // The Save to Project action is in the desktop dock menu.
+  await page.setViewportSize(DESKTOP);
+  const restoreSession = await withRoute(
+    page,
+    '**/api/orchestration/sessions/read-model',
+    orchestrationSessionFixture({ threadId: conversationId }),
+  );
+  try {
+    await seedActiveChatSession(page, {
+      conversationId,
+      agentSlug: 'demo-agent',
+      title,
+      urlScoped: true,
+    });
+    await mockRuntimeConversation(page, {
+      id: conversationId,
+      agentSlug: 'demo-agent',
+      title,
+      provider: 'claude',
+      model: 'test-model',
+      canContinue: true,
+      turns: () =>
+        buildLongSessionTurns({
+          threadId: conversationId,
+          provider: 'claude',
+          turnCount: 1,
+          replyText: () => answer,
+        }),
+    });
+    await gotoAppShell(page, `/?dock=open&chat=${conversationId}`);
+    const dock = page.locator('#chat-dock');
+    await expect(dock.getByText(answer, { exact: true })).toBeVisible();
+    await dock.getByRole('button', { name: /^More dock actions/ }).click();
+    await page
+      .getByRole('menuitem', { name: 'Save to Project…', exact: true })
+      .click();
+    const save = page.getByRole('dialog', { name: 'Save to Project' });
+    await save.getByLabel('Project', { exact: true }).selectOption({
+      label: 'New Project…',
+    });
+    await save.getByRole('button', { name: 'Review new Project' }).click();
+
+    const form = page.getByRole('dialog', { name: 'New Project' });
+    const name = form.getByRole('textbox', { name: 'Project name' });
+    await expect(name).toHaveValue(title);
+    await name.fill('Quarterly research');
+    await expect(
+      form.getByRole('radio', { name: /^Blank workspace/ }),
+    ).toBeChecked();
+    await form.getByText('More options', { exact: true }).click();
+    await form.getByRole('textbox', { name: /^Description/ }).clear();
+
+    const [created] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === '/api/projects',
+      ),
+      form.getByRole('button', { name: 'Create', exact: true }).click(),
+    ]);
+    expect(created.ok()).toBe(true);
+    const { slug } = (await created.json()).data as { slug: string };
+    onCreated(slug);
+    await expect(page).toHaveURL(/\/projects\/quarterly-research(?:[?#]|$)/);
+    await expect(form).toBeHidden();
+  } finally {
+    await restoreSession();
+    if (viewport) await page.setViewportSize(viewport);
+  }
+}
 
 function projectLibraryScreens(): Screen[] {
   return PROJECT_LIBRARY_SCENES.flatMap((scene) =>
@@ -5152,13 +5645,14 @@ function projectLibraryScreens(): Screen[] {
               : device
             : device === DESKTOP
               ? PROJECT_SETUP_DESKTOP_PAGE
-              : PHONE_PAGE;
-        const slug = `gallery-${scene}-${theme}-${device.width}`;
+              : PROJECT_SETUP_PHONE_PAGE;
+        const fixtureId = `gallery-${scene}-${theme}-${device.width}`;
+        const slug = scene === 'library' ? fixtureId : 'quarterly-research';
         const previewId =
           scene === 'library' ? 'project-library' : 'continue-in-project';
         let request: ReturnType<typeof createAuthenticatedE2ERequest>;
         let previousEnabled: boolean | undefined;
-        let projectCreated = false;
+        let createdProjectSlug: string | undefined;
         let restoreHandshake: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `project-${scene}-${theme}-${width}`,
@@ -5187,14 +5681,14 @@ function projectLibraryScreens(): Screen[] {
               { data: { enabled: true } },
             );
             expect(enabled.ok()).toBe(true);
-            const project = await request.post(
-              `${resolveE2EApiBase()}/api/projects`,
-              { data: { name: 'Quarterly research', slug } },
-            );
-            expect(project.ok()).toBe(true);
-            projectCreated = true;
-            const projectId = (await project.json()).data.id as string;
             if (scene === 'library') {
+              const project = await request.post(
+                `${resolveE2EApiBase()}/api/projects`,
+                { data: { name: 'Quarterly research', slug } },
+              );
+              expect(project.ok()).toBe(true);
+              createdProjectSlug = slug;
+              const projectId = (await project.json()).data.id as string;
               // The Library mounts only when the host advertises it; the
               // gallery's shared handshake advertises nothing by default.
               restoreHandshake = await withRoute(
@@ -5262,21 +5756,9 @@ function projectLibraryScreens(): Screen[] {
                 },
               );
             } else {
-              await page.addInitScript(
-                (savedAt) =>
-                  sessionStorage.setItem(
-                    'station.continue-in-project.pending',
-                    JSON.stringify({
-                      sessionId: 'gallery-session',
-                      turnId: 'gallery-turn',
-                      title: 'Continue: Quarterly research plan',
-                      description:
-                        'Continued from the chat “Quarterly research plan”.',
-                      savedAt,
-                    }),
-                  ),
-                new Date().toISOString(),
-              );
+              await createGalleryProjectFromChat(page, fixtureId, (slug) => {
+                createdProjectSlug = slug;
+              });
             }
           },
           async afterGoto(page) {
@@ -5315,12 +5797,12 @@ function projectLibraryScreens(): Screen[] {
           async cleanup() {
             await restoreHandshake?.();
             restoreHandshake = undefined;
-            if (projectCreated) {
+            if (createdProjectSlug) {
               const removed = await request.delete(
-                `${resolveE2EApiBase()}/api/projects/${slug}`,
+                `${resolveE2EApiBase()}/api/projects/${createdProjectSlug}`,
               );
               expect(removed.ok()).toBe(true);
-              projectCreated = false;
+              createdProjectSlug = undefined;
             }
             if (previousEnabled !== undefined) {
               const restored = await request.put(
@@ -5999,9 +6481,11 @@ function projectCoordinationScreens(): Screen[] {
 const SCREENS: Screen[] = [
   ...projectCoordinationScreens(),
   ...roomConversationScreens(),
+  ...roomCoordinatorScreens(),
   ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...projectLibraryScreens(),
+  ...memberProjectChannelScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
@@ -6959,6 +7443,7 @@ const SCREENS: Screen[] = [
       await assertNoStrayProjectModal(page);
       await page.locator('[data-new-project-trigger]').click();
       await expect(newProjectOverlay(page)).toBeVisible();
+      await page.getByText('More options', { exact: true }).click();
       await page.mouse.move(700, 650);
       await page.mouse.wheel(0, 700);
       const starter = page.getByRole('button', {
@@ -6986,7 +7471,7 @@ const SCREENS: Screen[] = [
             return;
           }
         }
-        throw new Error('New Project layout choices have no scroll container');
+        // On a tall viewport the open form can fit without scrolling.
       });
       await expect
         .poll(
@@ -7330,10 +7815,10 @@ const SCREENS: Screen[] = [
             // audit reads its name, so capture only once the row says so.
             await expect(
               page
-                .locator(
-                  '[data-testid=inbox-row] button.chat-dock-inbox__item' +
-                    '[aria-label^="Toolbar layout,"][aria-label$=", unsent draft"]',
-                )
+                .getByTestId('inbox-row')
+                .getByRole('button', {
+                  name: /^Toolbar layout.*Waiting on you.*No project.*unsent draft$/,
+                })
                 .first(),
             ).toBeAttached();
           },
@@ -7513,7 +7998,10 @@ const SCREENS: Screen[] = [
             ).toHaveCount(1);
             await expect(trigger).toBeInViewport();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup', exact: true }),
+              page.getByRole('dialog', {
+                name: 'Agent & model',
+                exact: true,
+              }),
             ).toBeHidden();
           },
           true,
@@ -7545,7 +8033,7 @@ const SCREENS: Screen[] = [
             expect(bounds!.width).toBeLessThan(viewport.width);
             await trigger.click();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup' }),
+              page.getByRole('dialog', { name: 'Agent & model' }),
             ).toBeVisible();
             await expect(
               page.getByRole('button', { name: /^Agent:/ }),
@@ -7580,7 +8068,7 @@ const SCREENS: Screen[] = [
             expect(bounds!.width).toBeLessThan(viewport.width);
             await trigger.click();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup' }),
+              page.getByRole('dialog', { name: 'Agent & model' }),
             ).toBeVisible();
             await expect(
               page.getByRole('button', { name: /^Agent:/ }),
@@ -7589,7 +8077,10 @@ const SCREENS: Screen[] = [
               page.getByRole('button', { name: /^Model:/ }),
             ).toBeVisible();
             await page
-              .getByRole('dialog', { name: 'Run setup', exact: true })
+              .getByRole('dialog', {
+                name: 'Agent & model',
+                exact: true,
+              })
               .getByRole('button', { name: /^Model:/ })
               .click();
             const picker = page.getByRole('dialog', {

@@ -44,6 +44,7 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isEngineApprovalReviewer,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -63,7 +64,10 @@ import {
 import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
-import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import {
+  type ProviderAdapterShape,
+  SessionStartRefusedError,
+} from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
@@ -84,13 +88,11 @@ import {
   activeTurnIdForEvents,
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
+  projectReadTurnOutcomes,
   projectSessionLifecycle,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
-import {
-  SESSION_START_INDETERMINATE_CODE,
-  SessionStartIndeterminateError,
-} from './session-turn-boundary-binding.js';
+import { SessionStartIndeterminateError } from './session-turn-boundary-binding.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */
@@ -663,6 +665,8 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const appliedApprovalMode = extractAppliedApprovalMode(events);
+  const currentModeId = extractEngineMode(events);
+  const reportedApprovalReviewer = extractApprovalReviewer(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
@@ -760,6 +764,8 @@ export function buildOrchestrationSessionSummary(options: {
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
+    ...(currentModeId ? { currentModeId } : {}),
+    ...(reportedApprovalReviewer ? { reportedApprovalReviewer } : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -1160,12 +1166,51 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * generation and must not be surfaced as if it confirms the current one. Stop
  * there and report absent rather than keep scanning into older history.
  */
+function extractApprovalReviewer(events: readonly CanonicalRuntimeEvent[]) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    if (event.method === 'session.started') {
+      const reviewer = event.metadata?.reportedApprovalReviewer;
+      return event.provider === 'codex' && isEngineApprovalReviewer(reviewer)
+        ? reviewer
+        : undefined;
+    }
+    if (event.provider !== 'codex') continue;
+    if (event.method === 'session.approval-reviewer-observed') {
+      return isEngineApprovalReviewer(event.reviewer)
+        ? event.reviewer
+        : 'unknown';
+    }
+  }
+  return undefined;
+}
+
 /**
  * #4433: the approval mode the engine last reported applying, as the client
  * folds it live (`session.configured` / `turn.started` metadata; an event
  * without a mode changes nothing). Newest first over the projection, which
  * keeps the latest of each.
  */
+function readEngineMode(event: CanonicalRuntimeEvent): string | undefined {
+  const modeId =
+    event.method === 'session.engine-mode-observed'
+      ? event.modeId
+      : event.method === 'session.configured'
+        ? event.metadata?.acpSessionMode
+        : undefined;
+  return typeof modeId === 'string' && modeId.length > 0 ? modeId : undefined;
+}
+
+function extractEngineMode(events: readonly CanonicalRuntimeEvent[]) {
+  for (const event of [...events].reverse()) {
+    if (event.method === 'session.started') return undefined;
+    const modeId = readEngineMode(event);
+    if (modeId) return modeId;
+  }
+  return undefined;
+}
+
 function extractAppliedApprovalMode(
   events: readonly CanonicalRuntimeEvent[],
 ): ApprovalMode | undefined {
@@ -1442,6 +1487,12 @@ export function projectionFactKeysForEvent(
     facts.push({ key: 'effective-model-boundary' });
   }
   if (extractReportedModel([event])) facts.push({ key: 'reported-model' });
+  if (readEngineMode(event)) facts.push({ key: 'engine-mode' });
+  if (
+    event.method === 'session.approval-reviewer-observed' &&
+    event.provider === 'codex'
+  )
+    facts.push({ key: 'approval-reviewer' });
   // A bounded projection retains one latest fact per initiator, not per turn:
   // a session can restart indefinitely, so adding turn identity to the key
   // makes retained state grow forever. The projector still matches event
@@ -1993,6 +2044,17 @@ export async function startRecoveredOrchestrationSession(options: {
     // `closed`, which NULLs `resume_cursor`) so the conversation stays
     // reopenable once the user undoes whatever broke it.
     const failedAt = new Date().toISOString();
+    const failure =
+      error instanceof SessionStartIndeterminateError ||
+      error instanceof SessionStartRefusedError
+        ? {
+            ...providerFailure(error.kind, error.failurePhase),
+            code: error.code,
+          }
+        : {
+            ...providerFailure('unavailable'),
+            code: SESSION_RECOVERY_FAILED_CODE,
+          };
     // archive#1399 fix round 2, B3: this literal always constructs
     // `method: 'runtime.error'`, never `tool.completed` — routed through
     // the safe sanitizer anyway (a true no-op here) so the writer-inventory
@@ -2005,20 +2067,9 @@ export async function startRecoveredOrchestrationSession(options: {
           threadId: session.threadId,
           createdAt: failedAt,
           method: 'runtime.error',
-          ...providerFailure(
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'unavailable',
-            error instanceof SessionStartIndeterminateError
-              ? 'indeterminate'
-              : 'failed',
-          ),
+          ...failure,
           severity: 'error',
-          code:
-            error instanceof SessionStartIndeterminateError
-              ? SESSION_START_INDETERMINATE_CODE
-              : SESSION_RECOVERY_FAILED_CODE,
-          retriable: !(error instanceof SessionStartIndeterminateError),
+          retriable: failure.retryable,
           message: `This conversation could not be reopened: ${message}`,
         } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
@@ -2266,7 +2317,7 @@ function deriveAgentRunStatus(options: {
   // life (MEDIUM 3) — so this variable's name understates it slightly:
   // "the identity anchor", not merely "the preceding turn's id".
   let turnIdentityAnchor: TurnIdentityAnchor | undefined;
-  for (const event of options.events) {
+  for (const event of projectReadTurnOutcomes(options.events)) {
     switch (event.method) {
       case 'session.started':
         // Attach fact, not progress: adapters publish this on every
@@ -2527,8 +2578,15 @@ function findTerminalFailureEvent(
   let lastFailure:
     | Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>
     | undefined;
-  for (const event of events) {
-    if (event.method === 'runtime.error') {
+  for (const event of projectReadTurnOutcomes(events)) {
+    const nextAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
+    if (
+      event.method === 'turn.started' &&
+      lastFailure?.turnId !== undefined &&
+      !acceptsTurnTerminalEvent(lastFailure, nextAnchor)
+    ) {
+      lastFailure = undefined;
+    } else if (event.method === 'runtime.error') {
       if (
         typeof turnIdentityAnchor === 'object' &&
         (event.turnId !== undefined || event.invocationId !== undefined) &&
@@ -2542,7 +2600,7 @@ function findTerminalFailureEvent(
     ) {
       lastFailure = undefined;
     }
-    turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
+    turnIdentityAnchor = nextAnchor;
   }
   return lastFailure;
 }

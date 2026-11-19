@@ -117,6 +117,7 @@ import {
 import {
   assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
+  managedEngineEnvironmentLocked,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
@@ -806,6 +807,7 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  configuredClaudeEndpoint: boolean;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -1023,6 +1025,26 @@ function newSessionTitle(threadId: string): string {
 }
 
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+function hasConfiguredClaudeEndpoint(
+  env: Options['env'],
+  configuredBaseUrl: string | undefined,
+): boolean {
+  if (
+    !configuredBaseUrl ||
+    env?.ANTHROPIC_BASE_URL !== configuredBaseUrl ||
+    managedEngineEnvironmentLocked('claude') ||
+    !/^https?:\/\//i.test(configuredBaseUrl)
+  ) {
+    return false;
+  }
+  try {
+    const { hostname } = new URL(configuredBaseUrl);
+    return hostname.replace(/\.$/, '') !== 'api.anthropic.com';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
@@ -1665,6 +1687,12 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  onGuardianAsk: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+    reason: string,
+  ) => void,
   /** The engine runs at `bypassPermissions` for this call. */
   fullAccess = false,
 ) {
@@ -1701,6 +1729,14 @@ async function evaluateClaudePreToolPolicy(
     ]);
     if (decision.behavior === 'allow' && !decision.toolGrant) {
       onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
+    }
+    if (decision.behavior === 'ask' && decision.guardianReason) {
+      onGuardianAsk(
+        input.tool_use_id,
+        input.tool_name,
+        input.tool_input,
+        decision.guardianReason,
+      );
     }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
@@ -2730,6 +2766,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       input.threadId,
     );
     let sdkQuery: Query;
+    let configuredClaudeEndpoint: boolean;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
@@ -2739,28 +2776,30 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ]);
       // After station-control, so the browser server reuses its credential.
       builtinServers = this.resolveStationBrowser(input);
-      sdkQuery = sdk.query({
-        prompt: promptQueue,
-        options: this.buildOptions(
-          input,
-          engineProcess,
-          persistSession,
-          permissionMode,
-          appHomeEnv,
-          connectionEnv,
-          toolServers.mcpServers,
-          skillsOverlayDir,
-          augmentedEnv,
-          preToolPolicy,
-          claudeExecutable,
-          builtinServers,
-          Boolean(seatbelt) ||
-            hostBypassGrant ||
-            permissionMode === 'bypassPermissions',
-          sessionTmpDir,
-          artifactsEnv,
-        ),
-      });
+      const options = this.buildOptions(
+        input,
+        engineProcess,
+        persistSession,
+        permissionMode,
+        appHomeEnv,
+        connectionEnv,
+        toolServers.mcpServers,
+        skillsOverlayDir,
+        augmentedEnv,
+        preToolPolicy,
+        claudeExecutable,
+        builtinServers,
+        Boolean(seatbelt) ||
+          hostBypassGrant ||
+          permissionMode === 'bypassPermissions',
+        sessionTmpDir,
+        artifactsEnv,
+      );
+      configuredClaudeEndpoint = hasConfiguredClaudeEndpoint(
+        options.env,
+        appHomeEnv?.ANTHROPIC_BASE_URL ?? connectionEnv?.ANTHROPIC_BASE_URL,
+      );
+      sdkQuery = sdk.query({ prompt: promptQueue, options });
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
@@ -2787,6 +2826,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      configuredClaudeEndpoint,
       deliveryProbeServerId:
         probeServer &&
         input.agent?.toolServers?.some((server) => server.id === probeServer)
@@ -4810,6 +4850,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? 'allowed'
         : 'changed';
     };
+    const guardianAsks = new Map<
+      string,
+      { toolName: string; inputDigest?: string; reason: string }
+    >();
+    const rememberGuardianAsk = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+      reason: string,
+    ) => {
+      if (!toolUseId) return;
+      guardianAsks.delete(toolUseId);
+      guardianAsks.set(toolUseId, {
+        toolName,
+        inputDigest: toolInputDigest(toolInput),
+        reason,
+      });
+      if (guardianAsks.size > MAX_PENDING_POLICY_ALLOWS) {
+        const oldest = guardianAsks.keys().next();
+        if (!oldest.done) guardianAsks.delete(oldest.value);
+      }
+    };
     const disallowedTools = [
       ...(input.agent?.toolServers?.some(
         (server) =>
@@ -5043,7 +5105,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           input.agent?.askBeforeUse,
           sourceApproval.key,
         );
+        const guardianAsk = options.toolUseID
+          ? guardianAsks.get(options.toolUseID)
+          : undefined;
+        if (options.toolUseID) guardianAsks.delete(options.toolUseID);
+        const guardianReason =
+          guardianAsk?.toolName === toolName &&
+          guardianAsk.inputDigest !== undefined &&
+          guardianAsk.inputDigest === toolInputDigest(toolInput)
+            ? guardianAsk.reason
+            : undefined;
         const explicitAsk =
+          guardianAsk !== undefined ||
           authoredApproval === 'ask' ||
           (sourceApproval.ambiguous && !!input.agent?.askBeforeUse?.length);
         // Fix (external autoApprove parity): match Station's own
@@ -5189,6 +5262,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               claudeSandboxNetworkTitle(toolName, toolInput) ??
               `Allow ${toolName}`),
           description: claudeRequestDisplayText(options.description),
+          ...(guardianReason ? { guardianReason } : {}),
           payload: {
             ...(inputRequest ? { inputRequest } : {}),
             toolName,
@@ -5408,6 +5482,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        rememberGuardianAsk,
                         // Read per call: a mid-chat switch changes it.
                         this.sessions.get(input.threadId)
                           ?.currentPermissionMode === 'bypassPermissions',

@@ -261,7 +261,9 @@ test('one panel offers independently labelled app and server downloads, and open
   expect(
     within(panel).getByRole('heading', { name: 'Server · Test Station' }),
   ).toBeTruthy();
-  expect(within(panel).queryByLabelText('Automatic download')).toBeNull();
+  expect(
+    within(panel).queryByLabelText('Automatic desktop app download'),
+  ).toBeNull();
   fireEvent.click(
     within(panel).getByRole('button', { name: 'Download server update' }),
   );

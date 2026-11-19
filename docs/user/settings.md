@@ -1,6 +1,6 @@
 # Settings you may not have found
 
-Most Settings rows explain themselves. This page covers five sections that
+Most Settings rows explain themselves. This page covers six sections that
 change what Station offers rather than how it looks. Open **Settings**, pick a
 page in the left rail, or search for a setting by name. You can also find any
 Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-palette)
@@ -9,14 +9,36 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Section | Page | Saved |
 | --- | --- | --- |
 | Feature previews | **Advanced** | On this Station |
+| GitHub automations | **Advanced** | On this Station |
 | Developer tools | **Advanced** | To your account when you are signed in, otherwise on this device |
 | Shared answers | **Privacy & sharing** | On this Station |
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+In **Notifications**, browser Web Push reflects the selected Station’s
+registration. Turning it off removes the local subscription. Station
+reports failed registration cleanup separately.
+[Web Push notifications](https://github.com/kontourai/station/blob/main/docs/guides/web-push-notifications.md)
+
 Use **Keyboard shortcuts** to inspect focus conditions and change bindings
 on this device. On small screens the list is read-only. See the
 [keyboard shortcut guide](../guides/keyboard-shortcuts.md).
+
+Use Settings search or the command palette to jump to **Accounts and sign-in**,
+**What usage sharing includes**, **Skill shortcuts**, or **Model picker preferences**.
+Accounts and sign-in describes any access restriction on the connected Station.
+The usage disclosure lists what the Station reports for each sharing choice.
+
+**Skill shortcuts** shows the saved bindings for command skills. Open a context
+that makes a skill available to edit its binding. Bindings for unavailable
+skills stay saved on this device.
+
+**Model picker preferences** in Chat shows saved favorites, hidden models,
+manual order and recent models. Clear recent models there, or open model
+connections and select a connection to edit favorites, visibility and order.
+Clearing recents keeps the other preferences. Model picker preferences sync
+when account preferences are available. If previous choices are saved on this
+device, review them through **Import previous preferences**.
 
 ## Project settings
 
@@ -85,6 +107,52 @@ copied and keep working as before. Turning the preview off restores the old
 behavior: no brief or memory, and the rules inject only on Station's engine
 when knowledge search is configured.
 
+### Coordinator in #general
+
+With the **Coordinator in #general** preview on (`project-room-coordinator`),
+the Agent you ask in a Project Room's `#general` channel works as the
+Project's coordinator. Send work, updates and questions as they come up. Each
+reply ends with a line saying where your message went:
+
+- **Answered here**: a quick question gets its answer in the channel and
+  starts nothing.
+- **Proposed Tasks**: new work appears on a card under the reply, one row per
+  Task with its title, Agent, and whether it runs in the Project folder or its
+  own worktree. Press **Start** on a row or **Start all**. Three separate
+  requests in one message become three rows.
+- **Sent to Task**: a follow-up about work a coordinator Task is already
+  doing goes to that Task's chat, and the reply links the Task.
+
+When a Task is marked Done, the coordinator posts one linked status message
+in `#general`, including after a Station restart. An initial turn that succeeds
+leaves the Task open until it is marked Done. A cancellation or first-turn
+failure posts a stopped status with its Task link. **Status sweep**, at the
+top of `#general`, posts one line per open Task with its link, whether a
+written answer exists, and what it is waiting on. Open the Task to read its
+work under your own access. Cards show a short reason when a Task cannot
+start. Private Task output and diagnostic details stay out of the channel.
+Each request starts a fresh coordinator Session that reads the Project brief
+and memory, the channel's recent messages and a short report per Task. The
+conversation never needs compacting.
+
+Project settings → **Coordinator** sets the limits. Station enforces them;
+they are not instructions to the model:
+
+- **Start without asking**: start proposed Tasks at once instead of showing
+  the card first. Off by default.
+- **Tasks at once**: how many coordinator Tasks work at the same time, 1–10
+  (default 2). The rest show **Waiting for a slot** and start as one finishes.
+- **Pull requests**: **Only when you ask** (default) lets a Task use Station-guarded
+  pull-request tools when your message asked for a pull request. The card counts
+  tool refusals. External credentials and tools follow their own policies. **Whenever the Task needs one** allows them.
+
+The coordinator works where the Project Room runs, including from a paired
+phone. A coordinator Task's result is posted only while the person who started
+it may still start work in the Project; otherwise the Task finishes without a
+message in the channel. The limits count Tasks started from `#general`, not
+other Tasks in the Project. The preview is available on personal Stations
+with Project sharing and separate deployment sign-in disabled.
+
 ### Pause, archive, delete
 
 The last section of Project settings stops or removes a Project's work.
@@ -108,6 +176,18 @@ always offered:
 **Schedules** (the `project-schedules` Feature Preview) lists the Project's
 own automations. See
 [Project schedules](automations.md#project-schedules).
+
+## Project pull requests
+
+Project settings → **Pull requests** uses the Project's repository and the
+connected Station's provider capabilities. A missing repository offers
+**Open Sources**; a valid remote without automatic feedback shows that limit
+without asking you to replace the repository. Stored choices are preserved.
+Today GitHub supports automatic feedback and Task-branch discovery. GitLab.com
+has native merge-request views but no automatic feedback adapter yet. Bitbucket
+and Azure DevOps remain usable as Git repositories; native pull-request
+integration is not implemented. For self-managed GitLab, set the comma-separated hostname list `STATION_GITLAB_HOSTS` on the Station host and sign in with `glab` for each instance.
+A readable checkout is also needed for Station's review of each new head.
 
 ## Feature previews
 
@@ -159,7 +239,7 @@ only when this Station's build can run it; if none is, the section says
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
-| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in its settings' Agent feedback. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
+| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in **Pull requests**. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
 | `pull-request-head-review` | Pull request head review | Runs Station's independent review once on each new head of a pull request a chat owns, and sends its required findings to the agent. Turn it on per pull request with "Review each new head". | Needs Pull request agent feedback. Uses reviewer agents (provider charges may apply); at most one review per Project at a time and 10 per day. Reviews the Project's checkout and never fetches. Pull requests already set to review resume when you turn this on. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
@@ -173,13 +253,14 @@ only when this Station's build can run it; if none is, the section says
 | `staged-agent-changes` | Stage chat Agent changes | Lets a supported composer stage the Agent and model for its next message after reviewing what context carries over. | Sending starts a fresh Session on the selected engine and may use provider credits. Already accepted turns continue if the preview is turned off. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
 | `project-library` | Project Library | Adds a **Library** to a Project's **Files & connections** tab: files people add and files its Tasks keep, readable by every chat in the Project through `list_project_library` and `read_project_library_file`. | Uploads are stored on this Station, up to 25 MB each; hidden files and installed-package folders are skipped. Personal Stations only. Turning it off hides the Library and refuses its routes and tools; uploaded files are kept. |
-| `continue-in-project` | Continue in Project | Adds **Continue in Project…** to a chat's More menu and **Setup recommendations** to a new Project. | Drafts only: nothing is created until you choose Create, Create Task or Apply, and the chat is never changed. |
+| `continue-in-project` | Save to Project | Adds **Save to Project…** to a chat’s More menu and **Setup recommendations** to a new Project. | Review the drafted Task or Project before creating it. Saving leaves the original chat available. |
 | `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `project-sharing-setting` | Project sharing setting | Shows **Project sharing with local accounts** under **Settings → System**, where the Station operator turns on invitations with username and password accounts and picks the sign-in address. | Only the control is the preview. Applying restarts Station through its process supervisor. Turning the preview off keeps the saved choice in force; environment variables set by the deployment always win. See [deployment authentication](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#turn-it-on-from-settings). |
 | `project-coordination` | Project brief, memory and models | Starts every new Session in a Project with its goal, instructions and memory notes on every engine, and adds Brief, Memory, Models and effort, and Usage to Project settings ([details](#project-brief-memory-and-models)). | Adds the brief and memory index to each new Session's first turn, which costs tokens. Copies a Project's rules into its brief once. Turning it off stops adding them; saved briefs and notes remain. |
+| `project-room-coordinator` | Coordinator in #general | Makes the Agent you ask in a Project's `#general` its coordinator: it answers, proposes Tasks on a card with **Start** and **Start all**, or sends your message to a running Task, and posts a link when each Task settles ([details](#coordinator-in-general)). Adds Project settings → **Coordinator**. | Each Task runs an agent and can spend model credits. Station enforces how many coordinator Tasks run at once, when they can start, and when guarded tools can open pull requests. Turning it off stops routing, starts and these refusals. Requires a personal Station with Project sharing and separate deployment sign-in disabled. |
 | `session-cli-reads` | Session reads from the station CLI | Lets a person wait on, digest and list their own Sessions from the CLI: `station sessions wait`, `station sessions digest` and `station activity`. | Read-only. A wait holds one connection for up to 50 seconds at a time, from a bounded per-person pool. |
 
 For **Crash-durable Station Agent**, an output-limit message means you should start a new turn to continue. Recovery replay for finished turns (completed, failed or cancelled) expires after seven days; this cleanup does not delete conversation history.
@@ -295,6 +376,10 @@ and cleanup remain available. See [setup and recovery](https://github.com/kontou
 
 Turning a preview on affects everyone who uses this Station.
 
+**Settings → Voice** shows the providers available for this Station and this
+device. If a saved choice disappears after a Station switch or a failed
+capability check, the control shows an available provider or an empty list.
+
 For **Local speech**, choose **Station (local)** in **Settings → Voice →
 Speech-to-text** after enabling the preview. Click the composer microphone to
 record and click again to stop; final text appears after transcription. Missing
@@ -337,6 +422,15 @@ added. While connected, the app also learns the LAN, Tailscale and Tailscale
 HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
 lists those addresses but still connects only through its saved one; see
 [Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
+
+## GitHub automations
+
+With **GitHub automation observations** on, this section lists the Automation
+sources, rules, open episodes and recent deliveries. Each count is the number
+of rows listed under it. A delivery held by a limit shows `suppressed` with the
+reason. An exhausted episode offers **Retry episode**, which allows exactly one
+more attempt under the rule as it is now. Creating and editing rules uses
+`station automation`; see the [CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#automation).
 
 ## Shared answers
 
@@ -398,6 +492,9 @@ Open **Updates** in the sidebar to review an app or server update. **What’s
 new** shows release notes for the installed server and any offered update. **Previous versions and
 changelogs** lets you browse published releases without starting an update.
 The circle around the sidebar update icon fills as a download progresses.
+The source update check belongs to the selected Station. When you switch
+Stations or reconnect with different credentials, the earlier check cannot
+supply the new connection's result.
 
 After an app or connected-server upgrade, its changelog opens once on this device.
 A browser served by the updated server shows one popup for that upgrade.
@@ -414,6 +511,13 @@ new device establishes the starting version without showing an upgrade dialog.
 **Diagnostics**, the open source packages bundled into the app with their
 licenses, and links to the privacy policy, license and support. Development
 servers have no license list.
+
+## People and setup access
+
+Open **Settings → People** to see who can connect. If your Device has limited
+access, the section directs you to the Station operator. Under **Settings →
+System**, checking for existing setup also requires permission. Ask the
+Station operator for setup import access.
 
 ## Settings your organization manages
 

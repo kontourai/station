@@ -390,6 +390,7 @@ export class ConversationLineage {
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ): Promise<{
     sessionId: string;
@@ -405,14 +406,14 @@ export class ConversationLineage {
     coordinatorToolsRestart?: boolean;
   }> {
     const store = this.deps.eventStore;
-    if (!store) {
+    const current = store?.conversationSessions(conversationId).at(-1);
+    const expected = requested.expectedInboxSessionId;
+    if (expected !== undefined && current?.sessionId !== expected)
+      throw new Error(
+        'The conversation changed while this message was waiting.',
+      );
+    if (!store || !current)
       return { sessionId: conversationId, startRequired: false };
-    }
-    const lineage = store.conversationSessions(conversationId);
-    if (lineage.length === 0) {
-      return { sessionId: conversationId, startRequired: false };
-    }
-    const current = lineage[lineage.length - 1]!;
     // #764: decide cursor-vs-seed BEFORE a child start. An observed ACP
     // capability absence (no loadSession) must take the transcriptSeed
     // fresh-child path here; the adapter's fail-closed start refusal stays
@@ -495,6 +496,13 @@ export class ConversationLineage {
       authority,
     );
     if (delivery instanceof Error) throw delivery;
+    if (
+      expected !== undefined &&
+      store.conversationSessions(conversationId).at(-1)?.sessionId !== expected
+    )
+      throw new Error(
+        'The conversation changed while this message was waiting.',
+      );
     // A successor is reserved only when the current Session cannot take the
     // turn (`sessionTakesNextTurn`, which the conversation-open read also
     // reports as `nextTurnStartsSession`), or for a model switch the live
@@ -1471,7 +1479,7 @@ export class ConversationLineage {
       detail,
       requested,
       messages,
-      resumeSupported,
+      boundary?.policy === 'continue-from-history' ? false : resumeSupported,
     );
     if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
       return launch;
@@ -2136,10 +2144,11 @@ export class ConversationLineage {
       this.deps.conversationHistoryReader &&
       isSessionReadAuthority(authority)
     ) {
-      return this.deps.conversationHistoryReader.list({
+      const page = await this.deps.conversationHistoryReader.list({
         authority,
         limit: CONVERSATION_HISTORY_MAX_ENTRIES,
-      }).items;
+      });
+      return page.items;
     }
     const sessions = await this.deps.listSessionReadModel(authority, {
       purpose: 'conversation-inventory',

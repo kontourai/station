@@ -1,59 +1,20 @@
-.continue-in-project {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.continue-in-project__legend {
-  margin-bottom: var(--k-space-2);
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-}
-
-.continue-in-project__choice {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--k-space-3);
-  min-height: 44px;
-  padding: var(--k-space-2) var(--k-space-3);
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-sm);
-  cursor: pointer;
-}
-
-.continue-in-project__choice:has(input:checked) {
-  border-color: var(--k-action);
-}
-
-.continue-in-project__choice input {
-  margin-top: var(--k-space-1);
-  accent-color: var(--k-action);
-}
-
-.continue-in-project__choice input:focus-visible,
-.continue-in-project__input:focus-visible {
-  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
-  outline-offset: 2px;
-}
-
-.continue-in-project__choice span {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-1);
-}
-
-.continue-in-project__choice small {
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-}
-
 .continue-in-project__fields {
   display: grid;
   gap: var(--k-space-2);
-  margin-top: var(--k-space-3);
+}
+
+.continue-in-project__description {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.continue-in-project__result {
+  overflow-wrap: anywhere;
+}
+
+.continue-in-project__input:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: 2px;
 }
 
 .continue-in-project__input {

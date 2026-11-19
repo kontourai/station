@@ -520,6 +520,8 @@ export class TerminalSessions<Principal> {
         };
       }
       const profile = input.launch;
+      const maxRuntimeMs =
+        profile?.kind === 'repository-sign-in' ? 10 * 60 * 1000 : undefined;
       let launch: ShellLaunch | undefined;
       if (profile && profile.kind !== 'shell') {
         if (!this.authority.resolveLaunch)
@@ -575,7 +577,13 @@ export class TerminalSessions<Principal> {
         rows: input.rows,
         status: 'starting',
         createdAt: Date.now(),
-        ...(profile && { launch: profile }),
+        ...(maxRuntimeMs !== undefined && { maxRuntimeMs }),
+        ...(profile && {
+          launch:
+            profile.kind === 'repository-sign-in'
+              ? { kind: 'server' }
+              : profile,
+        }),
         ...(input.legacy && { legacy: { ...input.legacy, imported: false } }),
         ...(shellRequested && { ordinal: this.nextOrdinal(scope) }),
         ...this.storage(),
@@ -602,6 +610,7 @@ export class TerminalSessions<Principal> {
           rows: record.rows,
           journal: this.journalSpec(record),
           ...(launch && { launch }),
+          ...(maxRuntimeMs !== undefined && { maxRuntimeMs }),
         });
         this.track(record, proc, journal);
         record.status = 'running';

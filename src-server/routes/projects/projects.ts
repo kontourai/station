@@ -53,6 +53,11 @@ import {
   validateProjectAgentScope,
 } from '@kontourai/station-contracts/project-reference-integrity';
 import {
+  MAX_COORDINATOR_CONCURRENT_TASKS,
+  PROJECT_ROOM_COORDINATOR_PREVIEW_ID,
+  parseProjectRoomCoordinatorSettings,
+} from '@kontourai/station-contracts/project-room-coordinator';
+import {
   MAX_PULL_REQUEST_FIX_ATTEMPTS,
   parseProjectPullRequestWatchSettings,
 } from '@kontourai/station-contracts/pull-request-watch';
@@ -353,6 +358,11 @@ interface ProjectRouteDeps {
    * was on can always be lifted.
    */
   projectLifecyclePreview?: FeaturePreviewSelector;
+  /**
+   * #5063: the `project-room-coordinator` preview. Absent or off, the
+   * coordinator settings write is refused.
+   */
+  roomCoordinatorPreview?: FeaturePreviewSelector;
   /** #5070: the scheduled jobs that belong to a Project. */
   projectSchedules?: {
     count(projectId: string): Promise<number>;
@@ -2095,6 +2105,69 @@ export function createProjectRoutes(
         const updated = {
           ...revision.value,
           ...getBody(c),
+          updatedAt: new Date().toISOString(),
+        };
+        await revision.replace(updated);
+        return c.json({ success: true, data: updated });
+      } catch (error) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
+
+  // #5063: the `#general` coordinator's limits, which Station enforces. Like
+  // the pull request watch below, only the Project's owner reaches a write
+  // (the runtime Project guard refuses a member's), and no station-control
+  // tool names it, so an agent cannot loosen its own limits.
+  app.put(
+    '/:slug/room-coordinator',
+    validate(
+      z
+        .object({
+          startWithoutAsking: z.boolean(),
+          maxConcurrentTasks: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_COORDINATOR_CONCURRENT_TASKS),
+          pullRequests: z.enum(['when-asked', 'allowed']),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      const enabled =
+        deps.roomCoordinatorPreview?.select({
+          enabled: () => true,
+          disabled: () => false,
+        }) === true;
+      if (!enabled)
+        return c.json(
+          {
+            success: false,
+            error:
+              'Enable Coordinator in #general in Settings → Advanced → Feature previews.',
+            code: 'feature_preview_disabled',
+            previewId: PROJECT_ROOM_COORDINATOR_PREVIEW_ID,
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          404,
+        );
+      try {
+        const slug = param(c, 'slug');
+        const settings = parseProjectRoomCoordinatorSettings(getBody(c));
+        if (!settings)
+          return c.json(
+            { success: false, error: 'Invalid coordinator settings' },
+            400,
+          );
+        const revision = storageAdapter.projectRevision(slug);
+        const updated = {
+          ...revision.value,
+          roomCoordinator: settings,
           updatedAt: new Date().toISOString(),
         };
         await revision.replace(updated);

@@ -167,8 +167,10 @@ export function offlineShell(options: OfflineShellOptions = {}): Plugin {
         const warm = [...warmFiles].filter((file) => !files.has(file)).sort();
         const immutable = UI_IMMUTABLE_ASSET_PATTERN.source;
         const csp = uiDocumentContentSecurityPolicy();
+        const startupTheme = bundle['startup-theme.js'];
         const version = createHash('sha256')
           .update(html)
+          .update(startupTheme?.type === 'asset' ? startupTheme.source : '')
           .update(
             JSON.stringify({
               precache,

@@ -1,9 +1,14 @@
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
-import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
+import {
+  type FetchSseConnection,
+  fetchSSE,
+  orchestrationQueries,
+} from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
 import type { StationConnection } from '../../connections/station-connection';
 import { onStationConnectionRetired } from '../../connections/station-connection-registry';
@@ -1048,6 +1053,34 @@ function connectOrchestrationEventStream(
           // `lastEventAt` into a second silence detector; the watchdog's
           // narrower progress derivation is serialized on that projection.
           requestSessionReadModelRefresh(apiBase);
+          if (
+            raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
+          ) {
+            const projection = JSON.parse(raw.data) as {
+              threadId?: unknown;
+              reason?: unknown;
+            } | null;
+            if (
+              projection?.reason === ATTACHED_SESSION_CONTINUATION_REFRESH &&
+              typeof projection.threadId === 'string'
+            ) {
+              const authority = station?.requestScope.authorityKey;
+              const client = currentStreamQueryClient(apiBase, authority);
+              if (client) {
+                const exact = {
+                  queryKey: orchestrationQueries.session(projection.threadId)
+                    .queryKey,
+                  exact: true,
+                };
+                // A read already in flight may have started before commit.
+                // Only a new read can observe the published boundary.
+                void client.cancelQueries(exact).then(() => {
+                  if (currentStreamQueryClient(apiBase, authority) === client)
+                    void client.invalidateQueries(exact);
+                });
+              }
+            }
+          }
         } else if (raw.event === SERVER_EVENTS.READ_MARKERS_CHANGED) {
           // #3075: this person read something on another client. Re-read the
           // server's answer; the frame itself says nothing more.

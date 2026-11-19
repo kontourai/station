@@ -863,6 +863,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
 > = {
   station: {
     engineId: toEngineId('station'),
+    // Of Station's two frameworks, VoltAgent applies an authored Agent's
+    // maxSteps. Strands and the external engine rows use their own limits.
     durability: STATION_ENGINE_DURABILITY,
     systemPrompt: { state: 'native' },
     // Native systemPrompt already delivers the authored prompt; the

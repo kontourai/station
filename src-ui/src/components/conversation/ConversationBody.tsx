@@ -23,8 +23,10 @@ import {
   turnInterruptedContinueClientTurnId,
 } from '@kontourai/station-shared/runtime-event-projection';
 import React, {
+  type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -304,7 +306,17 @@ const CALLER_CANNOT_SEND_REASON =
 const WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON =
   "This chat can only continue in its original workspace, and you can't start a new chat here.";
 
+export interface ConversationTranscriptSnapshot {
+  chatId: string;
+  conversationId?: string;
+  messages: readonly ChatMessage[];
+  requestScope: NonNullable<
+    ReturnType<typeof useConversationConnection>['requestScope']
+  >;
+}
+
 export interface ConversationBodyProps {
+  transcriptSnapshotRef?: RefObject<ConversationTranscriptSnapshot | null>;
   owner?: OwnerAttribution | null;
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -564,6 +576,7 @@ export function ConversationBody(
 
 function LiveConversationBody({
   activeSession,
+  transcriptSnapshotRef,
   workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead = 'present',
@@ -613,6 +626,42 @@ function LiveConversationBody({
   const visibilityFlags = useSurfaceVisibilityFlags();
   const { transport, transcript, streamStatus, turnInFlight } =
     useConversationController(activeSession);
+  const currentTranscriptMessages = transcript.enabled
+    ? transcript.settled &&
+      !transcript.revalidating &&
+      !transcript.catchingUp &&
+      !transcript.error &&
+      !transcript.upgradeRequired
+      ? transcript.messages
+      : undefined
+    : activeSession.orchestrationSessionStarted
+      ? undefined
+      : activeSession.messages;
+  useLayoutEffect(() => {
+    if (
+      !transcriptSnapshotRef ||
+      !mentionRequestScope ||
+      !currentTranscriptMessages
+    )
+      return;
+    const snapshot = {
+      chatId: activeSession.id,
+      conversationId: activeSession.conversationId,
+      messages: currentTranscriptMessages,
+      requestScope: mentionRequestScope,
+    };
+    transcriptSnapshotRef.current = snapshot;
+    return () => {
+      if (transcriptSnapshotRef.current === snapshot)
+        transcriptSnapshotRef.current = null;
+    };
+  }, [
+    activeSession.id,
+    activeSession.conversationId,
+    currentTranscriptMessages,
+    mentionRequestScope,
+    transcriptSnapshotRef,
+  ]);
   // Open and Settled inbox: this host's own record for this person. A replay
   // or another Station's conversation has none here.
   const settledConversationId =
@@ -1168,29 +1217,26 @@ function LiveConversationBody({
     ),
   });
 
-  const handleSendWithContext = useCallback((): Promise<void> => {
-    // Ambient context travels OUT-OF-BAND (#685): the server composes it into
-    // the model-facing input only, so the transcript keeps the typed text.
-    // `ambientContextForSend` keeps the `[`-prefix and slash-command
-    // short-circuits (slash commands must reach `useSendMessage` unmodified
-    // so `content.startsWith('/')` still routes them to the slash handler).
-    const ambientContext = ambientContextForSend(
-      getComposedContext(),
-      chatInput.input,
-    );
-    return chatInput.handleSend(undefined, undefined, { ambientContext });
-  }, [getComposedContext, chatInput]);
-  const handleQueueFollowUp = useCallback((): Promise<void> => {
-    const ambientContext = ambientContextForSend(
-      getComposedContext(),
-      chatInput.input,
-    );
-    return chatInput.handleSend(undefined, undefined, {
-      ambientContext,
-      queueOnBusy: true,
-      ...(queueTakesFiles ? { queueFilesOnBusy: true } : {}),
-    });
-  }, [getComposedContext, chatInput, queueTakesFiles]);
+  const handleSendWithContext = useCallback(
+    (intent?: 'steer'): Promise<void> => {
+      // Ambient context travels OUT-OF-BAND (#685): the server composes it into
+      // the model-facing input only, so the transcript keeps the typed text.
+      // `ambientContextForSend` keeps the `[`-prefix and slash-command
+      // short-circuits (slash commands must reach `useSendMessage` unmodified
+      // so `content.startsWith('/')` still routes them to the slash handler).
+      const ambientContext = ambientContextForSend(
+        getComposedContext(),
+        chatInput.input,
+      );
+      return chatInput.handleSend(undefined, undefined, {
+        ambientContext,
+        ...(intent === 'steer'
+          ? {}
+          : { queueOnBusy: true, queueFilesOnBusy: queueTakesFiles }),
+      });
+    },
+    [getComposedContext, chatInput, queueTakesFiles],
+  );
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
@@ -2978,7 +3024,7 @@ function LiveConversationBody({
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
-            onQueueFollowUp={handleQueueFollowUp}
+            onQueueFollowUp={handleSendWithContext}
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}
             fileAttachmentsSupported={fileAttachmentsSupported}
@@ -3031,7 +3077,7 @@ function LiveConversationBody({
             }
             agentRoute={
               activeOrchestrationSession?.modelRoute
-                ? `via ${activeOrchestrationSession.modelRoute.label}`
+                ? activeOrchestrationSession.modelRoute.label
                 : undefined
             }
             onOpenAgentHandoff={
@@ -3056,11 +3102,15 @@ function LiveConversationBody({
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            reportedApprovalReviewer={activeSession.reportedApprovalReviewer}
             approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpApproval={acpApproval}
-            acpCurrentModeId={
-              activeSession.currentModeId ?? advertisedAcpSession.currentModeId
+            acpCurrentModeId={activeSession.currentModeId ?? undefined}
+            acpRequestedModeId={
+              typeof activeSession.requestedProviderOptions?.mode === 'string'
+                ? activeSession.requestedProviderOptions.mode
+                : undefined
             }
             commandQuery={chatInput.commandQuery}
             slashCommands={chatInput.slashCommands}

@@ -278,7 +278,11 @@ meaning is "a human must decide": tool approvals and pairing (already there),
 plus proposed-change decisions and paused gate reviews (from Review). The
 current workspace-map refinement in D3 keeps the bell and its single projected
 count in the header; the original footer placement below remains design history.
-Project-scoped attention still requires its own backing projection.
+The Project row counts pending items that the same server projection
+assigns to that Project. A live orchestration approval takes its Project
+from its authorized Session. The collapsed map opens the same channel and
+Task room list as an expanded Project and keeps one tab stop across its
+conversation rows.
 
 Local connection and recovery facts are owned by the Station control and remain
 readable offline. Short client outcomes use toasts and local recent-message recall;

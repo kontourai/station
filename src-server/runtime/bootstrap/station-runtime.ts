@@ -878,6 +878,12 @@ export class StationRuntime {
    */
   private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
+  private stopConversationTitleGeneration?: () => void;
+  private stopTaskLifecycleEvents?: () => void;
+  private taskWorktreeRetryAdmissionClosed = false;
+  private readonly taskWorktreeRetries = new Set<Promise<void>>();
+  private readonly sessionExitFinalizations = new Set<Promise<void>>();
+  private readonly assignmentClaimUpdates = new Set<Promise<void>>();
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
   private notificationService?: NotificationService;
@@ -2064,7 +2070,14 @@ export class StationRuntime {
           }),
         logger: this.logger,
       });
-      subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
+      const unsubscribeTitles = subscribeConversationTitleGeneration(
+        this.eventBus,
+        conversationTitles,
+      );
+      this.stopConversationTitleGeneration = () => {
+        conversationTitles.stop();
+        unsubscribeTitles();
+      };
       const worktreeProvisioningService = new WorktreeProvisioningService();
       const settlementStore =
         this.orchestrationEventStore?.worktreeOutputSettlementStore();
@@ -2079,7 +2092,14 @@ export class StationRuntime {
             isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
           })
         : undefined;
-      this.eventBus.subscribe((serverEvent) => {
+      // Emit diagnostics before scheduling boot writers. If construction
+      // throws, its synchronous cleanup can still close the store and lease.
+      this.logger.info('Station Runtime initializing', {
+        voltagentCore: '1.1.37',
+        aiSdkBedrock: '3.0.56',
+        nodeVersion: process.version,
+      });
+      this.stopTaskLifecycleEvents = this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
         const event = serverEvent.data?.event as
           | {
@@ -2098,37 +2118,28 @@ export class StationRuntime {
           event?.method === 'turn.aborted' ||
           event?.method === 'session.exited'
         )
-          setImmediate(() => {
-            void this.taskGraphService
-              .retryDeferredTaskWorktreeFinalizations()
-              .catch((error) => {
-                this.logger.warn('Deferred Task worktree finalization failed', {
-                  error: errorMessage(error),
-                });
-              });
-          });
+          setImmediate(() => this.retryDeferredTaskWorktreeFinalizations());
         if (event?.method !== 'session.exited' || !event.sessionId) return;
         const sessionId = event.sessionId;
-        void this.taskGraphService
-          .releaseClaimForSession(sessionId, event.reason ?? 'session.exited')
-          .catch((error) => {
-            this.logger.warn(
-              'Failed to release assignment claim on session exit',
-              {
-                sessionId: event.sessionId,
-                error: errorMessage(error),
-              },
-            );
-          });
-        void finalizeSessionExit(
-          { ...event, sessionId },
-          {
-            readExitDetail: (id) =>
-              this.orchestrationService.readSession(
-                id,
-                INTERNAL_SESSION_READ_SCOPE,
-                {
-                  eventMethods: [
+        this.trackTaskLifecycleWrite(this.assignmentClaimUpdates, () =>
+          this.taskGraphService.releaseClaimForSession(
+            sessionId,
+            event.reason ?? 'session.exited',
+          ),
+        );
+        this.trackTaskLifecycleWrite(this.sessionExitFinalizations, () =>
+          finalizeSessionExit(
+            { ...event, sessionId },
+            {
+              // The event bus receives committed exits, including ones
+              // published by orchestration after its public reads stop.
+              readExitDetail: async (id) => {
+                const store = this.orchestrationEventStore;
+                const session = store.readSessionByThread(id);
+                if (!session) return null;
+                const events = store.listEventPayloads(
+                  id,
+                  [
                     'session.started',
                     'session.configured',
                     'session.exited',
@@ -2141,102 +2152,76 @@ export class StationRuntime {
                     'request.resolved',
                     'session.stop-settled',
                   ],
-                },
-              ),
-            publishAgentFinished: async ({
-              sessionId: id,
-              provider,
-              detail,
-            }) => {
-              const binding =
-                this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
-                  id,
+                  false,
+                  true,
                 );
-              const task = binding
-                ? this.taskGraphService.readTaskView(binding.taskId)
-                : this.taskGraphService
-                    .listTasks()
-                    .find((candidate) => candidate.sessionId === id);
-              if (!task) return;
-              // Fold the persisted canonical stream through the one lifecycle
-              // classifier used by every other Station projection. Exit
-              // `reason` is adapter text, not a room-outcome authority.
-              const lifecycle = projectSessionLifecycle({
-                session: detail.session,
-                events: detail.events,
-              });
-              // An exit while work was still in progress was cut off.
-              const outcome =
-                sessionLifecycleOutcome(lifecycle.lifecycleState) ??
-                'cancelled';
-              await this.projectTaskRoomRuntime?.publishAgentFinished({
-                taskId: task.id,
+                return {
+                  session: {
+                    ...session,
+                    lifecycleState: projectSessionLifecycle({ session, events })
+                      .lifecycleState,
+                  },
+                  events,
+                };
+              },
+              publishAgentFinished: async ({
                 sessionId: id,
                 provider,
-                outcome,
-                occurredAt: detail.session.updatedAt,
-              });
+                detail,
+              }) => {
+                const binding =
+                  this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+                    id,
+                  );
+                const task = binding
+                  ? this.taskGraphService.readTaskView(binding.taskId)
+                  : this.taskGraphService
+                      .listTasks()
+                      .find((candidate) => candidate.sessionId === id);
+                if (!task) return;
+                const outcome =
+                  sessionLifecycleOutcome(detail.session.lifecycleState) ??
+                  'cancelled';
+                await this.projectTaskRoomRuntime?.publishAgentFinished({
+                  taskId: task.id,
+                  sessionId: id,
+                  provider,
+                  outcome,
+                  occurredAt: detail.session.updatedAt,
+                });
+              },
+              finalizeWorktree: (exit) =>
+                this.worktreeOutputSettlements
+                  ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
+                  : worktreeProvisioningService.finalize(exit),
+              warn: (message, fields) => this.logger.warn(message, fields),
             },
-            finalizeWorktree: (exit) =>
-              this.worktreeOutputSettlements
-                ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
-                : worktreeProvisioningService.finalize(exit),
-            warn: (message, fields) => this.logger.warn(message, fields),
-          },
+          ),
         );
       });
-      // Startup reconciliation sweep (review finding #5): a prior Station
-      // process (or dispatch attempt) may have crashed between an
-      // AssignmentProvider claim succeeding and its release, wedging the
-      // subject with no live owner — the in-process release triggers above
-      // (session.exited, task-terminal) only fire for a THIS-process crash's
-      // survivors, not a claim left over from before this restart. Fire-and-
-      // forget: never block server startup on it, but it needs
-      // `projectService`/`taskGraphService` wiring to already be complete,
-      // which it is at this point in the constructor. See
-      // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
-      // for the accepted residual gap this sweep does not close.
-      // #4507: retry Task worktree finalizations a previous process
-      // deferred. Started only after the boot orphan-engine sweep settles,
-      // so it does not run while that sweep is still reaping a previous
-      // process's detached engines; a sweep that settled has not proved
-      // every orphan is gone (it reaps only what it can identify), and the
-      // later turn-end retries do not wait for it. Finalization's own
-      // checks (running turns here, a clean checkout, git refusing a dirty
-      // removal) still apply on every retry.
+
+      // #4507: retry durable deferred worktrees after the orphan sweep.
+      // Waiting for the sweep performs no work against the Task graph.
       void Promise.resolve(options.orphanEngineSweep)
         .catch(() => undefined)
-        .then(() =>
-          this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
-        )
-        .catch((error) => {
-          this.logger.warn('Deferred Task worktree finalization failed', {
-            error: errorMessage(error),
-          });
-        });
-      void this.taskGraphService
-        .reconcileStaleAssignmentClaims()
-        .then((result) => {
-          if (result.releasedSubjects.length > 0) {
-            this.logger.info(
-              'Startup reconciliation released stale assignment claims',
-              { subjects: result.releasedSubjects },
-            );
-          }
-        })
-        .catch((error) => {
-          this.logger.warn('Startup assignment-claim reconciliation failed', {
-            error: errorMessage(error),
-          });
-        });
-
-      // Log versions for debugging
-      this.logger.info('Station Runtime initializing', {
-        voltagentCore: '1.1.37',
-        aiSdkBedrock: '3.0.56',
-        nodeVersion: process.version,
+        .then(() => this.retryDeferredTaskWorktreeFinalizations());
+      this.trackTaskLifecycleWrite(this.assignmentClaimUpdates, async () => {
+        const result =
+          await this.taskGraphService.reconcileStaleAssignmentClaims();
+        if (result.releasedSubjects.length > 0) {
+          this.logger.info(
+            'Startup reconciliation released stale assignment claims',
+            {
+              subjects: result.releasedSubjects,
+            },
+          );
+        }
       });
     } catch (error) {
+      this.stopConversationTitleGeneration?.();
+      this.taskWorktreeRetryAdmissionClosed = true;
+      this.stopTaskLifecycleEvents?.();
+      this.stopTaskLifecycleEvents = undefined;
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
@@ -2986,9 +2971,8 @@ export class StationRuntime {
    * 'remove', ...)`, but until this wiring, nothing in production ever
    * subscribed — the whole watcher half was computed and discarded.
    *
-   * This reuses `reloadAgents()` — the SAME unconditional "resync the
-   * runtime's agent set from disk" entrypoint `scheduleRuntimeDailyReload`
-   * already fires on a timer and `POST /api/agents/reload` fires on demand —
+   * This reuses the on-demand `reloadAgents()` entry point
+   * (`POST /api/agents/reload`)
    * rather than `scheduleAgentConfigurationReconciliation()` below: that
    * reconciliation path is gated on the provider/app-config LAUNCHABILITY
    * REVISION counters actually having drifted, which an agent/integration
@@ -4662,7 +4646,6 @@ export class StationRuntime {
             this.configureRoutes(app);
             this.virtualApplication?.bind(app);
           },
-          reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
           registryTrustPolicyAuthority: this.registryTrustPolicyAuthority,
@@ -6292,7 +6275,25 @@ export class StationRuntime {
   /**
    * Shutdown the runtime
    */
-  async shutdown(): Promise<void> {
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+
+    // Reserve the shutdown before stopping producers or waiting for boot.
+    let resolveAttempt!: (shutdown: Promise<void>) => void;
+    const attempt = new Promise<void>((resolve) => {
+      resolveAttempt = resolve;
+    }).catch((error) => {
+      this.shutdownPromise = null;
+      throw error;
+    });
+    this.shutdownPromise = attempt;
+    resolveAttempt(this.runShutdown());
+    return attempt;
+  }
+
+  private async runShutdown(): Promise<void> {
+    this.stopConversationTitleGeneration?.();
+    this.stopConversationTitleGeneration = undefined;
     if (this.taskRecordings && !this.taskRecordingsShutdown) {
       this.taskRecordingsShutdown = this.taskRecordings.dispose();
       void this.taskRecordingsShutdown.catch(() => {});
@@ -6319,11 +6320,9 @@ export class StationRuntime {
     // prototype-built doubles: the boot-time prerequisite priming must settle
     // rather than outlive the runtime.
     this.enginePrerequisitePrimingAbort?.abort();
-    // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
-    // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
-    // reason as the line above — prototype-built doubles have no fields.
+    // Stop an in-flight store probe before waiting for initialization because
+    // the probe owns a child process and graceful shutdown ends in process.exit.
     this.stopStoreIntegrityVerification?.();
-    if (this.shutdownPromise) return this.shutdownPromise;
     // Settle any in-flight initialize() before tearing down — its rejection
     // is expected here (we are shutting down under it) and must not escape
     // as an unhandled rejection attributed to someone else.
@@ -6332,13 +6331,7 @@ export class StationRuntime {
     }
     this.stopObservingRuntimeConfigurationSources();
     this.agentConfigurationMutationsClosed = true;
-    this.shutdownPromise = this.shutdownAfterConfigurationDrain().catch(
-      (error) => {
-        this.shutdownPromise = null;
-        throw error;
-      },
-    );
-    return this.shutdownPromise;
+    await this.shutdownAfterConfigurationDrain();
   }
 
   private retireSelfHostedBroker(): Promise<void> {
@@ -6358,9 +6351,91 @@ export class StationRuntime {
     return this.selfHostedBrokerShutdown;
   }
 
+  private trackTaskLifecycleWrite(
+    pending: Set<Promise<void>>,
+    operation: () => Promise<void>,
+  ): void {
+    const task = Promise.resolve()
+      .then(operation)
+      .catch((error) => {
+        this.logger.warn('Task lifecycle write failed', {
+          error: errorMessage(error),
+        });
+      });
+    pending.add(task);
+    void task.then(
+      () => pending.delete(task),
+      () => pending.delete(task),
+    );
+  }
+
+  private retryDeferredTaskWorktreeFinalizations(): void {
+    if (this.taskWorktreeRetryAdmissionClosed) return;
+    this.trackTaskLifecycleWrite(this.taskWorktreeRetries, () =>
+      this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
+    );
+  }
+
+  private async drainTaskLifecycleWrites(
+    pending: Set<Promise<void>> | undefined,
+    deadline: number,
+    name: string,
+  ): Promise<void> {
+    if (!pending?.size) return;
+    const settled = await awaitSettlementWithin(
+      Promise.allSettled(pending),
+      Math.max(0, deadline - performance.now()),
+    );
+    if (!settled) {
+      throw new Error(
+        `Station shutdown timed out waiting for ${name}; the Station home lease remains held.`,
+      );
+    }
+  }
+
+  private async settleSessionExitWrites(
+    taskLifecycleDeadline: number,
+  ): Promise<void> {
+    this.stopTaskLifecycleEvents?.();
+    this.stopTaskLifecycleEvents = undefined;
+    const sessionExitWrites = await Promise.allSettled([
+      this.drainTaskLifecycleWrites(
+        this.sessionExitFinalizations,
+        taskLifecycleDeadline,
+        'Session exit finalizations',
+      ),
+      this.drainTaskLifecycleWrites(
+        this.assignmentClaimUpdates,
+        taskLifecycleDeadline,
+        'assignment claim updates',
+      ),
+    ]);
+    const pendingWriterFailures = sessionExitWrites.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (pendingWriterFailures.length > 0) {
+      throw new AggregateError(
+        pendingWriterFailures,
+        'Runtime shutdown cleanup was incomplete.',
+      );
+    }
+  }
+
   private async shutdownAfterConfigurationDrain(): Promise<void> {
     this.recordRuntimeLifecycle('stopping');
-    await this.drainConfigurationQueues();
+    this.taskWorktreeRetryAdmissionClosed = true;
+    const taskLifecycleDeadline = performance.now() + this.drainGraceMs();
+    const [taskWorktreeRetries, configuration] = await Promise.allSettled([
+      this.drainTaskLifecycleWrites(
+        this.taskWorktreeRetries,
+        taskLifecycleDeadline,
+        'deferred Task worktree retries',
+      ),
+      this.drainConfigurationQueues(),
+    ]);
+    if (taskWorktreeRetries.status === 'rejected')
+      throw taskWorktreeRetries.reason;
+    if (configuration.status === 'rejected') throw configuration.reason;
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
@@ -6483,6 +6558,7 @@ export class StationRuntime {
     } catch (error) {
       failures.push(error);
     }
+    let sessionExitWritersPending = false;
     try {
       const optionalNetworkShutdownTasks = [
         this.usageTelemetry
@@ -6500,6 +6576,14 @@ export class StationRuntime {
         stopHealthChecks: this.stopHealthChecks,
         schedulerService: this.schedulerService,
         orchestrationService: this.orchestrationService,
+        settleSessionExitWrites: async () => {
+          try {
+            await this.settleSessionExitWrites(taskLifecycleDeadline);
+          } catch (error) {
+            sessionExitWritersPending = true;
+            throw error;
+          }
+        },
         attachedSessionFollowService: this.attachedSessionFollowService,
         consoleBridgeService: this.consoleBridgeService,
         voltAgent: this.voltAgent,
@@ -6543,6 +6627,13 @@ export class StationRuntime {
         optionalNetworkShutdownTasks,
       });
     } catch (error) {
+      if (sessionExitWritersPending) {
+        if (failures.length === 0) throw error;
+        throw new AggregateError(
+          [...failures, error],
+          'Runtime shutdown cleanup was incomplete.',
+        );
+      }
       failures.push(error);
     }
     try {

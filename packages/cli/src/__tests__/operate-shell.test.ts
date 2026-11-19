@@ -21,6 +21,7 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { PassThrough } from 'node:stream';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type OperateStdout,
@@ -122,6 +123,8 @@ describe('station operate shell — SSE lifecycle, keypress wiring, teardown (#1
   let eventsClosed = false;
   let closeResolvers: Array<() => void> = [];
   let eventsRequestCount = 0;
+  let streamBearer: string | undefined;
+  let streamAuthorization: string | undefined;
   const orchestrationCommands: Array<Record<string, unknown>> = [];
   const sessionFetchCounts: Record<string, number> = {};
   const flowRunFetchCounts: Record<string, number> = {};
@@ -144,6 +147,9 @@ describe('station operate shell — SSE lifecycle, keypress wiring, teardown (#1
     eventsClosed = false;
     closeResolvers = [];
     eventsRequestCount = 0;
+    streamBearer = undefined;
+    streamAuthorization = undefined;
+    setClientCredentialResolver(undefined);
     orchestrationCommands.length = 0;
     for (const key of Object.keys(sessionFetchCounts))
       delete sessionFetchCounts[key];
@@ -170,6 +176,11 @@ describe('station operate shell — SSE lifecycle, keypress wiring, teardown (#1
 
       if (method === 'GET' && url.pathname === '/api/orchestration/events') {
         eventsRequestCount += 1;
+        streamAuthorization = req.headers.authorization;
+        if (streamBearer && streamAuthorization !== `Bearer ${streamBearer}`) {
+          sendJson(401, { success: false, error: 'Unauthorized' });
+          return;
+        }
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         // The real route's opening frame (`orchestration.ts:305-309`):
         // `{sessions}`, no `method`/`event` wrapper.
@@ -265,6 +276,7 @@ describe('station operate shell — SSE lifecycle, keypress wiring, teardown (#1
   });
 
   afterEach(async () => {
+    setClientCredentialResolver(undefined);
     // If any test regresses `shell.ts`'s abort discipline, an open
     // `/api/orchestration/events` connection will keep this `server.close()`
     // pending forever — the deliberate "fails loud, not silent" property
@@ -283,23 +295,54 @@ describe('station operate shell — SSE lifecycle, keypress wiring, teardown (#1
     eventsResponse?.write(`data: ${JSON.stringify({ event })}\n\n`);
   }
 
-  test('startup seeds the session board from the orchestration:snapshot frame', async () => {
+  test('startup authenticates the orchestration snapshot and quit cancels the protected stream', async () => {
+    streamBearer = 'synthetic-operate-credential';
+    setClientCredentialResolver(() => ({
+      credential: 'synthetic-operate-credential',
+      origin: apiBase,
+    }));
     const stdin = createStdin();
     const stdout = createStdout();
 
     const shellPromise = runOperateShell({ apiBase, stdin, stdout });
 
-    await waitFor(() =>
-      stdout.writes.some((chunk) => chunk.includes('thread-a')),
-    );
-    expect(
-      stdout.writes.some((chunk) => chunk.includes('provider=codex')),
-    ).toBe(true);
-
-    pressKey(stdin, 'q');
-    await shellPromise;
+    try {
+      await Promise.race([
+        waitFor(() =>
+          stdout.writes.some((chunk) => chunk.includes('thread-a')),
+        ),
+        shellPromise.then(() => {
+          throw new Error('Operate quit before displaying the snapshot');
+        }),
+      ]);
+      expect(
+        stdout.writes.some((chunk) => chunk.includes('provider=codex')),
+      ).toBe(true);
+      expect(streamAuthorization).toBe('Bearer synthetic-operate-credential');
+    } finally {
+      pressKey(stdin, 'q');
+      await shellPromise;
+    }
     await waitForEventsClose();
   }, 5000);
+
+  test('a different Station origin cannot borrow the saved credential', async () => {
+    streamBearer = 'synthetic-operate-credential';
+    setClientCredentialResolver(() => ({
+      credential: 'synthetic-operate-credential',
+      origin: 'http://localhost:3141',
+    }));
+
+    await expect(
+      runOperateShell({
+        apiBase,
+        stdin: createStdin(),
+        stdout: createStdout(),
+      }),
+    ).rejects.toThrow('HTTP 401');
+    expect(eventsRequestCount).toBe(1);
+    expect(streamAuthorization).toBeUndefined();
+  });
 
   test('a live request.opened event reaches the approvals pane (toolName + toolInput) and a keypress posts the real respondToRequest body', async () => {
     const stdin = createStdin();

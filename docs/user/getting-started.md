@@ -5,6 +5,41 @@ This guide covers installation, your first chat and Project, connecting a phone,
 and keeping Station updated. To share a Project with someone, read the
 [sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
 
+## Quickstart
+
+1. [Install Nightly](#install-nightly) on the computer that will run Station.
+   Open the app or use the single-use sign-in link printed by the installer.
+2. On Home, open the Agent control beside **Start** and choose an Agent that is
+   ready. If Home offers **Set up an agent engine**, use that action to open
+   Connections. For an existing Codex account, follow
+   [First chat with Codex](#first-chat-with-codex).
+3. Try a small request such as “Give me three questions to check before I
+   review a documentation change. Use no tools.” Choose **Start** to open a
+   direct chat.
+4. Read the answer in the chat. If an approval or question appears, inspect
+   it before responding. When the answer has a **Basis** chip, open it to
+   inspect the recorded inputs behind that answer.
+5. Keep talking in the same chat, create a Project for shared context, or
+   track a deliverable in a Task. [Choose what fits](concepts.md#choose-a-project-task-or-direct-chat).
+
+### How a turn works
+
+```text
+Write a request and choose Start or Send
+                    ↓
+The selected Agent runs one turn in a Session
+                    ↓
+It may ask you a question or request approval
+                    ↓
+Station shows the answer, stop, or failure
+```
+
+A follow-up can add another turn to the same Session. See the
+[visual walkthroughs](https://github.com/kontourai/station/blob/main/docs/learn/walkthroughs.md)
+for Gallery captures of the interface. The
+[Learn Station atlas](https://github.com/kontourai/station/blob/main/docs/learn/README.md)
+explains how the parts fit together.
+
 ## First chat with Codex
 
 If Codex is installed and signed in on this computer, you can use that account
@@ -21,21 +56,24 @@ without adding a model API key:
    engine** opens Connections when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
    **Agent**, then **Codex**, write a request, and choose **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. Choose **New Project** on Home, enter a name, and choose **Repository or
-   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
-   Project**. Documents opens Files & connections after creation; connected tools opens
-   the Project's Tools section. Neither asks for a folder or repository.
-   Blank also permits an optional installed layout. For a repository, open
-   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
-   under **Repository provider**, using an account signed in on the Station host. Choose
-   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
-   that working copy and retains its source and exact commit. Acquisition currently
-   requires the Station operator and uses that host's Git credentials.
-   Station recommends **Coding** for a Git repository; you can choose another
-   layout or none. Choose **Create** to open
-   the Project. Operator setup is saved across reloads; reopen **New Project** to
-   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+4. Choose **New Project** on Home. **Blank workspace** creates an empty
+   Station-managed directory when your workspace mode allows it. Choose
+   **From a repository** to acquire a Git checkout or, on the Station host,
+   choose **Use an existing folder** to reuse one. For Git acquisition, open
+   **Start from a Git repository**. Choose **Git URL** to paste an HTTPS or
+   SSH URL, or use the **GitHub** or **GitLab** tile to browse with a signed-in
+   account on the Station host. Choose **Acquire
+   repository**, then **Use this checkout**. Station suggests a name until
+   you edit it. Creation rechecks the acquisition and retains its source and
+   exact commit. Station recommends **Coding** when the folder is a Git
+   workspace. Choose **Create** to open the Project, then add documents or
+   connected tools in **Files & connections**.
+   Operator setup is saved across reloads. Reopen **New Project** to continue
+   the same creation and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
+   From a chat draft, open its Project picker and choose **Create project**.
+   Enter a name for a blank Project or choose what to start with. Station
+   selects the created Project and keeps the draft ready to send.
 5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Open the Agent/model control beside **Start** or **Send**. Under **Agent**,
@@ -480,9 +518,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The combined Run setup button shows the Agent's icon and the Model's name,
+- The combined Agent & model button shows the Agent's icon and the Model's name,
   followed by the thinking effort when you chose one (for example
-  **Opus · High**). It opens **Run setup**. Its Agent choice
+  **Opus · High**). It opens **Agent & model**. Its Agent choice
   lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
@@ -499,10 +537,10 @@ show what **Start** will use:
   now: your draft, or a catch-up request when there is none, is the first
   message.
   Full access, a pending or refused approval change, and a conversation override
-  add a warning glyph to the combined button; open Run setup to see the same
+  add a warning glyph to the combined button; open Agent & model to see the same
   glyph on the choice that raised it. When the conversation's Agent now points
-  at another engine, the button adds **Agent moved**; Run setup's Engine &
-  model choice names where. If the conversation's engine session has already
+  at another engine, the button adds **Default differs**. The panel names the
+  session engine and the Agent default. If the conversation's engine session has already
   ended, a **Next turn starts on …** line above the message box says where the
   next turn goes instead.
   In the model picker, while a reply you sent is still running, the other
@@ -551,7 +589,7 @@ and **Edit**. If delivery is uncertain, use **Check** before sending a
 changed copy. Station keeps the original pending message.
 
 To move a chat you already have to a paired Station, open the Agent picker in
-**Run setup** and choose that Station; the dialog becomes **Continue
+**Agent & model** and choose that Station; the dialog becomes **Continue
 elsewhere**. Pick its engine and
 one of its Projects, then **Continue on <Station>**. A new chat opens there,
 and its Agent gets this chat's messages as context. The new chat shows messages
@@ -584,11 +622,17 @@ channels. React to a message with an emoji, and tap a reaction to add or take
 back yours. You can edit or delete your own messages (press ↑ in an empty
 composer to edit your last one); a deleted message leaves "Message deleted" so
 replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
-to the channel. Direct Agent conversations stay in the chat
+to the channel. With the **Coordinator in #general** preview on, the Agent you
+ask in `#general` answers, proposes Tasks you start from a card, or passes your
+message to a running Task, and posts each Task's result back
+([Coordinator in #general](settings.md#coordinator-in-general)). Direct Agent conversations stay in the chat
 dock. **Tasks** shows a board of what each Task needs now, or a list of current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
+
+The Project conversation list shows its channels and Task rooms. If one of those
+lists is temporarily unavailable, retry that list from the Project page.
 
 With the **Project Overview** [feature preview](settings.md#feature-previews)
 on, Overview lists the Project's Tasks under what each needs next:
@@ -772,6 +816,10 @@ shows the same panel beside the transcript, and a narrower one puts it behind
 a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
+
+On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
+Project **Tasks** list. Release when the ring fills. The actions menu offers
+the same refresh. A floating status pill shows what’s refreshing.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
@@ -1025,11 +1073,11 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With a live native steering channel, **Send**
-defaults to **Steer**; otherwise it defaults to **Queue**, which delivers after
-the turn finishes. The dropdown switches between the available modes. For an
-ACP engine without native steering, choosing **Steer** stops its current step
-and continues the task with your additional instruction once cancellation
+Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
+message and delivers it after the turn finishes. The message appears in the
+pending list as soon as Station accepts it. The dropdown switches between the
+available modes. For an ACP engine without native steering, choosing **Steer**
+stops its current step and continues the task with your instruction once cancellation
 finishes. Station-owned steering waits for the next safe boundary. A Muse chat
 on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
@@ -1112,7 +1160,7 @@ Drafts are stored in this browser or app on this device, not synced to other
 devices. Station keeps the 20 newest saved drafts, with up to five images per
 draft, and lists any dropped or unreadable images. The trash icon clears the
 current message. Hold or focus
-either icon to read its label. Choose **Chat settings → Return in chat** to change
+either icon to read its label. Choose **Agent & model → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
 
@@ -1180,7 +1228,7 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Run setup** to change the Agent, Model or Approval settings.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Agent & model** to change the Agent, Model or Approval settings.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
@@ -1356,7 +1404,8 @@ Each conversation is filed under a Project by the folder it ran in:
 
 Rows can show **Directory · …/parent/folder** when a working folder is recorded
 without a Project label. The label provides folder context and leaves Project
-membership unchanged.
+membership unchanged. A reopened delegated chat can show **CLI (reported)**
+when Station's accepted start receipt records a CLI caller.
 
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
@@ -1448,6 +1497,9 @@ engine, the continuation is still created and you continue it from
 **Chat**; the dock says why it cannot open it.
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
+
+If **Recent work** can’t load sessions from another Station, Home shows an
+explanation alongside any work it could load locally.
 
 ## Arrange Work You Already Own
 
@@ -1638,12 +1690,20 @@ request version, once. A review request with recorded evidence offers
 A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
 preview is on.
 
+A conversation’s Inbox row also shows the request and **Approve once** or
+**Deny** when Station can inspect one exact request and you can answer it.
+Open the chat from its row to review an approval when those controls are
+unavailable.
+
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
 checks that the request is still open and makes the decision. When the paired
 Station reports a question's exact request and your access permits it, the card
 offers an **Answer on the paired Station** box whose **Send answer** reply is
 bound to that question; otherwise the card says to answer it on that Station.
+
+When the approval guardian asks you to review a call after repeated denials,
+**Approval guardian** quotes its reason separately from the tool’s description.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

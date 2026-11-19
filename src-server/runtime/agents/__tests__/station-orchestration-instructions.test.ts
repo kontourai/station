@@ -133,7 +133,7 @@ describe('registry', () => {
     // Pins the real registry facts the fallback text depends on.
     expect(CATALOG).toContain('list_delegation_targets');
     expect(stationControlToolPolicy('list_delegation_targets')?.assurance).toBe(
-      'bound',
+      'any',
     );
     expect(stationControlToolPolicy('device_open')?.assurance).toBe('bound');
     expect(CATALOG).toContain('list_agents');
@@ -170,7 +170,7 @@ describe('effectiveStationControlTools', () => {
     );
     expect(bound.has('device_open')).toBe(true);
     expect(custody.has('device_open')).toBe(false);
-    expect(custody.has('list_delegation_targets')).toBe(false);
+    expect(custody.has('list_delegation_targets')).toBe(true);
     expect(custody.has('delegate_task')).toBe(true);
     expect(custody.size).toBeLessThan(bound.size);
   });
@@ -408,9 +408,7 @@ describe('assurance filtering', () => {
       for (const n of boundOnly)
         expect(named, `${assurance}: ${n}`).not.toContain(n);
       expect(r.sections.map((s) => s.id)).not.toContain('devices');
-      // the fallback is named instead
-      expect(named).toContain('list_agents');
-      expect(named).not.toContain('list_delegation_targets');
+      expect(named).toContain('list_delegation_targets');
     }
   });
 
@@ -448,7 +446,13 @@ describe('delegated child', () => {
     // the child section states the prohibition rather than offering
     const child =
       r.sections.find((s) => s.id === 'delegated-child')?.text ?? '';
-    expect(child).toContain('may not use `delegate_task` or `send_message`');
+    expect(child).toContain('tell your parent');
+
+    const canDelegate = compose(
+      caps({ delegated: true, canDelegateFromChild: true }),
+    );
+    expect(namedTools(canDelegate.text)).toContain('delegate_task');
+    expect(namedTools(canDelegate.text)).not.toContain('send_message');
   });
 
   test('the devices section does not advise delegating device work to a delegated child', () => {

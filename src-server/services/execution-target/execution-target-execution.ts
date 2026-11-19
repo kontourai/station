@@ -63,6 +63,7 @@ import type { StartOwnerAttribution } from '../orchestration/session-owner-attri
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
 import {
   foregroundTurnSubmissionDigest,
+  type StagedTurnSubmission,
   snapshotTurnSubmissionFields,
   snapshotTurnSubmissionValue,
 } from '../orchestration/turn-submission-digest.js';
@@ -118,6 +119,7 @@ async function provisionProjectWorktree(
 export interface ForegroundMessageContext {
   submissionDigest?: string;
   inboxPlacement?: true;
+  expectedInboxSessionId?: string;
   /** #4512: forwarded to `sendTurn` and stamped on `turn.started`. */
   dispatchOrigin?: TurnDispatchOrigin;
 }
@@ -137,6 +139,7 @@ export interface ForegroundMessageInput {
   personAuthored?: true;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
   resolveAttachments?: (
     binding: {
@@ -588,6 +591,7 @@ export interface ExecutionTargetExecutionDependencies
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ) => Promise<{
     sessionId: string;
@@ -747,6 +751,7 @@ export async function executeForegroundMessage(
     input = snapshotTurnSubmissionFields(input, [
       'target',
       'attachments',
+      'stagedSubmission',
       'expectedInputRequest',
       'skillExperience',
       'mcpPromptOrigin',
@@ -791,6 +796,11 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  if (
+    context?.expectedInboxSessionId &&
+    (!binding || !deps.resolveConversationSession)
+  )
+    throw new Error('The conversation changed while this message was waiting.');
   if (!input.handoffIntent?.stagedHandoff)
     resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
@@ -890,11 +900,14 @@ export async function executeForegroundMessage(
       threadId: sessionId,
       clientTurnId: effectiveClientTurnId ?? '',
     };
-    attachments = input.resolveAttachments
-      ? inspectOnly
-        ? input.resolveAttachments(binding, { inspectOnly: true })
-        : input.resolveAttachments(binding)
-      : input.attachments;
+    attachments =
+      inspectOnly && input.stagedSubmission
+        ? undefined
+        : input.resolveAttachments
+          ? inspectOnly
+            ? input.resolveAttachments(binding, { inspectOnly: true })
+            : input.resolveAttachments(binding)
+          : input.attachments;
     if (effectiveClientTurnId && attachments)
       attachments = snapshotTurnSubmissionValue(attachments);
     submissionDigest =
@@ -1066,9 +1079,12 @@ export async function executeForegroundMessage(
           input.userId,
         );
     if (queued) {
-      captureSubmission(queued.entry.sessionId ?? conversationId);
+      captureSubmission(
+        queued.entry.sessionId ?? conversationId,
+        Boolean(input.stagedSubmission),
+      );
       if (
-        queued.inputDigest !== undefined &&
+        (input.stagedSubmission || queued.inputDigest !== undefined) &&
         queued.inputDigest !== submissionDigest
       )
         throw new ClientTurnInputConflictError();
@@ -1088,6 +1104,11 @@ export async function executeForegroundMessage(
       'sessionId' in inspection &&
       typeof inspection.sessionId === 'string'
     ) {
+      if (input.stagedSubmission && inspection.outcome !== 'started')
+        input.resolveAttachments(
+          { threadId: inspection.sessionId, clientTurnId },
+          { inspectOnly: true },
+        );
       captureSubmission(inspection.sessionId, true);
       decision = conversationKeyDecision(
         deps.inspectConversationTurnKey?.(
@@ -1121,11 +1142,11 @@ export async function executeForegroundMessage(
             : decision;
     }
     if (decision.kind === 'started') {
-      // Staged attachments are bound to the turn that took them, as for a
-      // send that went through, so the route accepts (rather than strands)
-      // the references this retry carries.
-      if (submissionDigest === undefined) captureSubmission(decision.sessionId);
-      else if (inspectedAttachments)
+      // A witnessed replay compares the original ordered references in the
+      // durable claim. The route must not hydrate or accept files again.
+      if (submissionDigest === undefined)
+        captureSubmission(decision.sessionId, Boolean(input.stagedSubmission));
+      else if (inspectedAttachments && !input.stagedSubmission)
         input.resolveAttachments?.({
           threadId: decision.sessionId,
           clientTurnId,
@@ -1201,6 +1222,7 @@ export async function executeForegroundMessage(
           conversationId,
           {
             provider: resolved.provider,
+            expectedInboxSessionId: context?.expectedInboxSessionId,
             ...(resolved.engine.kind === 'connection'
               ? { connectionId: resolved.engine.connectionId }
               : {}),
@@ -1647,7 +1669,11 @@ export async function executeForegroundMessage(
         });
     }
   }
-  if (submissionDigest === undefined) captureSubmission(sessionId);
+  if (
+    submissionDigest === undefined ||
+    (inspectedAttachments && input.stagedSubmission)
+  )
+    captureSubmission(sessionId);
   else if (inspectedAttachments && effectiveClientTurnId)
     input.resolveAttachments?.({
       threadId: sessionId,

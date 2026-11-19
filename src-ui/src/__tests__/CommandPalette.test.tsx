@@ -1411,7 +1411,7 @@ describe('CommandPalette active-option announcement', () => {
     ).toBe('true');
   });
 
-  test('with no results it points at nothing rather than a dangling id', async () => {
+  test('combobox references follow the result list as it closes and reopens', async () => {
     await renderCommandPalette();
     open();
     const input = screen.getByRole('combobox');
@@ -1419,8 +1419,19 @@ describe('CommandPalette active-option announcement', () => {
       target: { value: 'zzzznotacommandzzzz' },
     });
 
-    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    expect(input.getAttribute('aria-controls')).toBeNull();
     expect(input.getAttribute('aria-activedescendant')).toBeNull();
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    const listbox = screen.getByRole('listbox');
+    const activeOption = screen.getByRole('option', { selected: true });
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    expect(input.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(input.getAttribute('aria-activedescendant')).toBe(activeOption.id);
+    expect(listbox.contains(activeOption)).toBe(true);
   });
 });
 

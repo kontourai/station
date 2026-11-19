@@ -508,8 +508,8 @@ Whole-store authenticated integrity with key authority outside that writer is
 follow-up scope.
 
 The GitHub automation observation preview is not offered in hosted mode, and
-`/automations/deliveries` refuses hosted reads because its shared ledger has no
-tenant binding.
+every `/automations` route answers 404 there (reads and operator changes alike)
+because its configuration and shared ledger have no tenant binding.
 
 Until their storage gains a durable tenant binding, hosted mode suppresses the
 entire `/scheduler` API (including its reads, SSE, webhook, and mutations) and
@@ -585,7 +585,9 @@ fresh home. The [schema gate](../../packages/shared/src/station-home-schema.ts)
 runs in both the CLI lifecycle and server entry before application migrations.
 It refuses those directories instead of treating their contents as disposable
 bootstrap scaffolding. Copying a Project is neither a schema migration nor a
-Project membership grant.
+Project membership grant. When a registered migration runs, the gate stages
+a sibling copy and preserves the home’s POSIX directory and file permission
+bits before calling the migration.
 
 After schema admission, the Project/layout portion of
 [runStartupMigrations](../../src-server/domain/migration.ts) returns when
@@ -698,12 +700,9 @@ remain separate qualification steps.
 
 ## Private tailnet dogfood on macOS
 
-The legacy dogfood supervisor below is separate from the desktop channel
-service and ordinary `station service` commands. Its staged dependency install
-still uses `npm ci`; the current checkout uses managed pnpm and has no root npm
-lockfile. Treat current-revision promotion as unqualified until that mismatch
-is corrected and exercised. The retained rollback description is not a claim
-that this audit installed or recovered a live service.
+The dogfood supervisor manages a dedicated checkout-based instance.
+Desktop channel services and ordinary `station service` commands have their
+own installation and recovery procedures.
 
 ### Channel desktop apps: ports, homes, and targeting
 
@@ -826,17 +825,27 @@ commits. No passkey ceremony runs on the app origin.
 
 The repository-owned dogfood supervisor keeps one named Station instance on
 the exact `origin/main` commit whose GitHub Actions `PR: CI` **push** run completed
-successfully. Its staging code creates a detached release and currently calls
-legacy `npm ci` plus `./station build` before stopping the active release.
-That dependency command is not the repository's managed pinned-pnpm setup path;
-the current root has no npm lockfile. This supervisor's successful staging on a
-current revision needs qualification/correction before use, not a claim inferred
-from its older fixtures. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks that correction. Promotion binds the configured API, terminal, voice,
-consent and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
-Tailscale Serve HTTPS, and only then commits `active`/`previous` state. A build
-failure leaves the active process alone; a post-stop failure restarts and
+successfully. It creates a clean detached release and runs that candidate's
+`npm run dependencies:ci` before `./station build`. Missing or failed
+dependency setup leaves the active release serving and records an install
+failure. The managed installer uses the candidate's pinned pnpm and lockfile.
+Promotion binds the configured API, voice, consent and UI listeners to
+`127.0.0.1`, verifies the exact running build locally and through Tailscale
+Serve HTTPS, and then commits `active`/`previous` state. A build failure
+leaves the active process running. A post-stop failure restarts and
 health-checks the previous built release.
+
+The API identity probe can authenticate to the owned loopback listener with
+the credential from the recorded Station home after it verifies process and
+listener ownership. The credential stays on the local API request. The HTTPS
+probes read the public identity and readiness routes.
+
+A disposable macOS run exercised managed staging, promotion, and reconcile
+after a supervisor generation handoff. Its terminal Session retained the
+same shell and accepted input after restart. The run used a fixture-local
+HTTPS endpoint and a test-only CA. The live recipe's Tailnet Serve routing
+requires its own verification. See the
+[supervisor verification record](../design/process-supervisor.md#verification).
 
 This recipe is private-tailnet only. It refuses an existing conflicting HTTPS
 root handler or Funnel, never enables Funnel, never runs `tailscale serve

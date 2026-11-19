@@ -11,11 +11,9 @@ import './route-transition.css';
 import { APP_DESTINATION_REGISTRY } from './destination-registry';
 import { RouteViewBoundary } from './RouteViewBoundary';
 
-// Project creation is a route-only overlay. Keeping it lazy avoids charging
-// every initial desktop load for its form, icon picker, and path autocomplete.
-const NewProjectModal = lazy(() =>
-  import('../components/modals/NewProjectModal').then((module) => ({
-    default: module.NewProjectModal,
+const ProjectAdminRoute = lazy(() =>
+  import('./ProjectAdminRoute').then((module) => ({
+    default: module.ProjectAdminRoute,
   })),
 );
 
@@ -89,34 +87,19 @@ const ProfilePage = lazy(() =>
     default: module.ProfilePage,
   })),
 );
-const ProjectLayoutRenderer = lazy(() =>
-  import('./ProjectLayoutRenderer').then((module) => ({
-    default: module.ProjectLayoutRenderer,
-  })),
-);
 const ProjectPage = lazy(() =>
   import('../views/ProjectPage').then((module) => ({
     default: module.ProjectPage,
   })),
 );
-const WorkspacePaneRouteView = lazy(() =>
-  import('../workspace-panes/WorkspacePaneRouteView').then((module) => ({
-    default: module.WorkspacePaneRouteView,
-  })),
-);
-const WorkspacePaneHostActionsFrame = lazy(() =>
-  import('../workspace-panes/WorkspacePaneHostActions').then((module) => ({
-    default: module.WorkspacePaneHostActionsFrame,
+const WorkspaceProjectRoute = lazy(() =>
+  import('./WorkspaceProjectRoute').then((module) => ({
+    default: module.WorkspaceProjectRoute,
   })),
 );
 const ProjectFlowConsoleView = lazy(() =>
   import('../views/ProjectFlowConsoleView').then((module) => ({
     default: module.ProjectFlowConsoleView,
-  })),
-);
-const ProjectSettingsView = lazy(() =>
-  import('../views/ProjectSettingsView').then((module) => ({
-    default: module.ProjectSettingsView,
   })),
 );
 const ProviderSettingsView = lazy(() =>
@@ -165,6 +148,7 @@ const PersonalBoardView = lazy(() =>
 
 interface AppViewContentProps {
   currentView: NavigationView;
+  stationUnavailable?: boolean;
   agents: AgentSummary[];
   apiBase: string;
   availableModels: Array<{ id: string; name: string }>;
@@ -218,6 +202,7 @@ export function AppViewContent(props: AppViewContentProps) {
       <RouteViewBoundary
         routeKey={routeKey}
         pendingSurfaceId={pendingSurfaceId}
+        stationUnavailable={props.stationUnavailable}
         pendingBody={
           <RoutePendingSkeleton view={props.currentView} spec={frameSpec} />
         }
@@ -391,35 +376,26 @@ function AppViewContentBody({
     if (projectsLoading) {
       return <SkeletonList count={3} label="Loading your projects" />;
     }
-    return <ProjectNewViewGate onReturnToOutlet={onReturnToOutlet} />;
+    return (
+      <ProjectAdminRoute
+        route={currentView}
+        onReturnToOutlet={onReturnToOutlet}
+      />
+    );
   }
   if (currentView.type === 'project-edit') {
-    return <ProjectSettingsView slug={currentView.slug} />;
-  }
-  if (currentView.type === 'layout') {
     return (
-      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
-        <ProjectLayoutRenderer
-          projectSlug={currentView.projectSlug}
-          layoutSlug={currentView.layoutSlug}
-        />
-      </WorkspacePaneHostActionsFrame>
+      <ProjectAdminRoute
+        route={currentView}
+        onReturnToOutlet={onReturnToOutlet}
+      />
     );
+  }
+  if (currentView.type === 'layout' || currentView.type === 'workspace-pane') {
+    return <WorkspaceProjectRoute route={currentView} />;
   }
   if (currentView.type === 'project') {
     return <ProjectPage slug={currentView.slug} />;
-  }
-  if (currentView.type === 'workspace-pane') {
-    return (
-      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
-        <WorkspacePaneRouteView
-          projectSlug={currentView.projectSlug}
-          layoutSlug={currentView.layoutSlug}
-          descriptorId={currentView.descriptorId}
-          instanceId={currentView.instanceId}
-        />
-      </WorkspacePaneHostActionsFrame>
-    );
   }
   if (currentView.type === 'task') {
     return <TaskWorkspaceView taskId={currentView.taskId} />;
@@ -493,23 +469,4 @@ function AppViewContentBody({
   }
 
   return null;
-}
-
-/** A setup reminder is nonblocking; it cannot suppress explicit project creation. */
-function ProjectNewViewGate({
-  onReturnToOutlet,
-}: {
-  /** Closing the modal is a dismissal: back to `/`'s occupant (#1523). */
-  onReturnToOutlet: () => void;
-}) {
-  return (
-    <NewProjectModal
-      isOpen
-      onClose={() => {
-        if (window.location.pathname === '/projects/new') {
-          onReturnToOutlet();
-        }
-      }}
-    />
-  );
 }

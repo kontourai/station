@@ -754,6 +754,12 @@ memory access. With the preview off, direct memory requests return the standard
 
 ## Project knowledge source identity
 
+The operator's `GET /api/projects` response includes `hasKnowledge` when Station
+can observe a regular document metadata file in the Project's local knowledge
+namespaces or its legacy documents directory. The Project **Sources** list
+reports registered stores. **Project knowledge** reports document and index
+status.
+
 New Project root registrations require `expectedProjectId`, compared with the
 server-owned Project. A missing or mismatched precondition returns409. The
 stored `projectId` is resolved on the server, not accepted from a caller. Managed storage uses that ID in its path.
@@ -895,6 +901,21 @@ Environment's dispatch that names no Project
 is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
+
+## Flow gate evaluation
+
+`POST /api/projects/:slug/flow/runs/:runId/evaluate` returns Flow's committed
+outcomes and run state. For a named gate on an already completed run, Station
+binds re-evaluation to the prior run head. A concurrent head change returns
+409. When the evaluation reopens that run, `data.reopened` identifies the
+observed gate, verdict, missing expectations and any bounded diagnostics
+recorded by Flow.
+
+The run console exposes `display_diagnostics` beside a recorded gate outcome.
+The projection carries expectation identifiers, available reason text and
+bounded gap messages. Historical outcomes can omit diagnostics. A session
+completion check that finds the run already complete emits `not-evaluated`
+instead of claiming a fresh pass.
 
 ## Integration capability status and Task write-back
 
@@ -1181,6 +1202,15 @@ routes, so an agent's request is refused (`403`,
 A promoted record is searchable once its store is reindexed
 (`POST /api/knowledge/index/rebuild`); promotion does not index it.
 
+## Legacy Project conversation list
+
+`GET /api/projects/:slug/conversations` returns HTTP 503 with code
+`project_conversations_unavailable` when the Project read is admitted. The
+legacy file-memory inventory lacks an authoritative Project binding; admission
+to the selected Project cannot establish which records belong to it.
+Existing transport and Project admission refusals still apply. The Project UI
+uses the scoped Project Room and Task room endpoints for its conversation list.
+
 ## Shared Project Room
 
 Project Rooms use `/api/projects/:slug/room`. Their identity binds the Station,
@@ -1446,6 +1476,50 @@ durable checkpoint; clients recover content from ordered history rather than
 treating the notification stream as a durable message log. Presence expires and
 is not resurrected after restart. Slow readers are closed after the bounded
 write deadline. See the [transport decision](../decisions/project-room-realtime.md).
+
+### The coordinator in #general
+
+Behind the `project-room-coordinator` Feature Preview and the
+`projectRoomCoordinator` capability flag (personal Stations with Project sharing and
+deployment sign-in disabled), an Agent
+request in a Project's default channel is answered by the Project's
+coordinator. Its answer ends with a `<station_routing>` block that Station
+parses (`parseCoordinatorReply`) and replaces with a line saying where the
+message went: answered in place, proposed Tasks (a card), or sent to a
+coordinator Task's chat. The leaves exist under `/:slug/room` only. Each
+answers 404 with `code: 'feature_preview_disabled'` while the preview is off.
+
+- `GET /api/projects/:slug/room/coordinator` (the room's view action) returns
+  `ProjectRoomCoordinatorView`: the Project's effective
+  `ProjectRoomCoordinatorSettings`, how many coordinator Tasks are working and
+  waiting, and the newest 20 cards, each with its message id and rows.
+  Card refusals give a recovery step. Detailed Task diagnostics stay in the
+  private coordinator journal.
+- `POST …/room/coordinator/proposals/:proposalId/start` (execute), body the
+  room guards plus optional `rowIds` (absent is **Start all**), moves the
+  card's proposed rows to waiting as the caller, starts as many as the
+  Project's limit allows, and returns the view. Repeating it changes nothing.
+- `POST …/room/coordinator/sweep` (execute), body the room guards, posts one
+  message in `#general` with a line per open coordinator Task. Each line
+  links the Task, reports whether a written answer exists, and says what it
+  waits on. The route returns `{ messageId, tasks }`.
+- `PUT /api/projects/:slug/room-coordinator`, body
+  `{ startWithoutAsking, maxConcurrentTasks (1–10), pullRequests:
+  'when-asked' | 'allowed' }`, sets `ProjectConfig.roomCoordinator`. The
+  runtime Project guard admits only the Project's owner.
+
+Station enforces the limits itself: rows claim slots in one SQLite
+transaction against `maxConcurrentTasks`, Tasks are created only on Start
+(or at once when `startWithoutAsking`), and a coordinator Task whose person
+did not ask for a pull request has recognized opener calls refused when they
+pass through Station's pre-tool policy. This includes supported `gh`, `glab`
+and forge MCP forms. Each row keys its Task, first turn and room result. A
+successful turn holds its slot until the Task is Done. Restart resumes durable
+work without repeating these effects. Station posts a linked settlement only
+while the starter may still start work in the same Project incarnation.
+The Task entry point owns access to the Task's actual answer and failure details.
+Earlier preview result text that differs from the link-only message stays in
+the private coordinator journal and is withheld from replay into Room history.
 
 ## Task deliverables and linked work chats
 
@@ -1815,11 +1889,12 @@ conflict, 404 for a missing pin, 413 for capacity, and a redacted 503 for unavai
 storage. Successful results use `{success: true, data}`. PUT also requires the
 body pin ID to match the path.
 
-Cleanup accepts full references that the caller observed as missing. The store
-checks they belong to the board and removes matching pins; it does not rerun
-owner resolution inside that write. Undo swaps one prior bounded snapshot and
-advances revision; it is not an unbounded edit history. Hosted mode does not
-mount these personal-storage routes.
+Cleanup accepts full references that the caller observed as missing. The route
+checks the revision and pin identities, then resolves only those references
+using the caller's request. It returns 409 if any selected reference is no
+longer confirmed missing. The store checks the revision again before removing
+pins. Owners can change after the observation. Undo swaps one prior bounded
+snapshot and advances the revision. These routes are mounted in personal mode.
 
 ## Agent Management
 
@@ -2809,7 +2884,10 @@ appended (a prompt, assistant text, a tool result, host images, a turn
 completing, ending unfinished or failing), never on lifecycle bookkeeping.
 `GET /api/conversations` items carry it as `readState.version`, or
 `readState: { version, unavailable: true }` when the caller's read state
-cannot be read; the conversations are listed either way.
+cannot be read; the conversations are listed either way. On a personal Station,
+the runtime inventory includes the candidate owners of the caller's current
+personal conversation account and checks each returned Session's read access.
+Hosted inventory remains bound to the request's tenant and exact owner.
 
 ```http
 POST /api/conversations/:id/acknowledgement
@@ -2856,7 +2934,10 @@ failed Station-agent turn, runs in a successor Session. The read covers every
 Session in the conversation's lineage, oldest first, and concatenates them
 ([read seam](../../src-server/routes/chat/conversations.ts)). For each Session it
 reads the file-memory record first and, when that has no usable record, the
-authorized messages restored from orchestration. A successor stores only its
+authorized messages restored from orchestration. The named message and export
+routes check the Agent recorded by runtime admission. An addressed Session
+uses its own recorded Agent when it has no conversation-root resolution.
+An Agent mismatch or refused runtime admission returns 404. A successor stores only its
 own turns; earlier history reaches its model without being copied into its
 record. Export, fork and summary use the same read. A successor's own record
 is never listed as a conversation of its own, and conversation message search
@@ -2901,8 +2982,28 @@ after deleting file-memory history and its derived summary. Orchestration
 history is read-only through this path (409), including a conversation whose
 later turns run in successor Sessions and each successor itself, and hosted
 requests return 404.
-A caller-scoped station-control deletion additionally checks the stored owner.
-This is not a general endpoint for deleting any Session visible in a list.
+A caller-scoped Station Control deletion additionally checks the stored owner.
+
+`DELETE /agents/:slug/conversations/:conversationId/owned` uses the same
+deletion lifecycle for an authenticated person on a personal Station. The
+stored file owner and the Agent must both match. Missing, foreign, and
+ambiguous legacy records all return 404 with `owned_conversation_not_found`.
+Runtime-managed records remain read-only (409). The request's owner authority is
+checked again at fork retirement and before deleting the saved files. An
+already retired fork whose cleanup does not finish returns 409 with
+`owned_conversation_deletion_incomplete`.
+
+### Search Saved Conversations
+
+`GET /api/conversations/work/search?query=<phrase>` searches saved
+conversation titles and transcript excerpts. The optional `projectSlug`,
+`agent`, and `limit` parameters narrow the results. The response includes a
+search state and result coverage. A `partial` state can omit matching records.
+
+Person requests use their existing conversation read authority. Verified
+Station Control callers retain their Project and transcript rules, including
+their Project as the default when recorded. Unverified internal callers are
+refused.
 
 ### Manage Conversation Context
 
@@ -3249,6 +3350,15 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents` returns `{success: true, data, failures}`. The old
 `/api/connections/runtimes` spelling is not registered here.
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
+
+The ordinary combined and Agent App listings have a five-second deadline and
+propagate caller cancellation. On deadline they return HTTP 504 with
+`connection_inventory_timed_out` and no inventory payload. Within the
+deadline, unavailable observations remain distinct from live catalogs. A later
+read reports unavailable evidence for an abandoned adapter operation still
+settling. It neither starts a duplicate nor reuses its result.
+An ACP row exposes its current `config.acpProbeStatus` when observed and
+`lastCheckedAt` is the measured handshake time or null.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
 Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
@@ -3782,6 +3892,8 @@ The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
 `scope`, `window`, `observations: [{globalSequence, receipts}]`, optional
 `nextCursor`, and unknown `coverage`. Canonical token and provider-cost receipts
 remain distinct; no page total or provider-completeness claim is manufactured.
+The version 1 receipt shape omits reasoning-token counts and serving-route
+observations. These fields remain available in local usage receipts.
 One event can yield multiple receipts. The continuation binds the source,
 verified request person, tenant, owner set, scope and dates; it is not a grant.
 
@@ -4542,6 +4654,10 @@ not SSE**. Its body uses `prompt`, optional `model`, `tools`, `maxSteps`, and
 { "prompt": "Summarize the supplied text: ...", "tools": [], "maxSteps": 5 }
 ```
 
+For VoltAgent, an authored Agent cap bounds this invocation even when the
+request gives a higher `maxSteps`. An omitted request cap uses the Agent or
+Station fallback. Strands uses its own limits.
+
 With an explicit tools array, it builds a temporary Agent with the selected
 loaded tools. With a schema on that branch, it asks for JSON and parses the
 text; this is not JSON Schema validation. Without a tools array it calls the
@@ -4702,8 +4818,10 @@ or bytes returns 404; a provider fetch failure returns 502.
 ### Search Users
 
 `GET /api/users/search?q=<query>` returns the directory provider's result array.
-An empty query returns `[]`. A caught provider failure also returns `[]` with
-200, so this legacy response cannot distinguish a failed search from no matches.
+An empty query or a successful search with no matches returns `[]` with HTTP
+200. An unavailable provider returns HTTP 503 with `success: false`, code
+`user_directory_unavailable`, and a correlation ID. Station keeps the provider
+failure in its server log.
 
 ### Lookup User by Alias
 
@@ -5343,7 +5461,11 @@ cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
 matching `registryTrust` (the verified receipt and pin, or `{state: "none"}`,
 in the shape `GET /api/plugins` uses), the observed `installationRevision`, `existingDataScope`, and permission/dependency
-consent information. The optional top-level `hasBundle` reports whether the staged
+consent information. Each inspected dependency can carry `registryTrust`
+alongside its `consent.registryTrustRevision`. This displays its own receipt
+and pin. Recovery previews include the same per-dependency projection from
+retained verification. Older hosts can omit the receipt.
+The optional top-level `hasBundle` reports whether the staged
 source already contains `dist/bundle.js`. It is not a manifest field or runtime
 readiness. Installation can build client code from `manifest.entrypoint` even
 when `hasBundle` is false. Where native loading consent is required and remains
@@ -5416,9 +5538,14 @@ records compensation and retained-state limits.
 
 `GET /api/plugins/check-updates` is operator-only. It reads installed names and
 checks git/registry update sources. Results use the installed manifest name as
-`name`, even when a registry entry ID differs. A caught top-level check failure
-currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`name`, even when a registry entry ID differs. A 200 response includes `updates`
+and `status`. `complete` means every eligible source was checked. `partial`
+means some checks failed and the response retains updates from successful
+sources. `unavailable` means no eligible source completed. A scan that cannot
+read the installed inventory returns HTTP 500. Older servers may omit
+`status`, leaving coverage unknown.
+
+Under a [managed policy](../guides/managed-policy.md#capability-switches)
 `limits.registries.allowedUrls`, a plugin installed from a registry the policy
 refuses is not checked (its git origin is not fetched); it is listed in
 `managedByPolicy` as `{name, message}` with the policy sentence, not as an
@@ -5741,11 +5868,18 @@ same current source, stages/validates the replacement, and retains the existing
 package on refusal. A missing source or provenance cannot choose another source.
 The marketplace's Open skill action returns to the existing installed Library.
 
-### Uninstall Skill from Registry
+### Skill package write refusals
 
-`DELETE /api/registry/skills/:id` returns SkillService's removal result and uses
-the same reload behavior. Package-owned read-only Skills retain their owner's
-mutation rules.
+`PUT /api/skills/:name` and `DELETE /api/skills/:name` return HTTP 409 with
+`code: "skill-not-owned"` when Station refuses a discovered Skill package.
+The response's `details` is a `SkillWriteRefusal`: a reason, a fixed explanation,
+and a separate `packageDirectory` when there is a known directory. Display the
+directory as labelled path data. Invalid input and missing Skills use HTTP 400
+and 404 respectively. Command word conflicts have their own HTTP 409 response.
+
+`DELETE /api/registry/skills/:id` uses the same ownership refusal code and
+details. The registry endpoint keeps its `message` field and reloads installed
+Skills after a successful removal.
 
 ### List Available Plugins (Registry)
 
@@ -5843,7 +5977,16 @@ exist). Provider status job counts are scoped to readable jobs.
 
 `GET /scheduler/status` returns `{success: true, data: {providers}}`. Each entry
 contains the provider's status plus its ID and display name; this is not one
-universal `{running, provider}` object.
+universal `{running, provider}` object. The Station operator may also receive
+`rowIssues` for built-in jobs that cannot be decoded or have invalid required
+fields. Each diagnostic contains only the stored job name, immutable job ID,
+and reason. Healthy jobs continue to appear and can still be run or edited.
+SQLite file integrity failures keep their separate recovery outcome.
+
+The Schedule calendar uses the same authorized job list. An optional
+`weekStart=YYYY-MM-DD` Monday and optional `displayZone` add a per-day bounded `weekOccurrences` forecast in UTC
+to each returned job. The display time zone only groups and formats these
+instants. The scheduler's stored time zone continues to govern execution.
 
 ### Preview Cron Schedule
 
@@ -6029,16 +6172,16 @@ Confirm also needs the Station operator in person (403
 `automation_proposal_operator_required`).
 
 Confirm decides the proposing chat's scope again, for its recorded caller.
-Each Agent must still be the one it named: the same slug, its own Project,
-and a digest of its definition. Confirm checks this before claiming the
-proposal, then again inside the configuration store's lock for creation and
-for enabling. A moved, deleted, reused-slug or unreadable binding answers
-409 `automation_proposal_binding_changed` and creates nothing. If the check
-fails only inside the enabling lock, the object is created but not enabled
-(`enabled: false`).
+Each Agent must still match the recorded slug, its Project, its definition
+digest and its incarnation. Confirm checks before claiming the proposal and
+rechecks under the Agent identity and configuration locks for creation and
+activation. A changed or unreadable binding, including an older Agent
+binding without an incarnation, answers 409
+`automation_proposal_binding_changed` before creating anything. A binding
+refusal during activation returns the saved object's id and `enabled: false`.
 
-Confirm creates the source disabled, or the rule in `observe`, unless
-`enable` is true. The id is derived from the proposal, so a Confirm retried
+Confirm creates a disabled source or an observing rule, then attempts to turn
+it on when `enable` is true. The id is derived from the proposal, so a Confirm retried
 after an interrupted one adopts what it created instead of creating a
 second. Startup marks an interrupted Confirm `confirmed` if its object
 exists, and `open` otherwise.
@@ -6050,6 +6193,8 @@ Other Confirm refusals:
 - 409 `automation_proposal_settled`: the proposal was already answered.
 
 Confirm answers `{proposal, createdId, enabled, untrustedContentAtConfirm}`.
+When the object was saved and requested activation failed, the response
+includes a bounded explanation in `message`.
 The chat schedule read adds `untrustedContentNow` to each open proposal: the
 conversation's untrusted-content mark as it is now, beside the
 `untrustedContent` recorded when the agent proposed it.
@@ -6197,9 +6342,43 @@ refused with 400 rather than clamped, an unavailable ledger answers 503 with
 Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
 `previewId` and `settingsPath`, before opening the ledger. The `polls` projection
 reports last-poll time, cursor and coverage/failure outcome; `partial` means the
-GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
-scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
-or `station automation deliveries`.
+GitHub page omitted additional runs and did not advance the cursor. A delivery
+whose action is held by a limit reads `suppressed` with that reason. Use the
+[SDK client](../../packages/sdk/src/client/automations.ts) or
+`station automation deliveries`.
+
+### Automation Operator Routes
+
+The rest of `AUTOMATION_OPERATOR_SURFACE` (#4513) is served from the same
+[source](../../src-server/routes/operations/automations.ts), all `no-store`,
+404 in hosted mode, and under the `access:manage` pairing scope for every
+method. Every mutation also requires the operator in person (the same proof as
+`/api/isolated-repairs`); anything else answers 403 `operator_required`.
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /automations/sources` | `{configurationFingerprint, sources}`; sources never carry a webhook secret. |
+| `POST /automations/sources` | Creates a disabled `github-poll` source (201). |
+| `PUT /automations/sources/:target/enable` | `{expectedFingerprint}`; 409 `repair_surface_required` for a source granting `isolated-repair` or `publish-branch`. |
+| `PUT /automations/sources/:target/disable` | Optional `{expectedFingerprint}`. |
+| `DELETE /automations/sources/:target` | Only once no rule names the source. |
+| `GET /automations/rules` | `{configurationFingerprint, rules}`. |
+| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). |
+| `PUT /automations/rules/:target` | Replaces a `dispatch-task` rule's name, matcher, episode, action and rate limit at `expectedFingerprint`; never its source or mode. |
+| `PUT /automations/rules/:target/enable` | `{expectedFingerprint}`; sets `live` (`dispatch-task` only). |
+| `PUT /automations/rules/:target/disable` | Sets `off`; optional `{expectedFingerprint}`. |
+| `DELETE /automations/rules/:target` | A `dispatch-task` rule. |
+| `GET /automations/episodes?limit=<1-200>` | `{episodes}`: unclosed episodes, newest first, without their internal key. |
+| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode; `{ruleId, episodeId, retry}`. |
+
+Everything except disable and delete also needs the
+`github-automation-observations` Feature Preview (404
+`feature_preview_disabled` otherwise). A missing source, rule or episode
+answers 404 `automation_not_found`; a stale fingerprint or invalid change 409
+`invalid_automation`; an unreadable policy 503 `policy_unavailable`. A retry
+refusal answers 409 with `not-exhausted`, `indeterminate`, `active`,
+`no-intent`, `stale` or `policy-unavailable`. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Open File with System Handler
 
@@ -6312,10 +6491,13 @@ and `prerequisitesState`, configured/detected providers, CLI observations,
 external-engine readiness, capability summaries, recommendation, build/server
 identity when available, and device presentation.
 
-Prerequisite discovery is cached for 60 seconds and refreshed asynchronously under
-a 2-second budget. `pending`, `ready`, and `stale` describe that cache. Some
-legacy boolean probes collapse failure/timeout to false, so false alone is not
-always an observed absence. The broad top-level `ready` is an OR of detected or
+Prerequisite discovery refreshes asynchronously under a two-second budget.
+`pending`, `ready`, and `stale` describe that cache. The `cliPresence` rows
+report observed presence or absence, retained evidence, or unknown presence.
+Retained rows keep their original PATH observation time. An incomplete CLI
+refresh does not renew the 60-second freshness period. The legacy `clis`
+boolean is true for a measured presence. False alone does not establish
+absence. The broad top-level `ready` is an OR of detected or
 configured paths; it is not proof that the user's chosen Agent/model can finish
 a chat turn. Use the more specific readiness and model evidence.
 
@@ -6591,8 +6773,9 @@ identity fields are null. The response data is
 `{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
 search, scan/read budgets or additional matches means `state: partial`, never a
 conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
-conversations; up to 32 file transcripts are read per call. Indexed native hits
-remain eligible beyond the metadata budget. Local incomplete entries use
+conversations; up to 32 file transcripts are read per call. Indexed native hits without file records
+remain eligible beyond the metadata budget. File-backed candidates still use
+both budgets when they have an indexed hit. Local incomplete entries use
 `station.conversations` / `metadata-scan-limit`, or `station.files` /
 `transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
 lineages are skipped; their titles are not returned.
@@ -7413,6 +7596,14 @@ revocation refuses an in-flight read. Profile management and manual enrolment
 retain their separate authority requirements. The operator exception covers
 only this read and GET/POST/DELETE of the existing profile device-code login
 leaf; it does not add `engine:login` to the operator's default scope set.
+DELETE acknowledges a cancellation even while POST is still checking CLI
+capabilities or profile sign-in status. The pending POST then returns a
+`409` with outcome `cancelled`, and no login process starts.
+Cancelling a running login acknowledges the cancellation immediately.
+A replacement for that profile returns `429` while exit of the previous
+process tree is pending or unconfirmed. Those process trees occupy host
+sign-in slots alongside active sign-ins. A full host returns `429` for sign-in
+attempts on other profiles too.
 See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
 
 ## Remote task engines
@@ -7620,9 +7811,9 @@ People `GET` is admitted by the pairing family's operator/local-grant boundary;
 `access:devices` and operator sessions do not admit it. The passkey-session
 browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
 credential (host CLI), or an operator passkey session followed by per-action
-step-up. The current refusal status for other callers, including Desktop/host
-grants, is tracked in [#4109](https://github.com/kontourai/station/issues/4109);
-the SDK currently treats that `401` as a dead credential and removes it.
+step-up. A current Desktop or other admitted Device without operator write
+authority receives `403 operator_credential_required`. An invalid or revoked
+credential receives `401`.
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access
@@ -7672,9 +7863,9 @@ person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
 by their devices. Only the operator credential (host CLI) or an operator passkey
-session with step-up can mint or revoke another person's tokens. The desktop's
-local grant lists them; its current write refusal status is tracked in
-[#4109](https://github.com/kontourai/station/issues/4109). A token is refused
+session with step-up can mint or revoke another person's tokens. The Desktop's
+current local grant can list them and receives `403 operator_credential_required`
+on writes. A token is refused
 (`403`) on a Project’s member-administration
 routes (`GET /api/projects/:slug/access`, `GET .../access/enablement` and `POST
 /api/projects/:slug/access/**`).

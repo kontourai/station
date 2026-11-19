@@ -8,6 +8,7 @@ export function ProjectPageHeader({
   goal,
   gitStatus,
   navigateToSettings,
+  invitePeople,
 }: {
   /** #5062: the Project's one-line goal, shown above its Overview. */
   goal?: string;
@@ -22,6 +23,7 @@ export function ProjectPageHeader({
     | null
     | undefined;
   navigateToSettings: () => void;
+  invitePeople?: () => void;
 }) {
   return (
     <div className="project-page__header">
@@ -42,6 +44,7 @@ export function ProjectPageHeader({
           )}
         </div>
       </div>
+      {invitePeople && <Button onClick={invitePeople}>Invite people</Button>}
       <button
         type="button"
         className="project-page__settings-btn"

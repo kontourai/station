@@ -40,6 +40,7 @@ export interface StationInstructionCapabilities {
   browser: boolean;
   devices: boolean;
   delegated: boolean;
+  canDelegateFromChild?: boolean;
   harness: 'claude' | 'codex' | 'acp' | 'muse' | 'other';
   /** Claude, with Station turning its tool search on (`claude-tool-search.ts`). */
   toolSearch: boolean;
@@ -103,8 +104,6 @@ export function effectiveStationControlTools(
 const BROWSER_TOOLS: ReadonlySet<string> = new Set(STATION_BROWSER_TOOL_NAMES);
 const CONTROL_PREFIX = 'mcp__station-control__';
 const BROWSER_PREFIX = 'mcp__station-browser__';
-/** The two tools a delegated Task may not use (Station refuses them). */
-const DELEGATED_BLOCKED_TOOLS = ['delegate_task', 'send_message'] as const;
 
 type Section = { id: StationInstructionSectionId; text: string };
 
@@ -113,12 +112,12 @@ function orchestrationSection(
 ): Section | undefined {
   if (!has('delegate_task')) return undefined;
   const lines: string[] = [
-    'Use Station tools when asked or when work needs another Agent, engine, model, Project or Station; ordinary coding needs none.',
-    'Use your own subagent for a quick helper on this engine/checkout. Use `delegate_task` for another Agent/engine, unavailable model, another Project/saved environment, or resumable Task.',
+    'Use Station tools when asked or when work crosses Agents, engines, models, Projects or Stations.',
+    'Use `delegate_task` for tracked child work. Use native subagents only when requested.',
   ];
   if (has('list_delegation_targets')) {
     lines.push(
-      `Before the first \`delegate_task\`, call \`list_delegation_targets\` once for Agents/readiness/engines/models; repeat only after refusal or a user-named target change. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
+      `Before the first \`delegate_task\`, call \`list_delegation_targets\` once for ready Agents and models; repeat only on refusal or target change. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
     );
   } else if (has('list_agents')) {
     lines.push(
@@ -128,8 +127,9 @@ function orchestrationSection(
     lines.push('Delegate only to an Agent the user named.');
   }
   lines.push(
-    'Report missing/unready targets. Never switch Agent/model unasked or fall back to shell `station`, `claude` or `codex`.',
-    'Use a fresh `clientTurnId` per `delegate_task`; reuse only for an identical retry. New review/re-check: new task/brief.',
+    'Report unavailable targets with catalog options. Change Agent or model only with user approval. Never delegate through a shell.',
+    'Brief the child on one outcome and what to return. Supply excerpts if it cannot read files.',
+    'Use a fresh `clientTurnId` except for identical retries. Start a new task for re-review.',
   );
   const follow: string[] = [];
   if (has('continue_task'))
@@ -160,13 +160,17 @@ function orchestrationSection(
   };
 }
 
-function delegatedChildSection(): Section {
+function delegatedChildSection(canDelegate: boolean): Section {
   return {
     id: 'delegated-child',
     text: [
       '## Station: you are a delegated task',
       '',
-      'Do the work yourself and put the result in your final reply; your parent reads it. Delegated sessions may not use `delegate_task` or `send_message`, and Station refuses them. Do not work around that with shell CLIs. If the work needs another Agent, say so in your reply.',
+      'Put the result in your final reply so Station can deliver it to your parent.',
+      canDelegate
+        ? 'If the task needs another Agent, start a new tracked child in this Project on this Station. Your depth and tool restrictions carry forward.'
+        : 'If the work needs another Agent, tell your parent in your reply.',
+      'Do not use shell CLIs to dispatch other Agents.',
     ].join('\n'),
   };
 }
@@ -310,22 +314,21 @@ export function assertStationInstructionBounds(
 export function composeStationInstructions(
   c: StationInstructionCapabilities,
 ): { sections: Section[]; text: string; digest: string } | undefined {
-  // A delegated Task cannot use these two, so they are never offered to it.
   const offered = new Set(c.controlTools);
-  if (c.delegated) for (const n of DELEGATED_BLOCKED_TOOLS) offered.delete(n);
+  if (c.delegated) {
+    offered.delete('send_message');
+    if (!c.canDelegateFromChild) offered.delete('delegate_task');
+    offered.delete('list_delegation_environments');
+  }
   const has = (...names: string[]) => names.every((n) => offered.has(n));
 
   const sections: Section[] = [];
   const push = (s: Section | undefined) => {
     if (s) sections.push(s);
   };
-  if (c.delegated) {
-    if (DELEGATED_BLOCKED_TOOLS.some((n) => c.controlTools.has(n))) {
-      sections.push(delegatedChildSection());
-    }
-  } else {
-    push(orchestrationSection(has));
-  }
+  if (c.delegated && c.controlTools.has('delegate_task'))
+    push(delegatedChildSection(has('delegate_task')));
+  push(orchestrationSection(has));
   if (has('list_engine_setup')) {
     const lines = [
       'For engine setup, call `list_engine_setup`; reuse its id/setupPath and saved connection. Preview off: give the Settings path; never enable it.',

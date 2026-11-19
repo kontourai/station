@@ -1,0 +1,11 @@
+{
+  "revision": "01c279fc33de53992bdba369a80d1e6ee255b61b",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Compared the updated reuse instructions with the theming guide, frontend patterns and the Claude import. PageFrame supplies the route inset, Settings composes PageSection and PageRow, and tokens.css maps legacy spacing and selects the kit small text size by density. The existing guides and scope import still describe those owners.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Compared the updated reuse instructions with the theming guide, frontend patterns and the Claude import. PageFrame supplies the route inset, Settings composes PageSection and PageRow, and tokens.css maps legacy spacing and selects the kit small text size by density. The existing guides and scope import still describe those owners.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Compared the updated reuse instructions with the theming guide, frontend patterns and the Claude import. PageFrame supplies the route inset, Settings composes PageSection and PageRow, and tokens.css maps legacy spacing and selects the kit small text size by density. The existing guides and scope import still describe those owners.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

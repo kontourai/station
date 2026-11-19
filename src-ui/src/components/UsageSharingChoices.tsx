@@ -168,7 +168,7 @@ function readableSharingFields(text: string): string {
 
 /** One readable view of the server-owned definitions, for both sharing choices. */
 export function UsageSharingIncluded(
-  props:
+  props: (
     | {
         data: SharingDisclosure;
         saveLabel?: string;
@@ -176,15 +176,17 @@ export function UsageSharingIncluded(
         /** `host`: this caller cannot confirm Detailed; `none`: not known yet. */
         confirmation?: 'save' | 'host' | 'none';
       }
-    | { counts: SharingCounts },
+    | { counts: SharingCounts }
+  ) & { heading?: string },
 ) {
   const daily = 'counts' in props;
+  const heading = props.heading ?? "What's included";
   return (
     <section
-      aria-label="What's included"
+      aria-label={heading}
       className="usage-telemetry-disclosure__included-content"
     >
-      <h3>What's included</h3>
+      <h3>{heading}</h3>
       {!daily && props.data.authorDisclosure && (
         <p>
           Shared with Kontour at:{' '}

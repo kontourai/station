@@ -1,0 +1,7 @@
+{
+  "revision": "0f0b3a5deb8bd0043d40fd2d8099e4bd0570e1cb",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the write refusal notice on the editor. It describes the failed attempt while leaving the draft and existing retry action intact. The path shape is checked before the path is rendered.","inputs":["src-ui/src/views/SkillsView.tsx"]}
+  ]
+}

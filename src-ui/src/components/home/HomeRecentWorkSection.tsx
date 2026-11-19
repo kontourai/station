@@ -19,10 +19,17 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
+import {
+  type ListRefresh,
+  ListRefreshActions,
+  ListRefreshPull,
+  ListRefreshStatus,
+} from '../refresh/ListRefresh';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
 
@@ -67,10 +74,13 @@ interface HomeRecentWorkSectionProps {
   workDegraded: boolean;
   workError: boolean;
   agents: readonly SessionIconAgent[];
+  remoteReadError?: { description?: string; retry?: () => void };
   remoteUnavailable: { environmentName: string }[];
   remoteAuthenticationRequired: { environmentName: string }[];
   onOpen: (task: HomeWorkItem) => void;
   onRetry: () => void;
+  refresh?: ListRefresh;
+  updating?: boolean;
 }
 
 interface HomeWorkController {
@@ -135,6 +145,7 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
 export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
   const controller = useHomeWorkController(props.lanes);
   const sectionRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   // A row whose lane changes (or whose lane empties) remounts elsewhere;
   // keep a keyboard user's focus on it. `tabIndex={-1}` is the last-resort
   // fallback target when the row itself is gone.
@@ -149,13 +160,49 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
     >
       <div className="home-view__section-heading">
         <h2 id="recent-work-heading">Recent work</h2>
+        {props.refresh && (
+          <ListRefreshActions
+            label="Recent work actions"
+            refreshLabel="Refresh recent work"
+            refresh={props.refresh}
+          />
+        )}
       </div>
-      <RemoteUnavailableNote environments={props.remoteUnavailable} />
-      <RemoteAuthenticationRequiredNote
-        environments={props.remoteAuthenticationRequired}
-      />
-      <ReadStatusNote items={props.workItems} />
-      <HomeWorkContent {...props} controller={controller} />
+      <div ref={listRef}>
+        <ListRefreshPull surfaceRef={listRef} refresh={props.refresh}>
+          {props.remoteReadError && (
+            <ErrorState
+              variant="compact"
+              title="Remote work unavailable"
+              description={props.remoteReadError.description}
+              action={
+                props.remoteReadError.retry && (
+                  <Button
+                    variant="secondary"
+                    onClick={props.remoteReadError.retry}
+                  >
+                    Retry remote work
+                  </Button>
+                )
+              }
+            />
+          )}
+          <RemoteUnavailableNote environments={props.remoteUnavailable} />
+          <RemoteAuthenticationRequiredNote
+            environments={props.remoteAuthenticationRequired}
+          />
+          <ReadStatusNote items={props.workItems} />
+          <HomeWorkContent {...props} controller={controller} />
+        </ListRefreshPull>
+        {props.refresh && (
+          <ListRefreshStatus
+            activity="Refreshing recent work…"
+            phase={props.refresh.phase}
+            updating={props.updating && !props.workLoading}
+            dockClearance
+          />
+        )}
+      </div>
     </section>
   );
 }
@@ -200,6 +247,9 @@ function HomeWorkContent({
   workLoading,
   workDegraded,
   workError,
+  remoteReadError,
+  remoteUnavailable,
+  remoteAuthenticationRequired,
   workFacts,
   agents,
   onOpen,
@@ -224,7 +274,13 @@ function HomeWorkContent({
   if (workError && workItems.length === 0) {
     return <RecentWorkError onRetry={onRetry} />;
   }
-  if (workItems.length === 0) return <RecentWorkEmpty />;
+  if (workItems.length === 0) {
+    const remoteIncomplete =
+      remoteReadError ||
+      remoteUnavailable.length > 0 ||
+      remoteAuthenticationRequired.length > 0;
+    return remoteIncomplete ? null : <RecentWorkEmpty />;
+  }
   return (
     <HomeWorkLanesContent
       controller={controller}

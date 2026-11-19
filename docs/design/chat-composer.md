@@ -14,14 +14,15 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
-## Run setup in the composer toolbar
+## Agent & model in the composer toolbar
 
 Reply and start composers share one bottom row inside the input box: attachment,
-voice and other tools on the left, then Run setup immediately beside Send or
-Start on the right. The reply's next-turn destination notice and conversation
-status/resync action stay above the box when present.
+voice and other tools on the left, then Agent & model immediately beside Send or
+Start on the right. If Start wraps, it stays at the trailing edge of the
+toolbar. The reply's next-turn destination notice and conversation status/resync
+action stay above the box when present.
 
-Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
+Agent & model is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the
 Agent, so the label spends its text on the model; without an Agent mark it reads
 Agent · model and the Agent name truncates first, but never below about eight
@@ -31,13 +32,10 @@ follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
 on the marks, and the open panel repeats the mark on the choice that raised it. When the
 Agent now points at another engine (and its Session has not ended; see 3.1), the trigger
-adds "· Agent moved" at every width, 8px after the label and with a plain space after
+adds "· Default differs" at every width, 8px after the label and with a plain space after
 the dot. The label gives way before it, and in narrow composers the label hides,
-keeping marks, the hint without its dot, and caret. Showing the hint on the trigger at
-every width is a decision of #4971: before #4897 a wide composer said "Agent now on …"
-in the Engine chip's caption and a narrow one "Agent moved", and from #4897 the closed
-row said neither. The trigger's accessible name ends with "Agent moved"
-and its description gives the full sentence. On phones, More draft options groups Saved drafts
+keeping marks, the hint without its dot, and caret. The trigger’s accessible
+description names the session engine and Agent default. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -104,17 +102,17 @@ rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
 
-A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
-visible at rest, and opens the Chat inventory scoped to that answer
+A settled answer's **Basis** chip stays visible while the other actions are
+hidden and opens the Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 It reads plain **Basis** for an unassessed answer, which is nearly every answer
 today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-In a narrow dock or phone row, Surface's label is cut short with an ellipsis
-after a whole **Basis ·**, and the full label stays in the chip's accessible
-name and tooltip.
+The answer footer wraps when its controls need more space. In a narrow dock
+or phone row, a long Surface label can end in an ellipsis after a whole
+**Basis ·**. The full label stays in the chip's accessible name and tooltip.
 The chip reads an answer's standing only after the answer has stayed on screen
 for about 150ms, so a fling through history sends no read for answers it only
 passes. It cancels a read that scrolls off screen unanswered, does not re-read a
@@ -175,9 +173,17 @@ only an explicit Agent request starts Agent work. Files & connections contains
 source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
-the dock by `NewChatModal`). Both use a heading with the inline Project picker,
-a compact Run setup control beside Start inside the message box, and a Station/location
-line below it.
+the dock by `NewChatModal`). Both use a centered heading, a compact Agent & model
+control beside Start inside the message box, and a Station/location line below
+it. First-run Home uses **Start your first conversation** with the Project picker
+beneath it. Other drafts put the selected Project in **What would you like to do?**
+and keep **No project** available. Compact Home drafts shorten the message box.
+
+On the current Station, **Create project** in the Project picker opens the
+standard Project form with **Blank workspace** selected. After creation, the draft
+selects that Project and keeps its message and attachments. Canceling keeps the
+previous Project. A draft targeting another Station uses that Station's existing
+Project list.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
 of the chat on screen, in any dock region or placement (full screen on a phone):
@@ -190,7 +196,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
-  for a fork a message action started). The start composer's Project chip
+  for a fork a message action started). A fork starts with the source Agent
+  selected. Moving the pointer over a different Agent or using the arrow keys
+  changes the selection. The start composer's Project chip
   is the single owner of destination choice; dock headers have no project picker.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
@@ -215,7 +223,7 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   the person moves focus or clicks away (a window switch does not count).
 
 The Project page opens on Overview and keeps its shared Project Room separate
-from direct Agent conversations. The shared Run setup control sits
+from direct Agent conversations. The shared Agent & model control sits
 inside the composer beside Start and, while the `visual-skills` Feature Preview
 is on, the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -246,7 +254,7 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens a compact **Switch engine** (or
-**Switch agent**) picker; on a phone it replaces Run setup. Its one action
+**Switch agent**) picker; on a phone it replaces Agent & model. Its one action
 switches now, sending the composer's draft as the first turn, prepared like
 any send (mentions, quotes and the size limit), or, with no draft, a fixed
 catch-up turn (the route starts the target Session with a real turn, so
@@ -1014,7 +1022,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### 3.1 Provider and model picker
 
-- Chat replies, Home and dock starts share one **Run setup** button, with the
+- Chat replies, Home and dock starts share one **Agent & model** button, with the
   Agent and engine marks and a compact model label (Agent · model when no
   Agent mark is shown). Identical marks appear
   once; different marks overlap with the smaller engine mark underneath. A missing
@@ -1044,10 +1052,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" on its own line below the engine name, with no separator, wrapping
-  rather than being cut, and the accessible name says
-  the conversation runs on its engine and the Agent now uses another. The closed Run
-  setup trigger says "Agent moved" (see Run setup in the composer toolbar). Once the Session's
+  marks the Agent row. The stacked engine icon opens the current engine and Agent default. On narrow phones a dot replaces the text badge.
+  The picker identifies the connection in scope. Saving a model choice says
+  "Model selected" while the engine has yet to serve a turn. The closed Run
+  setup trigger says "Default differs" (see Agent & model in the composer toolbar). Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
   "Next turn on …", because the next turn starts a successor
   there. Since the closed trigger has no room for a destination name, the composer also
@@ -1083,8 +1091,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   takes its confirmation); the pick is the new chat's own and rides its first
   send. In the dock's New chat draft the picker opens on the popover layer, as
   on Home.
-  On desktop a picker opened from Run setup (approval, model) replaces the
-  panel rather than stacking on it: Run setup hides, the picker opens at the Run
+  On desktop a picker opened from Agent & model (approval, model) replaces the
+  panel rather than stacking on it: Agent & model hides, the picker opens at the Run
   setup trigger and stays inside the composer's column, Escape returns to Run
   setup and a click outside closes both. The approval picker's first line says
   the mode in effect as the engine confirmed it, or that the engine has not
@@ -1111,7 +1119,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   that differs from Default ("Own settings", or "Ask · kept"), and its name
   says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. Codex's Default likewise names the engine's own settings
+  offers no mode. Signed-in users can save personal approval defaults for
+  Codex, Claude, and Muse where the selected Station permits personal defaults.
+  Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.
@@ -1122,10 +1132,17 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   writable, for a trusted host folder and under Station's `station-workspace`
   profile).
   An engine's advertised Mode (OpenCode's build or plan agent)
-  is a separate picker beside it, never a replacement for it. While Station
+  is a separate picker beside it. In an existing chat, the picker stages the
+  request for the next send even when the model is engine-selected. The chip
+  shows it as pending until the engine reports the mode. If the model picker
+  is available only at start, the composer offers the model and its advertised
+  thinking effort when starting a new chat. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot
   apply names the OpenCode setting and the next step, and offers no Retry.
+  Confirming Full access closes Run Setup. If Station refuses, the notice shows
+  the outcome first and keeps the operator's instructions under **Full access
+  recovery**.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
@@ -1146,6 +1163,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   says so is re-read after every send that did not take, and a turn in flight
   outranks it, so a running first turn never reopens Model.
 
+- An ACP mode pick stays pending until the engine confirms it. Station records
+  confirmed ACP and native OpenCode modes as Session observations without
+  changing the Session's model, directory or lifecycle. The Session summary
+  restores the last confirmed mode after reconnecting.
+
 ### Turn activity and follow-up delivery
 
 On desktop, Send remains available beside a separate Stop action during a turn.
@@ -1154,18 +1176,17 @@ control that takes Send's accent while Send is ready. With no turn, Send alone
 sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
 composer holds text, an attachment or quoted context. Until then they take no
-room, so Run setup keeps the width an empty draft has no use for. On mobile,
+room, so Agent & model keeps the width an empty draft has no use for. On mobile,
 Stop follows them at the row's trailing edge, so it does not move when they
-appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
+appear; Agent & model narrows instead. At 390px a running turn's full row (Clear,
 Send, mode picker and Stop) still wraps to a second line once the draft holds
 text. Names and the selected mode remain accessible, and the opened picker
-uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
-picker defaults to **Steer** where the selected engine can prove native mid-turn
-input, and to **Queue** (a new turn after the entire current turn finishes)
-everywhere else, including safe-stop steering. A chosen mode holds until the
-conversation changes. Claude Code, Codex and Muse on `muse serve` have additive
-steering; a Muse Session on the `muse exec` fallback reports no steering in
-its Session summary, so it defaults to **Queue**, and refuses a steer.
+uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
+The mode picker defaults to **Queue** for every engine. Station holds a
+follow-up for the next turn when the current one is still running. A chosen
+mode holds until the conversation changes. Claude Code, Codex and Muse on
+`muse serve` have additive steering. A Muse Session on `muse exec` reports no
+steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
 cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
 prompt, waits for its terminal answer, and continues the same task with the
@@ -1230,7 +1251,10 @@ owned unconfirmed steer offers explicit Review and resend.
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
-queuing. The browser retires its in-flight outbox row on either accepted receipt.
+queuing. The browser shows a matching held receipt in the open inbox before
+retiring its in-flight outbox row. The receipt confirms custody while the
+inbox read determines queue order. A started-turn receipt also retires the
+outbox row.
 If the answer is lost, it retains the original key for delivery inspection.
 This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
@@ -1245,6 +1269,8 @@ proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
 window holds reads **Queued in another window.** (that window sends it), one
 from a closed window **From a closed window. Not sent.**; both offer **Send**.
+When a held outbox message restores an unopened chat, Home and Inbox use the
+conversation title and Agent from Station’s inventory and catalog when available.
 Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
@@ -1256,6 +1282,16 @@ than popping.
 In a dock too short for the list and the draft, the list yields before the
 draft does, down to its toggle row (and, while open, its first row); the rest
 scrolls inside it.
+
+A no-project composer can omit its workspace when the conversation already
+runs in a Station-managed chat folder. Station holds that follow-up for the
+Session and folder it observed at admission. If a different Session takes
+over before placement, the held message is refused. A request that names an
+explicit directory or Project still has to match the conversation's binding.
+While an automatic turn prepares a successor in the same conversation, Queue
+can use the existing binding for that ordinary continuation. The held
+follow-up waits for startup and the earlier turn. A handoff or a fresh-context
+reservation must establish its own binding before this path can admit a message.
 
 The pending-message section starts collapsed, showing only its
 count and a Needs review (or Not sent) indicator; a live region outside the
@@ -1290,7 +1326,7 @@ activity labels.
 
 ### Return on this device
 
-**Chat settings → Return in chat** is saved in the existing device-settings
+**Agent & model → Return in chat** is saved in the existing device-settings
 record and applies to software and attached keyboards. Automatic sends on a
 fine-pointer desktop and inserts a new line on coarse-pointer touch devices,
 including tablets and landscape phones. Narrow desktop windows retain desktop
@@ -1602,7 +1638,7 @@ shelves behave as before.
 
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
-Agent, model, Mode and Approval remain choices inside Run setup. Basis stays
+Agent, model, Mode and Approval remain choices inside Agent & model. Basis stays
 answer-scoped. Chat inventory and Browse turns are conversation overflow actions.
 
 The dev UI proxy uses the production unavailable envelope during API restarts.

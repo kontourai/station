@@ -4516,7 +4516,10 @@ describe('OrchestrationService', () => {
   // presents the cursor deterministically dies with the CLI's
   // "No conversation found with session ID: <uuid>". The continuation must
   // take the transcript-seed fresh child instead.
-  test('#765 A1: a predecessor without engine persistence continues by transcript seed, never its cursor', async () => {
+  test.each([
+    ['a predecessor without engine persistence', false],
+    ['a deliberate Continue from history after a failed native reopen', true],
+  ] as const)('%s uses a fresh Session and transcript seed', async (_label, continueFromHistory) => {
     claude.startSession.mockImplementationOnce(async (input) => {
       const session: ProviderSession = {
         provider: 'claude' as const,
@@ -4526,7 +4529,7 @@ describe('OrchestrationService', () => {
         // The live adapter records the start posture on its ProviderSession
         // (claude-adapter.ts `startTrackedSession`); this is that exact
         // shape for a chat started before #765 forced persistence on.
-        persistSession: false,
+        persistSession: continueFromHistory,
         createdAt: '2026-08-29T00:00:00.000Z',
         updatedAt: '2026-08-29T00:00:00.000Z',
       };
@@ -4578,6 +4581,34 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-29T00:00:01.000Z',
     });
 
+    if (continueFromHistory) {
+      eventStore.appendEvent({
+        eventId: 'conversation-unpersisted-turn-completed',
+        provider: 'claude',
+        threadId: 'conversation-unpersisted',
+        turnId: 'unpersisted-turn',
+        method: 'turn.completed',
+        finishReason: 'stop',
+        sessionState: 'idle',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-29T00:00:01.100Z',
+      });
+    }
+
+    const boundary = continueFromHistory
+      ? await service.reserveConversationContextBoundary(
+          'conversation-unpersisted',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            policy: 'continue-from-history',
+            idempotencyKey: 'resume-by-transcript',
+            expectedCurrentSessionId: 'conversation-unpersisted',
+            actorId: 'owner-user',
+          },
+        )
+      : undefined;
     const next = await service.resolveConversationContinuation(
       'conversation-unpersisted',
       INTERNAL_SESSION_READ_SCOPE,
@@ -4588,6 +4619,7 @@ describe('OrchestrationService', () => {
       transcriptSeed: expect.stringContaining('first-turn-token coral-7'),
     });
     expect(next).not.toHaveProperty('resumeCursor');
+    if (boundary) expect(next.sessionId).toBe(boundary.successorSessionId);
   });
 
   // #765 A1: `dead` is the engine's own structured verdict that this binding
@@ -22923,7 +22955,7 @@ describe('OrchestrationService', () => {
 
     const first = service.dispatch(command);
     await vi.waitFor(() => expect(claude.startSession).toHaveBeenCalledOnce());
-    await expect(service.dispatch(command)).rejects.toThrow('already starting');
+    await expect(service.dispatch(command)).rejects.toThrow('The session is still starting.');
 
     const now = new Date().toISOString();
     pending.resolve({
@@ -23487,6 +23519,29 @@ describe('OrchestrationService', () => {
     await guardedService.shutdown();
   });
 
+  async function runScriptedSmoke(
+    input: Parameters<OrchestrationService['runConnectionSmoke']>[0],
+  ) {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const terminal = deferred<void>();
+    const unsubscribe = eventBus.subscribe((frame) => {
+      if (frame.event !== 'orchestration:event') return;
+      const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
+      if (event?.method === 'turn.completed' && event.threadId.startsWith(`station-smoke-${input.provider}-`))
+        terminal.resolve();
+    });
+    try {
+      const result = service.runConnectionSmoke(input);
+      // Advance the smoke's poll after the fixture's terminal is published.
+      await Promise.race([terminal.promise, result]);
+      await vi.advanceTimersByTimeAsync(100);
+      return await result;
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
+    }
+  }
+
   test('completes one smoke turn and deletes its ephemeral session artifacts', async () => {
     claude.sendTurn.mockImplementationOnce(async (input) => {
       const turnId = 'claude-smoke-turn';
@@ -23505,7 +23560,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId };
     });
 
-    const result = await service.runConnectionSmoke({
+    const result = await runScriptedSmoke({
       connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
@@ -23562,7 +23617,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId };
     });
 
-    const result = await service.runConnectionSmoke({
+    const result = await runScriptedSmoke({
       connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
@@ -23614,14 +23669,10 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
-        // The assertion is about reasoning-only content classification, not a
-        // one-second latency SLA. The complete related corpus can delay this
-        // synthetic event loop on a two-core runner, so retain a bounded but
-        // non-racy operation window.
         timeoutMs: 5_000,
       }),
     ).resolves.toMatchObject({ ok: true });
@@ -23646,7 +23697,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23833,7 +23884,7 @@ describe('OrchestrationService', () => {
         return { threadId: input.threadId, turnId };
       });
 
-      const result = await service.runConnectionSmoke({
+      const result = await runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23882,7 +23933,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23920,7 +23971,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23961,7 +24012,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23998,7 +24049,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -24045,7 +24096,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -29397,6 +29448,8 @@ describe('OrchestrationService', () => {
     > = {
       'session.started': 'non-fold',
       'session.configured': 'non-fold',
+      'session.approval-reviewer-observed': 'non-fold',
+      'session.engine-mode-observed': 'non-fold',
       'session.state-changed': 'non-fold',
       'session.stop-settled': 'non-fold',
       'session.cancellation-requested': 'non-fold',

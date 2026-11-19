@@ -28,6 +28,7 @@ import {
   respondToRequest,
 } from '../client/orchestration';
 import {
+  checkPluginUpdates,
   listPlugins,
   PluginCollectionHttpError,
   previewPluginRecovery,
@@ -1027,6 +1028,47 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     vi.mocked(fetch).mockResolvedValue(nonJson(200));
     const protocol = await call().catch((caught: unknown) => caught);
     expect(protocol).toBeInstanceOf(SyntaxError);
+  });
+
+  it('plugins: an update refusal keeps its status and never becomes an empty scan', async () => {
+    vi.mocked(fetch).mockResolvedValue(nonJson(503));
+    await expect(checkPluginUpdates(API)).rejects.toMatchObject({
+      status: 503,
+    });
+  });
+
+  it('plugins: the update check preserves coverage and records', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ updates: [] })),
+    );
+    await expect(checkPluginUpdates(API)).resolves.toEqual({
+      status: 'unknown',
+      updates: [],
+    });
+
+    const updates = [
+      {
+        name: 'known',
+        currentVersion: '1.0',
+        latestVersion: '2.0',
+        source: 'registry',
+      },
+    ];
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'partial', updates })),
+    );
+    await expect(checkPluginUpdates(API)).resolves.toEqual({
+      status: 'partial',
+      updates,
+    });
+
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ status: 'unavailable', updates: [] })),
+    );
+    await expect(checkPluginUpdates(API)).resolves.toEqual({
+      status: 'unavailable',
+      updates: [],
+    });
   });
 
   it('plugins: a refused collection read keeps its details', async () => {

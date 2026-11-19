@@ -424,7 +424,7 @@ export async function runSessionsWait(
       }),
     );
   else console.log(waitLine(result));
-  process.exit(result.exitCode);
+  process.exitCode = result.exitCode;
 }
 
 /** The digest as this command documents it. */

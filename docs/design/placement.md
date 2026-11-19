@@ -968,8 +968,10 @@ child registry and completion notices are scoped to the Station connection;
 a foreign Station with the same reported child IDs cannot replace a notice.
 Missing snapshot evidence leaves an outcome unknown.
 
-Result text identifies its recorded source: returned result, provider summary,
-child message or provider error. Older text keeps unknown provenance. A later
+Expanded result text identifies its recorded source: returned result, provider
+summary, child message or provider error. The compact preview labels
+provider summaries, child messages and provider errors when their source
+is recorded. Expansion also discloses unknown provenance on older text. A later
 structured tool return from the same Station and child corrects an existing
 completion notice in place without another announcement. A transcript handle
 alone does not prove a returned result. These rules qualify the dated
@@ -1063,6 +1065,11 @@ resolved by `RegionPaneHost` from the SDK's metadata LISTS
 and reading no record, so the host chunk gains no layout renderer. Until the
 list resolves, and for an id the list no longer carries, the tab shows the
 prefix fallback ("Board" / "Layout").
+
+The trusted plugin pane host uses
+[`PluginWorkspacePaneSDKBoundary`](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx)
+for its Layout navigation context. Clearing its active tab removes the saved
+state and cancels pending hash restoration before a switch or remount.
 
 **Which kinds render.** The renderer (`LayoutWorkspacePane`, lazy) is
 `PersonalBoardView`'s: the one `LayoutRenderer` through the one
@@ -1953,8 +1960,10 @@ per conversation.** Below the fold nothing above changes.
   44px boxes on a pointer that cannot hover, since the side panel opens by
   width alone. A pull request review inside the pane fences its own
   changed-files diff from the head, so the head always speaks for the Diff
-  pane. File Preview's head is left for the per-file Changes rework in
-  flight to build on.
+  pane. File Preview's Changes view uses these same tools. In the File view,
+  wrapped continuations align with the code column beside the line numbers.
+  Local and provider diff comments show relative time, with the original
+  instant in a tooltip.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge

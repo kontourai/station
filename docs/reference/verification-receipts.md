@@ -341,11 +341,13 @@ means an interim, not-yet-final result.
 Two of those statuses mean the run was **stopped**, not judged: `timed_out` and
 `canceled`. No step failed and no test verdict exists, so the bounded summary
 names the step that was still running as `inFlightStep` rather than
-`failingStep`, and `failingStep` is absent. Every other non-passing status
-still reports `failingStep` as before. Either field names the last step
-boundary in the capture: npm's `> <pkg>@<version> <script>` header, or the
-`[ci:fast] step <id>` line `ci:fast` prints before each step, which is what
-names a direct `node scripts/...` step (#2922). Read `inFlightStep` as the phase that
+`failingStep`, and `failingStep` is absent. Other non-passing statuses can
+report `failingStep`. If the `ci:fast` owner reports that its feedback budget
+expired between steps, `infrastructureCause` names the next check and
+`failingStep` is absent. Either step field uses the last captured npm
+`> <pkg>@<version> <script>` header or the `[ci:fast] step <id>` line printed
+when `ci:fast` attempts a launch. The latter also covers direct
+`node scripts/...` steps (#2922). Read `inFlightStep` as the phase that
 was still running. Inspect host load, owned processes and phase progress
 before choosing a fix; its presence does not justify increasing a budget or
 imply a failed product assertion.
@@ -613,9 +615,13 @@ pending phase and the stop reason. The summary keeps this distinct from
 checkpoints remain available under the same request. A terminal publication
 still requires the output ownership fence.
 
-The bounded summary's `firstCausalExcerpt` (station#1871/#2591/#3189) names the
-single most actionable diagnostic line found in the captured output, scoped to
-the step that actually failed. Station#4249 adds `causalExcerpts` alongside
+The bounded summary's `firstCausalExcerpt` (station#1871/#2591/#3189) carries
+failure-shaped output from the failing step, or stderr evidence with its
+attribution limit. When the failure scan finds only warnings or informational
+lines, `diagnosticExcerpts` keeps those lines as context, including from earlier
+steps. The completion summary labels that context separately and presents it
+as warning annotations. These fields live in the bounded summary and retain
+the existing canonical receipt schema. Station#4249 adds `causalExcerpts` alongside
 it: every distinct failure-shaped excerpt genuinely observed in that same
 captured, attributed region — not only the first — so a completion-mode run
 (the un-chained `typecheck` and `docs:truth:gate` aggregate runners, or any

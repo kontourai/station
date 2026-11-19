@@ -11,7 +11,7 @@
  * The cards are labeled Sample. They do not wear a derived verdict.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../Button';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -33,12 +33,18 @@ export function UnpairedSampleWorkspace({
   const [stepIndex, setStepIndex] = useState(0);
   const [tourActive, setTourActive] = useState(true);
   const [approved, setApproved] = useState(false);
+  const inspectorHeading = useRef<HTMLHeadingElement>(null);
+  const focusInspector = useRef(false);
   const step = FIRST_RUN_TOUR_STEPS[stepIndex];
   const surface = sampleSurfaceForAnchor(step.anchor);
 
   useEffect(() => {
     firstRunStore.enterChapter('tour');
     firstRunStore.recordTourStep(step.id);
+    if (focusInspector.current) {
+      focusInspector.current = false;
+      inspectorHeading.current?.focus();
+    }
   }, [step.id]);
 
   const endTour = useCallback(() => {
@@ -57,6 +63,13 @@ export function UnpairedSampleWorkspace({
   const back = useCallback(() => {
     setStepIndex((current) => Math.max(0, current - 1));
   }, []);
+
+  const openSampleStep = (id: string) => {
+    const index = FIRST_RUN_TOUR_STEPS.findIndex((item) => item.id === id);
+    if (index === -1) return;
+    focusInspector.current = !tourActive;
+    setStepIndex(index);
+  };
 
   return (
     <div className="unpaired-sample" data-testid="unpaired-sample-workspace">
@@ -170,7 +183,7 @@ export function UnpairedSampleWorkspace({
           <p className="unpaired-sample__eyebrow">
             {surface?.eyebrow ?? 'Sample'}
           </p>
-          <h2>
+          <h2 ref={inspectorHeading} tabIndex={-1}>
             {step.anchor === 'notifications'
               ? 'Review the draft'
               : step.anchor === 'schedule'
@@ -223,8 +236,10 @@ export function UnpairedSampleWorkspace({
                 <strong>Agents · Skills · Engines · Plugins</strong>
                 <span>Available after pairing a Station</span>
               </div>
-              <Button onClick={() => setStepIndex(1)}>Open sample inbox</Button>
-              <Button onClick={() => setStepIndex(2)}>
+              <Button onClick={() => openSampleStep('decisions')}>
+                Open sample inbox
+              </Button>
+              <Button onClick={() => openSampleStep('schedule')}>
                 Open sample Schedule
               </Button>
             </>

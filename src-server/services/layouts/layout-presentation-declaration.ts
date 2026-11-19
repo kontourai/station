@@ -7,94 +7,55 @@ import {
   type LayoutPresentationReadFields,
   parseLayoutPresentationDeclaration,
 } from '@kontourai/station-contracts/layout';
-import {
-  enumerateLayoutDefinitionPanes,
-  MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH,
-} from '@kontourai/station-contracts/workspace-pane-layout-adapter';
+import { isWorkspacePaneHostIdentitySegment } from '@kontourai/station-contracts/workspace-pane-host';
+import { enumerateLayoutDefinitionPanes } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
+import { compactProjectLayoutPaneIdentity } from './project-layout-pane-identity.js';
 
-/**
- * The pane ids a plugin layout's own tabs adapt into: the descriptors the
- * Project pane catalog issues for them (`workspace-pane-catalog.ts`, through
- * the same contracts adapter). These are the only drill-ins a plugin layout
- * may declare in this slice; opening another contributor's pane by reference
- * is the later extraction slices' work (design: "Coding capability map").
- */
-function pluginLayoutOwnPaneIds(
-  definition: unknown,
-  pluginName: string,
-  layoutSlug: string,
-): ReadonlySet<string> {
-  const adaptations = enumerateLayoutDefinitionPanes(definition, {
-    layoutSlug,
-    pluginId: pluginName,
-  });
-  return new Set(
-    (adaptations ?? []).map((adaptation) => adaptation.descriptor.id),
-  );
-}
+// Project creation issues UUIDs. A stored Project with an unusual id is
+// checked against the actual host scope when the layout is opened.
+const EXAMPLE_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
-/**
- * Parse a plugin layout definition's contract fields, refusing an unknown
- * value or a drill-in that is not one of the layout's own panes. Throws
- * `InvalidLayoutDeclarationError`.
- */
+/** Refuse an unknown field or a drill-in that cannot open in the pane host. */
 export function parsePluginLayoutDeclaration(
   definition: unknown,
   pluginName: string,
   layoutSlug: string,
 ): LayoutPresentationDeclaration {
-  const ownPaneIds = pluginLayoutOwnPaneIds(definition, pluginName, layoutSlug);
+  const sourceId = `plugin:${pluginName}:${layoutSlug}`;
+  const adaptations = enumerateLayoutDefinitionPanes(definition, {
+    layoutSlug,
+    pluginId: pluginName,
+    instanceScope: `project:${EXAMPLE_PROJECT_ID}:source:${sourceId}`,
+    boundContext: { projectId: EXAMPLE_PROJECT_ID, sourceId },
+  });
+  const ownPanes = new Map(
+    (adaptations ?? []).map(({ descriptor, instance }) => [
+      String(descriptor.id),
+      instance,
+    ]),
+  );
   const label = `Plugin '${pluginName}' layout`;
   const declaration = parseLayoutPresentationDeclaration(definition, {
     label,
-    resolvesDrillIn: (paneId) => ownPaneIds.has(paneId),
+    resolvesDrillIn: (paneId) => ownPanes.has(paneId),
   });
-  const tooLong = (declaration.drillIns ?? []).find(
-    (paneId) =>
-      (projectOccurrenceIdLength(definition, pluginName, layoutSlug, paneId) ??
-        0) > MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH,
-  );
-  if (tooLong !== undefined) {
-    throw new InvalidLayoutDeclarationError(
-      label,
-      `drill-in '${tooLong}' gets a Project occurrence id longer than the ${MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH} characters the pane host and navigation accept, so it could never be shown; shorten the plugin name, layout slug or tab id (#4130)`,
-    );
+  for (const paneId of declaration.drillIns ?? []) {
+    const pane = ownPanes.get(paneId);
+    if (!pane) continue; // The declaration parser has already refused unknown ids.
+    const { descriptorId, instanceId, stateKey } =
+      compactProjectLayoutPaneIdentity(pane);
+    if (
+      ![sourceId, descriptorId, instanceId, stateKey].every(
+        isWorkspacePaneHostIdentitySegment,
+      )
+    )
+      throw new InvalidLayoutDeclarationError(
+        label,
+        `drill-in '${paneId}' has an identity outside the pane host limit`,
+      );
   }
   return declaration;
 }
-
-/**
- * The length of the longest identity (instance id or state key) the Project
- * pane catalog issues for `paneId` — composed exactly as
- * `workspace-pane-catalog.ts` composes it, through the same adapter, with a
- * Project id of a UUID's fixed length (Project ids are minted as UUIDs). The pane
- * host's segment check and the navigation store's `?pane=` both refuse an id
- * over {@link MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH}.
- */
-function projectOccurrenceIdLength(
-  definition: unknown,
-  pluginName: string,
-  layoutSlug: string,
-  paneId: string,
-): number | undefined {
-  const adaptation = enumerateLayoutDefinitionPanes(definition, {
-    layoutSlug,
-    pluginId: pluginName,
-    instanceScope: `project:${UUID_SHAPED_PROJECT_ID}:source:plugin:${pluginName}:${layoutSlug}`,
-  })?.find((candidate) => candidate.descriptor.id === paneId);
-  return adaptation
-    ? Math.max(
-        adaptation.instance.instanceId.length,
-        adaptation.instance.stateKey.length,
-      )
-    : undefined;
-}
-
-// Accepted gap: `projectSchema.id` only requires a non-empty string, so a
-// Project whose id is not UUID-shaped — near the length at which the adapter
-// hashes the instance scope — can pass this check at install and still fail
-// the pane host's limit at mount.
-const UUID_SHAPED_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * The install-time refusal (#2995): a plugin whose layout declaration does

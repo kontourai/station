@@ -367,7 +367,7 @@ export const MANAGED_SETTING_NARROWER_SCOPES: Readonly<Record<string, string>> =
     structureModel:
       "`approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first.",
     defaultMaxTurns:
-      "An Agent's own step limit (`maxSteps` or `guardrails.maxSteps`) still applies first.",
+      "On VoltAgent, an Agent's own `maxSteps` still applies first.",
     defaultMaxOutputTokens:
       "An Agent's own `guardrails.maxTokens` still applies first.",
     defaultWorkspaceIsolation:

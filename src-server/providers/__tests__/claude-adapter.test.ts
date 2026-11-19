@@ -1724,6 +1724,83 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  describe('Claude API client-version refusal', () => {
+    const versionError =
+      '400 {"error":{"type":"invalid_request_error","message":"claude-cli does not support this model; version 2.1.251 or newer is required. Run claude update."}}';
+    const endpoint = 'https://proxy.example.invalid/private-route';
+
+    test.each([
+      {
+        label: 'configured proxy',
+        baseUrl: endpoint,
+        text: versionError,
+        explain: true,
+      },
+      {
+        label: 'direct connection',
+        baseUrl: undefined,
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'default endpoint',
+        baseUrl: 'https://api.anthropic.com/',
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'malformed endpoint',
+        baseUrl: 'not a URL',
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'unrelated API error',
+        baseUrl: endpoint,
+        text: '400 invalid_request_error: Extra inputs are not permitted',
+        explain: false,
+      },
+    ])('$label', async ({ baseUrl, text, explain }) => {
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () =>
+          baseUrl === undefined ? undefined : { ANTHROPIC_BASE_URL: baseUrl },
+      });
+      const events: Array<{ method: string }> = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'claude-client-version-refusal';
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [text],
+            num_turns: 1,
+            session_id: threadId,
+            uuid: 'version-refusal-result',
+          },
+        ]),
+      );
+      await adapter.startSession({ provider: 'claude', threadId });
+      try {
+        await vi.waitFor(() => {
+          expect(
+            events.find((event) => event.method === 'runtime.error'),
+          ).toMatchObject({
+            code: 'engine-turn-failed',
+            message: explain
+              ? 'Claude reported a client version requirement. If the connection uses a model proxy, check the proxy’s upstream client version.'
+              : text,
+          });
+        });
+      } finally {
+        await adapter.stopSession(threadId);
+      }
+    });
+  });
+
   describe('#2324 a send while the engine runs a turn it opened itself', () => {
     const replyFrame = (sessionId: string) => ({
       type: 'stream_event',
@@ -3809,6 +3886,7 @@ describe('ClaudeAdapter', () => {
       function guardianPolicy(
         decision: 'allow' | 'deny' | 'defer',
         mode: 'review' | 'enforce' = 'enforce',
+        currentTurnInteractive = false,
       ) {
         const reviewToolCall = vi.fn(async () => ({
           decision,
@@ -3821,7 +3899,10 @@ describe('ClaudeAdapter', () => {
           approvalGuardian: {
             isEnabled: () => true,
             getMode: () => mode,
-            readConversation: () => NO_PERSON_INTENT,
+            readConversation: () => ({
+              ...NO_PERSON_INTENT,
+              currentTurnInteractive,
+            }),
             reviewToolCall,
           },
           logger: { info: vi.fn(), warn: vi.fn() },
@@ -4273,7 +4354,7 @@ describe('ClaudeAdapter', () => {
       });
 
       test('a guardian defer leaves the call to the person', async () => {
-        const { evaluator } = guardianPolicy('defer');
+        const { evaluator } = guardianPolicy('defer', 'enforce', true);
         const { adapter, askFrame, hook } = await grantHarness(
           'thread-guardian-defer',
           { agent, preToolPolicy: evaluator },
@@ -4285,6 +4366,27 @@ describe('ClaudeAdapter', () => {
         expect(asked.kind).toBe('prompted');
         if (asked.kind === 'prompted') await asked.answer('decline');
         await adapter.stopSession('thread-guardian-defer');
+      });
+
+      test('an unattended enforce guardian defer denies in the Claude hook', async () => {
+        const { evaluator } = guardianPolicy('defer');
+        const threadId = 'thread-guardian-unattended-defer';
+        const { adapter, hook } = await grantHarness(threadId, {
+          agent,
+          preToolPolicy: evaluator,
+        });
+        await expect(
+          hook('Bash', { command: 'git status' }, 'toolu_unattended_defer'),
+        ).resolves.toMatchObject({
+          continue: false,
+          hookSpecificOutput: {
+            permissionDecision: 'deny',
+            permissionDecisionReason: expect.stringContaining(
+              'nobody is present to decide',
+            ),
+          },
+        });
+        await adapter.stopSession(threadId);
       });
 
       test('a delegated child that may not grant approvals keeps a guardian-allowed plain call and is denied an escalation fail-fast', async () => {
@@ -6519,6 +6621,60 @@ describe('ClaudeAdapter', () => {
       expect(after).toEqual({ continue: true });
       expect(JSON.stringify(after)).not.toContain('permissionDecision');
     });
+
+    test.each([true, false])(
+      'guardian escalation forces one prompt and reports the reason only for unchanged input (%s)',
+      async (unchanged) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const evaluator = vi.fn().mockResolvedValue({
+          behavior: 'ask',
+          required: true,
+          guardianReason: 'The only-if-asked rule requires a person.',
+        });
+        const adapter = new ClaudeAdapter({
+          resolvePreToolPolicy: async () => evaluator,
+        });
+        const events = adapter.streamEvents()[Symbol.asyncIterator]();
+        const threadId = 'thread-guardian-approval';
+        await adapter.startSession({
+          provider: 'claude',
+          threadId,
+          agent: { slug: 'engine-lab' },
+        });
+        await events.next();
+        await events.next();
+        const queryArgs = mockQuery.mock.calls[0][0];
+        await expect(
+          preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
+            signal: new AbortController().signal,
+          }),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: { permissionDecision: 'ask' },
+        });
+        const permission = queryArgs.options.canUseTool(
+          preToolInput.tool_name,
+          unchanged ? preToolInput.tool_input : { scope: 'changed' },
+          {
+            signal: new AbortController().signal,
+            toolUseID: preToolInput.tool_use_id,
+            description: 'Approval guardian: fake tool reason.',
+            suggestions: [],
+          },
+        );
+        const { value: opened } = await events.next();
+        expect(opened).toMatchObject({ method: 'request.opened' });
+        if (unchanged) {
+          expect(opened.guardianReason).toBe(
+            'The only-if-asked rule requires a person.',
+          );
+        } else {
+          expect(opened).not.toHaveProperty('guardianReason');
+        }
+        await adapter.respondToRequest(threadId, opened.requestId, 'decline');
+        await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+        expect(evaluator).toHaveBeenCalledTimes(1);
+      },
+    );
 
     test('routes the interactive approval to canUseTool without a duplicate request', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
@@ -10636,7 +10792,9 @@ describe('ClaudeAdapter', () => {
       vi.stubEnv('USERPROFILE', home);
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
       vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
       vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
     });
 
     afterEach(() => {
@@ -10716,7 +10874,9 @@ describe('ClaudeAdapter', () => {
       vi.stubEnv('HOME', makeTempDir('station-claude-keychain-home-'));
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
       vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
       vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
       // An existing config dir with no credentials file: the Keychain case.
       configHome = makeTempDir('station-claude-keychain-config-');
     });
@@ -12085,7 +12245,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -12095,7 +12255,7 @@ echo '{"loggedIn":true}'
         readBundledVersion: () => '2.1.224',
       }).getPrerequisites?.();
       expect(readiness?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
       );
     });
 
@@ -12106,7 +12266,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'installed',
           category: 'required',
         },
@@ -12128,7 +12288,7 @@ echo '{"loggedIn":true}'
         (prerequisite) => prerequisite.id === 'claude-cli',
       );
       expect(cli?.description).toBe(
-        `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
       );
       // The install status and the sentence come from ONE resolution: the
       // findBinary handed to the shared builder must answer with the same
@@ -12149,7 +12309,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -12161,7 +12321,7 @@ echo '{"loggedIn":true}'
       const prerequisites = await adapter.getPrerequisites?.();
 
       expect(prerequisites?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
       );
       expect(
         mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary('claude'),
@@ -12212,7 +12372,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12231,7 +12391,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12245,7 +12405,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12259,7 +12419,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
         );
       });
 
@@ -12310,7 +12470,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
+          `Required to launch the Claude engine. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
         );
       });
 
@@ -12328,7 +12488,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
         );
       });
 
@@ -12347,7 +12507,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
         );
       });
 
@@ -12396,7 +12556,7 @@ echo '{"loggedIn":true}'
         );
         // Second inspection re-probes rather than inheriting that failure.
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
         expect(runCommand).toHaveBeenCalledTimes(2);
         // ...and the successful observation IS durable.
@@ -12639,7 +12799,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12654,7 +12814,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
+          'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
         );
         expect(runCommand).not.toHaveBeenCalled();
       });
@@ -12722,7 +12882,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12746,7 +12906,7 @@ echo '{"loggedIn":true}'
         expect(runCommand).toHaveBeenCalledWith(NATIVE, ['--version']);
         expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12765,7 +12925,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12799,7 +12959,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: CLIJS,
         });
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12809,7 +12969,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12823,7 +12983,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
+          `Required to launch the Claude engine. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
         );
         // Install status still reflects the resolver's own answer: a `claude`
         // IS on PATH, Station just cannot hand that entry to the SDK.

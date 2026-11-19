@@ -135,7 +135,11 @@ describe('ChatDockContentArea', () => {
     historyError = new Error('history chunk unavailable');
     renderContentArea(onCloseHistory);
 
-    expect(await screen.findByRole('alert')).toBeTruthy();
+    const failure = await screen.findByRole('alert');
+    expect(failure.getAttribute('data-lazy-surface')).toBe(
+      'conversation-history',
+    );
+    expect(failure.textContent).toContain('Unable to load History.');
     expect(screen.getByText('No chat open')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
     expect(onCloseHistory).toHaveBeenCalledOnce();

@@ -101,6 +101,12 @@ import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useProjectRoomMessageActions } from '../../hooks/useProjectRoomMessageActions';
 import { useRoomAttachments } from '../../hooks/useRoomAttachments';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import {
+  RoomCoordinatorBar,
+  RoomCoordinatorCard,
+  type RoomCoordinatorPorts,
+  useRoomCoordinatorEnabled,
+} from './ProjectRoomCoordinator';
 import './ProjectRoom.css';
 import {
   type ChannelScreen,
@@ -323,16 +329,19 @@ function useFillPageHeight(
 const ROOM_MIN_HEIGHT_PX = 320;
 
 /** One history read: its messages, and its place in the SDK read order. */
-type HistoryRead = { messages: RoomMessage[]; readSeq: number };
+type HistoryRead = {
+  messages: RoomMessage[];
+  readSeq: number;
+  rolledByLiveAppend?: boolean;
+};
 type RoomMessage = NonNullable<
   ReturnType<typeof useProjectRoom>['history']['data']
 >['pages'][number]['messages'][number];
 
 /**
- * Messages already shown for this room. The history window is keyed by the
- * room's latest sequence, so each new message starts a fresh query; keeping
- * the rows already read stops the list from emptying and losing the reader's
- * place while the new window loads.
+ * Messages already shown for this room. Discovery can replace the active
+ * history query, and live appends can roll its newest window in place.
+ * Keeping rows that leave these windows preserves the reader's place.
  *
  * Rows kept from a window the room has moved past are owned by no history
  * query, so `reread` brings them up to date (#4797): each new read of that
@@ -405,7 +414,9 @@ function useRoomMessages(
   // window whose refresh was cancelled as the tail moved, so they are read
   // again now rather than at the next live event (#4852 review).
   const live = new Set(fetched.map((message) => message.messageId));
-  const left = [...retained.current.live]
+  // A contiguous live append already left these rows current. Keep them
+  // under the retained-history reader without fetching once per new message.
+  const left = (pages[0]?.rolledByLiveAppend ? [] : [...retained.current.live])
     .filter((id) => !live.has(id))
     .map((id) => retained.current.byId.get(id))
     .filter((message): message is RoomMessage => !!message)
@@ -610,6 +621,8 @@ function ProjectRoomSession({
   const compact = useIsMobile();
   const room = useProjectRoom(requestScope, slug, projectId, channelId);
   const channels = useProjectRoomChannels(requestScope, slug, projectId);
+  // #5063: `#general` (the default channel) has the Project's coordinator.
+  const coordinatorOn = useRoomCoordinatorEnabled(channelId === undefined);
   // Current names by person id (#4799): the `@` list, and how every
   // mention renders, so a rename shows on old messages too.
   const members = useProjectRoomMembers(
@@ -1373,6 +1386,14 @@ function ProjectRoomSession({
     expectedProjectId: projectId,
     expectedActorId: me.id,
   };
+  const coordinatorPorts: RoomCoordinatorPorts | undefined = coordinatorOn
+    ? {
+        requestScope,
+        slug,
+        guards,
+        canStart: view.capabilities.execute,
+      }
+    : undefined;
   // Reacting, editing and deleting need the host's support and discuss.
   const canAct = messageActions && view.capabilities.discuss;
   /** A person's own message that still stands; Agent messages never are. */
@@ -1591,10 +1612,21 @@ function ProjectRoomSession({
       highlighted: editing?.messageId === message.messageId,
       own: message.actor.id === view.actor.id,
       attachments: (
-        <RoomAttachmentList
-          attachments={message.attachments}
-          source={fileSource}
-        />
+        <>
+          <RoomAttachmentList
+            attachments={message.attachments}
+            source={fileSource}
+          />
+          {/* #5063: a coordinator reply's suggested Tasks sit under it. */}
+          {coordinatorPorts &&
+            message.actor.kind === 'agent' &&
+            !message.deletedAt && (
+              <RoomCoordinatorCard
+                messageId={message.messageId}
+                ports={coordinatorPorts}
+              />
+            )}
+        </>
       ),
       reactions: reactions.length ? (
         <RoomReactionBar
@@ -1934,6 +1966,9 @@ function ProjectRoomSession({
       )}
       {tab === 'conversation' ? (
         <>
+          {coordinatorPorts && !threadRoot && (
+            <RoomCoordinatorBar ports={coordinatorPorts} />
+          )}
           {threadRoot && !phone && (
             <div className="project-room__thread-bar">
               <Button

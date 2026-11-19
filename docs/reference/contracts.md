@@ -11,6 +11,12 @@ An absent Codex tier leaves the session's speed unchanged on continuation;
 `serviceTier: null` explicitly clears it. Legacy `fastMode: false` supplies no
 override. Catalog defaults describe the model, not local CLI configuration.
 
+A `ModelOption` can carry `catalogRoute` when the engine reports separate
+provider and model IDs. Compact labels use the route's display name or model ID
+and can show the provider as secondary detail. Selection uses the exact
+`ModelOption.id`. The catalog route describes an available choice. Turn and
+usage records carry their own serving evidence.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
 `@kontourai/station-contracts/delegation-group` defines the
@@ -321,7 +327,8 @@ The `@kontourai/station-contracts/terminal-transport` subpath exports the
 terminal binary frame codec (with the version 2 resize frame and its size
 codec), limits, the socket's `restart` request
 (`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
-observe/operate scope predicate. The
+observe/operate scope predicate. It also exposes the fixed GitHub and GitLab
+repository sign-in launch profiles and their displayed commands. The
 frame limit bounds unacknowledged output records independently of byte credit,
 including records sanitized to an empty payload. The
 [API reference](api.md#terminal-socket-operator-transport) owns the
@@ -353,7 +360,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/engine-commands` | How an engine slash command runs (`prompt-text`, a declared or identity-matched `engine-request`, or an `adapter-action`), its outcome, and `engineCommandRequestParams`. The server's shared half is [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts): the ACP and OpenCode adapters run every route kind through its `dispatchEngineCommand`, and Muse uses its reader and outcome line |
 | `@kontourai/station-contracts/managed-engine-install` | Pinned managed engine installs: the pin (manifest digest as the trust root), manifest, install state and failure reasons, the `{script}` argv token a descriptor's `managedRuntime` uses, the `station-managed:<installId>` command a managed entry carries (`managedRuntimeCommand`, `managedRuntimeInstallIdOf`), install progress (`receivedBytes`, `totalBytes`), and `validateManagedInstallPin` |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in/managed-runtime descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status, and the known full-access session mode ids (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`, `isKnownFullAccessAcpModeId`) the server and the approval pickers share |
-| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. The model-selection cell's `overridePerTurn` declaration gates model changes in existing conversations without a provider-name branch. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
+| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations. The Station row documents VoltAgent-only step limiting. For ACP the matrix says who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. The model-selection cell's `overridePerTurn` declaration gates model changes in existing conversations without a provider-name branch. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
@@ -365,7 +372,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, MCP OAuth client-secret, ACP header and instance telemetry destination grants; raw material is server-only |
 | `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; host prerequisites, build-only artifact evidence and archive-byte preparation receipts. Preparation receipts never grant installation authority; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
-| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb, the agent proposal shapes (#4830: `AutomationProposal`, the narrower `AutomationSourceProposalInput` and `AutomationRuleProposalInput`, Station's `AutomationProposalDescription`, `AutomationProposalConfirmation`, `AUTOMATION_PROPOSAL_LIMITS`, the refusal codes, the display-time `untrustedContentNow` and confirm-time `untrustedContentAtConfirm` marks, and the two untrusted-content copies `AUTOMATION_PROPOSAL_UNTRUSTED_COPY` and `AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY`), and `AutomationDeliveryPage`, whose bounded `deliveries` and source `polls` retain partial coverage, timestamps and failure outcomes. The server validates and stores sources and rules and records observe-only `github-poll` deliveries; no dispatch consumes a rule yet |
+| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb, the agent proposal shapes (#4830: `AutomationProposal`, the narrower `AutomationSourceProposalInput` and `AutomationRuleProposalInput`, Station's `AutomationProposalDescription`, `AutomationProposalConfirmation`, `AUTOMATION_PROPOSAL_LIMITS`, the refusal codes, the display-time `untrustedContentNow` and confirm-time `untrustedContentAtConfirm` marks, and the two untrusted-content copies `AUTOMATION_PROPOSAL_UNTRUSTED_COPY` and `AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY`), and `AutomationDeliveryPage`, whose bounded `deliveries` and source `polls` retain partial coverage, timestamps and failure outcomes. It also holds the operator request shapes (`AutomationPollSourceInput`, `AutomationDispatchRuleInput`, rule/source lists with their configuration fingerprint, `AutomationEpisodeRecord`, `AutomationEpisodeRetry`) and the read-only `AutomationTaskProjection`/`AutomationTaskMandate` a Task read carries (#4511). There is no `notify` action and no `received` outcome (#4513) |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
 | `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
@@ -382,7 +389,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/managed-policy-controls` | Lightweight approval-ceiling comparisons, clamps, denial text, remote-client predicates and refusal codes for mounted controls. Imports summary types only; it does not load the status decoder or settings registries. The status and full policy modules re-export these helpers for existing consumers. |
 | `@kontourai/station-contracts/managed-policy-status` | The browser-facing half of the managed policy contract: the value-free client summary and the `GET /api/settings/managed-policy` status with its boundary parser, one reader per enforced limit (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`: `limits.maxApprovalMode`, the capability switches, `limits.clients` and `limits.updates` with `mirror`) that the status decode uses, the limit and summary types, the value-free `summary.engines` (#4520) the status decode parses beside `limits`, the client predicates, the denial and "Managed by" text helpers, the approval-mode ceiling helpers (#4518), and the approval-ceiling, capability, remote-clients and update refusal codes. The SDK loads this decoder when a successful status response needs validation; mounted controls use `/managed-policy-controls` to keep it out of the initial chunk. It carries no settings registry; `@kontourai/station-contracts/managed-policy` re-exports all of it |
 | `@kontourai/station-contracts/desktop-update` | The desktop app's native-owned update state (phases, the error beside the phase it returned to, download policy, its automatic-download time and a per-run sequence) and its state event name; the native shell computes it, the window and tray read it |
-| `@kontourai/station-contracts/config` | App config and template variables, the values the loader seeds into `config/app.json` (`APP_CONFIG_SEED`), and `appConfigSemanticError`, the settings file rules beyond its JSON schema that server startup and `station policy check` both apply |
+| `@kontourai/station-contracts/config` | App config and template variables, the shared `parseTemplateDateTimeFormat` parser for JSON Intl options, the values the loader seeds into `config/app.json` (`APP_CONFIG_SEED`), and `appConfigSemanticError`, the settings file rules beyond its JSON schema that server startup and `station policy check` both apply |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
@@ -413,7 +420,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project-lifecycle` | Pause, Archive and Delete for a Project: the `ProjectConfig.lifecycle` state, the `POST /api/projects/:slug/lifecycle` request and result (turns interrupted, still running after `PROJECT_LIFECYCLE_STOP_WAIT_MS`), `projectLifecycleHoldsWork`, the held-turn refusal, and the `GET /api/projects/:slug/deletion-preview` counts |
 | `@kontourai/station-contracts/project-session-context` | What a new Session in a Project starts from (#5062, #5065): the brief and memory note shapes and limits, their parsers, `composeProjectSessionContext` (the one composer of the brief and memory index, labelled as background) and the per-turn `ProjectSessionContextComposed` receipt. |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
-| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions including Commenter (view and discuss), invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads; `engine-mcp.status` bounds (`ENGINE_MCP_STATUS_MAX_SERVERS` 64, `ENGINE_MCP_SERVER_NAME_MAX_CHARS` 128, `ENGINE_MCP_ERROR_MAX_CHARS` 512) |
@@ -858,13 +865,13 @@ Execution, and the reader shows it as "No result recorded". Clients of protocol
 rows as before (never folding them into `cancelled`). An `unresolved`
 completion is listed only while the conversation transcript still shows it:
 a later result of the same call can replace that row (station#1569), and the
-transcript projection (`projectRuntimeEventsToMessages`) decides, over the
-thread's events at or below the read's frozen high-water mark. The projection
-runs only when a listing meets an unresolved row, at most once per thread and
-high-water mark per process while cached; continuation pages reuse it, and a
-thread deleted and recreated under the same id is projected afresh. A page cursor records the owner
-events a page read, not the rows it kept, so paging past an omitted row resumes
-at the right event. Inventory
+shared transcript fold decides using events at or below the read's frozen
+high-water mark. When a listing meets an unresolved row, a cold read folds
+compact event data in pages. A later live read resumes a cached fold from its
+verified event identity and loads only the new suffix. Continuations reuse
+frozen results when cached. Deleting and recreating a thread under the same ID
+forces a fresh fold. A page cursor records the owner events a page read, so
+paging past an omitted row resumes at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
 pages filter the durable declaration index by the exact turn before paging,
 and their signed cursors cannot be reused for another turn or Whole Session.
@@ -1672,6 +1679,11 @@ something writes only to that subagent's own session log, not to the
 parent's stdout, and reads as silent after the window, which is the
 signal the user acts on now that no idle timer ends it.
 
+A Session summary's `turnProgress` can carry `threadId` and `turnId` for
+the execution observed by the watchdog. Older observations can omit either
+identifier. An observation without a turn ID cannot identify a turn for
+delegated supervision.
+
 The source route is the [window resolver](../../packages/contracts/src/turn-stall-window.ts),
 [watchdog](../../src-server/services/orchestration/turn-stall-watchdog.ts), and
 [progress projection](../../src-server/services/orchestration/turn-progress-tracker.ts).
@@ -2055,6 +2067,19 @@ them. `PullRequestFeedbackStatus` gains the `fix-budget` pause reason and
 `TaskLaneRung` the `fixAttemptsUsed` rung. See
 [Task-owned pull requests](../decisions/task-owned-pull-requests.md).
 
+`project-room-coordinator` defines the `#general` coordinator (#5063): the
+Project's limits (`ProjectRoomCoordinatorSettings`, parsed by
+`parseProjectRoomCoordinatorSettings`, defaulted by
+`effectiveProjectRoomCoordinatorSettings`; `ProjectConfig.roomCoordinator` is
+optional), `askedForPullRequest` over the person's own message,
+`parseCoordinatorReply` (the reply's visible text and its `station_routing`
+block: an answer, up to six proposed Tasks, or a message for an existing Task;
+a missing or malformed block is an answer), the row states
+(`COORDINATOR_TASK_STATES`, with `coordinatorTaskHoldsSlot` and
+`coordinatorTaskIsOpen`), the card view, the status sweep result and
+`coordinatorTaskPath`. `StationCapabilityFlags.projectRoomCoordinator` names
+the routes.
+
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.
@@ -2364,8 +2389,10 @@ runtime files. Since #3851 it also carries:
 - the staging phase (`ServiceStagePhase`) and its byte counts.
 
 The module also owns the server's own view of its update:
-`ServerUpdateState`, `ServerUpdateRunningTurns` and
-`ServerUpdateDownloadPolicy`. `GET /api/system/core-update/state` serves that
+`ServerUpdateState` and `ServerUpdateRunningTurns`. Its shared
+`UpdateDownloadPolicy` defines the choices and default for desktop and server
+updates. The desktop and server policy names remain available as aliases.
+`GET /api/system/core-update/state` serves that
 view, and the `runtime-events` `server-update:changed` event carries it.
 Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
@@ -3014,6 +3041,18 @@ The conversation-open contract represents a reserved empty-context reset as
 earlier transcript and the successor that can start on the next send. The
 current Session and execution binding become available only with an observed
 Session.
+
+The reset dialog saves the request key and selected policy before sending the
+reservation. It stores each attempt under the verified Station, author,
+conversation and predecessor Session. A competing attempt can only clear
+its own key. After a lost reply or a conflict from replaying the POST,
+reopening checks the original key with Station. Cancellation requires a
+matching reserved status. An older
+unscoped browser record can supply a status lookup key. The dialog offers an
+action only after Station confirms the same reservation and current author
+and predecessor. If verification fails, the record stays a hint. The
+conversation-open read can still expose the durable fresh-context continuation
+under its own authorization.
 
 `@kontourai/station-contracts/project-supervision` names opt-in supervision,
 Task incarnation, checkpoint, coordinator and known wait facts. The server

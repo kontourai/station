@@ -80,7 +80,7 @@ jobs:
   deliver:
     name: Build, sign and audit IPA
     if: ${{ inputs.delivery != 'upload' }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 90
     # Stable retains the existing protected environment. Beta and Nightly are
     # intentionally distinct environments: their profile, app ID and group ID
@@ -118,7 +118,7 @@ jobs:
           persist-credentials: false
       - name: Select reviewed Xcode and enforce App Store SDK minimum
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
           xcodebuild -version
           node scripts/check-ios-store-sdk.mjs "$(xcrun --sdk iphoneos --show-sdk-version)"
       - name: Reconfirm exact frozen source
@@ -170,7 +170,8 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with: { targets: aarch64-apple-ios }
+        # swift-rs needs llvm-objcopy to export Swift bridge symbols on Xcode 27.
+        with: { targets: aarch64-apple-ios, components: llvm-tools }
       - run: brew install xcodegen libimobiledevice cocoapods
       - name: Resolve whether this channel builds the Live Activity
         id: live_activity

@@ -98,7 +98,7 @@ function museMissingBinaryConnection() {
       {
         id: 'muse-cli',
         name: 'Muse Code CLI',
-        description: 'Required to launch the Muse Code runtime.',
+        description: 'Required to launch the Muse Code engine.',
         status: 'missing',
         category: 'required',
         installGuide: {
@@ -1315,7 +1315,7 @@ describe('AgentConnectionView', () => {
 
     expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
     expect(
-      screen.getAllByText('Required to launch the Muse Code runtime.'),
+      screen.getAllByText('Required to launch the Muse Code engine.'),
     ).not.toHaveLength(0);
     expect(screen.queryByText('Sign in required')).toBeNull();
     expect(screen.queryByText('Sign in to finish connecting.')).toBeNull();
@@ -1401,7 +1401,7 @@ describe('AgentConnectionView', () => {
         {
           id: 'muse-cli',
           name: 'Muse Code CLI',
-          description: 'Required to launch the Muse Code runtime.',
+          description: 'Required to launch the Muse Code engine.',
           status: 'installed',
           category: 'required',
         },
@@ -2066,6 +2066,50 @@ describe('AgentConnectionView', () => {
       });
     },
   );
+
+  test('a configured home overrides the app-home opt-in and leaves an unused profile clearable', async () => {
+    connectionQueryData = {
+      id: 'claude',
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Code',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { configHome: '  ~/.custom-claude  ', useAppHome: true },
+      setup: { state: 'ready', detected: true, configured: false },
+    };
+    appHomeProfileQueryData = {
+      profileDir: '/station/app-homes/claude',
+      exists: true,
+      seededFrom: 'empty',
+      authState: 'unauthenticated',
+      keychainAuthPossible: false,
+      usage: { sizeBytes: 2048, entryCount: 3, truncated: false },
+    };
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByText('Advanced'));
+
+    const appHomeCheckbox = screen.getByRole<HTMLInputElement>('checkbox', {
+      name: /Run sessions in a Station-managed app home/,
+    });
+    expect(appHomeCheckbox.checked).toBe(false);
+    expect(appHomeCheckbox.disabled).toBe(true);
+    expect(screen.getByText(/custom home is configured/)).toBeTruthy();
+    expect(screen.queryByText(/custom-claude/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Import a snapshot/ }),
+    ).toBeNull();
+    expect(screen.getByText(/across 3 items/)).toBeTruthy();
+    const clearButton = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Clear this app home',
+    });
+    expect(clearButton.disabled).toBe(false);
+  });
 
   // archive#896: bounded profile GC — usage report + explicit clear.
   test('the app home clear action confirms before calling the clear mutation', async () => {

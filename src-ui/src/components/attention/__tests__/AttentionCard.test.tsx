@@ -14,6 +14,7 @@ import type {
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
+import { evaluateFlowGate } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -926,6 +927,26 @@ describe('AttentionCard — Flow gate cards and the device Flow preview', () => 
       'experimentalFlowEnabled',
     ]),
   );
+
+  test('explains an explicitly reopened run using the evaluation response', async () => {
+    vi.mocked(evaluateFlowGate).mockResolvedValueOnce({
+      reopened: {
+        gateId: 'verify',
+        verdict: 'route-back',
+        missing: ['merge-readiness'],
+      },
+    });
+    renderCard(blocked);
+    fireEvent.click(screen.getByRole('button', { name: 'Re-evaluate' }));
+    expect(
+      await screen.findByText(
+        'The completed run reopened after verify returned route-back.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Evidence still needed for merge-readiness.'),
+    ).toBeTruthy();
+  });
 
   test.each(cases)(
     '$item.kind: with the Flow preview off, offers no flow console link but keeps the card and its action',

@@ -1,0 +1,23 @@
+{
+  "revision": "dd2cf1b61b08a76cfe30784b231b5f850d25aea0",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed the Files click path and registry boundaries cited by these pages. Files still binds the same Project, prepares the same File Preview state, and opens through the same host. A refused open now reports the host reason. The other renderer bindings and authority boundaries described here are unaffected.","inputs":["src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

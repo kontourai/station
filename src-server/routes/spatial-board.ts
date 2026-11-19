@@ -5,6 +5,7 @@ import {
   MAX_SPATIAL_BOARD_ZOOM,
   MIN_SPATIAL_BOARD_ZOOM,
 } from '@kontourai/station-contracts/spatial-board';
+import { workReferenceIdentityKey } from '@kontourai/station-contracts/work-reference';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -278,9 +279,41 @@ export function createSpatialBoardRoutes(
     const body = getBody(c) as z.infer<typeof cleanupSchema>;
     return json(
       c,
-      await respond(() =>
-        store.cleanupMissing(body.expectedRevision, body.missingReferences),
-      ),
+      await respond(async () => {
+        const board = await store.read();
+        if (board.revision !== body.expectedRevision) {
+          throw new SpatialBoardConflictError('Board changed before cleanup.');
+        }
+        const requested = new Set(
+          body.missingReferences.map(workReferenceIdentityKey),
+        );
+        const pins = board.pins.filter((pin) =>
+          requested.has(workReferenceIdentityKey(pin.reference)),
+        );
+        const pinnedKeys = new Set(
+          pins.map((pin) => workReferenceIdentityKey(pin.reference)),
+        );
+        if (pinnedKeys.size !== requested.size) {
+          throw new SpatialBoardConflictError(
+            'Cleanup named an unpinned reference.',
+          );
+        }
+        if (pins.length > 0) {
+          const observed = await resolver.resolve(
+            { ...board, pins },
+            c.req.raw,
+          );
+          if (observed.pins.some((pin) => pin.state !== 'missing')) {
+            throw new SpatialBoardConflictError(
+              'Cleanup references are no longer confirmed missing.',
+            );
+          }
+        }
+        return store.cleanupMissing(
+          body.expectedRevision,
+          body.missingReferences,
+        );
+      }),
     );
   });
   app.post('/undo', validate(expectedRevisionSchema), async (c) => {

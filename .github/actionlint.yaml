@@ -9,5 +9,7 @@ self-hosted-runner:
     - playwright
     - android-kvm
     - native
+    # GitHub-hosted preview label missing from actionlint’s built-in list.
+    - xcode-27
 
 config-variables: null

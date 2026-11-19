@@ -67,6 +67,7 @@ vi.mock('../../contexts/onboarding-setup-store', async (importOriginal) => ({
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { splitPaneStorageKey } from '../../components/split-pane-metrics';
+import { DEGRADED_QUERY_TIMEOUT_MS } from '../../hooks/useDegradedQueryState';
 import type { NavigationView } from '../../types';
 import { GUIDANCE_TAB_MEMORY_KEY } from '../../views/guidance-tab';
 import { AppViewContent } from '../AppViewContent';
@@ -455,6 +456,25 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     // The suspension published itself, which is what makes the warm case's
     // silence below evidence rather than an inert channel.
     expect(published.filter(Boolean)).not.toHaveLength(0);
+
+    vi.useFakeTimers();
+    try {
+      // A suspended module may start before the test installs its clock.
+      // Start a fresh pending route instance under the fake clock.
+      rerender(
+        <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      );
+      rerender(
+        <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
+      );
+      act(() => vi.advanceTimersByTime(DEGRADED_QUERY_TIMEOUT_MS));
+      expect(screen.getByRole('alert').textContent).toContain(
+        'This view is taking longer to load.',
+      );
+      expect(routeTransitionStore.getSnapshot()).toBe('agents');
+    } finally {
+      vi.useRealTimers();
+    }
 
     await act(async () => {
       agentsChunk.release();

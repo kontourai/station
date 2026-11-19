@@ -1201,7 +1201,7 @@ describe('createSessionAgentResolver', () => {
   test("resolves a real agent's authored non-empty prompt into input.agent.systemPrompt for a claude session (delivered report, source agent)", async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
-        agentSpec({ prompt: 'You are a specialized writing assistant.' }),
+        agentSpec({ prompt: 'You are a writing assistant for {{project}}.' }),
       resolveToolServer: async () => null,
       resolveSkillDir: async () => null,
     });
@@ -1209,7 +1209,7 @@ describe('createSessionAgentResolver', () => {
     const result = await resolver(baseInput({ provider: 'claude' }));
 
     expect(result.agent?.systemPrompt).toBe(
-      'You are a specialized writing assistant.',
+      'You are a writing assistant for {{project}}.',
     );
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY
@@ -1774,13 +1774,12 @@ describe('Station orchestration instructions (resolution receipt)', () => {
         { codexBound: () => true },
       )(baseInput({ provider: 'codex' })),
     );
-    // `list_delegation_targets` is bound-only: the bound catalog offers it,
-    // the header token cannot call it.
+    // Both channels expose local target discovery.
     expect(
       effectiveStationControlTools({}, catalog(), 'delegated-custody').has(
         'list_delegation_targets',
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(bound.firstTurnText).toContain('`list_delegation_targets`');
     const header = receiptOf(
       await resolverFor(
@@ -1788,7 +1787,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
         { codexBound: () => false },
       )(baseInput({ provider: 'codex' })),
     );
-    expect(header.firstTurnText).not.toContain('list_delegation_targets');
+    expect(header.firstTurnText).toContain('`list_delegation_targets`');
     expect(header.firstTurnText).toContain('`list_agents`');
   });
 

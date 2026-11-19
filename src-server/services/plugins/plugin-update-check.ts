@@ -1,5 +1,9 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import type {
+  PluginUpdateCheck,
+  PluginUpdateRecord,
+} from '@kontourai/station-contracts/plugin';
 import {
   getPluginRegistryProviders,
   getRegisteredPluginRegistryProviders,
@@ -13,24 +17,8 @@ import {
 } from '../../security/managed-capability-limits.js';
 import { execGit } from '../../utils/git-exec.js';
 import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
-import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
-
-export interface PluginUpdateRecord {
-  name: string;
-  currentVersion: string;
-  latestVersion: string;
-  source: string;
-}
-
-/**
- * #4521: an installed plugin whose update check the managed policy skips,
- * because the registry it was installed from is outside
- * `limits.registries.allowedUrls`. Not an error: nothing was contacted.
- */
-export interface PluginUpdateManagedByPolicy {
-  name: string;
-  message: string;
-}
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import { readContainedPluginManifestSyncWithFormat } from './plugin-manifest-bounded-read.js';
 
 /**
  * #4521: installed plugin directories whose recorded registry provenance
@@ -63,61 +51,27 @@ export interface PluginUpdateCheckLogger {
   debug(message: string, meta?: Record<string, unknown>): void;
 }
 
-async function listPluginRegistryUpdates(): Promise<PluginUpdateRecord[]> {
-  const updates: PluginUpdateRecord[] = [];
-
-  // #4521: the managed policy's refused registries are already left out.
-  for (const entry of getPluginRegistryProviders()) {
-    const [available, installed] = await Promise.all([
-      entry.provider.listAvailable(),
-      entry.provider.listInstalled(),
-    ]);
-    for (const installedPlugin of installed) {
-      const installedName =
-        installedPlugin.installedPluginName ?? installedPlugin.id;
-      const availablePlugin = available.find(
-        (plugin) => plugin.id === installedPlugin.id,
-      );
-      if (
-        availablePlugin?.version &&
-        availablePlugin.version !== installedPlugin.version
-      ) {
-        updates.push({
-          name: installedName,
-          currentVersion: installedPlugin.version || 'unknown',
-          latestVersion: availablePlugin.version,
-          source: 'registry',
-        });
-      }
-    }
+function readPluginDirectories(pluginsDir: string) {
+  try {
+    return readdirSync(pluginsDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
   }
-
-  return updates;
 }
 
-/**
- * station#2236: the update scan `GET /api/plugins/check-updates` serves,
- * extracted so the boot-time background check can run it in-process instead
- * of HTTP self-fetching its own operator-only route (which 401'd
- * `credential_missing` on every boot since #2067 — the headerless loopback
- * fetch carries no credential and the route refuses it before any scan
- * runs). Behavior is the route's, verbatim: git-backed plugins report
- * behind-counts, registry providers report version drift, per-plugin and
- * per-registry failures degrade to debug logs. Unexpected throws propagate
- * to the caller (the route's existing outer catch answers `[]`).
- */
+/** Shared operator-route and boot-time update scan. */
 export async function checkPluginUpdates(options: {
   pluginsDir: string;
   logger: PluginUpdateCheckLogger;
   /** Defaults to the parent of `pluginsDir`, the Station home layout. */
   projectHomeDir?: string;
-}): Promise<{
-  updates: PluginUpdateRecord[];
-  managedByPolicy?: PluginUpdateManagedByPolicy[];
-}> {
+}): Promise<PluginUpdateCheck> {
   const { pluginsDir, logger } = options;
   const updates: PluginUpdateRecord[] = [];
-  const managedByPolicy: PluginUpdateManagedByPolicy[] = [];
+  const managedByPolicy: NonNullable<PluginUpdateCheck['managedByPolicy']> = [];
+  let successes = 0;
+  let failures = 0;
   let refusedProvenance = new Set<string>();
   try {
     refusedProvenance = pluginsFromRefusedRegistries(
@@ -129,15 +83,15 @@ export async function checkPluginUpdates(options: {
     if (managedRegistryLimits()?.allowedUrls !== undefined) throw error;
   }
 
-  if (existsSync(pluginsDir)) {
-    const entries = readdirSync(pluginsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const dir = join(pluginsDir, entry.name);
-      const manifestPath = join(dir, 'plugin.json');
-      // Only the plugin's own repository: never one enclosing `dir`.
+  for (const entry of readPluginDirectories(pluginsDir)) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    try {
+      const target = resolveInstalledPluginRoot(pluginsDir, entry.name);
+      if (!target) continue;
+      const dir = target.packageRoot;
+      // The same selected checkout owns both Git commands and the manifest.
       const own = ownGitRepositoryArgs(dir);
-      if (!own || !existsSync(manifestPath)) continue;
+      if (!own || !existsSync(join(dir, 'plugin.json'))) continue;
       // #4521: its registry is refused, so its git origin (that registry's
       // package host) is not fetched either.
       if (refusedProvenance.has(entry.name)) {
@@ -149,54 +103,74 @@ export async function checkPluginUpdates(options: {
         });
         continue;
       }
-
-      try {
-        await execGit([...own, 'fetch', '--quiet'], {
-          cwd: dir,
-          timeout: 10000,
-          // An installed plugin's directory is Station-owned, and its origin
-          // is the source the operator installed from, which may be a local
-          // git path (#2363).
-          hardening: { allowFileProtocol: true },
+      const { manifest } = readContainedPluginManifestSyncWithFormat(dir);
+      await execGit([...own, 'fetch', '--quiet'], {
+        cwd: dir,
+        timeout: 10000,
+        // An installed plugin's directory is Station-owned, and its origin
+        // is the source the operator installed from, which may be a local
+        // git path (#2363).
+        hardening: { allowFileProtocol: true },
+      });
+      const { stdout: behind } = await execGit(
+        [...own, 'rev-list', '--count', 'HEAD..@{u}'],
+        { cwd: dir, encoding: 'utf-8' },
+      );
+      if (parseInt(behind.trim(), 10) > 0) {
+        const commitsBehind = behind.trim();
+        updates.push({
+          name: entry.name,
+          currentVersion: manifest.version || 'unknown',
+          latestVersion: `${commitsBehind} commit${commitsBehind === '1' ? '' : 's'} behind`,
+          source: 'git',
         });
-        const { stdout: behind } = await execGit(
-          [...own, 'rev-list', '--count', 'HEAD..@{u}'],
-          { cwd: dir, encoding: 'utf-8' },
-        );
-        if (parseInt(behind.trim(), 10) > 0) {
-          const manifest = readPluginManifestFileSync(manifestPath);
-          const commitsBehind = behind.trim();
+      }
+      successes += 1;
+    } catch (error) {
+      failures += 1;
+      logger.debug('Failed to check git updates for plugin', {
+        plugin: entry.name,
+        error,
+      });
+    }
+  }
+
+  for (const { provider } of getPluginRegistryProviders()) {
+    try {
+      await provider.refresh?.();
+      const [available, installed] = await Promise.all([
+        provider.listAvailable(),
+        provider.listInstalled(),
+      ]);
+      for (const plugin of installed) {
+        const name = plugin.installedPluginName ?? plugin.id;
+        const latestVersion = available.find(
+          (item) => item.id === plugin.id,
+        )?.version;
+        if (
+          latestVersion &&
+          latestVersion !== plugin.version &&
+          !updates.some((update) => update.name === name)
+        ) {
           updates.push({
-            name: entry.name,
-            currentVersion: manifest.version || 'unknown',
-            latestVersion: `${commitsBehind} commit${commitsBehind === '1' ? '' : 's'} behind`,
-            source: 'git',
+            name,
+            currentVersion: plugin.version || 'unknown',
+            latestVersion,
+            source: 'registry',
           });
         }
-      } catch (error) {
-        logger.debug('Failed to check git updates for plugin', {
-          plugin: entry.name,
-          error,
-        });
       }
+      successes += 1;
+    } catch (error) {
+      failures += 1;
+      logger.debug('Failed to check registry for plugin updates', { error });
     }
   }
 
-  try {
-    const registryUpdates = await listPluginRegistryUpdates();
-    for (const update of registryUpdates) {
-      if (updates.some((existing) => existing.name === update.name)) {
-        continue;
-      }
-      updates.push(update);
-    }
-  } catch (error) {
-    logger.debug('Failed to check registry for plugin updates', {
-      error,
-    });
-  }
-
-  return managedByPolicy.length > 0
-    ? { updates, managedByPolicy }
-    : { updates };
+  return {
+    status:
+      failures === 0 ? 'complete' : successes === 0 ? 'unavailable' : 'partial',
+    updates,
+    ...(managedByPolicy.length > 0 ? { managedByPolicy } : {}),
+  };
 }

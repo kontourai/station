@@ -81,11 +81,11 @@ additional first-run, workspace, approval, contribution, and preview settings.
 
 | field | type | default | description |
 |---|---|---|---|
-| `defaultMaxTurns` | positive integer | `200` | VoltAgent step cap after `guardrails.maxSteps` and top-level Agent `maxSteps`. Missing/zero values fall through in the resolver, but the settings write interface requires a positive integer. This is a finite cap, not unlimited execution; the Strands adapter does not apply this setting. |
+| `defaultMaxTurns` | positive integer | `200` | VoltAgent fallback after an authored Agent cap. It also sets the built-in Agent’s cap when explicitly configured. Without an explicit value, the built-in Agent uses VoltAgent’s own default. Strands and external engines use their own limits. |
 | `checkoutStaleAfterCommits` | positive integer | `50` | Commits behind its upstream branch at which a Project's checkout reads as stale for the `stale-project-checkout` preview ([Project checkout freshness](api.md#project-checkout-freshness)). |
 | `checkoutStaleAfterDays` | positive integer | `3` | Days a Project's checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale for the same preview. |
 | `defaultMaxOutputTokens` | positive integer | no Station-applied cap | Output-token cap passed by Station's framework adapters when an Agent has no `guardrails.maxTokens`. Provider/model limits still apply. |
-| `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended to Agent instructions by Station's engine. An absent or empty value is reseeded on load. |
+| `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended when Station builds an authored Agent’s prompt. It replaces the built-in Station instructions. External runtimes receive their own Agent’s authored prompt. An absent or empty value is reseeded on load. |
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |
 | `defaultChatFontSize` | number | `14` | Chat UI font size in pixels (10–24) |
 | `titleModel` | string (≤255) | unset | Model that names a Station-run conversation after its first completed turn, in the background. Only this setting turns it on: unset, no model is called (`structureModel` is never used for titles, since the prompt quotes the conversation), and the conversation keeps the title derived from its first message that names something (a prompt like "Continue" or "ok" never titles it). A generated title replaces only a prompt-derived one, never one supplied with the start. A hosted Station never generates titles. The generator uses bounded text generation, not a structured-output pass: it truncates each source text after 500 characters, requests at most 64 output tokens, waits up to 10 seconds, and normalizes accepted titles to NFC with a 60-character limit. The timeout stops waiting, not the provider call; failure leaves the existing title. See the [runtime caller](../../src-server/services/orchestration/conversation-title-generation.ts) and [model call](../../src-server/routes/chat/chat-title-generation.ts). |
@@ -195,7 +195,7 @@ same-named built-ins. External engines do not automatically run this function.
 | `key` | string | Variable name used as `{{key}}` in prompts |
 | `type` | `"static"` \| `"date"` \| `"time"` \| `"datetime"` \| `"custom"` | How the value is resolved |
 | `value` | string | The value (required for `static` and `custom`) |
-| `format` | string | JSON-encoded `Intl.DateTimeFormatOptions` for date/time types. For example, `"{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}"`. Writes and file loads reject malformed JSON, non-object values, and options invalid for the chosen date/time type before substitution. A pattern such as `YYYY-MM-DD` is not accepted. Use the built-in `{{iso_date}}` for an ISO date. |
+| `format` | string | JSON-encoded `Intl.DateTimeFormatOptions` for date/time types. For example, `"{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}"`. Writes, file loads, and prompt expansion reject malformed JSON, non-object values, unknown option names, and invalid types or values for the chosen date/time format. Explicit options use `en-US`. Omitted or empty formats preserve the host locale and time zone. A pattern such as `YYYY-MM-DD` is not accepted. Use the built-in `{{iso_date}}` for an ISO date. |
 
 ### Ollama-first example (local, no credentials)
 
@@ -232,7 +232,7 @@ connection and account. They do not assert current provider availability.
   "systemPrompt": "You are working in the {{project}} project. Today is {{date}}.",
   "templateVariables": [
     { "key": "project", "type": "static", "value": "my-app" },
-    { "key": "date", "type": "date", "format": "{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}" }
+    { "key": "date", "type": "date", "format": "{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\",\"timeZone\":\"UTC\"}" }
   ],
   "defaultChatFontSize": 14,
   "registryUrl": "https://registry.example.com"
@@ -517,7 +517,7 @@ Defines a single agent. The directory name is the agent's slug.
 | `icon` | string | no | Icon identifier for the UI |
 | `model` | string | no | Legacy model selection fallback. `execution.modelId` and the selected Model connection determine current routing; the ID is not necessarily a Bedrock model. |
 | `region` | string | no | AWS region override for this agent |
-| `maxSteps` | integer | no | VoltAgent step cap, below any in-memory `guardrails.maxSteps` and above `defaultMaxTurns`. The Agent file schema accepts 1–100. `maxTurns` is not the Agent field. |
+| `maxSteps` | integer or null | no | VoltAgent model steps per turn, including a turn with a model override. Valid values are 1–100. Null or absent uses `defaultMaxTurns` or the finite fallback. Strands and external engines use their own limits. |
 | `tools` | object | no | Tool and MCP server configuration |
 | `guardrails` | object | no | Model inference constraints |
 | `commands` | object | no | Slash commands available in this agent's chat |
@@ -709,29 +709,22 @@ show where token and sampling values are passed.
 | field | type | description |
 |---|---|---|
 | `maxTokens` | number | Maximum output tokens (overrides `defaultMaxOutputTokens`) |
-| `maxSteps` | number | Present in the TypeScript type and read by VoltAgent, but rejected inside `guardrails` by the current Agent JSON schema. Set top-level `maxSteps` in `agent.json`. Strands does not apply the configured step cap. |
 | `temperature` | number | Sampling temperature; file schema accepts 0–2, while a provider may impose narrower limits. |
 | `topP` | number | Nucleus sampling probability. On VoltAgent it is ignored, with a warning, when `temperature` is also set: several providers reject both together, so `temperature` wins. Strands passes both through. |
 | `stopSequences` | string[] | Not currently applied. Typed and accepted, but no engine reads it today — do not rely on it to constrain output. |
 
-### ui / quickPrompts
+### Retired Agent fields
 
-`ui.quickPrompts` is a retained configuration shape. The file loader validates
-its prompt text, but the current UI does not consume it. Saving these entries
-does not create chat buttons or route a prompt to another Agent.
-
-| field | type | description |
-|---|---|---|
-| `id` | string | Unique identifier |
-| `label` | string | Intended button label; no current renderer |
-| `prompt` | string | Stored prompt text |
-| `agent` | string | Retained optional routing field; no current UI consumer |
+Remove `streaming` and `ui.quickPrompts` from new Agent definitions. The current
+authoring schema rejects both fields. Existing Agents load with those fields
+omitted while their source files stay intact. An ordinary save writes the
+current shape. Station also omits the fields when importing or exporting
+Agent guidance. `ui.component` and `ui.workflowShortcuts` remain supported.
 
 ### complete example
 
 This is a file-shape example. Replace connection, model, integration, and tool
-IDs with configured values. Quick prompts are retained metadata as described
-above; they do not currently appear as buttons.
+IDs with configured values.
 
 ```json
 {
@@ -751,20 +744,6 @@ above; they do not currently appear as buttons.
   "guardrails": {
     "maxTokens": 8192,
     "temperature": 0.3
-  },
-  "ui": {
-    "quickPrompts": [
-      {
-        "id": "review-pr",
-        "label": "Review open PR",
-        "prompt": "Review the most recently opened pull request and summarize findings."
-      },
-      {
-        "id": "security-scan",
-        "label": "Security scan",
-        "prompt": "Scan the current directory for common security vulnerabilities."
-      }
-    ]
   }
 }
 ```

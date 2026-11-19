@@ -2256,9 +2256,8 @@ describe('CI verification workflow contracts', () => {
       FAST_CHECKS_SHARD_BUDGET_MS + boundedMs + 3 * 60_000,
     );
 
-    // The selection can include tests that exec zsh, which ubuntu-22.04
-    // lacks: the shard provisions it exactly as full-regression does, before
-    // the tests run.
+    // Only slices with a Linux zsh requirement use the full-regression
+    // preflight. An older slicer with no requirement output stays compatible.
     const zshName =
       'Provision and preflight zsh for process-heavy installer fixtures';
     const fullRegressionZsh = (
@@ -2269,6 +2268,10 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegressionZsh?.run).toContain('sudo bash "$bootstrap" zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ steps.slice.outputs.empty == 'false' && steps.slice.outputs.requires-zsh != 'false' }}",
+    );
     expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
     expect(shardSteps[shardZshIndex].env).toEqual({
       BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,

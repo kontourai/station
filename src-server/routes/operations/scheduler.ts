@@ -13,6 +13,7 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   SchedulerJobConflictError,
   SchedulerJobNotFoundError,
@@ -20,7 +21,7 @@ import {
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
-import { schedulerJobRuns } from '../../telemetry/metrics.js';
+import { schedulerManagementOperations } from '../../telemetry/metrics.js';
 import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -60,9 +61,17 @@ function publicManualRunReceipt(
   return { outcome: result.outcome, message, runId: result.runId };
 }
 
-function observeManualRunRequest() {
+function observeSchedulerManagement(
+  op:
+    | 'create_job'
+    | 'edit_job'
+    | 'run_job'
+    | 'enable_job'
+    | 'disable_job'
+    | 'delete_job',
+) {
   try {
-    schedulerJobRuns.add(1, { op: 'run_job' });
+    schedulerManagementOperations.add(1, { op });
   } catch {
     // Metrics are observability only. Do not change an authenticated run's
     // provider outcome because an OTel exporter is unavailable.
@@ -431,7 +440,16 @@ export function createSchedulerRoutes(
 
   app.get('/jobs', async (c) => {
     try {
-      const data = await visibleJobs(c);
+      const jobs = await visibleJobs(c);
+      const weekStart = c.req.query('weekStart');
+      const data =
+        weekStart === undefined
+          ? jobs
+          : schedulerService.projectWeek(
+              jobs,
+              weekStart,
+              c.req.query('displayZone'),
+            );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to list scheduler jobs', { error });
@@ -517,6 +535,10 @@ export function createSchedulerRoutes(
         status.jobCount = jobs.filter(
           (job) => job.provider === provider,
         ).length;
+      }
+      if (isOperatorInPersonNotAgent(c.req.raw) && data.providers['built-in']) {
+        data.providers['built-in'].rowIssues =
+          schedulerService.readBuiltinRowIssues();
       }
       return c.json({ success: true, data });
     } catch (error: unknown) {
@@ -665,7 +687,7 @@ export function createSchedulerRoutes(
           approval?.revert();
           return projectJobNotFound(c);
         }
-        schedulerJobRuns.add(1, { op: 'create_job' });
+        observeSchedulerManagement('create_job');
         output = await schedulerService.addJob({
           ...body,
           ...(projectId === undefined ? {} : { projectId }),
@@ -702,7 +724,7 @@ export function createSchedulerRoutes(
         opts.target as SchedulerAutomationTarget | null | undefined,
       );
       if ('refused' in admitted) return admitted.refused;
-      schedulerJobRuns.add(1, { op: 'edit_job' });
+      observeSchedulerManagement('edit_job');
       const output = await schedulerService.editJob(
         name,
         { ...opts, ...admitted },
@@ -725,7 +747,7 @@ export function createSchedulerRoutes(
         requiresProjectExecute: true,
       });
       if (job instanceof Response) return job;
-      observeManualRunRequest();
+      observeSchedulerManagement('run_job');
       const result = await schedulerService.runJob(target, job);
       // Provider/storage diagnostics belong to the protected run record, not
       // this public envelope. Keep the old output field stable and add only a
@@ -829,7 +851,7 @@ export function createSchedulerRoutes(
         requiresProjectExecute: true,
       });
       if (job instanceof Response) return job;
-      schedulerJobRuns.add(1, { op: 'enable_job' });
+      observeSchedulerManagement('enable_job');
       await schedulerService.enableJob(name, job);
       return c.json({ success: true });
     } catch (error: unknown) {
@@ -846,7 +868,7 @@ export function createSchedulerRoutes(
       const name = param(c, 'target');
       const job = await admitStoredJob(c, name);
       if (job instanceof Response) return job;
-      schedulerJobRuns.add(1, { op: 'disable_job' });
+      observeSchedulerManagement('disable_job');
       await schedulerService.disableJob(name, job);
       return c.json({ success: true });
     } catch (error: unknown) {
@@ -863,7 +885,7 @@ export function createSchedulerRoutes(
       const name = param(c, 'target');
       const job = await admitStoredJob(c, name);
       if (job instanceof Response) return job;
-      schedulerJobRuns.add(1, { op: 'delete_job' });
+      observeSchedulerManagement('delete_job');
       await schedulerService.removeJob(name, job);
       return c.json({ success: true });
     } catch (error: unknown) {

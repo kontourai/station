@@ -572,6 +572,27 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/projects/:projectSlug/reviews/:receiptId')],
   },
 
+  // ── operations: automations (#4513) ───────────────────────────────────
+  // Station-wide operator configuration and its ledger: operator-wide reads.
+  // No Automation mutation has a tool (the contract's `mcp` is null), so an
+  // agent can never create, widen, enable or retry its own triggers.
+  list_automation_sources: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/sources')],
+  },
+  list_automation_rules: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/rules')],
+  },
+  list_automation_deliveries: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/deliveries')],
+  },
+  list_automation_episodes: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/episodes')],
+  },
+
   // ── operations: scheduler ──────────────────────────────────────────────
   list_jobs: {
     ...READ,
@@ -805,18 +826,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/environments/ssh'), get('/api/environments/peers')],
   },
   list_delegation_targets: {
-    // Decision 1: discovery may reconnect a saved SSH environment. Since
-    // slice C2b the tool asks this Station's route for a saved Environment
-    // (`POST /api/orchestration/delegations/options`), which refuses a
-    // caller that is not a bound operator before it connects anything. The
-    // rest it shares with dispatch, which the server enforces only as
-    // loosely as dispatch.
-    ...OPERATOR_MUTATION,
-    tightenedBy: ['C'],
-    routes: [
-      post('/api/orchestration/delegations/options'),
-      ...DISPATCH_ROUTES,
-    ],
+    // Local discovery shares dispatch's Project scope. A saved Environment
+    // can reconnect an SSH host, so the route requires a bound operator
+    // before it does any remote work.
+    ...DISPATCH,
+    routes: [post('/api/orchestration/delegations/options')],
   },
   list_delegated_tasks: { ...DISPATCH, routes: DISPATCH_ROUTES },
   delegate_task: {

@@ -53,6 +53,10 @@ import {
   summarizeSideCall,
 } from './station-weight-request.mjs';
 import { STUB_REPLY_TEXT, startStubAnthropic } from './station-weight-stub.mjs';
+import {
+  createDarwinWakeupReader,
+  darwinWakeupMetric,
+} from './station-weight-wakeups.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -2883,6 +2887,12 @@ export async function runStationWeight({
     // closes, not from the rows afterwards (both would then read the end).
     let switchesStart;
     let switchesEnd;
+    const darwin = process.platform === 'darwin';
+    const readWakeups = darwin ? createDarwinWakeupReader() : null;
+    /** @type {import('./station-weight-wakeups.mjs').WakeupSnapshot | undefined} */
+    let wakeupsStart;
+    /** @type {import('./station-weight-wakeups.mjs').WakeupSnapshot | undefined} */
+    let wakeupsEnd;
     const sampled = await sampleTreeCpu(
       (final) => {
         const table = ownership.readTable();
@@ -2891,6 +2901,13 @@ export async function runStationWeight({
           : ownership.ancestry(table, taggedAtStart);
         if (linux && !switchesStart) switchesStart = contextSwitches(rows);
         if (linux && final) switchesEnd = contextSwitches(rows);
+        if (readWakeups && (!wakeupsStart || final)) {
+          const wakeups = new Map(
+            rows.map(({ pid }) => [pid, readWakeups(pid)]),
+          );
+          if (final) wakeupsEnd = wakeups;
+          else wakeupsStart = wakeups;
+        }
         return rows;
       },
       {
@@ -2902,12 +2919,15 @@ export async function runStationWeight({
       sampled,
       settings.cpuSampleIntervalMs,
     );
-    result.metrics.idleWakeups = notMeasured(
-      process.platform === 'darwin'
-        ? 'macOS exposes per-process wakeups only through powermetrics (root) or libproc; top IDLEW did not advance between samples'
-        : 'Linux has no per-process wakeup counter; see idleContextSwitches',
-      'count',
-    );
+    result.metrics.idleWakeups = darwin
+      ? {
+          ...darwinWakeupMetric(wakeupsStart, wakeupsEnd),
+          windowSeconds: sampled.windowSeconds,
+        }
+      : notMeasured(
+          'Linux has no per-process wakeup counter; see idleContextSwitches',
+          'count',
+        );
     result.metrics.idleContextSwitches = linux
       ? measured(contextSwitchDelta(switchesStart, switchesEnd), 'count', {
           note: 'voluntary + involuntary context switches of the processes alive at both ends of the window; a proxy, not wakeups',

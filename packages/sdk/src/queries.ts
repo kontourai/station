@@ -157,6 +157,13 @@ export {
   useRevokeAnswerShareMutation,
 } from './query-domains/answerShares';
 export {
+  useAutomationDeliveries,
+  useAutomationEpisodes,
+  useAutomationRules,
+  useAutomationSources,
+  useRetryAutomationEpisode,
+} from './query-domains/automations';
+export {
   canMaterializeKitProjectLayout,
   type IntegrationLifecycleResult,
   type IntegrationViewModel,
@@ -257,6 +264,7 @@ export {
   fetchTerminalProcesses,
   fetchVapidPublicKey,
   fetchVoicePort,
+  fetchWebPushRegistration,
   forkConversation,
   type InterruptOrchestrationDelegatedTaskInput,
   inspectOrchestrationSteerInput,
@@ -524,6 +532,7 @@ export {
   usePluginSettingsMutation,
   usePluginSettingsQuery,
   usePluginsQuery,
+  usePluginUpdateCheckQuery,
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
   useRegistryPluginsQuery,

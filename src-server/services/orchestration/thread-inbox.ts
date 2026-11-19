@@ -160,6 +160,8 @@ export interface ThreadInboxPayload {
   /** Files sent with the message, read back from the blob store at placement. */
   readonly attachments?: readonly ThreadInboxAttachment[];
   readonly expectedHead?: string;
+  /** The Session whose implicitly selected managed folder admitted this follow-up. */
+  readonly expectedInboxSessionId?: string;
   /** Server-captured turn for an admitted steer. Older rows lack this field. */
   readonly steerTarget?: InboxSteerTarget;
   /** Server-created Automation intent, revalidated against its private ledger at placement. */
@@ -360,6 +362,12 @@ export function decodePayload(raw: string): ThreadInboxPayload | undefined {
       !/^[0-9a-f]{64}$/.test(value.serverAutomationIntentId))
   )
     return undefined;
+  const expectedInboxSessionId = value.expectedInboxSessionId;
+  if (
+    expectedInboxSessionId !== undefined &&
+    (typeof expectedInboxSessionId !== 'string' || !expectedInboxSessionId)
+  )
+    return undefined;
   const attachments = decodeAttachments(value.attachments);
   if (attachments === null) return undefined;
   const steerTarget = value.steerTarget;
@@ -369,6 +377,7 @@ export function decodePayload(raw: string): ThreadInboxPayload | undefined {
   return {
     message: value.message,
     ...(attachments ? { attachments } : {}),
+    ...(expectedInboxSessionId ? { expectedInboxSessionId } : {}),
     ...(value.automaticBackground === true
       ? { automaticBackground: true }
       : {}),
@@ -1467,6 +1476,13 @@ export class ThreadInboxDelivery {
       });
     }
 
+    if (
+      priorPayload?.expectedInboxSessionId !== undefined &&
+      priorPayload.expectedInboxSessionId !==
+        input.payload.expectedInboxSessionId
+    )
+      return { outcome: 'conflict' };
+
     const priorDigest = priorPayload?.inputDigest;
     if (
       priorDigest !== undefined &&
@@ -1563,6 +1579,23 @@ export class ThreadInboxDelivery {
       this.startsInProgress
         .get(this.inboxOf(conversationId))
         ?.has(clientTurnId) === true
+    );
+  }
+
+  /** Whether retrying a retained key would target a replacement Session. */
+  keyBindingChanged(
+    conversationId: string,
+    clientTurnId: string,
+    userId: string,
+  ): boolean {
+    const inbox = this.inboxOf(conversationId);
+    const record = this.ports.store.read(inbox, clientTurnId);
+    if (!record || record.state === 'placed') return false;
+    const payload = decodePayload(record.payload);
+    return (
+      payload?.actor.userId === userId &&
+      payload.expectedInboxSessionId !== undefined &&
+      payload.expectedInboxSessionId !== this.ports.currentSessionId(inbox)
     );
   }
 
@@ -2248,6 +2281,18 @@ export class ThreadInboxDelivery {
                 payload,
                 entry.createdAt,
               );
+              if (
+                !refusal &&
+                payload.expectedInboxSessionId !== undefined &&
+                this.ports.currentSessionId(conversationId) !==
+                  payload.expectedInboxSessionId
+              ) {
+                refusal = {
+                  reasonCode: 'conversation_binding_changed',
+                  reason:
+                    'The conversation changed while this message was waiting.',
+                };
+              }
               if (!refusal && this.ports.placementRefusal) {
                 try {
                   refusal = this.ports.placementRefusal({

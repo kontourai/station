@@ -369,6 +369,10 @@ interface NativeTurn {
    */
   displacedUnwithdrawn?: { readonly turnId: string };
   outputText: string;
+  stepModel?: Extract<
+    EventBody,
+    { method: 'token-usage.updated' }
+  >['servedModelObservation'];
   readonly openTools: Map<string, string>;
   readonly done: Promise<void>;
   resolveDone(): void;
@@ -1258,6 +1262,7 @@ export class OpenCodeNativeSession {
   }
 
   private onDisconnect(): void {
+    if (this.turn) delete this.turn.stepModel;
     for (const part of this.parts.values()) {
       if (part.open) part.gapped = true;
     }
@@ -1758,6 +1763,9 @@ export class OpenCodeNativeSession {
         this.withTurn((turn) => this.onStepEnded(turn, data));
         return;
       case 'session.step.failed':
+        this.withTurn((turn) => {
+          delete turn.stepModel;
+        });
         return;
       case 'session.text.delta':
       case 'session.reasoning.delta':
@@ -2150,6 +2158,21 @@ export class OpenCodeNativeSession {
 
   private onStepStarted(data: Record<string, unknown>): void {
     this.onConfigured(data);
+    this.withTurn((turn) => {
+      const model = ownRecord(data.model);
+      const providerId = readString(model?.providerID);
+      const modelId = readString(model?.id);
+      const assistantMessageId = readString(data.assistantMessageID);
+      delete turn.stepModel;
+      if (providerId && modelId && assistantMessageId) {
+        turn.stepModel = {
+          source: 'opencode-step-started',
+          providerId,
+          modelId,
+          assistantMessageId,
+        };
+      }
+    });
   }
 
   private onConfigured(data: Record<string, unknown>): void {
@@ -2159,27 +2182,32 @@ export class OpenCodeNativeSession {
         ? `${model?.providerID as string}/${model?.id as string}`
         : undefined;
     const agent = readString(data.agent);
-    if (
-      (modelId === undefined || modelId === this.lastModel) &&
-      (agent === undefined || agent === this.lastAgent)
-    )
-      return;
-    this.lastModel = modelId ?? this.lastModel;
-    this.lastAgent = agent ?? this.lastAgent;
-    this.emit({
-      method: 'session.configured',
-      sessionId: this.deps.threadId,
-      ...(this.lastModel ? { model: this.lastModel } : {}),
-      ...(this.lastAgent ? { metadata: { mode: this.lastAgent } } : {}),
-    });
+    if (modelId !== undefined && modelId !== this.lastModel) {
+      this.lastModel = modelId;
+      this.emit({
+        method: 'session.configured',
+        sessionId: this.deps.threadId,
+        model: modelId,
+        cwd: this.deps.cwd,
+      });
+    }
+    if (agent !== undefined && agent !== this.lastAgent) {
+      this.lastAgent = agent;
+      this.emit({ method: 'session.engine-mode-observed', modeId: agent });
+    }
   }
 
   private onStepEnded(turn: NativeTurn, data: Record<string, unknown>): void {
+    const stepModel = turn.stepModel;
+    delete turn.stepModel;
     const usage = openCodeStepUsage(data);
     if (!usage) return;
     this.publishForTurn(turn, {
       method: 'token-usage.updated',
       turnId: turn.turnId,
+      ...(stepModel && stepModel.assistantMessageId === data.assistantMessageID
+        ? { servedModelObservation: stepModel }
+        : {}),
       ...usage,
     });
   }
@@ -2504,7 +2532,7 @@ export class OpenCodeNativeSession {
     const cwd = this.askDirectory(ask.sessionId);
     const configNeedsPerson = () =>
       openCodeNativeAskNeedsPerson(request, cwd, this.deps.configEnv);
-    const answer = (personOnly: boolean) => {
+    const answer = (personOnly: boolean, guardianReason?: string) => {
       const decided = personOnly
         ? 'person'
         : openCodeNativeAskAnswer({
@@ -2516,7 +2544,7 @@ export class OpenCodeNativeSession {
             ),
             configNeedsPerson,
           });
-      if (decided === 'person') this.toPerson(ask);
+      if (decided === 'person') this.toPerson(ask, { guardianReason });
       else this.answerAutomatically(ask, decided);
     };
     const policy = this.deps.preToolPolicy;
@@ -2574,6 +2602,7 @@ export class OpenCodeNativeSession {
         answer(
           needsPerson ||
             (decision.behavior === 'ask' && decision.required === true),
+          decision.behavior === 'ask' ? decision.guardianReason : undefined,
         );
       });
   }
@@ -2980,7 +3009,7 @@ export class OpenCodeNativeSession {
    */
   private toPerson(
     ask: NativeAsk,
-    note: { autoAnswerFailed?: string } = {},
+    note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
     if (this.deps.denyApprovals) {
       const reason = delegatedApprovalDenial(
@@ -2996,7 +3025,7 @@ export class OpenCodeNativeSession {
   /** Show an ask to the person as an approval request. */
   private openPermission(
     ask: NativeAsk,
-    note: { autoAnswerFailed?: string } = {},
+    note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
     const { nativeId, sessionId, action, resources, save } = ask;
     const own = sessionId === this.sessionId;
@@ -3029,6 +3058,7 @@ export class OpenCodeNativeSession {
         method: 'request.opened',
         requestType: 'approval',
         title: `Allow ${action}`,
+        ...(note.guardianReason ? { guardianReason: note.guardianReason } : {}),
         ...(description ? { description } : {}),
         payload: {
           toolName: action,

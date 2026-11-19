@@ -2,6 +2,7 @@ import type { AttentionProjection } from '@kontourai/station-contracts/attention
 import { apiErrorMessage } from '../api-core';
 import { envelopeError } from '../client/api-error-message';
 import {
+  type ApiRequestScope,
   authenticatedFetch,
   type ClientRequestOptions,
   readEnvelopeOrThrow,
@@ -29,12 +30,16 @@ export async function fetchAttention(
 }
 
 export function useAttentionQuery(
-  apiBase?: string,
+  target?: string | ApiRequestScope,
   config?: QueryConfig<AttentionProjection>,
 ) {
+  const requestScope = typeof target === 'object' ? target : undefined;
+  const apiBase = typeof target === 'string' ? target : requestScope?.apiBase;
   return useApiQuery(
-    ['attention', apiBase ?? 'default'],
-    () => fetchAttention(apiBase),
+    requestScope
+      ? ['attention', requestScope.apiBase, requestScope.authorityKey]
+      : ['attention', apiBase ?? 'default'],
+    (signal) => fetchAttention(apiBase, { signal, requestScope }),
     { refetchInterval: 10_000, ...config },
   );
 }

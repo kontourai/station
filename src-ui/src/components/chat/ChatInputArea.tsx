@@ -4,6 +4,7 @@ import type {
   ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
+import type { EngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -53,7 +54,9 @@ import {
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { BrandIcon } from '../icons/BrandIcon';
+import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
+import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
 import { ComposerIconAction } from './ComposerIconAction';
@@ -197,9 +200,8 @@ interface ChatInputAreaProps {
    */
   turnInFlight: boolean;
   /**
-   * What Enter does while a turn is in flight. Steer is the default on
-   * engines that can take mid-turn input; queue is the only path otherwise
-   * (and whenever this send carries attachments).
+   * Whether the running turn offers an explicit steer. A follow-up queues
+   * by default, including when the engine can steer.
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
@@ -268,6 +270,7 @@ interface ChatInputAreaProps {
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * The session approval override: the pending pick, else the confirmed one
    * (`sessionApprovalOverride`, #2334). Not read from `modelRuntimeOptions`,
@@ -276,6 +279,7 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  acpRequestedModeId?: string;
   /**
    * #3290: an ACP session's approval control, from its connection
    * (`acpApprovalControl`). `engineId` is the engine identity the approval
@@ -292,7 +296,7 @@ interface ChatInputAreaProps {
   slashCommands: SlashCommand[];
   // Handlers
   onInputChange: (value: string) => void;
-  onSend: () => Promise<void>;
+  onSend: (intent?: 'steer') => Promise<void>;
   onCancel: () => void;
   onClearInput: () => void;
   selectAttachmentFiles?: (files: File[]) => Promise<void>;
@@ -540,10 +544,12 @@ export function ChatInputArea({
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  reportedApprovalReviewer,
   approvalModeOverride,
   acpSessionModes = [],
   acpApproval,
   acpCurrentModeId,
+  acpRequestedModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -654,24 +660,16 @@ export function ChatInputArea({
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  // A follow-up during a running turn steers it when the engine takes the
-  // message natively (it joins the turn at its next tool boundary). Safe-stop
-  // steering ends the turn early, so there Queue stays the default. An
-  // explicit choice holds until the conversation changes.
-  const [chosenSendMode, setSendMode] = useState<'queue' | 'steer' | null>(
-    null,
-  );
-  const sendMode =
-    chosenSendMode ?? (busySteeringKind === 'native' ? 'steer' : 'queue');
+  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
     void sessionId;
-    setSendMode(null);
+    setSendMode('queue');
     setSendModeOpen(false);
     setSendAfterUploads(false);
   }, [sessionId]);
   const { chatReturnBehavior } = useDeviceSettings();
-  const { coarsePointer } = useDockSlotDevice();
+  const { coarsePointer, viewportWidth } = useDockSlotDevice();
   const returnSends =
     chatReturnBehavior === 'send' ||
     (chatReturnBehavior === 'auto' && !coarsePointer);
@@ -693,11 +691,9 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (
-        turnInFlight &&
-        (sendMode === 'queue' || busyFollowUp !== 'steer') &&
-        onQueueFollowUp
-      ) {
+      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
+        await onSend('steer');
+      } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
       } else {
         await onSend();
@@ -772,10 +768,14 @@ export function ChatInputArea({
     mentionRequestScope?.apiBase,
     mentionRequestScope?.authorityKey,
   ]);
+  const engineId = parseEngineId(acpApproval?.engineId ?? executionEngineId);
+  const sessionEngineId =
+    executionEngineId === 'acp' ? engineId : parseEngineId(executionEngineId);
   const isOverride = currentModelSource === 'session override';
   const effectiveModelId = currentModel || agentDefaultModel;
   const effectiveModelInfo = availableModels.find(
-    (model) => model.id === effectiveModelId,
+    (model) =>
+      model.id === effectiveModelId || model.originalId === effectiveModelId,
   );
   // archive#1012: an alias/default entry hides which model the engine actually runs
   // ("Default (recommended)" told the owner nothing while an outdated host
@@ -827,8 +827,8 @@ export function ChatInputArea({
     : aliasLabel;
   const agentEngineMoveSentence = agentEngineMove
     ? agentEngineMove.nextTurn
-      ? `The next turn starts a new Session on ${agentEngineMove.to}, where its Agent now points.`
-      : `This conversation used ${executionEngineLabel ?? 'another engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      ? `Next message: ${agentEngineMove.to}.`
+      : `Session engine: ${executionEngineLabel ?? 'engine unknown'}. Agent default: ${agentEngineMove.to}.`
     : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',
@@ -850,7 +850,12 @@ export function ChatInputArea({
     .join(' ');
   // The shared handoff reason names no action ("Send a message first."), so
   // the refused state names it here, where the action is known.
-  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${
+  const routeSuffix = agentRoute ? ` · via ${agentRoute}` : undefined;
+  const setupAgentLabel =
+    routeSuffix && agentLabel?.endsWith(routeSuffix)
+      ? agentLabel.slice(0, -routeSuffix.length)
+      : agentLabel;
+  const agentAccessibleLabel = `Agent: ${setupAgentLabel ?? 'current Agent'}.${agentRoute ? ` Connection: ${agentRoute}.` : ''} ${
     agentHandoffDisabled
       ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
       : 'Change Agent'
@@ -1218,6 +1223,11 @@ export function ChatInputArea({
                 providers={modelProviders}
                 currentProviderId={currentProviderId}
                 currentExecutionAgentId={currentExecutionAgentId}
+                connectionLabel={
+                  agentEngineMove?.nextTurn
+                    ? agentEngineMove.to
+                    : executionEngineLabel
+                }
                 bindingLabel={
                   currentExecutionAgentId
                     ? 'Conversation override'
@@ -1841,50 +1851,137 @@ export function ChatInputArea({
                 .join(' · ')}
               effort={effortLabel}
               icon={agentIcon}
-              engineId={parseEngineId(
-                acpApproval?.engineId ?? executionEngineId,
-              )}
+              engineId={engineId}
               // The move shows on the closed trigger at every width; a
               // next-turn move has its own notice above the draft instead.
               notice={
                 agentEngineMove && !agentEngineMove.nextTurn
-                  ? 'Agent moved'
+                  ? 'Default differs'
                   : undefined
               }
               description={agentEngineMoveSentence}
             >
-              {onOpenAgentHandoff && (
-                <ComposerChoice
-                  ref={agentHandoffTriggerRef}
-                  // On a phone the handoff dialog replaces Run setup rather
-                  // than stacking over it.
-                  closesRunSetup={isMobile}
-                  className="chat-input__agent-btn"
-                  onClick={
-                    agentHandoffDisabled ? undefined : onOpenAgentHandoff
-                  }
-                  aria-disabled={agentHandoffDisabled}
-                  aria-haspopup="dialog"
-                  aria-label={agentAccessibleLabel}
-                  title={agentAccessibleLabel}
-                  caption="Agent"
-                  icon={agentIcon}
-                  valueClassName="chat-input__agent-name"
-                  value={
-                    <>
-                      {agentLabel ?? 'Current Agent'}
-                      {agentRoute && (
-                        <span className="chat-input__agent-route">
-                          {' · '}
-                          {agentRoute}
+              {(onOpenAgentHandoff ||
+                executionEngineLabel ||
+                agentEngineMove) && (
+                <div className="composer-run-panel__agent">
+                  <ComposerChoice
+                    ref={agentHandoffTriggerRef}
+                    // On a phone the handoff dialog replaces Run setup rather
+                    // than stacking over it.
+                    closesRunSetup={isMobile}
+                    className="chat-input__agent-btn"
+                    onClick={
+                      agentHandoffDisabled ? undefined : onOpenAgentHandoff
+                    }
+                    aria-disabled={!onOpenAgentHandoff || agentHandoffDisabled}
+                    aria-haspopup={onOpenAgentHandoff ? 'dialog' : undefined}
+                    aria-label={
+                      onOpenAgentHandoff
+                        ? agentAccessibleLabel
+                        : `Agent: ${setupAgentLabel ?? 'Current Agent'}`
+                    }
+                    title={
+                      onOpenAgentHandoff ? agentAccessibleLabel : undefined
+                    }
+                    caption="Agent"
+                    icon={
+                      executionEngineLabel || agentEngineMove
+                        ? undefined
+                        : agentIcon || <AgentGlyph />
+                    }
+                    valueClassName="chat-input__agent-name"
+                    value={
+                      <>
+                        <span className="composer-run-panel__identity-name">
+                          {setupAgentLabel ?? 'Current Agent'}
                         </span>
-                      )}
-                    </>
-                  }
-                />
+                        {viewportWidth > 360 &&
+                          agentEngineMove &&
+                          !agentEngineMove.nextTurn && (
+                            <span className="composer-run-panel__engine-status">
+                              Engine differs
+                            </span>
+                          )}
+                        {agentRoute &&
+                          !executionEngineLabel &&
+                          !agentEngineMove && (
+                            <span className="chat-input__agent-route">
+                              {' · Connection: '}
+                              {agentRoute}
+                            </span>
+                          )}
+                      </>
+                    }
+                  />
+                  {(executionEngineLabel || agentEngineMove) && (
+                    <details className="composer-run-panel__engine-details">
+                      <summary
+                        aria-label={
+                          agentEngineMove && !agentEngineMove.nextTurn
+                            ? 'Engine details. Engine differs from Agent default'
+                            : 'Engine details'
+                        }
+                      >
+                        <span
+                          className="composer-run-panel__engine-agent"
+                          aria-hidden="true"
+                        >
+                          {agentIcon || <AgentGlyph />}
+                        </span>
+                        <span
+                          className="composer-run-panel__engine-mark"
+                          aria-hidden="true"
+                        >
+                          <BrandIcon
+                            name=""
+                            engineId={sessionEngineId ?? undefined}
+                            size={16}
+                            fallback={<EngineGlyph />}
+                          />
+                        </span>
+                        {agentEngineMove && !agentEngineMove.nextTurn && (
+                          <span
+                            className="composer-run-panel__engine-dot"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </summary>
+                      <div className="composer-run-panel__routing">
+                        {executionEngineLabel && (
+                          <span className="chat-input__chip-caption-engine">
+                            {agentEngineMove?.nextTurn
+                              ? 'Previous engine: '
+                              : 'Current engine: '}
+                            {executionEngineLabel}
+                          </span>
+                        )}
+                        {agentRoute && <span>Connection: {agentRoute}</span>}
+                        {agentEngineMove && (
+                          <span className="chat-input__engine-moved">
+                            {agentEngineMove.nextTurn
+                              ? `Next turn on ${agentEngineMove.to}`
+                              : `Agent default: ${agentEngineMove.to}`}
+                          </span>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
               )}
               <ComposerChoice
                 ref={modelButtonRef}
+                icon={
+                  effectiveModelInfo ? (
+                    <ModelIcon model={effectiveModelInfo} />
+                  ) : (
+                    <BrandIcon
+                      name="Model"
+                      engineId={sessionEngineId ?? undefined}
+                      fallback={<EngineGlyph />}
+                    />
+                  )
+                }
                 changedForConversation={Boolean(
                   currentExecutionAgentId || isOverride,
                 )}
@@ -1899,29 +1996,26 @@ export function ChatInputArea({
                 title={modelAccessibleLabel}
                 caption={
                   <>
-                    {/* The move hint has its own line below the engine name,
-                    so it needs no separator and is never cut. */}
-                    <span className="chat-input__chip-caption-engine">
-                      {executionEngineLabel ?? 'Engine & model'}
-                    </span>
-                    {/* The closed Run setup trigger says "Agent moved"; here
-                    the open panel names the destination. */}
-                    {agentEngineMove && (
-                      <span className="chat-input__engine-moved">
-                        {agentEngineMove.nextTurn
-                          ? `Next turn on ${agentEngineMove.to}`
-                          : `Agent now on ${agentEngineMove.to}`}
-                      </span>
+                    Model
+                    {!agentEngineMove && executionEngineLabel && (
+                      <>
+                        {' · '}
+                        <span className="chat-input__chip-caption-engine">
+                          {executionEngineLabel}
+                        </span>
+                      </>
                     )}
-                    {currentExecutionAgentId ? (
-                      <span className="chat-input__chip-caption-engine">
-                        {' · Conversation override'}
-                      </span>
-                    ) : null}
                   </>
                 }
                 value={
-                  effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+                  <>
+                    <span className="composer-run-panel__identity-name">
+                      {modelLabel}
+                    </span>
+                    {effortLabel && (
+                      <span className="composer-run-panel__effort">{` · ${effortLabel}`}</span>
+                    )}
+                  </>
                 }
                 valueClassName="chat-input__model-name"
               />
@@ -1961,11 +2055,8 @@ export function ChatInputArea({
                   <AcpSessionModeChip
                     key={sessionId}
                     modes={modeChoices}
-                    currentModeId={
-                      typeof modelRuntimeOptions?.mode === 'string'
-                        ? modelRuntimeOptions.mode
-                        : acpCurrentModeId
-                    }
+                    currentModeId={acpCurrentModeId}
+                    requestedModeId={acpRequestedModeId}
                     onChange={onAcpSessionModeChange}
                   />
                 </React.Suspense>
@@ -2007,6 +2098,7 @@ export function ChatInputArea({
                     }
                     stationDefault={approvalModeStationDefault}
                     lastAppliedApprovalMode={lastAppliedApprovalMode}
+                    reportedApprovalReviewer={reportedApprovalReviewer}
                     onChange={onApprovalModeChange}
                   />
                 )

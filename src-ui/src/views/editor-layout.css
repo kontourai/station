@@ -1315,6 +1315,12 @@
   width: auto;
   min-height: 44px;
 }
+.agent-tools__approval-patterns {
+  margin: 0;
+  padding-inline-start: var(--k-space-5);
+  overflow-wrap: anywhere;
+}
+
 .agent-tools__advanced {
   border-top: 1px solid var(--k-line);
   margin-top: var(--k-space-2);

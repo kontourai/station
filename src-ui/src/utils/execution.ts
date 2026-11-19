@@ -397,14 +397,16 @@ export function resolveEffectiveModel({
 export function acpAdvertisedModels(
   connection:
     | {
-        advertisedModels?: ReadonlyArray<{ id: string; name: string }>;
+        advertisedModels?: ReadonlyArray<
+          Pick<ModelOption, 'id' | 'name' | 'catalogRoute'>
+        >;
         configOptions?: ReadonlyArray<{
           category: string;
           options?: Array<string | { value: string; name?: string }>;
         }>;
       }
     | undefined,
-): Array<{ id: string; name: string }> {
+): Array<Pick<ModelOption, 'id' | 'name' | 'catalogRoute'>> {
   const served =
     connection?.advertisedModels ??
     (connection?.configOptions ?? [])

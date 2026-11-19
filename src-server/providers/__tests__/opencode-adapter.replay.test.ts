@@ -4,7 +4,13 @@
  * (`opencode-serve-replay.ts`).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -13,6 +19,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
@@ -22,6 +29,8 @@ import {
   evaluateOpenCodeRules,
   type OpenCodeNativeRule,
 } from '../../services/acp/opencode-approval-native.js';
+import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import { resolveTurnCompletionOutcome } from '../../services/orchestration/turn-completion-notifications.js';
 import {
   ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
@@ -312,12 +321,27 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         (event) =>
           event.method === 'token-usage.updated' && event.turnId === turnId,
       ),
-    ).toMatchObject({ promptTokens: 102, completionTokens: 20 });
+    ).toMatchObject({
+      promptTokens: 102,
+      completionTokens: 20,
+      servedModelObservation: {
+        source: 'opencode-step-started',
+        providerId: 'mock',
+        modelId: 'mock-1',
+        assistantMessageId: 'msg_1d71adc1f001pAM06JQG2JhsQi',
+      },
+    });
     expect(h.replay.misses).toEqual([]);
   });
 
   test('tool calls complete with their output and the edit carries its patch', async () => {
-    const h = await setup({ scenario: 'tools' });
+    const h = await setup({
+      scenario: 'tools',
+      omit: (record) =>
+        record.event?.type === 'session.step.started' &&
+        record.event.data?.assistantMessageID ===
+          'msg_1d71ae47d001ZdfbHR6imr6fWE',
+    });
     await h.start();
     const first = await h.adapter.sendTurn({
       threadId: 'thread-1',
@@ -329,6 +353,17 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       input: 'DO_EDIT now',
     });
     await h.waitFor(completedFor(second.turnId));
+    const continuationUsage = h.events.filter(
+      (event) =>
+        event.method === 'token-usage.updated' &&
+        event.turnId === second.turnId,
+    );
+    expect(continuationUsage).toHaveLength(2);
+    expect(continuationUsage[0]).not.toHaveProperty('servedModelObservation');
+    expect(continuationUsage[1]).toHaveProperty(
+      'servedModelObservation.assistantMessageId',
+      'msg_1d71ae4f800160PtNAChRchfdq',
+    );
     const tools = h.events.filter((event) => event.method === 'tool.completed');
     expect(tools.map((event) => [event.toolName, event.status])).toEqual([
       ['write', 'success'],
@@ -1432,6 +1467,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
 
   test('an exact delivery receipt wins over a lost steer POST response', async () => {
     const home = makeTempDir('opencode-positive-receipt-');
+    let deliveryObserved = false;
     const h = await setup(
       {
         scenario: 'steer',
@@ -1439,6 +1475,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         holdUntil: (r) =>
           (r.body as { delivery?: string })?.delivery === 'steer'
             ? (frame) =>
+                deliveryObserved &&
                 frame.event?.type === 'session.inbox.delivered' &&
                 frame.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq'
             : undefined,
@@ -1461,6 +1498,10 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       opened.requestId as string,
       'accept',
     );
+    await h.waitFor(
+      (event) => event.method === 'turn.started' && event.inputKind === 'steer',
+    );
+    deliveryObserved = true;
     await expect(steering).resolves.toBeUndefined();
     await h.waitFor(completedFor(turnId));
     expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toHaveLength(
@@ -1516,6 +1557,53 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         { name: 'echo', state: 'ready', scope: 'engine-config' },
       ],
     });
+  });
+
+  test('governed preflight and start inspect the project before acquiring a serve lease', async () => {
+    const cwd = realpathSync(makeTempDir('opencode-governed-launch-'));
+    mkdirSync(join(cwd, '.git'));
+    const configDir = join(cwd, '.opencode');
+    writeFileSync(configDir, 'ordinary text');
+    const h = await setup(
+      { scenario: 'basic' },
+      { findProjectCode: undefined },
+      cwd,
+    );
+    const modelOptions = { approvalMode: 'ask' };
+    const input = {
+      threadId: 'thread-1',
+      provider: 'opencode' as const,
+      cwd,
+      metadata: { connectionId: 'opencode' },
+      modelOptions,
+    };
+    const refusal = {
+      code: 'acp_approval_governance_refused',
+      message: expect.stringContaining(configDir),
+    };
+
+    await expect(h.adapter.preflightStart(input)).rejects.toMatchObject(
+      refusal,
+    );
+    expect(h.leaser.acquired).toHaveLength(0);
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(0);
+
+    unlinkSync(configDir);
+    writeFileSync(join(cwd, 'opencode.json'), '{"formatter":false}');
+    await h.adapter.preflightStart(input);
+    expect(h.leaser.acquired).toHaveLength(1);
+
+    writeFileSync(configDir, 'ordinary text');
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(1);
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+
+    unlinkSync(configDir);
+    const session = await h.adapter.startSession(input);
+    expect(session.resumeCursor).toMatchObject({ transport: 'native' });
+    expect(h.leaser.acquired).toHaveLength(2);
   });
 
   test('a governed start sends Station rules and pins a governed agent', async () => {
@@ -1760,17 +1848,16 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       agent: 'plan',
     });
     await h.waitFor(completedFor(plan.turnId));
-    // The start's own configured event comes first; this is the engine's.
     expect(
       await h.waitFor(
         (event) =>
-          event.method === 'session.configured' &&
-          (event.metadata as { mode?: unknown } | undefined)?.mode === 'plan',
+          event.method === 'session.engine-mode-observed' &&
+          event.modeId === 'plan',
       ),
     ).toBeDefined();
     expect(
       h.events.filter((event) => event.method === 'session.configured').at(-1),
-    ).toMatchObject({ metadata: { mode: 'plan' } });
+    ).toMatchObject({ cwd: '/replay/proj', model: 'mock/mock-1' });
   });
 
   /** Fails the first `count` requests `match` names with a 500. */
@@ -2611,6 +2698,48 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     expect(completed).toMatchObject({ finishReason: 'stop' });
   });
 
+  test('a native execution displaced during a feed gap keeps its observed completion', async () => {
+    const h = await setup({ scenario: 'basic' });
+    await h.start();
+    const session = (await h.adapter.listSessions())[0]!;
+    const native = Reflect.get(h.adapter, 'native').get(
+      session.threadId,
+    ).native;
+    // Arrange the two live slots at the reconnect boundary. The production
+    // reconciliation and emitter below supply the actual terminal identity.
+    const createTurn = Reflect.get(native, 'createTurn').bind(native);
+    Reflect.set(native, 'turn', createTurn('older-execution', 'provider'));
+    Reflect.set(native, 'pendingStart', {
+      ...createTurn('delivered-prompt', 'station'),
+      messageId: 'delivered-message',
+    });
+    try {
+      Reflect.get(native, 'adoptStartedDuringGap').call(native, [
+        { id: 'delivered-message' },
+      ]);
+      const terminal = await h.waitFor(completedFor('older-execution'));
+      expect(terminal).toMatchObject({
+        provider: 'opencode',
+        finishReason: 'other',
+      });
+      expect(terminal).not.toHaveProperty('stopReason');
+      expect(
+        projectSessionLifecycle({ session, events: h.events }),
+      ).toMatchObject({ lifecycleState: 'idle' });
+      expect(resolveTurnCompletionOutcome(terminal)).toBe('done');
+      expect(
+        projectRuntimeEventsToMessages(h.events).flatMap((row) => row.parts),
+      ).not.toContainEqual(
+        expect.objectContaining({
+          text: expect.stringContaining('Result unconfirmed'),
+        }),
+      );
+      expect(native.activeTurnId).toBe('delivered-prompt');
+    } finally {
+      Reflect.set(native, 'turn', undefined);
+    }
+  });
+
   test('past 50 messages, a prompt whose execution started in a feed gap is adopted', async () => {
     const promptAt = loadOpenCodeFixture('reconnect').find(
       (line) => line.kind === 'http' && line.path?.endsWith('/prompt') === true,
@@ -3420,7 +3549,11 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
   });
 
   test("an Agent's Station tool policy that requires a person puts an edit Auto would answer to the person", async () => {
-    const policy = stagedPolicy(() => ({ behavior: 'ask', required: true }));
+    const policy = stagedPolicy(() => ({
+      behavior: 'ask',
+      required: true,
+      guardianReason: 'The only-if-asked rule requires a person.',
+    }));
     const h = await setup(
       { scenario: 'governed' },
       { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
@@ -3432,7 +3565,10 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
         (event) =>
           event.method === 'request.opened' && event.turnId === edit.turnId,
       ),
-    ).toMatchObject({ payload: { toolName: 'edit' } });
+    ).toMatchObject({
+      guardianReason: 'The only-if-asked rule requires a person.',
+      payload: { toolName: 'edit' },
+    });
     expect(replies(h)).toEqual([]);
     expect(policy.calls).toHaveLength(1);
   });

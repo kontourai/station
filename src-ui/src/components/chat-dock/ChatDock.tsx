@@ -13,6 +13,8 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { SessionReaderBindingProvider } from '../conversation/SessionReaderBinding';
+import { RefreshGlyph } from '../icons/Glyph';
+import { refreshListQueries, useListRefresh } from '../refresh/ListRefresh';
 import { ChildChatNavigation } from './ChildChatNavigation';
 import type {
   ChildChatController,
@@ -47,6 +49,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { resolveViewFromPath } from '../../app-shell/routing';
@@ -98,6 +101,10 @@ import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
 } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import {
+  getStreamConnectionState,
+  subscribeStreamConnectionState,
+} from '../../hooks/orchestration/streamConnectionState';
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { TranscriptPrefetchTargetProvider } from '../../hooks/orchestration/useTranscriptWindowPrefetch';
 import { useACPConnections } from '../../hooks/useACPConnections';
@@ -117,7 +124,7 @@ import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
-import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
+import { useConversationInboxSnapshot } from '../../hooks/useConversationInboxSnapshot';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -140,12 +147,18 @@ import {
   readNewChatIntent,
 } from '../../lib/newChatIntent';
 import { openingConversationLabel } from '../../lib/notificationStationOpen';
+import { projectCreationRecoveryIdentity } from '../../lib/project-onboarding-recovery';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
+import {
+  isRemoteInventoryUnavailable,
+  optionalRemoteInventoryRefetch,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
@@ -191,6 +204,7 @@ import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { requestProjectShell } from '../coding-layout/terminalShellRequest';
+import type { ConversationTranscriptSnapshot } from '../conversation/ConversationBody';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
@@ -204,6 +218,7 @@ import {
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
 import {
   ChatDockActiveIdentity,
+  DelegationStart,
   delegatedTaskLabel,
 } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
@@ -634,7 +649,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { apiBase } = useApiBase();
   const workObservation = useWorkObservation();
   const requestAuthority = useHostRequestAuthorityScope();
-  const { namespace: authorityNamespace } = useAuthorityPersistence();
+  const {
+    namespace: authorityNamespace,
+    observation: authorityObservation,
+    status: authorityStatus,
+  } = useAuthorityPersistence();
   // Inbox rows warm this Station's transcript windows under the same key the
   // dock's readers use (`useTranscriptWindowPrefetch`).
   const transcriptPrefetchTarget = useMemo(
@@ -800,13 +819,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { resolveModelLabel } = useCatalogModelLabel();
   // The one inbox derivation, shared with the sidebar's Open-chats rows.
   const durableTasks = useTasksQuery();
-  const remoteInboxSessions = useRemoteSessionsQuery();
+  const remoteInboxSessions = useRemoteSessionsQuery(
+    stationViewReadQueryOptions,
+  );
+  const remoteInboxUnavailable = isRemoteInventoryUnavailable(
+    remoteInboxSessions.error,
+  );
   const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,
     resolveModelLabel,
     durableTasks.data,
-    remoteInboxSessions.data?.environments,
+    remoteInboxUnavailable ? undefined : remoteInboxSessions.data?.environments,
   );
   const inventory = useConversationInventoryQuery();
   useConversationActivityFeed({
@@ -819,41 +843,71 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus === 'pending' ||
     durableTasks.isPending ||
     inventory.isPending ||
+    remoteInboxSessions.isLoading ||
     !agentsLoaded;
   const taskItemsFailed =
-    orchestrationSessionsFailed || inventory.isError || durableTasks.isError;
+    orchestrationSessionsFailed ||
+    inventory.isError ||
+    durableTasks.isError ||
+    (remoteInboxSessions.isError && !remoteInboxUnavailable);
   const refetchInventory = inventory.refetch;
   const refetchTasks = durableTasks.refetch;
   const refetchRemote = remoteInboxSessions.refetch;
-  // Only the user's own resync shows as "Refreshing": the background reads a
-  // busy Station triggers every second must not flicker the control.
-  const [inboxResyncPending, setInboxResyncPending] = useState(false);
-  // The inbox's explicit resync: reconnect the stream (its snapshot or replay
-  // re-derives every chat this Station holds, including one started on
-  // another device) and re-read both lists the rows come from.
-  const resyncInbox = useCallback(() => {
-    resyncOrchestrationEventStream(apiBase);
-    setInboxResyncPending(true);
-    void Promise.allSettled([
-      refetchOrchestrationSessions(),
-      refetchInventory(),
-      refetchTasks(),
-      refetchRemote(),
-    ]).then(() => setInboxResyncPending(false));
-  }, [
-    apiBase,
-    refetchOrchestrationSessions,
-    refetchInventory,
-    refetchTasks,
-    refetchRemote,
-  ]);
+  const refreshInbox = useCallback(
+    async (recover: boolean) => {
+      if (!requestAuthority?.isCurrent()) {
+        throw new Error('Inbox connection changed');
+      }
+      if (recover) resyncOrchestrationEventStream(apiBase);
+      await refreshListQueries(
+        refetchOrchestrationSessions,
+        refetchInventory,
+        refetchTasks,
+        ...(remoteInboxUnavailable
+          ? []
+          : [optionalRemoteInventoryRefetch(refetchRemote)]),
+      );
+    },
+    [
+      apiBase,
+      requestAuthority,
+      refetchOrchestrationSessions,
+      refetchInventory,
+      refetchTasks,
+      refetchRemote,
+      remoteInboxUnavailable,
+    ],
+  );
+  const inboxRefresh = useListRefresh({
+    scope: JSON.stringify([apiBase, requestAuthority?.authorityKey]),
+    enabled: Boolean(requestAuthority),
+    refresh: refreshInbox,
+  });
+  const streamReceiving = useSyncExternalStore(
+    subscribeStreamConnectionState,
+    () => getStreamConnectionState(apiBase).phase === 'receiving',
+    () => false,
+  );
+  const inboxUpdating =
+    streamReceiving ||
+    orchestrationSessionsFetching ||
+    inventory.isFetching ||
+    durableTasks.isFetching ||
+    remoteInboxSessions.isFetching;
   const inboxSync = useMemo(
     () => ({
       failed: taskItemsFailed,
-      refreshing: inboxResyncPending,
-      onRefresh: resyncInbox,
+      pending: taskItemsPending,
+      updating: inboxUpdating,
+      refresh: requestAuthority ? inboxRefresh : undefined,
     }),
-    [taskItemsFailed, inboxResyncPending, resyncInbox],
+    [
+      taskItemsFailed,
+      taskItemsPending,
+      inboxUpdating,
+      inboxRefresh,
+      requestAuthority,
+    ],
   );
   const acknowledgeConversation = useAcknowledgeConversationMutation();
   const inventoryById = useMemo(
@@ -1287,6 +1341,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     apiBase,
     activeSession: hostConversation ? activeSession : null,
     allSessions: allSessions.filter((session) => chatBelongsToStation(session)),
+    contextBoundaryAuthority:
+      authorityStatus === 'verified' &&
+      authorityNamespace &&
+      authorityObservation &&
+      requestAuthority
+        ? {
+            namespace: authorityNamespace,
+            actorId: authorityObservation.principal.id,
+            requestScope: requestAuthority,
+            isCurrent: requestAuthority.isCurrent,
+          }
+        : undefined,
   });
   const {
     handoffSource,
@@ -1571,9 +1637,28 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const executionProfile = agents.find(
     (entry) => entry.slug === activeSessionForHook?.agentSlug,
   );
-  const executionRoutes = executionProfile
+  const profileExecutionRoutes = executionProfile
     ? executionSelection.executionModelsForAgent(executionProfile)
     : effectiveModels;
+  const currentExecutionAgentId = activeSessionForHook?.executionAgentId;
+  // A direct Station runtime may leave the saved Agent's execution unset.
+  // The open chat's Station binding owns its model routes in that case too.
+  const executionRoutes =
+    activeSessionForHook?.executionMode === EXECUTION_MODE.STATION
+      ? [
+          ...effectiveModels.map((model) => ({
+            ...model,
+            executionAgentId: currentExecutionAgentId,
+            engineId: 'station' as const,
+            engineName: 'Station',
+          })),
+          ...profileExecutionRoutes.filter(
+            (route) =>
+              route.executionAgentId !== undefined &&
+              route.executionAgentId !== currentExecutionAgentId,
+          ),
+        ]
+      : profileExecutionRoutes;
   // Chat input hook - encapsulates autocomplete, history, and input handling
   const chatInput = useChatInput({
     apiBase: conversationConnection?.targetApiBase ?? apiBase,
@@ -2011,9 +2096,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
-  // #5071: Continue in Project… drafts from this chat; it never sends into it.
-  const [continueInProject, setContinueInProject] =
-    useState<ContinuedConversation | null>(null);
+  // #5071: Save to Project drafts from this chat without sending a turn.
+  const [continueInProject, setContinueInProject] = useState<{
+    conversation: ContinuedConversation;
+    ownerKey: string;
+    sourceProjectSlug?: string;
+  } | null>(null);
+  const transcriptSnapshotRef = useRef<ConversationTranscriptSnapshot | null>(
+    null,
+  );
   const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
     'continue-in-project',
   );
@@ -2061,7 +2152,25 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           },
         ]
       : [];
+  const desktopInboxAvailable = inboxPanelMounts({
+    isMobile,
+    dockMode: effectiveDockSlotPlacement,
+    isFullscreenPlacement,
+  });
+  const refreshInboxActions: DockMoreAction[] =
+    desktopInboxAvailable && workspaceShown && isInboxOpen && requestAuthority
+      ? [
+          {
+            key: 'refresh-inbox',
+            group: 'switch',
+            label: 'Refresh inbox',
+            glyph: <RefreshGlyph />,
+            onSelect: () => inboxRefresh.run(),
+          },
+        ]
+      : [];
   const dockMoreActions: DockMoreAction[] = [
+    ...refreshInboxActions,
     ...(turnIntoTask
       ? [
           {
@@ -2079,15 +2188,60 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           {
             key: 'continue-in-project',
             group: 'chat' as const,
-            label: 'Continue in Project…',
+            label: 'Save to Project…',
             onSelect: () => {
-              if (activeSession)
-                setContinueInProject(
-                  continuedConversationFromChat(
-                    activeSession,
-                    sessionDisplayCwd ?? undefined,
-                  ),
+              if (!activeSession) return;
+              const snapshot = transcriptSnapshotRef.current;
+              if (
+                !requestAuthority?.isCurrent() ||
+                snapshot?.chatId !== activeSession.id ||
+                snapshot.conversationId !== activeSession.conversationId ||
+                !snapshot.requestScope.isCurrent() ||
+                snapshot.requestScope.apiBase !== requestAuthority.apiBase ||
+                snapshot.requestScope.authorityKey !==
+                  requestAuthority.authorityKey
+              ) {
+                showToast('Chat history is unavailable right now.');
+                return;
+              }
+              const conversation = continuedConversationFromChat(
+                { ...activeSession, messages: snapshot.messages },
+                sessionDisplayCwd ?? undefined,
+              );
+              let sourceProjectSlug: string | undefined;
+              if (conversation.latestTurnId) {
+                const answerSession = orchestrationSessions.find(
+                  (session) =>
+                    session.threadId === conversation.sessionId &&
+                    (!session.conversationId ||
+                      session.conversationId === conversation.conversationId),
                 );
+                const opening = activeSession.conversationOpenState;
+                const openedProjectSlug =
+                  opening?.status === 'resolved' &&
+                  opening.conversation.id === conversation.conversationId
+                    ? opening.conversation.projectSlug
+                    : undefined;
+                const answerProjectSlug = answerSession?.projectSlug;
+                sourceProjectSlug = answerProjectSlug ?? openedProjectSlug;
+                if (
+                  answerSession?.projectAttribution ||
+                  (answerProjectSlug &&
+                    openedProjectSlug &&
+                    answerProjectSlug !== openedProjectSlug) ||
+                  (!sourceProjectSlug && activeSession.projectSlug)
+                ) {
+                  showToast(
+                    'Couldn’t verify the Project that owns this answer.',
+                  );
+                  return;
+                }
+              }
+              setContinueInProject({
+                conversation,
+                ownerKey: projectCreationRecoveryIdentity(requestAuthority),
+                sourceProjectSlug,
+              });
             },
           },
         ]
@@ -3930,6 +4084,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           }
                         : null
                     }
+                    reportedStart={
+                      hostBound &&
+                      !showNewChatModal &&
+                      !showOpeningIdentity &&
+                      !importedSessionId &&
+                      activeOrchestrationSession?.inputOrigin ? (
+                        <DelegationStart
+                          threadId={activeOrchestrationSession.threadId}
+                          compact
+                        />
+                      ) : undefined
+                    }
                     sessionProjectMismatchLabel={
                       showNewChatModal || showOpeningIdentity
                         ? undefined
@@ -4160,6 +4326,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             activeOrchestrationSession?.modelRoute?.label
                           }
                           inputOrigin={activeOrchestrationSession?.inputOrigin}
+                          reportedStartThreadId={
+                            hostBound
+                              ? activeOrchestrationSession?.threadId
+                              : undefined
+                          }
                           onClose={removeSession}
                         />
                       ) : null
@@ -4197,7 +4368,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
                     moreActions={
                       importedSessionId
-                        ? []
+                        ? refreshInboxActions
                         : sessionContextOwnsRows
                           ? dockMoreActions.filter(
                               (action) =>
@@ -4217,11 +4388,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             // rather than restating it — a third independent copy
                             // is how the toggle ends up advertising a panel that
                             // never appears (#3314 review SF-1, again).
-                            showInboxToggle: inboxPanelMounts({
-                              isMobile,
-                              dockMode: effectiveDockSlotPlacement,
-                              isFullscreenPlacement,
-                            }),
+                            showInboxToggle: desktopInboxAvailable,
                             isInboxOpen,
                             inboxNeedsYouCount: inboxNeedsYou,
                             inboxWorkingCount: inboxWorking,
@@ -4260,13 +4427,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       {isMobile && (
                         <LazyBoundary
                           load={loadMobileInboxPanel}
+                          surface={{ id: 'mobile-inbox', label: 'Inbox' }}
                           componentProps={{
                             open: workspaceShown && mobileInboxShown,
                             tasks: taskItems,
                             authority: requestAuthority,
                             pending: taskItemsPending,
                             loadError: taskItemsFailed,
-                            onRetryLoad: resyncInbox,
+                            updating: inboxUpdating,
+                            refresh: inboxSync.refresh,
                             agents,
                             workFacts,
                             gitLocationByThreadId,
@@ -4304,11 +4473,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     (the "Collapse/Expand chat list" row of the header's More
                     menu since #1536 F, the single control for this now). */}
                       {workspaceShown &&
-                        inboxPanelMounts({
-                          isMobile,
-                          dockMode: effectiveDockSlotPlacement,
-                          isFullscreenPlacement,
-                        }) &&
+                        desktopInboxAvailable &&
                         inboxPresence.mounted && (
                           <LazyBoundary
                             load={loadChatDockInboxPanel}
@@ -4758,6 +4923,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               >
                                 <ChatDockContentArea
                                   connection={conversationConnection}
+                                  transcriptSnapshotRef={
+                                    continueInProjectEnabled && hostConversation
+                                      ? transcriptSnapshotRef
+                                      : undefined
+                                  }
                                   onNewChat={handleStartNewChatWithMessage}
                                   onEditPeerChatDraft={(intent) =>
                                     requestNewChat({
@@ -5181,7 +5351,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             <ShareIntakeController />
             {continueInProject && (
               <ContinueInProjectDialog
-                conversation={continueInProject}
+                conversation={continueInProject.conversation}
+                sourceOwnerKey={continueInProject.ownerKey}
+                sourceProjectSlug={continueInProject.sourceProjectSlug}
                 onClose={() => setContinueInProject(null)}
               />
             )}

@@ -1,0 +1,7 @@
+{
+  "revision": "e115a1f98470ec2478792c1331925758c4c75bd4",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Rechecked the canonical #5254 lifecycle owner after integration. The merged service keeps one provider-proven finish import, and a classified runtime failure retains its cause unless the established terminal rule supersedes it. The watchdog identity contract and supervision checks remain compatible.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/session-lifecycle-service.ts"]}
+  ]
+}

@@ -1,26 +1,18 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
 @import url("@kontourai/station-sdk/action-control.css");
-/* Console Kit token contract (roadmap), now consumed from the
-   published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
-   Decision: token *definitions* load globally (the published tokens/index.css
-   targets :root and [data-theme="light"]; scoping them under a wrapper class
-   would mean forking the vendor file, which the @kontourai/ui consumer guide
-   forbids), but `--k-*` *consumption* is scoped to the Kontour-facing
-   surfaces — trust panel, readiness panel, flow run console, gate verdict
-   cards. Station's base chrome stays on its own --bg-… and --text-… tokens
-   until the S4 suite-coherence pass. The two namespaces don't overlap, and
-   @kontourai/ui's dark default + [data-theme="light"] skin key off the same
-   documentElement data-theme attribute ThemeToggle already manages, so both
-   token systems flip together. fonts.css supplies the --k-font-* faces
-   (self-hosted woff2, same vendored pattern as Station's own fonts.css
-   import above — #2648). react/styles.css carries
-   the shared primitive class contract (was imported via the deleted mirror). */
+/* Load the kit fonts and tokens before the shared component styles. Station
+   sets the density-sensitive --k-text-sm value in tokens.css. */
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");
 @import url("./styles/control-recipes.css");
 @import url("./styles/layout-recipes.css");
+
+/* Shared kit tooltips are control labels and use Station's readable text size. */
+.tooltip {
+  font-size: var(--text-xs);
+}
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
@@ -4357,7 +4349,7 @@ button.tool-call__line:hover {
 
 .tool-call__status-footer {
   margin-top: 0.5rem;
-  color: var(--success-text);
+  color: var(--k-text);
   font-size: 0.9em;
 }
 
@@ -5346,6 +5338,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .usage-telemetry-disclosure__inventory > summary {
+  min-block-size: var(--touch-target-min, 0px);
+  align-content: center;
   cursor: pointer;
   padding: 8px 0;
   color: var(--text-secondary);
@@ -6065,9 +6059,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      second line that the clip removes, so the app name is either shown in full
      or not at all - a text-overflow ellipsis here is what produced "S...". The
      logo stays (it is the home link) and the toolbar stays one row. The
-     connection chip is a 44px dot, or a dot and a Station name capped at
-     120px when healthy (chat.css), so the lockup is the one member of the row
-     that gives up width. Both children are 22px tall and
+     lockup takes leftover space after the action cluster. Both children are 22px tall and
      share one line, so nothing of the wrapped line peeks into the clip. */
   .app-toolbar__lockup {
     display: flex;
@@ -6078,11 +6070,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* The gap below the first line keeps the wrapped wordmark out of the
        4px the clip margin lends to the focus ring. */
     row-gap: 8px;
-    /* Shrinkable, never below the logo. When the name does not fit, the lockup
-       shrinks to the room there is; the blank remainder is invisible and the
-       action cluster stays put. */
-    flex: 0 1 auto;
+    flex: 1 1 0;
     min-width: 22px;
+    max-width: max-content;
     height: 22px;
     overflow: hidden;
   }
@@ -6201,9 +6191,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-wrap: nowrap;
   }
 
-  /* The wordmark never truncates (see `.app-toolbar__lockup`). The right-hand
-     action cluster stays on-screen at <=390px because the lockup is the one
-     member of the row that gives up width. */
+  /* The action cluster shares the toolbar's single row. */
+  .app-toolbar__actions {
+    flex-wrap: nowrap;
+  }
 
   /* Phone connection chrome is a touchable status dot, with the Station's
      short name beside it when healthy. Its full accessible name and
@@ -6847,157 +6838,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   animation: acp-pulse var(--motion-status-pulse) var(--ease-standard) infinite;
 }
 
-/* ── Project Dashboard ──────────────────────────────────────────── */
-
-.project-dashboard__modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--layer-dialog);
-}
-
-.project-dashboard__modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  padding: 24px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-/* ── Knowledge Section ──────────────────────────────────────────── */
-
-.knowledge-section__badge {
-  font-size: var(--k-text-sm);
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.knowledge-section__scan-result {
-  margin-top: 8px;
-  font-size: var(--text-base);
-  color: var(--success-text, #22c55e);
-}
-
-.knowledge-section__empty {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.knowledge-section__dropzone {
-  border: 2px dashed var(--border-primary);
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard);
-  margin-bottom: 8px;
-}
-
-.knowledge-section__dropzone:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-secondary);
-}
-
-.knowledge-section__dropzone--active {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
-  color: var(--accent-primary);
-}
-
-.knowledge-section__doc-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.knowledge-section__doc {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 5px;
-  font-size: var(--text-base);
-}
-
-.knowledge-section__doc-name {
-  flex: 1;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.knowledge-section__doc-remove {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--text-xl);
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.knowledge-section__doc-remove:hover {
-  color: var(--error-text);
-}
-
-.knowledge-section__status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  padding-top: 4px;
-}
-
-.knowledge-section__clear-btn {
-  background: none;
-  border: none;
-  color: var(--error-text);
-  cursor: pointer;
-  font-size: var(--k-text-sm);
-  padding: 2px 6px;
-}
-
-.knowledge-section__clear-btn:hover {
-  text-decoration: underline;
-}
-
-.knowledge-section__migrate {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-primary);
-}
-
-.knowledge-section__migrate-copy {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-
-.knowledge-section__migrate-errors {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  font-size: var(--k-text-sm);
-  color: var(--error-text);
-}
-
 /* ── ChatDock Project Filter ────────────────────────────────────── */
 
 .chat-dock__project-filter {
@@ -7484,129 +7324,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* Mobile: compact chat dock header and tab bar */
-/* ── Provider Overview ── */
-.provider-overview {
-  padding: 2rem 2.5rem;
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.provider-overview__header {
-  margin-bottom: 1.5rem;
-}
-
-.provider-overview__title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem;
-  letter-spacing: -0.02em;
-}
-
-.provider-overview__desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.provider-overview__card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 0.875rem 1rem;
-}
-
-.provider-overview__card-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  padding: 0.3rem 0.4rem;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background var(--motion-fast) var(--ease-standard);
-}
-
-.provider-overview__card-item:hover {
-  background: var(--bg-tertiary);
-}
-
-.provider-overview__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-muted);
-}
-
-.provider-overview__dot--active {
-  background: var(--success-text, #22c55e);
-}
-
-/* Quick Setup (shown when no providers exist) */
-.provider-overview__quickstart {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border-primary);
-}
-
-.provider-overview__quickstart-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem;
-}
-
-.provider-overview__quickstart-desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0 0 0.75rem;
-}
-
-.provider-overview__quickstart-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.provider-overview__group-label {
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin: 1rem 0 0.5rem;
-}
-
-.provider-overview__group-label:first-of-type {
-  margin-top: 0;
-}
-
-.provider-picker-modal {
-  max-width: 460px;
-  width: 90vw;
-}
-
-.provider-picker-modal .modal-body {
-  max-height: min(65vh, 560px);
-  overflow-y: auto;
-}
-
-.provider-picker-modal__desc {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
-.provider-picker-modal__search {
-  margin-bottom: 0.75rem;
-}
-
 /*
  * Shared filter-field styling for every "type to narrow this list" surface
  * (the split-pane list header, both Add Provider pickers). It lives in this
@@ -7639,41 +7356,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .list-filter-input::placeholder {
   color: var(--text-muted);
-}
-
-.provider-overview__quickstart-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  width: 100%;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-
-.provider-overview__quickstart-btn:hover {
-  border-color: var(--accent-primary);
-}
-
-.provider-overview__quickstart-icon {
-  font-size: 1.25rem;
-}
-
-.provider-overview__quickstart-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.provider-overview__quickstart-meta {
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  margin-top: 1px;
 }
 
 .provider-detail__progress {

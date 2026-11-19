@@ -1,0 +1,7 @@
+{
+  "revision": "7468ee9091ce0894426a3d2d782f9f6399d03343",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Verified that the test mirrors the full trusted checkout by copying the GitHub evidence helper into the fixture. The existing assertion still exercises the real dequeue entry point and validates the checked-out policy SHA and permitted reads. Landing and publication policy are unchanged.","inputs":["scripts/__tests__/merge-queue-dequeue.test.ts"]}
+  ]
+}

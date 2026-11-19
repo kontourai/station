@@ -642,8 +642,9 @@ messages have no search index, so discovery scans their existing owner-scoped
 readers. Each call scans metadata for at most 2,000 conversations after Project,
 Agent and read admission filters, and reads at most 32 file-backed conversations
 (including title hits, which still need a readable transcript). Each transcript
-read follows at most 64 Session segments. Indexed native hits remain eligible
-after the metadata scan budget is exhausted. A scan or file-read budget reached,
+read follows at most 64 Session segments. Indexed native hits with no file record remain eligible after the metadata
+scan budget is exhausted. A file record still uses the metadata and transcript
+read budgets even when it also has an indexed hit. A scan or file-read budget reached,
 or a file lineage too long to read, yields `state: partial` with an
 `incompleteSources` entry; the unreadable conversation is skipped. Other reader
 errors report search unavailable. These budgets bound matching and transcript
@@ -1197,9 +1198,11 @@ to Sessions started afterwards.
 
 Use this as an attended Station-engine Agent after configuring a usable Model
 connection and default model in [Connections](connections.md). No engine binding
-is declared, so it uses Station's engine. Only the four listed reads are
-auto-approved; mutations and delegation remain subject to the normal approval
-and authority checks. Start with an existing writable skill and a ready worker.
+is declared, so it uses Station's engine. The example declares delegation in
+`tools.available`. Whether a Session can delegate depends on the caller's
+authority, recorded depth, and inherited tool policy. Only the four listed
+reads are auto-approved. Mutations and delegation still require approval.
+Start with an existing writable skill and a ready worker.
 
 Use the example `agent.json` as a starting point:
 
@@ -1276,20 +1279,16 @@ its Agent, its conversation, and the context that session was started with
 writes into `delegate_task` or `send_message` anyway is ignored. A session already at the depth limit is refused
 before any child starts, on every engine.
 
-A delegated child that calls `delegate_task` or `send_message` is refused
-earlier and at any depth, not only at the last one: the routes behind them
-answer `403` with `delegated_tool_blocked` before the depth limit is read.
-The decision uses the calling session's own recorded context and the built-in
-denials below, so an Agent's `allowedTools` cannot re-allow them, and it applies
-on every engine whose call carries a verified station-control caller (see
-[tool-policy delivery](../conformance/tool-policy-delivery.md)). The
-[orchestration instructions](#orchestration-instructions) never tell a
-delegated child to use either tool.
+A child can use `delegate_task` to start a tracked child in the same
+Project on this Station when its recorded depth and inherited tool policy
+allow it. Station derives the parent and root from the calling Session.
+`send_message` remains blocked for delegated children. See [tool-policy
+delivery](../conformance/tool-policy-delivery.md).
 
 The default policy is `maxDepth` 2, `denyApprovals`, and the built-in
 denials in `BUILTIN_DELEGATION_DENIALS`
 ([`agent.ts`](../../packages/contracts/src/agent.ts)): `send_message`,
-`delegate_task`, `run_job`, and every `add_*`, `create_*`, `update_*`,
+`run_job`, and every `add_*`, `create_*`, `update_*`,
 `delete_*`, `remove_*`, `connect_*` and `disconnect_*` station-control tool.
 
 **Behaviour change.** Before this, `POST /api/orchestration/delegations`
@@ -1298,11 +1297,11 @@ root, including children of Station's own engine and of the default Agents
 (`station`, `claude`, `codex`). A `send_message` child on another engine
 carried whatever context the model wrote, or none. Every such child now gets
 lineage and the default policy. Where Station's pre-tool policy is delivered
-(and, for delegating or messaging further, at the server routes as described
+(and, for dispatching or messaging further, at the server routes as described
 above), the built-in denials prevent a delegated child from:
 
 - calling the matching create, update, delete, add, or remove station-control tools;
-- starting a scheduled job with `run_job`, or delegating or messaging further;
+- starting a scheduled job with `run_job` or messaging further;
 - asking a person for tool approval when `denyApprovals` applies. A call already
   allowed by the applicable policy can still run; otherwise it is refused.
 

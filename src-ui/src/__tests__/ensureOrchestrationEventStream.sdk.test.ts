@@ -1,5 +1,8 @@
 /** @vitest-environment jsdom */
-import { fetchOrchestrationSessions } from '@kontourai/station-sdk';
+import {
+  type FetchSseConnection,
+  fetchOrchestrationSessions,
+} from '@kontourai/station-sdk';
 import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   getClientRequestTimeout,
@@ -7,10 +10,24 @@ import {
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
-  ensureOrchestrationEventStream,
+  ensureOrchestrationEventStream as openOrchestrationEventStream,
   resetSessionReadModelRefreshForTests,
 } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { stationQueryDefaults } from '../lib/queryDefaults';
+
+import { observeSseFixture, ownSseFixture } from './helpers/ownedSseFixture';
+
+const connections = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('@kontourai/station-sdk', async (load) => {
+  const sdk = await load<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...sdk,
+    fetchSSE: (...args: Parameters<typeof sdk.fetchSSE>) =>
+      observeSseFixture(connections, sdk.fetchSSE(...args)),
+  };
+});
 
 const frame =
   'event: orchestration:session-projection-updated\ndata: {"threadId":"probe"}\n\n';
@@ -125,12 +142,8 @@ function setup(mode: TransportMode, productionRetries = false) {
   });
   const release = ensureOrchestrationEventStream(origin, client);
   cleanups.push(() => {
-    release();
     stop();
     client.clear();
-    window.dispatchEvent(
-      Object.assign(new Event('pagehide'), { persisted: false }),
-    );
   });
   return {
     push,
@@ -147,9 +160,14 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
   resetSessionReadModelRefreshForTests();
   vi.restoreAllMocks();
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
 });
+
+const retainRelease = ownSseFixture(connections);
+function ensureOrchestrationEventStream(
+  ...args: Parameters<typeof openOrchestrationEventStream>
+) {
+  return retainRelease(openOrchestrationEventStream(...args));
+}
 
 test.each(['body-stall', 'headers-stall'] as const)(
   '%s settles and dispatches the owed refresh through the SDK',

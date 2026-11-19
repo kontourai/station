@@ -1,4 +1,6 @@
+import { ACP_RESUME_CONFIGURATION_CHANGED_CODE } from '@kontourai/station-contracts/provider-failure';
 import {
+  interpretAcpTurnStop,
   PROVIDER_TURN_TRIGGER,
   type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -8,7 +10,11 @@ import {
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
-import { ProviderRefusalError, providerFailure } from '../provider-failure.js';
+import {
+  ProviderRefusalError,
+  providerFailure,
+  providerFailureForCode,
+} from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
@@ -39,7 +45,6 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-  type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -206,6 +211,11 @@ import {
   buildCliRuntimePrerequisites,
   findCliBinaryAsync,
 } from '../auth/cli-auth.js';
+import {
+  ACP_TRANSPORT_CLOSED_CODE,
+  ACP_TRANSPORT_CLOSED_GUIDANCE,
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
+} from '../delegated-runtime-failure.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -859,6 +869,7 @@ export interface AcpSessionRecord {
    */
   approvedTools: Set<string>;
   preToolPolicy?: StagedPreToolPolicyEvaluator;
+  staleToolPolicyTurnId?: string;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
   /**
@@ -1841,8 +1852,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         }),
       );
       if (currentFingerprint !== input.resumeCursor.connectionFingerprint) {
-        throw new Error(
-          'This conversation was started under a different engine connection configuration and cannot be resumed.',
+        throw new SessionStartRefusedError(
+          'This conversation was started under a different engine connection configuration. Open Reset agent context and choose Continue with chat history to start a new Session in this conversation.',
+          ACP_RESUME_CONFIGURATION_CHANGED_CODE,
         );
       }
     }
@@ -3322,26 +3334,33 @@ export class AcpAdapter implements ProviderAdapterShape {
         governedModeRefusal(requestedMode),
       );
     }
-    if (requestedMode && requestedMode !== record.currentModeId) {
-      const catalog = turnCatalog;
-      if (catalog.modes.length === 0) {
-        throw new Error(
-          `ACP mode option unavailable: this session did not advertise a session mode.`,
+    if (requestedMode && requestedMode !== turnCatalog.currentModeId) {
+      if (turnCatalog.modes.length === 0) {
+        throw new SendTurnRefusedError(
+          'ACP mode option unavailable: this session did not advertise a session mode.',
+          'input_unsupported',
         );
       }
-      const appliedMode = await applyAdvertisedAcpSessionMode(
-        record.process,
-        { ...catalog, currentModeId: record.currentModeId },
-        requestedMode,
-        record.connectionId,
-      );
-      record.currentModeId = appliedMode.currentModeId;
-      record.acpModeCatalog = {
-        ...catalog,
-        currentModeId: appliedMode.currentModeId,
-      };
-      if (appliedMode.configOptions) {
-        record.configOptions = appliedMode.configOptions;
+      try {
+        const appliedMode = await applyAdvertisedAcpSessionMode(
+          record.process,
+          turnCatalog,
+          requestedMode,
+          record.connectionId,
+        );
+        record.currentModeId = appliedMode.currentModeId;
+        record.acpModeCatalog = {
+          ...turnCatalog,
+          currentModeId: appliedMode.currentModeId,
+        };
+        if (appliedMode.configOptions) {
+          record.configOptions = appliedMode.configOptions;
+        }
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          errorMessage(error),
+          'input_unsupported',
+        );
       }
     }
     const turnEffort = requestedAcpEffort(input.modelOptions);
@@ -3398,6 +3417,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.turnErrorNotificationsSuppressed =
       (record.quarantinedTurnIds?.size ?? 0) > 0;
 
+    const observedMode = record.acpModeCatalog?.currentModeId;
+    if (requestedMode && observedMode) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.engine-mode-observed',
+        modeId: observedMode,
+      });
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -4860,7 +4890,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           outcome: mapAcpDecisionToOutcome('decline', params.options),
         };
       }
+      let guardianReason: string | undefined;
       if (toolName && record.preToolPolicy) {
+        const turnId = record.activeTurnId;
         const decision = await record.preToolPolicy(
           {
             toolName,
@@ -4906,12 +4938,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           );
         }
         if (decision.behavior === 'deny') {
+          if (
+            decision.staleGeneration &&
+            turnId !== undefined &&
+            this.ownsActiveTurn(record.session.threadId, record, turnId)
+          ) {
+            record.staleToolPolicyTurnId = turnId;
+          }
           return {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        if (decision.behavior === 'ask' && decision.required)
+        if (decision.behavior === 'ask' && decision.required) {
           needsPerson = true;
+          guardianReason = decision.guardianReason;
+        }
         // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
@@ -4992,6 +5033,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         method: 'request.opened',
         requestType: 'approval',
         title: params.toolCall?.title ?? 'Allow tool call',
+        ...(guardianReason ? { guardianReason } : {}),
         payload: {
           toolCallId: params.toolCall?.toolCallId,
           // The programmatic name, when the engine reports one: it is what
@@ -5224,6 +5266,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         error,
       );
     });
+    // Mode observations belong to the process that reported them.
+    if (record.acpModeCatalog)
+      record.acpModeCatalog = {
+        ...record.acpModeCatalog,
+        currentModeId: undefined,
+      };
     if (configOptions) {
       record.configOptions = configOptions;
       try {
@@ -5231,6 +5279,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // governs, it runs build unless the chat chose plan.
         if (floor && !record.currentModeId) record.currentModeId = 'build';
         const catalog = advertisedAcpSessionModes({ configOptions });
+        if (catalog.modes.length > 0) record.acpModeCatalog = catalog;
         if (
           record.currentModeId &&
           catalog.currentModeId !== record.currentModeId &&
@@ -5242,6 +5291,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             record.currentModeId,
             record.connectionId,
           );
+          record.acpModeCatalog = {
+            ...catalog,
+            currentModeId: applied.currentModeId,
+          };
           if (applied.configOptions)
             record.configOptions = applied.configOptions;
         }
@@ -6237,13 +6290,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       this.publish({ ...base, method: 'turn.aborted', reason: 'interrupted' });
       record.session.status = 'ready';
     } else {
-      this.publish({
-        ...base,
-        method: 'turn.completed',
-        ...mapAcpStopReasonToTurnCompletion(
-          (stopReason ?? 'end_turn') as StopReason,
+      this.publish(
+        interpretAcpTurnStop(
+          {
+            ...base,
+            method: 'turn.completed',
+            ...mapAcpStopReasonToTurnCompletion(stopReason),
+          },
+          'acp-transport',
         ),
-      });
+      );
       record.session.status = 'ready';
     }
     record.session.updatedAt = new Date().toISOString();
@@ -6378,6 +6434,36 @@ export class AcpAdapter implements ProviderAdapterShape {
     );
   }
 
+  private failStaleToolPolicyTurn(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+  ): boolean {
+    if (record.staleToolPolicyTurnId !== turnId) return false;
+    record.staleToolPolicyTurnId = undefined;
+    record.turnErrorNotifications = undefined;
+    this.settleRequestsAtPromptEnd(record, threadId, turnId);
+    this.settlePromptEndState(record, threadId, turnId, 'unresolved');
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      ...this.turnOrigin(record, turnId),
+      method: 'runtime.error',
+      ...providerFailure('permission_denied'),
+      severity: 'error',
+      code: 'stale_generation',
+      message:
+        'Station blocked this tool because the Agent configuration changed. Start a new chat to retry with the current configuration.',
+    } satisfies ProviderRuntimeErrorEvent);
+    record.session.status = 'error';
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
+    return true;
+  }
+
   private bindPromptSettlement(
     record: AcpSessionRecord,
     threadId: string,
@@ -6423,6 +6509,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           });
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        if (
+          response.stopReason !== 'cancelled' &&
+          this.failStaleToolPolicyTurn(record, threadId, turnId)
+        )
+          return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.settlePromptEndState(
@@ -6431,16 +6522,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           turnId,
           response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
         );
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          turnId,
-          ...this.turnOrigin(record, turnId),
-          method: 'turn.completed',
-          ...mapAcpStopReasonToTurnCompletion(response.stopReason),
-        });
+        this.publish(
+          interpretAcpTurnStop(
+            {
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId,
+              createdAt: new Date().toISOString(),
+              turnId,
+              ...this.turnOrigin(record, turnId),
+              method: 'turn.completed',
+              ...mapAcpStopReasonToTurnCompletion(response.stopReason),
+            },
+            'acp-transport',
+          ),
+        );
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();
         record.activeTurnId = undefined;
@@ -6449,6 +6545,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.quarantinedTurnIds?.delete(turnId);
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        if (this.failStaleToolPolicyTurn(record, threadId, turnId)) return;
         // #2265: a classified provider-plan quota exhaustion publishes
         // fixed safe copy plus bounded facts — never the engine's raw
         // message, and never the co-reported notification text (which is
@@ -6491,8 +6588,29 @@ export class AcpAdapter implements ProviderAdapterShape {
             code: ENGINE_SIGN_IN_REQUIRED_CODE,
             message: `${record.engineName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
+        } else if (
+          error instanceof Error &&
+          !(error instanceof RequestError) &&
+          error.message === 'ACP connection closed'
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'runtime.error',
+            ...providerFailureForCode(ACP_TRANSPORT_CLOSED_CODE),
+            severity: 'error',
+            code: ACP_TRANSPORT_CLOSED_CODE,
+            message: ACP_TRANSPORT_CLOSED_GUIDANCE,
+          } satisfies ProviderRuntimeErrorEvent);
         } else {
-          const baseMessage = acpFailureMessage(error);
+          const delegated = record.recoveryStart.metadata?.taskId === threadId;
+          const baseMessage = delegated
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : acpFailureMessage(error);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -6503,9 +6621,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'runtime.error',
             ...providerFailure('provider_error'),
             severity: 'error',
-            message: coReportedCause
-              ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-              : baseMessage,
+            message:
+              !delegated && coReportedCause
+                ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+                : baseMessage,
           } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';

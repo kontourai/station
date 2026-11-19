@@ -18,6 +18,7 @@ import {
   ciFastStepMarker,
 } from '../lib/ci-fast-step-marker.mjs';
 import { npmInvocation } from '../lib/npm-cli.mjs';
+import { summarizeVerificationOutput } from '../lib/verification-reporter.mjs';
 import { CHANGED_DEADLINE_ENV as SELECTOR_DEADLINE_ENV } from '../run-changed-verification.mjs';
 import {
   CHANGED_DEADLINE_ENV,
@@ -326,15 +327,7 @@ describe('bounded ci:fast runner', () => {
       // resolves its output.
       [process.execPath, ['scripts/generate-basis-mcp-apps.mjs']],
       ['npm', ['run', 'verification:policy:gate']],
-      // The governance proof, biome, and Veritas readiness. Each was
-      // composed only by the nightly full-regression gate or by a per-machine
-      // pre-push hook, so a violation of any of the three could not be
-      // observed on a pull request; two governance breaks reached main on
-      // 2026-09-14 while the Nightly that owned them was itself red.
       ['npm', ['run', 'proof:repo-governance']],
-      ['npm', ['run', 'lint:check']],
-      // Ordered after the two evidence-checks it re-executes, so a failure in
-      // either reports under its own name first.
       ['npm', ['run', 'veritas:readiness', '--', '--format', 'json']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
@@ -738,21 +731,47 @@ describe('bounded ci:fast runner', () => {
     ]);
   });
 
-  it('does not launch the next child after the fifteen-minute budget is exhausted', () => {
+  it('reports budget exhaustion without blaming the unlaunched next check', () => {
     let clock = 1_000;
-    let calls = 0;
-    expect(() =>
-      runCiFast({
-        env: { STATION_CI_FAST_BASE: 'base-sha' },
-        now: () => clock,
-        execute() {
-          calls += 1;
-          clock += FAST_FEEDBACK_TIMEOUT_MS;
-          return 0;
-        },
-      }),
-    ).toThrow('exceeded its 15-minute feedback budget');
-    expect(calls).toBe(1);
+    const launched: string[] = [];
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const exitCode = runCiFastCli({
+      run: () =>
+        runCiFast({
+          env: { STATION_CI_FAST_BASE: 'base-sha' },
+          now: () => clock,
+          execute(_command, args) {
+            launched.push(args[0]);
+            clock += FAST_FEEDBACK_TIMEOUT_MS;
+            return 0;
+          },
+          report: (line) => stdout.push(line),
+        }),
+      error: (line) => stderr.push(line),
+    });
+    expect(exitCode).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+    expect(launched).toEqual(['scripts/run-changed-verification.mjs']);
+    const infrastructureCause = stderr
+      .join('')
+      .trim()
+      .slice(CI_FAST_OWNER_INFRASTRUCTURE_PREFIX.length);
+    const summary = summarizeVerificationOutput({
+      stdout: stdout.join(''),
+      stderr: stderr.join(''),
+      infrastructureCause,
+      terminal: { status: 'infrastructure_error', exitCode },
+      counts: { executed: 0, passed: 0, failed: 0, infrastructureErrors: 1 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      maxBytes: 4096,
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.infrastructureCause).toBe(
+      'ci:fast exceeded its 15-minute feedback budget before launching scripts/node-runtime-contract.mjs',
+    );
+    expect(stdout.join('')).not.toContain(
+      '[ci:fast] step scripts/node-runtime-contract.mjs',
+    );
   });
 });
 

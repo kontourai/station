@@ -362,6 +362,13 @@ Cursor's `cursor/update_todos` notification is not rendered as a message: the ad
 
 Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
+### Reply output during Stop
+
+ACP reply chunks carry a session identity without naming a prompt. Station
+publishes message and reasoning chunks only while it can attribute them to an
+active turn. If a cancelled prompt is still settling while a successor turns
+active, Station drops the ambiguous chunks until the earlier prompt settles.
+
 ### Turn-failure enrichment from a co-reported notification
 
 station#4084: a rejected `prompt()` can surface as a bare, uninformative error — a JSON-RPC `-32603` resolves to the literal string `"Internal error"` with no detail. Live evidence (kiro-cli, station#1860 verification): the engine had already sent `_kiro.dev/error/rate_limit` with `{ message: "The monthly usage limit has been reached" }` milliseconds earlier in the same turn, and that message was silently dropped.
@@ -1226,7 +1233,7 @@ The recorded pick stays the conversation's decision, so the next turn tries the 
 
 OpenCode runs some code without any permission request, so no approval mode reaches it. Station keeps the agent from adding such code without a person, and refuses to govern a project that already has it (#3924, checked against OpenCode 1.18.18):
 
-- **Project configuration that runs code.** OpenCode loads `opencode.json`, `opencode.jsonc` and `.opencode/` from every directory between the session's directory and the git root (with no git root, upward from the session's directory). It imports plugins (`.opencode/plugin/`, `.opencode/plugins/`, a config `plugin` list) and custom tools (`.opencode/tool/`, `.opencode/tools/`) as it loads, `opencode debug agent` included, and starts the local MCP servers, formatters and language servers that configuration declares. Before a governed start or takeover, and before Station reads OpenCode's rules, Station checks those places without running OpenCode ([project scan](../../src-server/services/acp/opencode-project-config.ts)). A start that reuses a check made moments before is checked again. If any such code is declared, or a configuration file there cannot be read or parsed, Station does not govern the chat: the refusal (`acp_approval_governance_refused`) names each file. A cloned repository's own plugins count the same as ones written in the chat. Your home directory and OpenCode's global configuration are not scanned.
+- **Project configuration that runs code.** OpenCode loads `opencode.json`, `opencode.jsonc` and `.opencode/` from every directory between the session's directory and the git root (with no git root, upward from the session's directory). It imports plugins (`.opencode/plugin/`, `.opencode/plugins/`, a config `plugin` list) and custom tools (`.opencode/tool/`, `.opencode/tools/`) as it loads, `opencode debug agent` included, and starts the local MCP servers, formatters and language servers that configuration declares. Before a governed start or takeover, and before Station reads OpenCode's rules, Station checks those places without running OpenCode ([project scan](../../src-server/services/acp/opencode-project-config.ts)). ACP checks before approval-rule discovery. Native OpenCode checks the launch directory before acquiring a server and checks the effective session directory before admitting the session. A start that reuses a preflight check still checks the project again. If any such code is declared, or Station cannot inspect the configuration paths or parse a configuration file, Station does not govern the chat: the refusal (`acp_approval_governance_refused`) names each file. A cloned repository's own plugins count the same as ones written in the chat. Your home directory and OpenCode's global configuration are not scanned.
 - **Edits of OpenCode configuration.** In Ask, in Auto, and in full access outside a `host` session (which applies Auto), an edit of a path through a `.opencode` directory, or of a file named `opencode.json` or `opencode.jsonc`, at any depth and in any letter case, goes to a person. So do these edits:
 
   - an edit outside the project (the git root of the session's directory), which is where OpenCode's global configuration usually lives;
@@ -1283,6 +1290,17 @@ Station reads the binary's `--version` to tell the two apart
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
+
+The turn outcome follows the engine’s reported stop reason. A refusal or
+request-budget limit ends the turn with a failure explanation. An unrecognized
+or missing stop reason records an unconfirmed result. Station retains the
+bounded provider reason when the engine supplied one, and these outcomes carry
+no automatic retry authority. A person can send a new turn in the same
+attached chat. History with an older ACP `other` completion is interpreted
+using its stored reason at read time. When that reason is absent, the result
+remains unconfirmed. OpenCode shares a provider ID across ACP and native
+Serve, so its older completions require a retained ACP stop reason before
+Station applies this interpretation.
 
 ### File System and Terminal Tools (Station → Runtime)
 
@@ -1716,6 +1734,26 @@ server’s `ACPProbe` diagnostics instead of looking for a connection-level
 `maxReconnectAttempts` counter or `error` state. The owners are
 `src-server/services/acp/acp-manager-orchestration.ts` and
 `src-server/services/acp/acp-manager-view.ts`.
+
+### Delegate from a connected engine
+
+An Agent connected over ACP can use Station Control to call `list_delegation_targets` to see
+available Agents, their engines, and the model IDs this Station offers for
+them. Use those IDs with `delegate_task` when the work needs a separate Agent.
+Station records the returned Task and Session under the caller and delivers the
+child's result. The caller can also use `wait_session` with
+`until: "turn-settled"` and read `get_task_events` for the recorded outcome.
+
+A delegated Agent can start a child in its current Project on this Station
+when its inherited tool policy and depth permit. Approval requirements still
+apply. If the engine could not receive Station Control, review its launch
+arguments and start a fresh chat after repairing the connection.
+
+If a connection's execution configuration changes, Station refuses to resume
+a Session bound to the previous configuration. In the chat, open **Reset
+agent context** and choose **Continue with chat history**. The next message
+starts a new Session with the current connection settings and carries the
+retained transcript.
 
 ### When delegation reports an unavailable ACP connection
 

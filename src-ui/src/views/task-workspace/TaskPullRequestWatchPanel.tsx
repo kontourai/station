@@ -16,6 +16,7 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { ErrorState, SkeletonList } from '../../components/state';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './TaskPullRequestWatchPanel.css';
@@ -35,6 +36,10 @@ export function watchStateBadge(state: TaskPullRequestWatchState): {
       return { word: 'Ready for you', tone: 'positive' };
     case 'fixing':
       return { word: 'Fixing', tone: 'active' };
+    case 'reviewing':
+      return { word: 'Review pending', tone: 'active' };
+    case 'review-needed':
+      return { word: 'Review needs you', tone: 'caution' };
     case 'budget-spent':
       return { word: 'Fix attempts used', tone: 'caution' };
     case 'elsewhere':
@@ -53,6 +58,8 @@ export function watchStateLine(
   pullRequest: TaskPullRequestWatchView['pullRequests'][number],
 ): string | undefined {
   const state = pullRequest.watch;
+  if (state.state === 'reviewing' || state.state === 'review-needed')
+    return state.detail;
   if (state.state === 'budget-spent')
     return state.failing.length
       ? `Still failing: ${state.failing.join(', ')}`
@@ -87,6 +94,7 @@ function useTaskPullRequestWatch(task: TaskRecord) {
  * it.
  */
 export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
+  const { navigate } = useNavigation();
   const { available, view, setMode } = useTaskPullRequestWatch(task);
   const [refusalsOpen, setRefusalsOpen] = useState(false);
   if (!available) return null;
@@ -197,6 +205,22 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
                     {data.watching && line && (
                       <span className="task-pr-watch__line">{line}</span>
                     )}
+                    {data.watching &&
+                      task.sessionId &&
+                      (pullRequest.watch.state === 'reviewing' ||
+                        pullRequest.watch.state === 'review-needed') && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            navigate(
+                              `/tasks/${encodeURIComponent(task.id)}?taskView=conversation`,
+                            )
+                          }
+                        >
+                          Open chat
+                        </Button>
+                      )}
                   </li>
                 );
               })}

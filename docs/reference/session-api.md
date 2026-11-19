@@ -103,8 +103,10 @@ identity with context sent to its predecessor. Context-start consumption
 remains a separate boundary; ordinary context replacement and fork delivery are
 not qualified by this native-return receipt.
 
-New seed-backed ordinary continuations and `continue-from-history` context starts
-also pin their exact text and source cutoffs before the replacement provider
+A `continue-from-history` context boundary starts a fresh engine Session and
+carries the chat text. It skips native resume even when the predecessor
+recorded a cursor. Both these starts and seed-backed ordinary continuations
+pin their exact text and source cutoffs before the replacement provider
 starts. A seed reads each message at its full size, including a reply Station
 stored out of line, so a long reply is seeded whole or disclosed as omitted,
 never cut to its preview. Retries recheck source access and use that pin, even if a cursor becomes
@@ -414,14 +416,13 @@ affects new Sessions; continuing a qualified retained Session still requires
 current authorization for its recorded directory. The receipt itself grants no
 authority.
 
-A station-control call to `delegate_task` or `send_message` from a delegated
-child is refused before anything starts: `POST /api/orchestration/delegations`
-and `/chat`, `/chat/delegated` and `/chat/background` answer `403` with
-`delegated_tool_blocked`, ahead of the delegation depth limit and on every
-engine whose call carries a verified station-control caller. The decision uses
-the calling Session's own recorded delegation context, so a request body cannot
-re-allow it. See [tool-policy delivery](../conformance/tool-policy-delivery.md)
-for the callers this covers.
+Station derives delegation lineage from the verified calling Session. A child
+can call `delegate_task` to start another child in its current Project on
+this Station, subject to its inherited tool and depth limits. The request never
+chooses its own parent or root. A child calling `send_message` still receives
+`403` with `delegated_tool_blocked`. A child at its depth limit receives
+`delegation_depth_exceeded` if it tries to delegate. See [tool-policy
+delivery](../conformance/tool-policy-delivery.md).
 
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is
@@ -543,17 +544,17 @@ Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
 of the conversation. Known original input is compared before replay or a new
-provider effect: changed input returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
-can replay a started turn (`providerTurnId`); authorized staged attachments
-are bound to that turn. Staged bytes are authorized against the earlier claim's
-Session and read without binding before digest comparison, including retained,
-dead-invoked and reclaimable claims. The production continuation uses the caller's
-read authority across every materialized Session; an unavailable or unreadable
-lineage fails closed before key inspection or staged hydration. The same rule
-applies before inbox admission and to the recorded sender's inspections during
-placement and abandoned-start recovery; an unavailable result is never an empty
-ledger or permission to send. Only after a safe start or replay is chosen
-are they bound to its actual Session; tombstones retain no input proof.
+provider effect. Changed input returns `client_turn_input_conflict`. An exact
+staged retry can replay a started turn (`providerTurnId`) without reading its
+bytes. The turn claim identifies the authenticated uploader and ordered refs.
+Different refs conflict even if the bytes are the same. Unverifiable legacy
+turns cannot acknowledge a staged retry. Station binds the refs only for a
+fresh provider send or the first queue submission. The production continuation
+uses the caller's read authority across every materialized Session. An
+unavailable or unreadable lineage fails closed before key inspection or staged
+hydration. The same rule applies before inbox admission and to the recorded
+sender's inspections during placement and abandoned-start recovery. Retention
+tombstones preserve the key without preserving input proof.
 An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
@@ -628,7 +629,9 @@ refusal; a request alone does not prove storage.
   reference is accepted for the held entry (released if it is not queued), the
   entry lists them as `attachments` descriptors (kind, name, MIME type, size;
   never bytes), and placement sends them with the message. The same key with
-  different files is a different message. Without the flag a busy send with
+  different file bytes or different staged refs is a different message. An
+  older inbox entry without exact stage identity cannot acknowledge a staged
+  retry. Without the flag a busy send with
   files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
@@ -1416,6 +1419,18 @@ and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
 process.
+
+When Station builds a conversation index for older events, it picks the newest
+text value for owner, Agent, and Project metadata. Startup can also recover a
+missing Project label in a bounded batch of already-indexed conversations.
+Existing owner and Agent bindings are kept during that Project-label repair.
+
+On cold follow, Station reads at most 64 recent configuration events to find
+the attachment's prior Project attribution. A full window without a claim
+leaves that attribution unknown. A new Project observation can record a
+recovery tied to the newest configuration in the window. An unattributed
+observation alone leaves a possibly older Project label in place. The follower
+advances its remembered attribution only after the configuration event commits.
 
 A read-only attached session's summary carries `attachedSourceActivity`
 (`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time

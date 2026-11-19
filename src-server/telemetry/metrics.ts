@@ -1633,14 +1633,23 @@ export const contextSafetyFindings = meter.createCounter(
 export const schedulerJobRuns = meter.createCounter(
   'station.scheduler.job.runs',
   {
-    description: 'Scheduler job executions',
+    description:
+      'Confirmed built-in scheduler job executions with an applied terminal receipt',
   },
 );
 export const schedulerJobDuration = meter.createHistogram(
   'station.scheduler.job.duration',
   {
-    description: 'Scheduler job execution duration',
+    description:
+      'Elapsed time of confirmed built-in scheduler job executions with an applied terminal receipt',
     unit: 'ms',
+  },
+);
+export const schedulerManagementOperations = meter.createCounter(
+  'station.scheduler.management.operations',
+  {
+    description:
+      'Scheduler mutation requests reaching the route dispatch boundary',
   },
 );
 export const schedulerConcurrencyDeferrals = meter.createCounter(
@@ -2806,13 +2815,14 @@ export function registerObservableGauges(callbacks: {
 }): void {
   meter
     .createObservableGauge('station.agents.active', {
-      description: 'Number of active agents',
+      description: 'Number of loaded Agent objects',
     })
     .addCallback((obs) => obs.observe(callbacks.activeAgents()));
 
   meter
     .createObservableGauge('station.mcp.connections', {
-      description: 'Number of MCP connections',
+      description:
+        'Number of tracked MCP server status entries, including failures',
     })
     .addCallback((obs) => obs.observe(callbacks.mcpConnections()));
 }

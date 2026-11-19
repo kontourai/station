@@ -1275,6 +1275,37 @@ describe.skipIf(process.platform === 'win32')(
         expect(existsSync(join(h.cwd, 'opencode.json'))).toBe(false);
       });
 
+      test('governed preflight and start refuse an invalid project directory before opening OpenCode', async () => {
+        h = harness('opencode');
+        const configDir = join(h.cwd, '.opencode');
+        writeFileSync(configDir, 'ordinary text');
+        const refusal = {
+          code: 'acp_approval_governance_refused',
+          message: expect.stringContaining(configDir),
+        };
+        await expect(
+          h.adapter.preflightStart({
+            provider: 'acp',
+            threadId: 'invalid-project',
+            cwd: h.cwd,
+            confinement: 'workspace',
+            metadata: { connectionId: 'engine-under-test' },
+            modelOptions: { approvalMode: 'ask' },
+          }),
+        ).rejects.toMatchObject(refusal);
+        await expect(start(h, 'invalid-project', 'ask')).rejects.toMatchObject(
+          refusal,
+        );
+        expect(agentReads(h)).toHaveLength(0);
+        expect(launches(h)).toHaveLength(0);
+
+        rmSync(configDir);
+        writeFileSync(join(h.cwd, 'opencode.json'), '{"formatter":false}');
+        await start(h, 'valid-project', 'ask');
+        expect(agentReads(h).length).toBeGreaterThan(0);
+        expect(launches(h)).toHaveLength(1);
+      });
+
       test('a project whose OpenCode configuration runs code is not governed, and nothing is launched to check it', async () => {
         h = harness('opencode');
         // Positive control: a clean project is checked by reading the rules.

@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -58,7 +64,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     const dir = pluginsDir();
     await expect(
       checkPluginUpdates({ pluginsDir: dir, logger }),
-    ).resolves.toEqual({ updates: [] });
+    ).resolves.toEqual({ status: 'complete', updates: [] });
   });
 
   test('entries without a git checkout and manifest pair are skipped', async () => {
@@ -73,7 +79,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     );
     await expect(
       checkPluginUpdates({ pluginsDir: dir, logger }),
-    ).resolves.toEqual({ updates: [] });
+    ).resolves.toEqual({ status: 'complete', updates: [] });
     expect(logger.debug).not.toHaveBeenCalled();
   });
 
@@ -97,7 +103,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     );
     await expect(
       checkPluginUpdates({ pluginsDir: plugins, logger }),
-    ).resolves.toEqual({ updates: [] });
+    ).resolves.toEqual({ status: 'unavailable', updates: [] });
   });
 
   test('a plugin checkout behind its own upstream reports its behind-count', async () => {
@@ -113,6 +119,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     await expect(
       checkPluginUpdates({ pluginsDir: plugins, logger }),
     ).resolves.toEqual({
+      status: 'complete',
       updates: [
         {
           name: 'drifted',
@@ -122,5 +129,67 @@ describe('checkPluginUpdates (station#2236)', () => {
         },
       ],
     });
+  });
+  test.skipIf(process.platform === 'win32')(
+    'reads a contained manifest reference in the selected git checkout',
+    async () => {
+      const root = tempDir('plugin-update-check-contained-');
+      const plugins = join(root, 'plugins');
+      const plugin = join(plugins, 'linked-manifest');
+      mkdirSync(plugins);
+      checkoutOneCommitBehind(root, plugin);
+      writeFileSync(
+        join(plugin, 'manifest.json'),
+        JSON.stringify({ name: 'linked-manifest', version: '1.2.3' }),
+      );
+      symlinkSync('manifest.json', join(plugin, 'plugin.json'), 'file');
+      await expect(
+        checkPluginUpdates({ pluginsDir: plugins, logger }),
+      ).resolves.toMatchObject({
+        status: 'complete',
+        updates: [{ name: 'linked-manifest', currentVersion: '1.2.3' }],
+      });
+    },
+  );
+
+  test('an installed directory in place of plugin.json is a refused update read', async () => {
+    const root = tempDir('plugin-update-check-manifest-type-');
+    const plugins = join(root, 'plugins');
+    const plugin = join(plugins, 'invalid-manifest');
+    mkdirSync(plugins);
+    checkoutOneCommitBehind(root, plugin);
+    mkdirSync(join(plugin, 'plugin.json'));
+    await expect(
+      checkPluginUpdates({ pluginsDir: plugins, logger }),
+    ).resolves.toEqual({
+      status: 'unavailable',
+      updates: [],
+    });
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Failed to check git updates for plugin',
+      expect.objectContaining({
+        plugin: 'invalid-manifest',
+        error: expect.objectContaining({ code: 'manifest-not-regular-file' }),
+      }),
+    );
+  });
+
+  test('a failed Git fetch is unavailable rather than a completed empty check', async () => {
+    const root = tempDir('plugin-update-check-offline-');
+    const plugins = join(root, 'plugins');
+    const plugin = join(plugins, 'offline');
+    mkdirSync(plugins);
+    checkoutOneCommitBehind(root, plugin);
+    writeFileSync(
+      join(plugin, 'plugin.json'),
+      JSON.stringify({ name: 'offline', version: '1.0.0' }),
+    );
+    execGitSync(['remote', 'set-url', 'origin', join(root, 'missing-origin')], {
+      cwd: plugin,
+    });
+
+    await expect(
+      checkPluginUpdates({ pluginsDir: plugins, logger }),
+    ).resolves.toEqual({ status: 'unavailable', updates: [] });
   });
 });

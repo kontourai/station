@@ -53,6 +53,14 @@ export interface PricingSnapshot {
 /** The absence of a price is evidence too; never render it as a zero. */
 export type UsagePricingStatus = 'priced' | 'partial' | 'unpriced';
 
+export interface OpenCodeStepModelObservation {
+  source: 'opencode-step-started';
+  assistantMessageId: string;
+  /** Exact OpenCode providerID and model.id from the same step. */
+  providerId: string;
+  modelId: string;
+}
+
 export interface UsageReceipt {
   /** Stable receipt identity. Replacement receipts retain this identity. */
   id: string;
@@ -63,6 +71,7 @@ export interface UsageReceipt {
   stationId: string;
   provider: string;
   model?: string;
+  servedModelObservation?: OpenCodeStepModelObservation;
   /** Opaque engine/profile attribution; absent means the account is unknown. */
   accountKey?: string;
   /**

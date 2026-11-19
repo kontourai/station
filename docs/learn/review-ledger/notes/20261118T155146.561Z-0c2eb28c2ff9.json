@@ -1,0 +1,141 @@
+{
+  "revision": "355998dd204c2b6709d07624008daba24ae7c496",
+
+  "notes": [
+    {"path":"README.md","note":"The Plugins overview links to the updated guide for incomplete update coverage and inspection.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the operator update display and dependency receipt inspection against the mounted view, preview and recovery routes. Incomplete checks retain discovered updates.","inputs":["docs/guides/plugins.md","src-server/services/plugins/plugin-install-transaction.ts","src-server/services/plugins/plugin-source.ts","src-ui/src/views/plugin-management/InstallPreviewModal.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the update check response statuses and inventory failure response against the operator route. Preview and recovery expose an optional server-observed dependency receipt alongside its consent pin. Other route descriptions are unchanged.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts","src-server/routes/plugins/plugin-install-routes.ts","src-server/routes/plugins/plugin-lifecycle-routes.ts","src-server/services/plugins/plugin-install-transaction.ts","src-server/services/plugins/plugin-update-check.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the status-aware update hook, legacy array compatibility and dependency display receipt against the SDK and server. Existing hook links and installed permission status are unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/plugins.ts","packages/sdk/src/index.ts","packages/sdk/src/query-domains/plugin-queries.ts","src-server/routes/plugins/plugin-install-routes.ts","src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The Plugins and registry topic describes partial update checks and registry receipts from preview, recovery and the selected installed plugin. The remaining plugin authoring guidance is unchanged.","inputs":["docs/reference/station-docs.md","packages/contracts/src/plugin.ts","src-server/services/plugins/plugin-install-transaction.ts","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"The SDK README points update readers to the status-aware query; its plugin install result example still describes installed permission status.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts","src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"README.md","note":"Reviewed the operator update display and dependency receipt inspection against the mounted view, preview and recovery routes. Incomplete checks retain discovered updates.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the operator update display and dependency receipt inspection against the mounted view, preview and recovery routes. Incomplete checks retain discovered updates.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the operator update display and dependency receipt inspection against the mounted view, preview and recovery routes. Incomplete checks retain discovered updates.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the update check response statuses and inventory failure response against the operator route. Preview and recovery expose an optional server-observed dependency receipt alongside its consent pin. Other route descriptions are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the update check response statuses and inventory failure response against the operator route. Preview and recovery expose an optional server-observed dependency receipt alongside its consent pin. Other route descriptions are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the status-aware update hook, legacy array compatibility and dependency display receipt against the SDK and server. Existing hook links and installed permission status are unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the status-aware update hook, legacy array compatibility and dependency display receipt against the SDK and server. Existing hook links and installed permission status are unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"The added update record and check types describe discovery coverage and preserve existing installation, lifecycle and plugin manifest contracts.","inputs":["packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/design/plugin-knowledge-store-contributions.md","note":"The added update record and check types describe discovery coverage and preserve existing installation, lifecycle and plugin manifest contracts.","inputs":["packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The added update record and check types describe discovery coverage and preserve existing installation, lifecycle and plugin manifest contracts.","inputs":["packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"The added update record and check types describe discovery coverage and preserve existing installation, lifecycle and plugin manifest contracts.","inputs":["packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The added update record and check types describe discovery coverage and preserve existing installation, lifecycle and plugin manifest contracts.","inputs":["packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The update reader preserves HTTP refusals, validates the result and exposes unknown coverage for legacy responses. Recovery decodes optional dependency trust receipts without writing them back into consent.","inputs":["packages/sdk/src/client/plugins.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the public barrel delta. The added status-aware plugin update query leaves existing pane, provider, UI and plugin exports intact.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the query barrel. The plugin update query addition preserves existing exports and the prior update array hook.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the query barrel. The plugin update query addition preserves existing exports and the prior update array hook.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the query barrel. The plugin update query addition preserves existing exports and the prior update array hook.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the query barrel. The plugin update query addition preserves existing exports and the prior update array hook.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the query barrel. The plugin update query addition preserves existing exports and the prior update array hook.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the operator update URL and shared transport error handling. The installation and recovery query entry points keep their existing request and authority behavior.","inputs":["packages/sdk/src/query-domains/plugin-queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The preview projects each inspected dependency receipt from the same host verification that supplies its consent pin. Install preconditions, provider admission and permission decisions are unchanged.","inputs":["src-server/routes/plugins/plugin-install-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The preview projects each inspected dependency receipt from the same host verification that supplies its consent pin. Install preconditions, provider admission and permission decisions are unchanged.","inputs":["src-server/routes/plugins/plugin-install-routes.ts"]},
+
+    {"path":"docs/design/plugin-authority-model.md","note":"Only the existing operator update read changes its outer failure status. Update installation, remove, rollback and authority checks are unchanged.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Only the existing operator update read changes its outer failure status. Update installation, remove, rollback and authority checks are unchanged.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only the existing operator update read changes its outer failure status. Update installation, remove, rollback and authority checks are unchanged.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Only the existing operator update read changes its outer failure status. Update installation, remove, rollback and authority checks are unchanged.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Only the existing operator update read changes its outer failure status. Update installation, remove, rollback and authority checks are unchanged.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Only the existing operator update read changes its outer failure status. Update installation, remove, rollback and authority checks are unchanged.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/design/plugin-knowledge-store-contributions.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"examples/shared-providers/README.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed the retained registry recovery walk. The exported dependency receipts come from the journal and retained verification; the hashed approvals, data scope and grant/admission decisions still use their existing inputs.","inputs":["src-server/services/plugins/plugin-install-transaction.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"The resolved dependency type carries optional registry inspection data. Source staging, dependency resolution and installation ordering are unchanged.","inputs":["src-server/services/plugins/plugin-source.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"The resolved dependency type carries optional registry inspection data. Source staging, dependency resolution and installation ordering are unchanged.","inputs":["src-server/services/plugins/plugin-source.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Each eligible Git or registry read contributes to complete, partial or unavailable coverage. Failed registry reads preserve successful updates. Policy skips stay separate from failures.","inputs":["src-server/services/plugins/plugin-update-check.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped Plugins and registry topic from the canonical manual. The changes explain stored verification and partial update discovery without claiming live state.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"The install preview renders a dependency receipt beside its own row and says when verification is unreported. The install action and consent controls are unchanged.","inputs":["src-ui/src/views/plugin-management/InstallPreviewModal.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the routed browser update check, retry, partial update row and completed empty states, plus the dependency receipt on the mounted preview.","inputs":["tests/plugin-update.spec.ts"]}
+  ]
+}

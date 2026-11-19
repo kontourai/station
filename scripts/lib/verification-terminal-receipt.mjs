@@ -183,6 +183,23 @@ function boundedSummaryEnvelope(summary) {
         }))
       : [],
   };
+  if (Array.isArray(summary?.diagnosticExcerpts)) {
+    const diagnostics = summary.diagnosticExcerpts.filter(
+      (excerpt) => typeof excerpt === 'string',
+    );
+    for (const excerpt of diagnostics.slice(0, 32)) {
+      const diagnosticExcerpts = [
+        ...(envelope.diagnosticExcerpts ?? []),
+        boundedText(excerpt, 512),
+      ];
+      if (
+        Buffer.byteLength(JSON.stringify({ ...envelope, diagnosticExcerpts })) >
+        SUMMARY_ENVELOPE_CAP
+      )
+        break;
+      envelope.diagnosticExcerpts = diagnosticExcerpts;
+    }
+  }
   return Buffer.byteLength(JSON.stringify(envelope)) > SUMMARY_ENVELOPE_CAP
     ? {
         terminal: envelope.terminal,

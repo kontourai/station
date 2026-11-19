@@ -910,7 +910,7 @@ describe('thread inbox (#3568)', () => {
                 world.inbox.submitSteer({
                   conversationId: THREAD,
                   clientTurnId: 'post-tool',
-                  payload,
+                  payload: { ...payload, authoredBy: 'person' },
                   expectedHead: world.inbox.currentHead(THREAD),
                 });
                 await world.inbox.idle();
@@ -1138,7 +1138,11 @@ describe('thread inbox (#3568)', () => {
         expect(
           world.store.listEventPayloads(THREAD, ['turn.started']),
         ).toContainEqual(
-          expect.objectContaining({ inputKind: 'steer', prompt: FOLLOW_UP }),
+          expect.objectContaining({
+            inputKind: 'steer',
+            prompt: FOLLOW_UP,
+            authoredBy: 'person',
+          }),
         );
         expect(await memory.getMessages(OWNER, THREAD)).toContainEqual(
           expect.objectContaining({

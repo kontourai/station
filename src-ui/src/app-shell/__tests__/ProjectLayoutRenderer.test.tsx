@@ -2873,7 +2873,7 @@ describe('ProjectLayoutRenderer', () => {
     },
   );
 
-  test('admits restored dynamic file previews when the Coding host is available even if its catalog entry is coming soon', () => {
+  test('renders restored dynamic file previews when the Coding host is available even if its catalog entry is coming soon', () => {
     const coding = paneAdaptationFromLayoutTab(
       {
         id: 'coding',
@@ -2928,9 +2928,10 @@ describe('ProjectLayoutRenderer', () => {
         wrap: true,
       }),
     ).toBe(true);
-    expect(hostMock.mock.lastCall?.[0].admitRestoredInstance(preview)).toEqual(
-      preview,
-    );
+    drillIntoHostPane(preview.instanceId);
+    const host = hostMock.mock.lastCall?.[0];
+    expect(host.admitRestoredInstance(preview)).toEqual(preview);
+    expect(host.renderPane(preview)).not.toBeNull();
   });
 
   test('re-renders that change nothing keep every pane-host input identical, so the host does no work (station#3794)', () => {

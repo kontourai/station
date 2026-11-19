@@ -650,6 +650,8 @@
 
     "src-ui/src/views/project-page/MemberProjectPage.tsx",
 
+    "src-ui/src/views/project-page/useMemberProjectSharedWork.ts",
+
     "packages/sdk/src/__tests__/client-execution.test.ts",
 
     "packages/contracts/src/provider-failure.ts",
@@ -886,7 +888,13 @@
 
     "packages/sdk/src/query-domains/customAppearanceLibrary.ts",
 
-    "packages/sdk/src/query-domains/customAppearanceMutation.ts"
+    "packages/sdk/src/query-domains/customAppearanceMutation.ts",
+
+    "packages/sdk/src/query-domains/workspaceProjectMutations.ts",
+
+    "packages/sdk/src/client/project-room-coordinator.ts",
+
+    "packages/sdk/src/query-domains/projectRoomCoordinator.ts"
   ],
 
   "checks": [

@@ -271,6 +271,10 @@ the painted rows (so the failure shows) and forgets the copy. A connection switc
 sign-out clears it, and a read that began before a clear cannot repopulate it.
 Inbox rows warm it after a short hover or keyboard-focus dwell, one read at a
 time.
+A fresh transcript head read can propose a materialized Session for rebinding
+while the chat still holds the Session it had when that read started. The open
+read then verifies the new binding. Settled history pages keep their transcript
+through later Session changes.
 
 Raw `orchestration-sessions` remain excluded from query persistence: they inherit
 `resumeCursor`, model routing, runtime diagnostics and prompt-derived titles.
@@ -302,6 +306,9 @@ first opened online. New build workers
 activate immediately and remove older shell caches; registration bypasses the
 HTTP worker cache and checks for updates at launch and on returning to the tab.
 An already open page offers **Reload to update** when its controller changes.
+The action appears above the Chat dock. When the dock fills a phone screen,
+the shell reserves a row above the dock header for the action. **Read saved copies** retains a separate position when both
+actions appear.
 A page loaded from the anonymous fallback reloads on reconnect to obtain the
 current runtime bootstrap. Ordinary navigations always request fresh HTML.
 

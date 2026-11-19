@@ -616,7 +616,7 @@ function MessageBubbleComponent({
   // row's ⋯ trigger (`inlineCopy` below), so none of the desktop sites renders
   // there: one copy per row, never a second one inside the sheet.
   const copyLabel =
-    msg.role === 'user'
+    msg.role === 'user' && !sender && !stationAuthored && !msg.fromPrompt
       ? 'Copy your message'
       : isAssistant
         ? 'Copy answer'
@@ -1179,6 +1179,7 @@ function MessageBubbleComponent({
             isStreamingMessage={false}
             callerAccess={activeSession.callerAccess}
           />
+          {inlineCopy}
           {metadataControls}
           {metadataIdentity}
           {metadataAfter}

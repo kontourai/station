@@ -309,7 +309,8 @@ describe('station delegate over HTTP', () => {
                 ? 'review_pending'
                 : body.prompt === 'trigger queued task'
                   ? 'queued'
-                  : body.prompt === 'trigger quota-limited task'
+                  : body.prompt === 'trigger quota-limited task' ||
+                      body.prompt === 'trigger account-limited task'
                     ? 'failed'
                     : body.prompt === 'trigger zero-window quota task'
                       ? 'failed'
@@ -368,6 +369,15 @@ describe('station delegate over HTTP', () => {
                     'The provider plan quota was exhausted (5 hour window). The provider reported the limit resets at 2026-09-21 18:55:29 (provider-reported time, no timezone given) — wait for the reset or check the provider plan, then continue explicitly. Station did not retry, switch models or providers, or spend on a fallback.',
                   quotaWindow: '5 hour',
                   resetReported: '2026-09-21 18:55:29',
+                },
+              }
+            : {}),
+          ...(body.prompt === 'trigger account-limited task'
+            ? {
+                reason: {
+                  code: 'provider-account-usage-limit',
+                  detail:
+                    'The provider account reached its usage limit. Provider-reported reset: 2026-09-21T18:55:29.000Z. Check the account allowance before continuing explicitly.',
                 },
               }
             : {}),
@@ -1508,6 +1518,34 @@ describe('station delegate over HTTP', () => {
    * #2265 bounds: a served zero window renders no window line — it is not
    * a limit window anyone reported. The reset line still renders.
    */
+  test('status renders an engine-reported account limit without inventing a window', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger account-limited task',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+    expect(printed).toContain('Task task:1: failed');
+    expect(printed).toContain('Reason: provider-account-usage-limit');
+    expect(printed).toContain(
+      'Provider-reported reset: 2026-09-21T18:55:29.000Z',
+    );
+    expect(printed).not.toContain('Provider limit window');
+  });
+
   test('status omits the window line for a zero quota window (#2265)', async () => {
     const { runCli } = await import('../cli.js');
 

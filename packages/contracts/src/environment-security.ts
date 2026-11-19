@@ -1135,6 +1135,17 @@ export interface WebPushSubscription {
   };
 }
 
+/** Canonical input to the SHA-256 registration check, never a wire payload. */
+export function webPushRegistrationFingerprintInput(
+  subscription: WebPushSubscription,
+): string {
+  return JSON.stringify([
+    subscription.endpoint,
+    subscription.keys.p256dh,
+    subscription.keys.auth,
+  ]);
+}
+
 export interface DevicePairingExchangeRequest {
   offerId: string;
   proof: string;
@@ -1314,6 +1325,16 @@ export interface StationCapabilityFlags {
    * without them answers 404; a client keeps the per-room stream instead.
    */
   projectRoomLive?: boolean;
+  /**
+   * #5063: the `#general` coordinator's routes: its cards
+   * (`GET /api/projects/:slug/room/coordinator`), Start
+   * (`POST …/coordinator/proposals/:proposalId/start`), the status sweep
+   * (`POST …/coordinator/sweep`) and the Project's limits
+   * (`PUT /api/projects/:slug/room-coordinator`). A host without them answers
+   * 404; a client shows no card or sweep. The preview still decides whether
+   * they answer.
+   */
+  projectRoomCoordinator?: boolean;
   /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope

@@ -1,0 +1,17 @@
+{
+  "revision": "57919cf69789948c0ee28dbbac828b5228f15517",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the verification coordinator reporting seam. Lower-severity output has a separate bounded diagnostic field. Publication ownership, receipt identity, phase admission, and durable evidence are unchanged.","inputs":["docs/architecture/module-map.md","scripts/lib/verification-terminal-receipt.mjs","scripts/run-verification.mjs"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked that diagnostic context remains redacted and bounded at the verification reporter and terminal summary seams. It is separate from validated receipt facts and the runner's own final cause.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","scripts/lib/verification-terminal-receipt.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verified the bounded summary and completion renderer retain earlier warnings as context. Lane decisions and source integration ownership still use the existing terminal and receipt evidence.","inputs":["docs/contexts/operations/CONTEXT.md","scripts/lib/verification-terminal-receipt.mjs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Compared the named renderer and native source inputs with the actual process output and checks. Coverage excludes plugin permission sets and generated overlays, tracked under #3864. Native capability grants and enforcement are unchanged.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Traced lower-severity context through the reporter, bounded terminal summary, CLI truncated rendering, and CI warning annotations without changing the canonical receipt schema or historic field reading.","inputs":["docs/reference/verification-receipts.md","scripts/lib/verification-reporter.mjs","scripts/lib/verification-terminal-receipt.mjs","scripts/run-verification.mjs"]},
+
+    {"path":"docs/strategy/multi-agent-delivery-protocol.md","note":"Reviewed the original warning attribution failure against the current consumer output. A prior warning remains visible as context while the actual failing step and measured terminal status remain separate.","inputs":["docs/strategy/multi-agent-delivery-protocol.md"]}
+  ]
+}

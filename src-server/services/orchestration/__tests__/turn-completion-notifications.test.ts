@@ -422,6 +422,24 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     );
   });
 
+  test('an ACP request-limit stop delivers attention instead of a finished notice', async () => {
+    await emit('orchestration:event', {
+      event: baseEvent({
+        provider: 'acp',
+        method: 'turn.completed',
+        finishReason: 'other',
+        stopReason: 'max_turn_requests',
+      }),
+    });
+    expect(await notificationService.list()).toEqual([
+      expect.objectContaining({
+        category: 'turn-failed',
+        title: 'Your agent needs attention',
+        priority: 'high',
+      }),
+    ]);
+  });
+
   test('schedules a "failed" notification for turn.aborted', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ method: 'turn.aborted', reason: 'crashed' }),
@@ -467,6 +485,35 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         body: 'Agent stopped in session thread-1',
         priority: 'normal',
       }),
+      expect.anything(),
+    );
+  });
+
+  test('a Codex abort followed by its interrupted terminal only notifies Stop', async () => {
+    const schedule = vi
+      .spyOn(notificationService, 'scheduleEnveloped')
+      .mockResolvedValue({} as never);
+    const event = (overrides: Record<string, unknown>) =>
+      baseEvent({ provider: 'codex', ...overrides });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.started' }),
+    });
+    await emit('orchestration:event', {
+      event: event({
+        method: 'session.stop-settled',
+        outcome: 'cooperative',
+        initiatedBy: 'user',
+      }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.aborted', reason: 'interrupted' }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.completed', finishReason: 'cancelled' }),
+    });
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(
+      'turn-completion',
+      expect.objectContaining({ category: 'turn-stopped' }),
       expect.anything(),
     );
   });

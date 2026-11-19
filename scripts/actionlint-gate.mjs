@@ -92,6 +92,7 @@ const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'macos-15',
   'macos-15-intel',
   'macos-26',
+  'xcode-27',
 ]);
 
 /** `null` when actionlint is not on PATH. */

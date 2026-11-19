@@ -1,5 +1,7 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { build, type Rollup } from 'vite';
 import { expect, it } from 'vitest';
 import {
@@ -8,16 +10,24 @@ import {
 } from '../../packages/shared/src/ui-document-policy';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
 import { offlineShell } from '../vite-offline-shell';
+import { uiAssetDelivery } from '../vite-ui-assets';
 
 const makeTempDir = trackTempDirs({
   base: path.resolve('node_modules/.cache'),
 });
 
 interface OfflineBuild {
+  version: string;
   precache: string[];
   warm: string[];
   immutable: string;
   csp: string;
+}
+
+function offlineBuild(worker: string): OfflineBuild {
+  const injected = worker.match(/const OFFLINE_BUILD = (\{.*?\});/)?.[1];
+  if (!injected) throw new Error('Expected an injected offline build');
+  return JSON.parse(injected) as OfflineBuild;
 }
 
 async function buildFixture(warmModules: readonly string[]) {
@@ -57,10 +67,6 @@ async function buildFixture(warmModules: readonly string[]) {
   const outputs = result.output as (Rollup.OutputAsset | Rollup.OutputChunk)[];
   const worker = outputs.find((output) => output.fileName === 'sw.js');
   if (worker?.type !== 'asset') throw new Error('Expected the worker asset');
-  const injected = String(worker.source).match(
-    /const OFFLINE_BUILD = (\{.*?\});/,
-  )?.[1];
-  if (!injected) throw new Error('Expected an injected offline build');
   const named = (pattern: RegExp) =>
     outputs
       .filter((output) => pattern.test(output.fileName))
@@ -70,7 +76,7 @@ async function buildFixture(warmModules: readonly string[]) {
     if (output?.type !== 'asset') throw new Error(`Expected ${fileName}`);
     return String(output.source);
   };
-  return { build: JSON.parse(injected) as OfflineBuild, named, asset };
+  return { build: offlineBuild(String(worker.source)), named, asset };
 }
 
 it('precaches each chunk with its own stylesheet and warms a named lazy graph', async () => {
@@ -141,4 +147,84 @@ it('links an installable manifest whose icons ship in the UI public directory', 
       .map((icon) => icon.sizes);
   expect(sizes()).toEqual(expect.arrayContaining(['192x192', '512x512']));
   expect(sizes('maskable')).toEqual(['512x512']);
+});
+
+it('ships the smaller classic startup script and revises the offline shell when it changes', async () => {
+  mkdirSync(path.resolve('node_modules/.cache'), { recursive: true });
+  const root = makeTempDir('station-offline-startup-theme-');
+  const publicDir = path.join(root, 'public');
+  mkdirSync(publicDir);
+  const index =
+    '<html><head><script src="/startup-theme.js"></script></head></html>';
+  writeFileSync(path.join(root, 'index.html'), index);
+  const source = readFileSync('src-ui/public/startup-theme.js', 'utf8');
+  const sourcePath = path.join(publicDir, 'startup-theme.js');
+  const buildStartup = async (themeScript: string, precompress = true) => {
+    writeFileSync(sourcePath, themeScript);
+    await build({
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      plugins: [
+        ...(precompress ? [offlineShell()] : []),
+        uiAssetDelivery({ precompress }),
+      ],
+    });
+    const dist = (name: string) => path.join(root, 'dist', name);
+    const bytes = readFileSync(dist('startup-theme.js'));
+    expect(readFileSync(dist('index.html'), 'utf8')).toContain(
+      '<script src="/startup-theme.js"></script>',
+    );
+    if (precompress) {
+      expect(
+        brotliDecompressSync(readFileSync(dist('startup-theme.js.br'))),
+      ).toEqual(bytes);
+      expect(gunzipSync(readFileSync(dist('startup-theme.js.gz')))).toEqual(
+        bytes,
+      );
+    } else {
+      expect(existsSync(dist('startup-theme.js.br'))).toBe(false);
+      expect(existsSync(dist('startup-theme.js.gz'))).toBe(false);
+    }
+    return {
+      bytes,
+      offline: precompress
+        ? offlineBuild(readFileSync(dist('sw.js'), 'utf8'))
+        : undefined,
+    };
+  };
+
+  const web = await buildStartup(source);
+  expect(web.bytes.length).toBeLessThan(Buffer.byteLength(source));
+  expect(web.offline?.precache).toContain('/startup-theme.js');
+  const dataset = {};
+  runInNewContext(web.bytes.toString(), {
+    document: { documentElement: { dataset } },
+    localStorage: {
+      getItem: (key: string) =>
+        key === 'station-appearance-v1'
+          ? JSON.stringify({
+              version: 1,
+              source: 'account',
+              theme: 'light',
+              density: 'compact',
+              motion: 'reduce',
+            })
+          : null,
+    },
+  });
+  expect(dataset).toEqual({
+    theme: 'light',
+    density: 'compact',
+    motion: 'reduce',
+  });
+  const native = await buildStartup(source, false);
+  expect(native.bytes).toEqual(web.bytes);
+  const changed = await buildStartup(
+    source + '\nwindow.extraStartupEffect = true;',
+  );
+  expect(changed.bytes).not.toEqual(web.bytes);
+  expect(web.offline?.version).toBeTruthy();
+  expect(changed.offline?.version).toBeTruthy();
+  expect(changed.offline?.version).not.toBe(web.offline?.version);
 });

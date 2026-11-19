@@ -31,7 +31,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.adapter.session\_start\_duration" | createHistogram | "adapterSessionStartDuration (exported declaration)" | "Provider adapter session start duration" | "ms" |
 | "station.adapter.turn\_duration" | createHistogram | "adapterTurnDuration (exported declaration)" | "Provider adapter turn duration" | "ms" |
 | "station.agent.operations" | createCounter | "agentOps (exported declaration)" | "Agent CRUD operations" | not declared |
-| "station.agents.active" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of active agents" | not declared |
+| "station.agents.active" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of loaded Agent objects" | not declared |
 | "station.analytics.operations" | createCounter | "analyticsOps (exported declaration)" | "Analytics query events" | not declared |
 | "station.answer\_share.channel\_status" | createCounter | "answerShareChannelStatuses (exported declaration)" | "Computed channel-binding status for served answer shares (reported\_current / reported\_superseded / not\_in\_channel / predates\_channel\_addressing / history\_not\_served / coordinate\_mismatch)" | not declared |
 | "station.answer\_share.minted" | createCounter | "answerSharesMinted (exported declaration)" | "Answer-share mint attempts by outcome (minted / answer\_not\_found)" | not declared |
@@ -154,7 +154,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.logs.store.retention\_removed\_files" | createCounter | "serverLogStoreRetentionRemovedFiles (exported declaration)" | "Server log store files removed by age/size retention" | not declared |
 | "station.logs.store.write\_errors" | createCounter | "serverLogStoreWriteErrors (exported declaration)" | "Server log store write failures (sink degraded to stdout-only)" | not declared |
 | "station.logs.suppressed\_records" | createCounter | "logRecordsSuppressed (exported declaration)" | "Repeated identical log records suppressed by the logger repeat limit, by component and level" | not declared |
-| "station.mcp.connections" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of MCP connections" | not declared |
+| "station.mcp.connections" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of tracked MCP server status entries, including failures" | not declared |
 | "station.mcp.lifecycle" | createCounter | "mcpLifecycle (exported declaration)" | "MCP connection lifecycle events" | not declared |
 | "station.mcp.negotiation.duration" | createHistogram | "mcpNegotiationDuration (exported declaration)" | "MCP connection negotiation and initial discovery duration" | "ms" |
 | "station.mcp.negotiation.total" | createCounter | "mcpNegotiations (exported declaration)" | "MCP protocol negotiation outcomes by era, version, compatibility-path use, and error class" | not declared |
@@ -263,8 +263,9 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.runtime.extension\_notifications" | createCounter | "inboundExtensionNotifications (exported declaration)" | "Inbound extension.notification by disposition ('bound' &#124; 'unbound') and provider; namespace/type are log-only" | not declared |
 | "station.scheduler.concurrency.deferrals" | createCounter | "schedulerConcurrencyDeferrals (exported declaration)" | "Automatic scheduler invocation-ceiling lifecycle outcomes by disposition" | not declared |
 | "station.scheduler.healthy" | createObservableGauge | "schedulerHealthy (exported declaration)" | "Scheduler heartbeat health (1=healthy, 0=unhealthy)" | not declared |
-| "station.scheduler.job.duration" | createHistogram | "schedulerJobDuration (exported declaration)" | "Scheduler job execution duration" | "ms" |
-| "station.scheduler.job.runs" | createCounter | "schedulerJobRuns (exported declaration)" | "Scheduler job executions" | not declared |
+| "station.scheduler.job.duration" | createHistogram | "schedulerJobDuration (exported declaration)" | "Elapsed time of confirmed built-in scheduler job executions with an applied terminal receipt" | "ms" |
+| "station.scheduler.job.runs" | createCounter | "schedulerJobRuns (exported declaration)" | "Confirmed built-in scheduler job executions with an applied terminal receipt" | not declared |
+| "station.scheduler.management.operations" | createCounter | "schedulerManagementOperations (exported declaration)" | "Scheduler mutation requests reaching the route dispatch boundary" | not declared |
 | "station.search.reads" | createCounter | "unifiedSearchReads (exported declaration)" | "Bounded search and exact-open reads by operation and outcome; no query or resource identity" | not declared |
 | "station.secret\_binding.operations" | createCounter | "secretBindingOperations (exported declaration)" | "Secret-binding metadata and resolution operations by bounded operation and outcome" | not declared |
 | "station.session.activity\_events" | createCounter | "sessionActivityEvents (exported declaration)" | "Provider activity signals mapped to canonical events (attrs: provider, kind)" | not declared |

@@ -126,7 +126,8 @@ Local launcher and HTTP fixture evidence covers these caller contracts.
 
 [Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts)
 takes its target, credential and deadline from the common client path. It
-still confirms its returned preview without displaying it.
+displays the preview and requires its ID and current-tree hash in a separate
+confirmation.
 [#2734](https://github.com/kontourai/station/issues/2734)
 
 ### A declared namespace and its consumer can name different stores
@@ -244,14 +245,12 @@ and relay transports need separate qualification.
 
 ### Staging must use the candidate's dependency contract
 
-Dogfood candidate preparation still runs raw `npm ci` before building a detached
-release, while the current repository has a pnpm lockfile and managed installer.
-Its fixture accepts any npm command, so a green fixture cannot establish
-package-manager compatibility. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks the real candidate caller, a stricter fixture, and a disposable managed
-installation check. This audit inspected the mismatch; it did not stage a live
-release or exercise promotion/rollback. The
-[deployment guide](../guides/deployment.md) retains that qualification limit.
+The dogfood reconciler runs each detached candidate's
+`npm run dependencies:ci` before building it. The pnpm-only fixture checks the
+command and exercises missing lifecycle, install failure and build failure
+while the prior release keeps serving. A disposable reconcile additionally
+completed the real managed install and build. The
+[deployment guide](../guides/deployment.md) describes the operator path.
 
 ### Composition owners are difficult to learn as a single page
 
@@ -291,9 +290,10 @@ has exercised it yet.
 
 ### Public configuration and runtime enforcement must agree
 
-The Agent contract exposes `guardrails.maxSteps`, but the file schema rejects
-it; Strands also does not apply the configured step cap. [#2846](https://github.com/kontourai/station/issues/2846)
-tracks a single admitted shape and engine-specific enforcement evidence.
+At the audit baseline, the Agent contract exposed `guardrails.maxSteps` while
+the file schema rejected it. [#2846](https://github.com/kontourai/station/issues/2846)
+records the alignment on top-level `maxSteps` for VoltAgent. The engine matrix
+states that Strands and external engines use their own limits.
 Retained quick prompts have no current UI consumer ([#2847](https://github.com/kontourai/station/issues/2847)),
 and invalid date/time format JSON can reach prompt expansion before failing
 ([#2848](https://github.com/kontourai/station/issues/2848)). The
@@ -301,10 +301,11 @@ and invalid date/time format JSON can reach prompt expansion before failing
 
 ### Shared CLI safeguards need to cover each caller
 
-The Operate shell's event stream bypasses the authenticated SDK transport even
-though its initial Session read uses it. A real caller against a synthetic
-protected HTTP service reproduced the missing credential and HTTP 401;
-[#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
+The Operate shell's event stream uses the same origin-bound authenticated
+transport as its initial Session read. A real caller against a synthetic
+protected HTTP service exercises credential transmission, cross-origin
+isolation, frame parsing and cancellation.
+[#2845](https://github.com/kontourai/station/issues/2845) recorded the original HTTP 401.
 Home reset now acquires the home maintenance lease, rechecks lifecycle inactivity
 and archives the home while holding that lease. It still does not separately
 consult the home-scoped instance registry
@@ -326,10 +327,12 @@ browser evidence alongside their state/contract tests.
 
 ### Examples need the same caller contracts as the product
 
-The standalone sessions MCP reader hides failed unauthenticated reads behind
-an empty panel ([#2785](https://github.com/kontourai/station/issues/2785)). The
-ElevenLabs example uses an older token/audio/transcript protocol
-([#2784](https://github.com/kontourai/station/issues/2784)). The registry CLI
+The Sessions MCP example exercises authenticated list reads and distinct
+failure snapshots through real stdio against a fixture API. The ElevenLabs
+example exercises the documented single-use token and audio protocols with a
+scripted transport. An isolated Station verified the Sessions example's
+empty snapshot and refusal after Device revocation. External-host rendering
+and live voice provider execution remain unverified. The registry CLI
 submits an install ID without the preview consent required by the installer
 ([#2809](https://github.com/kontourai/station/issues/2809)). A manifest, build or
 render test does not establish these end-to-end journeys.

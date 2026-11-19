@@ -143,9 +143,9 @@ export class FeaturePreviewRegistry {
     // which keep their own access checks; no server branch reads this choice.
     this.rememberConsumer({
       id: 'continue-in-project',
-      label: 'Continue in Project',
+      label: 'Save to Project',
       description:
-        'Move a chat into a new or existing Project from its More menu, and start new Projects with Setup recommendations.',
+        'Save work from a chat as a Task or use it to start a Project.',
     });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),

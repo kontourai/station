@@ -1,5 +1,4 @@
 import {
-  DESKTOP_UPDATE_DOWNLOAD_POLICIES,
   type DesktopUpdateDownloadPolicy,
   type DesktopUpdateState,
 } from '@kontourai/station-contracts/desktop-update';
@@ -23,13 +22,8 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { formatBytes } from '../../utils/formatBytes';
 import { formatDateTime } from '../../utils/relativeTime';
 import { TechnicalDetails } from './coreUpdatePresentation';
+import { DownloadPolicyOptions } from './DownloadPolicyOptions';
 import '../../components/desktop-update/DesktopUpdate.css';
-
-const POLICY_LABELS: Record<DesktopUpdateDownloadPolicy, string> = {
-  never: 'Never',
-  'after-24h': 'After 24 hours',
-  immediately: 'Immediately',
-};
 
 function StatusLine({ state }: { state: DesktopUpdateState }) {
   const { phase } = state;
@@ -278,7 +272,7 @@ export function DesktopUpdateCheck({
       )}
       {showPolicy && phase.status !== 'disabled' && (
         <Field
-          label="Automatic download"
+          label="Automatic desktop app download"
           htmlFor={policyId}
           hint="When an update downloads without a click. Downloading never restarts Station."
         >
@@ -295,11 +289,7 @@ export function DesktopUpdateCheck({
               )
             }
           >
-            {DESKTOP_UPDATE_DOWNLOAD_POLICIES.map((policy) => (
-              <option key={policy} value={policy}>
-                {POLICY_LABELS[policy]}
-              </option>
-            ))}
+            <DownloadPolicyOptions />
           </Select>
         </Field>
       )}
