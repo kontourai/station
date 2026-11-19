@@ -20,76 +20,82 @@ describe('EventStore high-cardinality batched projection', () => {
 
   function seedProjectionThread(threadId: string): void {
     const base = '2026-08-20T00:00:00.000Z';
-    store.upsertSession({
-      provider: 'claude',
-      threadId,
-      status: 'ready',
-      createdAt: base,
-      updatedAt: base,
-    });
-    store.appendEvent({
-      eventId: `${threadId}-started`,
-      provider: 'claude',
-      threadId,
-      createdAt: base,
-      method: 'session.started',
-      sessionId: threadId,
-      metadata: { agentSlug: 'claude', userId: 'owner-user' },
-    });
-    store.appendEvent({
-      eventId: `${threadId}-configured`,
-      provider: 'claude',
-      threadId,
-      createdAt: base,
-      method: 'session.configured',
-      sessionId: threadId,
-      model: 'claude-sonnet-4-5',
-    });
-    store.appendEvent({
-      eventId: `${threadId}-flow-attached`,
-      provider: 'claude',
-      threadId,
-      createdAt: base,
-      method: 'flow.run-attached',
-      runId: `run-${threadId}`,
-    } as any);
-    store.appendEvent({
-      eventId: `${threadId}-turn1-started`,
-      provider: 'claude',
-      threadId,
-      turnId: 'turn-1',
-      createdAt: base,
-      method: 'turn.started',
-      prompt: `prompt for ${threadId}`,
-    });
-    store.appendEvent({
-      eventId: `${threadId}-turn1-completed`,
-      provider: 'claude',
-      threadId,
-      turnId: 'turn-1',
-      createdAt: base,
-      method: 'turn.completed',
-      finishReason: 'stop',
-    } as any);
-    store.appendEvent({
-      eventId: `${threadId}-request-opened`,
-      provider: 'claude',
-      threadId,
-      turnId: 'turn-1',
-      createdAt: base,
-      method: 'request.opened',
-      requestId: `${threadId}-req-1`,
-      kind: 'approval',
-    } as any);
-    store.appendEvent({
-      eventId: `${threadId}-turn2-started`,
-      provider: 'claude',
-      threadId,
-      turnId: 'turn-2',
-      createdAt: base,
-      method: 'turn.started',
-      prompt: `follow-up for ${threadId}`,
-    });
+    // Commit the thread's input together, as the native fork writer does.
+    store.appendEvent(
+      {
+        eventId: `${threadId}-turn2-started`,
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-2',
+        createdAt: base,
+        method: 'turn.started',
+        prompt: `follow-up for ${threadId}`,
+      },
+      [],
+      () => {
+        store.upsertSession({
+          provider: 'claude',
+          threadId,
+          status: 'ready',
+          createdAt: base,
+          updatedAt: base,
+        });
+        store.appendEvent({
+          eventId: `${threadId}-started`,
+          provider: 'claude',
+          threadId,
+          createdAt: base,
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { agentSlug: 'claude', userId: 'owner-user' },
+        });
+        store.appendEvent({
+          eventId: `${threadId}-configured`,
+          provider: 'claude',
+          threadId,
+          createdAt: base,
+          method: 'session.configured',
+          sessionId: threadId,
+          model: 'claude-sonnet-4-5',
+        });
+        store.appendEvent({
+          eventId: `${threadId}-flow-attached`,
+          provider: 'claude',
+          threadId,
+          createdAt: base,
+          method: 'flow.run-attached',
+          runId: `run-${threadId}`,
+        } as any);
+        store.appendEvent({
+          eventId: `${threadId}-turn1-started`,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: base,
+          method: 'turn.started',
+          prompt: `prompt for ${threadId}`,
+        });
+        store.appendEvent({
+          eventId: `${threadId}-turn1-completed`,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: base,
+          method: 'turn.completed',
+          finishReason: 'stop',
+        } as any);
+        store.appendEvent({
+          eventId: `${threadId}-request-opened`,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: base,
+          method: 'request.opened',
+          requestId: `${threadId}-req-1`,
+          kind: 'approval',
+        } as any);
+      },
+    );
   }
 
   function withoutObservedAt(
