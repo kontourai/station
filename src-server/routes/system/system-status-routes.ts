@@ -301,7 +301,10 @@ async function discoverDeveloperServices(): Promise<DeveloperServiceStatus[]> {
  *   call succeeds-> the connection's own `enabled`, defaulting to true only
  *                   for an id the live list does not mention at all.
  */
-async function resolveRuntimeConnectionState(deps: SystemStatusDeps): Promise<{
+async function resolveRuntimeConnectionState(
+  deps: SystemStatusDeps,
+  signal: AbortSignal,
+): Promise<{
   isEnabled: (engineId: EngineId) => boolean;
   connectionIdFor: (engineId: EngineId) => EngineConnectionId | undefined;
 }> {
@@ -312,7 +315,7 @@ async function resolveRuntimeConnectionState(deps: SystemStatusDeps): Promise<{
     };
   }
   try {
-    const connections = await deps.listEngineConnectionStates();
+    const connections = await deps.listEngineConnectionStates(signal);
     const disabled = new Set(
       connections.filter((c) => !c.enabled).map((c) => c.engineId),
     );
@@ -832,7 +835,7 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
 
     refreshPromise = (async () => {
       const runtimeConnectionState = await raceWithSignal(
-        resolveRuntimeConnectionState(deps),
+        resolveRuntimeConnectionState(deps, controller.signal),
         controller.signal,
       ).catch(() => ({
         isEnabled: () => false,

@@ -5165,6 +5165,22 @@ describe('ordinary engine inventory and dispatch admission', () => {
         expect(body).not.toHaveProperty('data');
         expect(listModels.mock.calls[0]?.[0].signal?.aborted).toBe(true);
         expect(listModels).toHaveBeenCalledOnce();
+
+        const retry = await createConnectionRoutes(service).request('/agents');
+        expect(retry.status).toBe(200);
+        expect(await retry.json()).toMatchObject({
+          success: true,
+          data: [
+            {
+              id: 'codex',
+              config: { inspectionPartial: true },
+              runtimeCatalog: { source: 'none', fetchedAt: null },
+            },
+          ],
+        });
+        // The underlying fixture is still pending. The second read gets
+        // absence of evidence rather than starting a duplicate operation.
+        expect(listModels).toHaveBeenCalledOnce();
       } finally {
         vi.useRealTimers();
       }

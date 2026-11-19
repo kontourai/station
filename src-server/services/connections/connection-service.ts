@@ -1084,6 +1084,42 @@ export class ConnectionService {
     }
   }
 
+  private readonly ordinaryObservations = new WeakMap<
+    ProviderAdapterShape,
+    Map<string, Set<AbortSignal>>
+  >();
+
+  private async observeOrdinaryAdapter<T>(
+    adapter: ProviderAdapterShape,
+    key: string,
+    signal: AbortSignal,
+    observe: () => Promise<T>,
+  ): Promise<T> {
+    throwIfAborted(signal);
+    let observations = this.ordinaryObservations.get(adapter);
+    if (!observations) {
+      observations = new Map();
+      this.ordinaryObservations.set(adapter, observations);
+    }
+    const inFlight = observations.get(key) ?? new Set<AbortSignal>();
+    // An abandoned observation owns its slot until the adapter settles.
+    if (
+      inFlight.size >= 2 ||
+      inFlight.has(signal) ||
+      [...inFlight].some((owner) => owner.aborted)
+    ) {
+      throw new Error('A previous engine observation is still settling.');
+    }
+    inFlight.add(signal);
+    observations.set(key, inFlight);
+    try {
+      return await observe();
+    } finally {
+      inFlight.delete(signal);
+      if (inFlight.size === 0) observations.delete(key);
+    }
+  }
+
   async listConnections(
     options: RuntimeConnectionInspectionOptions = {},
   ): Promise<ConnectionConfig[]> {
@@ -1095,7 +1131,10 @@ export class ConnectionService {
     );
     const [models, runtimes] = await Promise.all([
       modelsPromise,
-      this.listRuntimeConnectionsForModels(modelsPromise, options),
+      this.listRuntimeConnectionsForModels(modelsPromise, {
+        ...options,
+        boundAdapterObservations: Boolean(options.signal),
+      }),
     ]);
     return [...models, ...runtimes];
   }
@@ -1293,7 +1332,7 @@ export class ConnectionService {
     const inventoryPromise = this.listModelConnectionInventory(options.signal);
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
-      options,
+      { ...options, boundAdapterObservations: Boolean(options.signal) },
     );
     return { connections, failures: (await inventoryPromise).failures };
   }
@@ -1417,14 +1456,18 @@ export class ConnectionService {
    * Canonical engine identity and navigable connection identity used by
    * readiness and other control-plane callers.
    */
-  async listEngineConnectionStates(): Promise<
+  async listEngineConnectionStates(signal?: AbortSignal): Promise<
     Array<{
       engineId: EngineId;
       engineConnectionId: EngineConnectionId;
       enabled: boolean;
     }>
   > {
-    const connections = await this.listRuntimeConnections();
+    const connections = await this.listRuntimeConnections({
+      signal,
+      includeModelCatalog: false,
+      includeCommands: false,
+    });
     return connections.map((connection) => {
       const rawEngineId = connection.config.engineId;
       if (typeof rawEngineId !== 'string') {
@@ -1450,7 +1493,11 @@ export class ConnectionService {
   ): Promise<AgentConnectionView[]> {
     return this.listRuntimeConnectionsForModels(
       this.listModelConnections(options.signal),
-      { ...options, registryAuthoritative: false },
+      {
+        ...options,
+        registryAuthoritative: false,
+        boundAdapterObservations: Boolean(options.signal),
+      },
     );
   }
 
@@ -1469,6 +1516,7 @@ export class ConnectionService {
       allowBuiltInOnDiscoveryFailure?: boolean;
       abortOnFailure?: (error: unknown) => void;
       registryAuthoritative?: boolean;
+      boundAdapterObservations?: boolean;
     } = {},
   ): Promise<AgentConnectionView[]> {
     const [appConfig, acpConnections, models] = await raceWithSignal(
@@ -1492,6 +1540,12 @@ export class ConnectionService {
       publicConnection: (engineIdentity) =>
         publicEngineConnection(adapters, registry, engineIdentity),
       onInspectionFailure: options.abortOnFailure,
+      ...(options.boundAdapterObservations
+        ? {
+            observeAdapter: (adapter, key, signal, observe) =>
+              this.observeOrdinaryAdapter(adapter, key, signal, observe),
+          }
+        : {}),
       now: () => Date.now(),
     });
     const inspection = await inspector.inspect({

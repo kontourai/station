@@ -3268,7 +3268,9 @@ does not establish that no Model connections exist. Provider-reported
 The ordinary combined and Agent App listings have a five-second deadline and
 propagate caller cancellation. On deadline they return HTTP 504 with
 `connection_inventory_timed_out` and no inventory payload. Within the
-deadline, unavailable observations remain distinct from live catalogs.
+deadline, unavailable observations remain distinct from live catalogs. A later
+read reports unavailable evidence for an abandoned adapter operation still
+settling. It neither starts a duplicate nor reuses its result.
 An ACP row exposes its current `config.acpProbeStatus` when observed and
 `lastCheckedAt` is the measured handshake time or null.
 

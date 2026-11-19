@@ -73,13 +73,6 @@ export interface DevicePresentation {
   hostName: string;
 }
 
-/**
- * The answering server's process/build identity: which Station instance, which
- * boot of it, built from which commit. All three fields are required for the
- * identity to be an identity — a partial answer must be reported as
- * unavailable, never served as one. `shaSource` names what computed `sha`: a
- * checkout-derived value must not read as the build's identity.
- */
 /** Last measured CLI presence, separate from permission to launch an engine. */
 export interface CliPresenceEvidence {
   state: 'present' | 'absent' | 'unknown';
@@ -88,6 +81,13 @@ export interface CliPresenceEvidence {
   source: 'path' | null;
 }
 
+/**
+ * The answering server's process/build identity: which Station instance, which
+ * boot of it, built from which commit. All three fields are required for the
+ * identity to be an identity — a partial answer must be reported as
+ * unavailable, never served as one. `shaSource` names what computed `sha`: a
+ * checkout-derived value must not read as the build's identity.
+ */
 export interface SystemRuntimeIdentity {
   instanceId: string;
   bootId: string;
