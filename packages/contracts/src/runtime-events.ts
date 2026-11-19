@@ -1396,18 +1396,55 @@ export interface FlowRunAttachedEvent extends CanonicalRuntimeEventBase {
   freshness?: FlowRunFreshness;
 }
 
-export type FlowGateVerdict = 'pass' | 'route-back' | 'block' | 'wait';
+export type FlowGateVerdict =
+  | 'pass'
+  | 'route-back'
+  | 'block'
+  | 'wait'
+  | 'not-evaluated';
+
+/** The older empty-outcome fallback looked like a pass without naming a gate. */
+export function isUnevaluatedFlowGateObservation(event: {
+  verdict?: unknown;
+  gateId?: unknown;
+  summary?: unknown;
+}): boolean {
+  return (
+    event.verdict === 'not-evaluated' ||
+    (event.verdict === 'pass' &&
+      event.gateId === undefined &&
+      event.summary === 'all gates passed')
+  );
+}
+
+export interface FlowGateDiagnosticDetails {
+  claims: Array<{
+    expectationId?: string;
+    reason?: string;
+    specificReason?: string;
+    surfaceGaps?: Array<{ type?: string; message?: string }>;
+  }>;
+  truncated?: true;
+}
+
+export interface FlowGateReevaluationDetails {
+  gateId: string;
+  verdict: 'route-back' | 'block' | 'wait';
+  missing: string[];
+  diagnostics?: FlowGateDiagnosticDetails;
+}
 
 /**
  * Emitted by the orchestration layer when a Flow-bound session requests
- * completion and its run is evaluated. A non-pass verdict means the session
- * was NOT marked complete; the event carries the actionable guidance.
+ * completion. A holding verdict carries the actionable guidance.
+ * A not-evaluated observation records a completed run without asserting a gate ran.
  */
 export interface FlowGateVerdictEvent extends CanonicalRuntimeEventBase {
   method: 'flow.gate-verdict';
   runId: string;
   verdict: FlowGateVerdict;
   gateId?: string;
+  diagnostics?: FlowGateDiagnosticDetails;
   summary?: string;
   /** Flow's `state.next_action` text — assistant-visible guidance. */
   nextAction?: string;
@@ -1417,7 +1454,7 @@ export interface FlowGateVerdictEvent extends CanonicalRuntimeEventBase {
   maxAttempts?: number;
   /** Missing expectation ids (verdicts 'wait' and 'block'). */
   missing?: string[];
-  /** Workspace-relative report paths (verdict 'pass'). */
+  /** Workspace-relative report paths for an observed completed run. */
   reportPaths?: { json: string; markdown: string };
   /** True when only a human-accepted exception can unblock (verdict 'block'). */
   exceptionRequired?: boolean;

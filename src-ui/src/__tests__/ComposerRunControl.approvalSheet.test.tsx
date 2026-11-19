@@ -58,7 +58,9 @@ function renderComposer() {
   const runTrigger = screen.getByTestId('run-setup-trigger');
   runTrigger.getBoundingClientRect = () => rect(1200, 700, 160, 44);
   fireEvent.click(runTrigger);
-  const runSetup = screen.getByRole('dialog', { name: 'Run setup' });
+  const runSetup = screen.getByRole('dialog', {
+    name: 'Agent & model',
+  });
   const approvalChip = screen.getByRole('button', { name: /^Approval mode:/ });
   // Where the chip sits inside the (soon hidden) Run setup panel.
   approvalChip.getBoundingClientRect = () => rect(1050, 300, 300, 44);
@@ -89,7 +91,7 @@ test('the approval picker stands in for Run setup and opens at its anchor, insid
   fireEvent.keyDown(sheet, { key: 'Escape' });
   expect(screen.queryByRole('dialog', { name: 'Approval mode' })).toBeNull();
   expect(overlayOf(runSetup).hasAttribute('data-yielded')).toBe(false);
-  expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
 });
 
 test('a click outside the picker closes the picker and the hidden Run setup', async () => {
@@ -98,7 +100,7 @@ test('a click outside the picker closes the picker and the hidden Run setup', as
   const sheet = await screen.findByRole('dialog', { name: 'Approval mode' });
   fireEvent.pointerDown(overlayOf(sheet));
   expect(screen.queryByRole('dialog', { name: 'Approval mode' })).toBeNull();
-  expect(screen.queryByRole('dialog', { name: 'Run setup' })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Agent & model' })).toBeNull();
 });
 
 test('the sheet says what is in effect, in the same words as the list', async () => {

@@ -1,0 +1,31 @@
+{
+  "revision": "fe7ddc4c0c3b45b2f313fe0b881595f89c63385c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked conversation presentation and live turn failure handling. Run setup displays a connection label. The existing turn failure fold preserves partial output on the first failure and replaces the card for a later terminal error on the same turn. No routing or durable turn ownership change.","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/orchestration/turnHandlers.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the session and Agent default captions, live route display, available model picker scope label and selection confirmation with their caller paths. Focused suites passed, including Chromium drop-down layout and re-pointed engine cases. Physical Android and live provider behavior remain unverified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/session/SessionModelPicker.tsx","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked ConversationBody's connection label change. Presenter ownership and shell mounting paths remain accurate.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the ConversationBody model route display. This change consumes the same session modelRoute and only changes its presentation. Route selection and authority paths are unchanged.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the model picker change. The optional connection label is supplied by the active chat. Agent configuration keeps its existing model catalogs and selection behavior.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the active chat model picker's connection caption. It uses an existing label. Connection configuration and provider discovery are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the mobile header route label and Run setup layout. The header omits an already displayed route and retains its Station and Agent controls. Inspected phone and desktop Chromium captures in light and dark.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the shared model picker change. The active chat supplies the connection caption. Self-configuration eligibility, model selection and application are unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the useChatInput selection path. It still writes the requested model using the same contract. The ephemeral confirmation now describes selection.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked the useChatInput change. Only model selection confirmation copy differs. Skill invocation and composer handoff behavior are unchanged.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the existing Run setup entry point, Agent and model choices, and mobile header. Run setup still opens from the combined trigger. The current session and the Agent's default are named separately when they differ.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the shared picker change against the example. The new optional connection caption is supplied by active chat and leaves the self-configuration example's inputs and workflow unchanged.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked ConversationBody's route label projection against the shared conversation boundary. It still reads the same provided Session modelRoute and changes only its presentation.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}
