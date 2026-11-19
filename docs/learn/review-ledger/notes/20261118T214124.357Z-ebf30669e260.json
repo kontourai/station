@@ -1,0 +1,13 @@
+{
+  "revision": "994126446272527aadcf68352206373c03c226f0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked classification of process and authentication failures. The catalog keeps the same operator checks, account verification, repository validation and response limits. CLI output is not forwarded.","inputs":["src-server/services/projects/repository-provider-catalog.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked classification of process and authentication failures. The catalog keeps the same operator checks, account verification, repository validation and response limits. CLI output is not forwarded.","inputs":["src-server/services/projects/repository-provider-catalog.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked classification of process and authentication failures. The catalog keeps the same operator checks, account verification, repository validation and response limits. CLI output is not forwarded.","inputs":["src-server/services/projects/repository-provider-catalog.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked classification of process and authentication failures. The catalog keeps the same operator checks, account verification, repository validation and response limits. CLI output is not forwarded.","inputs":["src-server/services/projects/repository-provider-catalog.ts"]}
+  ]
+}

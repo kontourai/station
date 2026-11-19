@@ -1,0 +1,34 @@
+.repository-provider-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  gap: var(--k-space-2);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.repository-provider-picker legend {
+  margin-block-end: var(--k-space-2);
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.repository-provider-picker .button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-2);
+  min-block-size: 44px;
+}
+
+.repository-provider-picker .button[aria-pressed="true"] {
+  border-color: var(--k-action);
+  background: var(--k-panel-raised);
+}
+
+.repository-provider-picker svg {
+  flex: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+}

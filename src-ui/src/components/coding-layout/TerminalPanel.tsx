@@ -85,6 +85,7 @@ export function TerminalPanel({
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
+  const signIn = launch?.kind === 'repository-sign-in';
   const store = useTerminalSessionStore();
   const { apiBase } = useApiBase();
   const openFilePreview = useOpenFilePreviewInRegion();
@@ -359,14 +360,20 @@ export function TerminalPanel({
     return (
       <div className="coding-terminal-shell">
         <p role="alert">{unavailableReason}</p>
-        <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
+        {!signIn && (
+          <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
+        )}
       </div>
     );
   }
 
   return (
     <div className="coding-terminal-shell">
-      {exited ? (
+      {exited && signIn ? (
+        <p className="coding-terminal-connection" role="status">
+          {ended?.message ?? 'Sign-in command ended.'}
+        </p>
+      ) : exited ? (
         <div className="coding-terminal-connection">
           <ErrorState
             variant="compact"
@@ -391,12 +398,14 @@ export function TerminalPanel({
       ) : wsError ? (
         <div className="coding-terminal-connection" role="alert">
           <span>{wsError}</span>
-          <Button
-            size="sm"
-            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
-          >
-            Reconnect terminal
-          </Button>
+          {(!signIn || terminalId) && (
+            <Button
+              size="sm"
+              onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+            >
+              Reconnect terminal
+            </Button>
+          )}
         </div>
       ) : !connected ? (
         <p role="status">Connecting to the terminal…</p>
