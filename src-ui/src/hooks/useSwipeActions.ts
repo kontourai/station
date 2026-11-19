@@ -31,6 +31,25 @@ export function useSwipeActions(
   } | null>(null);
   const row = useRef<HTMLElement | null>(null);
   const suppressUntil = useRef(0);
+  const attachRow = useCallback(
+    (element: HTMLElement | null) => {
+      row.current = element;
+      if (!enabled || !element) return;
+
+      // Cancel native touch handling after the row claims a horizontal drag.
+      // A pointermove cancellation alone can leave Chromium suppressing the next tap.
+      const onTouchMove = (event: TouchEvent) => {
+        if (origin.current?.horizontal && event.cancelable)
+          event.preventDefault();
+      };
+      element.addEventListener('touchmove', onTouchMove, { passive: false });
+      return () => {
+        element.removeEventListener('touchmove', onTouchMove);
+        row.current = null;
+      };
+    },
+    [enabled],
+  );
   const setOpen = useCallback(
     (next: boolean) => {
       setOwnOpen(next);
@@ -82,6 +101,7 @@ export function useSwipeActions(
     '--swipe-action-width': `${actionWidth}px`,
   };
   return {
+    ref: attachRow,
     open,
     close,
     style,
@@ -99,7 +119,6 @@ export function useSwipeActions(
         !event.currentTarget.contains(event.target)
       )
         return;
-      row.current = event.currentTarget;
       origin.current = {
         x: event.clientX,
         y: event.clientY,

@@ -875,6 +875,7 @@ export function InboxRow({
       ]
         .filter(Boolean)
         .join(' ')}
+      ref={swipe.ref}
       style={swipe.style}
       data-testid="inbox-row"
       data-unread={unread ? '' : undefined}
