@@ -16311,7 +16311,6 @@ export class OrchestrationService {
   private readonly readOwnedWork = (threadId: string) =>
     this.options.eventStore?.ownedSessionActivities([threadId]).get(threadId);
 
-  /** Read-only quiescence seam for derived projections that must not race a turn. */
   /** A start command is preparing this thread before its turn can run. */
   isSessionStartUnderway(threadId: string): boolean {
     return this.startsUnderway.has(threadId);
@@ -16346,6 +16345,7 @@ export class OrchestrationService {
       : null;
   }
 
+  /** Read-only quiescence seam for derived projections that must not race a turn. */
   hasActiveTurn(threadId: string): boolean {
     return this.sessionExecutionCoordinator.hasActiveTurn(threadId);
   }
