@@ -674,6 +674,18 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     reason:
       'the Inbox browser fixture loads refresh styles and bundles the component outside the import graph',
   })),
+  ...[
+    'src-server/adapters/node-pty-adapter.ts',
+    'src-server/services/infra/workload-resources.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    reason:
+      'the workload proof launches a separate fixture server that imports these runtime owners',
+  })),
   {
     pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
     supplemental: true,
