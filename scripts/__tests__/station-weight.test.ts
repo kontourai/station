@@ -626,6 +626,8 @@ describe('matched delegated benchmark evidence', () => {
       delegatedPair: {
         status: 'measured',
         followUpOrder: 'warm-first',
+        model: 'fixture-model',
+        claudeCodeVersion: '2.1.322',
         memoryBasis: 'phys_footprint',
         releasedEngineMemoryBytes: 147_000_000,
         releasedAfterMs: 15_100,

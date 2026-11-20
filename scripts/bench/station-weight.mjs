@@ -2022,14 +2022,21 @@ async function measureDelegatedPair({
   releaseMaxMs,
   parkedFirst,
 }) {
+  const engineKeys = () => scopedClaude(treeNow).map(identityKey).sort();
   const baseline = scopedClaude(treeNow);
-  const analyze = (from, index, arm) =>
-    analyzeConversationTurn({
+  const analyze = (from, index, arm) => {
+    const { report } = analyzeConversationTurn({
       calls: stub.requests.slice(from),
       turns: turns[arm],
       index,
       markers,
-    }).report;
+    });
+    assert(
+      report.model && report.claudeCodeVersion,
+      `${arm}: model or engine version was not observed`,
+    );
+    return report;
+  };
   const seed = async (arm) => {
     const from = stub.requests.length;
     const task = await delegateHi(api, cwd, turns[arm][0]);
@@ -2069,9 +2076,10 @@ async function measureDelegatedPair({
     250,
   );
   const releasedAfterMs = performance.now() - waitStart;
-  assert(
-    scopedClaude(treeNow).length === baseline.length,
-    'unexpected engine count after parking',
+  assert.deepEqual(
+    engineKeys(),
+    baseline.map(identityKey).sort(),
+    'engine cohort changed after the seeded exit',
   );
 
   const warm = await seed('warm');
@@ -2082,15 +2090,25 @@ async function measureDelegatedPair({
   const warmEngine = addedClaude(baseline, scopedClaude(treeNow));
   const warmKey = identityKey(warmEngine);
   const followWarm = async () => {
-    const report = await follow(warm, 'warm');
+    const before = engineKeys();
     assert(
-      scopedClaude(treeNow).some((row) => identityKey(row) === warmKey),
-      'warm engine did not survive its follow-up',
+      before.includes(warmKey),
+      'the warm engine exited before its follow-up',
+    );
+    const report = await follow(warm, 'warm');
+    assert.deepEqual(
+      engineKeys(),
+      before,
+      'engine cohort changed during warm follow-up',
     );
     return report;
   };
   const followParked = async () => {
     const beforeResume = scopedClaude(treeNow);
+    assert(
+      !beforeResume.some((row) => identityKey(row) === parkedKey),
+      'the original engine is present before resume',
+    );
     const report = await follow(parked, 'parked');
     const resumed = addedClaude(beforeResume, scopedClaude(treeNow));
     assert(identityKey(resumed) !== parkedKey, 'parked engine did not restart');
@@ -2109,6 +2127,8 @@ async function measureDelegatedPair({
     status: 'measured',
     reportOnly: true,
     followUpOrder: parkedFirst ? 'parked-first' : 'warm-first',
+    model: warmFollow.report.model,
+    claudeCodeVersion: warmFollow.report.claudeCodeVersion,
     releasedEngineMemoryBytes: memory,
     releasedAfterMs,
     warmFollowUpMs: warmFollow.elapsedMs,
@@ -2759,6 +2779,9 @@ function completeDelegatedPair(pair) {
     pair?.status === 'measured' &&
     ['warm-first', 'parked-first'].includes(pair.followUpOrder) &&
     ['phys_footprint', 'rss'].includes(pair.memoryBasis) &&
+    [pair.model, pair.claudeCodeVersion].every(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) &&
     Number.isSafeInteger(pair.releasedEngineMemoryBytes) &&
     pair.releasedEngineMemoryBytes > 0 &&
     [pair.releasedAfterMs, pair.warmFollowUpMs, pair.parkedFollowUpMs].every(
