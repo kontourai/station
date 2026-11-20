@@ -21,6 +21,7 @@ import {
   type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type StagedConversationHandoff,
   type TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -699,6 +700,7 @@ export async function handoffExecutionMessage(
   input: Omit<ForegroundMessageFields, 'conversationId'> &
     ApprovalPickCarry & {
       idempotencyKey: string;
+      stagedHandoff?: StagedConversationHandoff;
     },
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt & { handoff: ConversationHandoffReceipt }> {
@@ -706,8 +708,9 @@ export async function handoffExecutionMessage(
     throw new Error(
       'Visual skill starts use the canonical foreground chat route.',
     );
+  const route = input.stagedHandoff ? 'staged-handoff' : 'handoff';
   const response = await mutateJson(
-    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/${route}`,
     'POST',
     opts,
     input,
@@ -791,6 +794,30 @@ export async function getConversationHandoffStatus(
     );
   }
   return result.data;
+}
+
+/** Durably withdraw a request that has no handoff reservation. */
+export async function withdrawUnreservedConversationHandoff(
+  apiBase: string,
+  conversationId: string,
+  idempotencyKey: string,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${encodeURIComponent(idempotencyKey)}`,
+    'DELETE',
+    opts,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: { outcome?: string };
+    error?: string;
+  };
+  if (!response.ok || !result.success || result.data?.outcome !== 'withdrawn')
+    throw chatRefusal(response, result, 'Station did not confirm withdrawal.', {
+      apiBase,
+      opts,
+    });
 }
 
 /**

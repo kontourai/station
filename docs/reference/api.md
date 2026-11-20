@@ -864,7 +864,8 @@ or `standard` preset device, gets `403` with
 covers exactly these routes:
 
 - `POST /api/orchestration/delegations`, `/chat`, `/chat/delegated`,
-  `/chat/background` and `/conversations/:conversationId/handoff`, when
+  `/chat/background`, `/conversations/:conversationId/handoff` and
+  `/conversations/:conversationId/staged-handoff`, when
   `target.workspace` is `{ kind: 'directory', cwd }`;
 - `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
   (`start-task`), when `runtimeConfig.cwd` is not the Task Project's own

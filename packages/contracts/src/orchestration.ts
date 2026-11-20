@@ -1609,6 +1609,19 @@ export interface OrchestrationConversationEventWindow
   contextBoundaries: import('./conversation-context-boundary.js').ConversationContextBoundaryTranscriptMarker[];
 }
 
+export const STAGED_CONVERSATION_HANDOFF_PREVIEW = Object.freeze({
+  id: 'staged-agent-changes',
+  label: 'Stage chat Agent changes',
+  description:
+    'Choose the Agent and model for the next message. Sending starts a fresh Session with bounded conversation text.',
+});
+
+/** Send-time approval for a fresh Session seeded with bounded conversation text. */
+export interface StagedConversationHandoff {
+  expectedCurrentSessionId: string;
+  contextPolicy: 'continue-from-history';
+}
+
 export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
   'authorizedTranscript',
   'ownerTenantWorkspace',

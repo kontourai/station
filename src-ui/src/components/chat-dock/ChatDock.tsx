@@ -274,6 +274,7 @@ import { useCoordinatorDockActions } from './useCoordinatorDockActions';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
+import { useStagedAgentChange } from './useStagedAgentChange';
 import { useTaskStartedNotice } from './useTaskStartedNotice';
 
 /**
@@ -2411,6 +2412,55 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Get updateChat from context
   const { updateChat } = useActiveChatActions();
+
+  const stagedAgentChange = useStagedAgentChange({
+    apiBase,
+    chat: hostConversation ? activeSession : null,
+    composer: chatInput,
+    scope: requestAuthority,
+    scopeIsCurrent: requestAuthority?.isCurrent,
+    recoveryAuthority:
+      authorityStatus === 'verified' &&
+      authorityNamespace &&
+      authorityObservation &&
+      requestAuthority?.draftRecoveryKey
+        ? JSON.stringify([
+            authorityNamespace,
+            authorityObservation.principal.id,
+            requestAuthority.draftRecoveryKey,
+          ])
+        : undefined,
+    agents: conversationAgents,
+    blockedReason: !conversationCanMutate
+      ? 'The current conversation cannot send.'
+      : handoffDisabledReason,
+    onAccepted: () => {
+      invalidate(orchestrationQueries.sessions().queryKey);
+      invalidate(conversationQueries.inventory().queryKey);
+    },
+    report: (message) => showToast(message, 'error'),
+  });
+  const stagedSelection = stagedAgentChange.selected;
+  const stagedBinding =
+    stagedSelection?.executionAgent ?? stagedSelection?.agent;
+  const stagedModelConnection = stagedSelection?.connectionId;
+  const stagedComposer =
+    stagedSelection || stagedAgentChange.pending
+      ? {
+          ...stagedAgentChange,
+          selection: stagedSelection,
+          models:
+            stagedBinding && stagedModelConnection
+              ? executionSelection
+                  .modelsForAgent(stagedBinding)
+                  .filter(
+                    (model) =>
+                      model.available !== false &&
+                      model.providerId === stagedModelConnection,
+                  )
+              : [],
+        }
+      : undefined;
 
   // Stable identity for the memoized ChatDockContentArea subtree (see the
   // other stable callbacks above) — declared here since it depends on
@@ -4998,9 +5048,23 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   }
                                   toolPolicyDelivery={toolPolicyDelivery}
                                   availableModels={effectiveModels}
-                                  executionModels={executionRoutes}
+                                  stagedAgentChange={stagedComposer}
+                                  executionModels={
+                                    stagedAgentChange.enabled &&
+                                    executionProfile?.executionDefault &&
+                                    executionProfile.execution
+                                      ?.agentConnectionId
+                                      ? executionRoutes.filter(
+                                          (route) =>
+                                            route.executionAgentId ===
+                                            currentExecutionAgentId,
+                                        )
+                                      : executionRoutes
+                                  }
                                   onExecutionModelSelect={
-                                    conversationCanMutate
+                                    conversationCanMutate &&
+                                    !stagedAgentChange.previewChecking &&
+                                    !stagedAgentChange.pending
                                       ? conversationBoundaryDialogs.openExecutionHandoff
                                       : undefined
                                   }
@@ -5012,9 +5076,25 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   sendQueuedForUploads={
                                     startSendWaitsForUploads
                                   }
-                                  secondaryActions={secondaryActions}
+                                  secondaryActions={
+                                    secondaryActions &&
+                                    (stagedAgentChange.previewChecking ||
+                                      stagedAgentChange.pending)
+                                      ? {
+                                          ...secondaryActions,
+                                          onOpenHandoff: undefined,
+                                          handoffDisabled: true,
+                                          handoffDisabledReason:
+                                            stagedAgentChange.pending
+                                              ? 'Check the pending Agent change first.'
+                                              : 'Checking Agent change settings…',
+                                        }
+                                      : secondaryActions
+                                  }
                                   onOpenAgentHandoff={
-                                    handoffDisabledReason
+                                    handoffDisabledReason ||
+                                    stagedAgentChange.previewChecking ||
+                                    stagedAgentChange.pending
                                       ? undefined
                                       : () =>
                                           openConversationHandoff(
@@ -5228,7 +5308,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               />
             )}
 
-            {(handoffSource || contextResetSource) && (
+            {((handoffSource &&
+              !stagedAgentChange.previewChecking &&
+              !stagedAgentChange.pending) ||
+              contextResetSource) && (
               <LazyBoundary
                 load={loadConversationBoundaryDialogs}
                 componentProps={{
@@ -5247,6 +5330,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   showToast,
                   refetchOrchestrationSessions,
                   continueOnStation,
+                  handoffAvailable:
+                    !stagedAgentChange.previewChecking &&
+                    !stagedAgentChange.pending,
+                  onStageAgentChange: stagedAgentChange.enabled
+                    ? stagedAgentChange.stage
+                    : undefined,
                 }}
                 pending={null}
               />

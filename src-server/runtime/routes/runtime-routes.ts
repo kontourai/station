@@ -376,6 +376,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { TerminalProcessSummary } from '@kontourai/station-contracts/orchestration';
+import { STAGED_CONVERSATION_HANDOFF_PREVIEW } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
@@ -7851,6 +7852,11 @@ export function configureRuntimeRoutes(
     conversationIdOf: conversationIdForResolution,
     logger: context.logger,
   });
+  const stagedHandoffPreview = context.featurePreviews.bind({
+    id: 'staged-agent-changes',
+    label: STAGED_CONVERSATION_HANDOFF_PREVIEW.label,
+    description: STAGED_CONVERSATION_HANDOFF_PREVIEW.description,
+  });
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -8092,6 +8098,11 @@ export function configureRuntimeRoutes(
           references,
           binding,
         ),
+      stagedHandoffEnabled: () =>
+        stagedHandoffPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
       handoffConversation: stationServerEntry((input) =>
         handoffExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },

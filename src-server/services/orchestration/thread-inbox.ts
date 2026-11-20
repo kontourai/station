@@ -756,6 +756,15 @@ export function createSqliteThreadInboxStore(
     list(conversationId: string): readonly InboxEntryRecord[] {
       return run({ type: 'inbox.list', inboxId: conversationId }).entries;
     },
+    hasWaitingFollowUp(
+      conversationId: string,
+      withinHostTransaction = false,
+    ): boolean {
+      return run(
+        { type: 'inbox.list', inboxId: conversationId },
+        withinHostTransaction,
+      ).entries.some((entry) => MAY_STILL_SEND.has(entry.state));
+    },
     listOpen(): readonly InboxEntryRecord[] {
       return run({ type: 'inbox.listOpen' }).entries;
     },
@@ -1357,14 +1366,7 @@ export class ThreadInboxDelivery {
    * alert holds on it: the waiting follow-up becomes the next turn.
    */
   hasWaitingFollowUp(conversationId: string): boolean {
-    return this.ports.store
-      .list(this.inboxOf(conversationId))
-      .some(
-        (entry) =>
-          entry.state === 'queued' ||
-          entry.state === 'placing' ||
-          entry.state === 'unconfirmed',
-      );
+    return this.ports.store.hasWaitingFollowUp(this.inboxOf(conversationId));
   }
 
   /** The same sender authority applied when a continuation is submitted. */
