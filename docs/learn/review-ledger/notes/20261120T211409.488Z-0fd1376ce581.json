@@ -1,0 +1,7 @@
+{
+  "revision": "0555691b9f0ddad01315ac2e9a524ffd199925d7",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the test-only delta at 0555691b9f0. The macOS lazy-delivery section still reflects the shipped Claude session owner and its awaited teardown on Session stop. The new bundle test starts a tool call through that owner and keeps the stdio child in initialization, then verifies close stays pending after the transport requests SIGKILL and settles when the child emits exit. Removing the exit wait failed the early-close assertion. The restored focused bundle and MCP suites passed all 37 tests. This controlled exit observation covers teardown ordering. The existing real-child bundle test covers verified helper bytes and search. The documented behavior and prose are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/__tests__/station-docs-bundle.test.ts"]}
+  ]
+}
