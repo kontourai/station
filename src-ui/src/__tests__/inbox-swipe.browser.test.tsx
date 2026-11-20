@@ -723,3 +723,69 @@ test('a refused direct discard keeps the 320px touch row readable and focused', 
     await browser.close();
   }
 }, 30_000);
+
+test('an engine-list swipe reveals Remove without selecting the engine or invoking Remove', async () => {
+  const splitFixture = `
+    import React from 'react';
+    import {createRoot} from 'react-dom/client';
+    import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+    import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+    import {SplitPaneLayout} from './src-ui/src/components/SplitPaneLayout';
+    window.selected = 0;
+    window.removalRequests = 0;
+    createRoot(document.getElementById('root')).render(
+      <QueryClientProvider client={new QueryClient()}><NavigationProvider>
+        <SplitPaneLayout
+          label="engines" title="Engines" selectedId={null}
+          items={[{ id: 'agy', name: 'Antigravity', swipeAction: {
+            label: 'Remove', onSelect: () => window.removalRequests++,
+          } }]}
+          onSelect={() => window.selected++}
+        >
+          <div>Engine details</div>
+        </SplitPaneLayout>
+      </NavigationProvider></QueryClientProvider>
+    );
+  `;
+  const { page, browser, errors } = await scrollBrowserFixture(
+    splitFixture,
+    [],
+    { hasTouch: true },
+  );
+  try {
+    await page.addStyleTag({
+      content: resolveCssImports(resolve('src-ui/src/index.css')),
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await expectBrowser(
+      page.getByRole('button', { name: 'Antigravity', exact: true }),
+    )
+      .toBeVisible({ timeout: 4000 })
+      .catch((error: Error) => {
+        throw new Error(`${error.message} (page errors: ${errors.join('; ')})`);
+      });
+    const remove = page.getByRole('button', { name: 'Remove', exact: true });
+    await expectBrowser(remove).toHaveCount(0);
+    await swipe(cdp, page, -90, 0, {
+      name: 'Antigravity',
+      during: async () => {
+        const row = page.locator('.split-pane__swipe-row');
+        await expectBrowser(row).toHaveAttribute('data-dragging', 'true');
+      },
+    });
+    await expectBrowser(remove).toBeVisible();
+    expect(await page.evaluate(() => Reflect.get(window, 'selected'))).toBe(0);
+    expect(
+      await page.evaluate(() => Reflect.get(window, 'removalRequests')),
+    ).toBe(0);
+    await remove.tap({ timeout: 4000 });
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, 'removalRequests')))
+      .toBe(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

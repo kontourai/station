@@ -625,6 +625,60 @@ describe('ACP Routes', () => {
     expect(body.data[0].hostInstall).toEqual({ command: 'official goose' });
   });
 
+  test('a saved Grok launch satisfies the built-in catalog entry without changing its id', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'grok-build',
+              name: 'Grok Build',
+              command: 'grok',
+              args: ['agent', 'stdio'],
+              icon: 'brand:grok-build',
+            },
+          ],
+        },
+      },
+    ];
+    const ctx = createMockRuntimeContext();
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [
+        {
+          id: 'grok',
+          name: 'My Grok',
+          command: '/local/bin/grok',
+          args: ['agent', 'stdio'],
+          icon: '🔌',
+        },
+      ],
+    });
+    const app = asOperator(createACPRoutes(ctx as any));
+    const catalog = await json(await app.request('/registry'));
+    expect(catalog.data).toEqual([
+      expect.objectContaining({
+        id: 'grok-build',
+        installed: true,
+        installedSource: 'user',
+      }),
+    ]);
+    const connected = await json(await app.request('/connections'));
+    expect(connected.data).toEqual([
+      expect.objectContaining({
+        id: 'grok',
+        registryId: 'grok-build',
+        icon: 'brand:grok-build',
+      }),
+    ]);
+    const install = await app.request('/registry/grok-build/install', {
+      method: 'POST',
+    });
+    expect(install.status).toBe(409);
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
   test('GET /registry reports an entry as not detected on a platform it does not launch on', async () => {
     const other = process.platform === 'darwin' ? 'linux' : 'darwin';
     providerEntries = [
@@ -919,6 +973,72 @@ describe('ACP Routes', () => {
         installedSource: 'user',
       }),
     ]);
+  });
+
+  describe('built-in Antigravity connection', () => {
+    const preset = {
+      id: 'antigravity',
+      name: 'Antigravity',
+      command: 'agy',
+      args: ['acp', '--process-per-session'],
+      icon: 'brand:antigravity',
+    };
+    const saved = { ...preset, icon: 'AG', enabled: true };
+
+    beforeEach(() => {
+      providerEntries = [
+        {
+          source: 'acpConnectionRegistry:core',
+          builtin: true,
+          provider: { listAvailable: () => [preset] },
+        },
+      ];
+    });
+
+    test('keeps built-in presentation when a saved alias needs repair', async () => {
+      const { ctx, configLoader } = await createFilesystemRuntimeContext();
+      await configLoader.saveACPConfig({
+        connections: [{ ...saved, id: 'agy' }],
+      });
+      const app = asOperator(createACPRoutes(ctx));
+
+      expect(
+        (await json(await app.request('/connections/unregistered'))).data,
+      ).toMatchObject([
+        { id: 'agy', registryId: preset.id, icon: preset.icon },
+      ]);
+    });
+
+    test('refuses installation when an alias is supplied by a plugin', async () => {
+      providerEntries.push({
+        source: 'acpConnections:plugin',
+        provider: { getConnections: () => [{ ...saved, id: 'agy' }] },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/antigravity/install', {
+        method: 'POST',
+      });
+      expect(response.status).toBe(409);
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+    });
+
+    test('retries installation of a canonical preset with its former stock icon', async () => {
+      const ctx = createMockRuntimeContext();
+      ctx.configLoader.loadACPConfig.mockResolvedValue({
+        connections: [saved],
+      });
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/antigravity/install', {
+        method: 'POST',
+      });
+      expect(response.status).toBe(200);
+      expect(ctx.configLoader.saveACPConfig).toHaveBeenCalledWith({
+        connections: [saved],
+      });
+    });
   });
 
   test('POST /registry/:id/install saves an ACP registry entry as a user connection', async () => {

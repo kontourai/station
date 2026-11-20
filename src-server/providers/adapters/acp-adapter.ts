@@ -1862,10 +1862,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: nothing requested leaves OpenCode on its own configuration; a
     // mode puts it on Station's floor for that mode.
     const startApprovalMode =
+      approvalControl === 'engine'
+        ? undefined
+        : acpAppliedApprovalMode(requestedApprovalMode, input.confinement);
+    const startApprovalFloor =
       approvalControl === 'station'
-        ? acpAppliedApprovalMode(requestedApprovalMode, input.confinement)
+        ? acpApprovalFloor(startApprovalMode)
         : undefined;
-    const startApprovalFloor = acpApprovalFloor(startApprovalMode);
     if (startApprovalFloor) {
       const preflight = this.startPreflights.get(input.threadId);
       this.startPreflights.delete(input.threadId);
@@ -3195,6 +3198,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    const configured = (await this.connections()).some(
+      (connection) => connection.id === record.connectionId,
+    );
+    if (
+      !configured ||
+      this.sessions.get(input.threadId) !== record ||
+      record.stopping
+    ) {
+      throw new SendTurnRefusedError(
+        'This engine is disconnected. Continue with another agent.',
+        'session_gone',
+      );
+    }
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
     // retryably rather than racing the start.
@@ -3251,7 +3267,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const turnApprovalMode = readApprovalMode(input.modelOptions);
     let approvalTakeoverFailed = false;
     if (turnApprovalMode) {
-      if (record.approvalControl !== 'station') {
+      if (record.approvalControl === 'engine') {
         throw new SendTurnRefusedError(
           ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
           'input_unsupported',
@@ -3263,7 +3279,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
       // Station takes over from the engine's own configuration, or moves
       // between floors: relaunch on the floor and resume the same session.
-      const floor = acpApprovalFloor(applied);
+      const floor =
+        record.approvalControl === 'station'
+          ? acpApprovalFloor(applied)
+          : undefined;
       const switched: { ok: true } | { ok: false; reason: string } =
         floor === record.approvalFloor
           ? { ok: true }
@@ -4980,10 +4999,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       // offers no allow option falls through to the prompt.
       if (
         !needsPerson &&
+        !record.delegation?.denyApprovals &&
         acpApprovalModeAllows(record.approvalMode, params.toolCall?.kind)
       ) {
-        const allowed = mapAcpDecisionToOutcome('accept', params.options);
-        if (allowed.outcome !== 'cancelled') return { outcome: allowed };
+        const once = params.options.find(
+          (option) => option.kind === 'allow_once',
+        );
+        if (once)
+          return { outcome: { outcome: 'selected', optionId: once.optionId } };
       }
 
       // Tool-level session grant: "Allow for this session" covers every later

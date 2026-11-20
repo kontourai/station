@@ -1013,6 +1013,17 @@ and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
 
+Saved command connections that match a built-in launch appear under their
+existing IDs with the built-in marks. For example, a saved Antigravity
+connection called `agy` satisfies the Antigravity catalog card.
+
+To remove a saved ACP engine, open its management menu and choose **Remove
+engine**. On a phone, swipe the row to reveal **Remove** and then confirm.
+The dialog lists affected Agents when Station has their bindings. Removing
+the connection clears its saved setup and Station credentials. Existing
+conversations are readable. Use **Continue with another agent** to resume
+the conversation with a connected engine.
+
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
 one there explicitly connects the Engine and creates its default Agent binding.
 That discovery action is separate from the automatic startup adoption above.

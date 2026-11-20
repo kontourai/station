@@ -104,8 +104,9 @@ ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
-invoke the callback is the engine's own configuration. For verified OpenCode
-1.x over ACP, Station sets its launch configuration from the approval mode.
+invoke the callback is the engine's own configuration. Station's approval
+mode can answer those requests without changing that configuration. For
+verified OpenCode 1.x over ACP, Station also sets the launch configuration.
 For OpenCode 2.x over ACP, host Never ask answers the engine's own requests
 without a launch overlay; confined modes remain refused
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).

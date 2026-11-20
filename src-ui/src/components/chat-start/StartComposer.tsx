@@ -169,6 +169,9 @@ export type StartAgentChip =
       approvalProjectDefaultUnavailable?: boolean;
       /** This start's own approval pick, if one was made. */
       approvalPick?: ApprovalMode;
+      approvalConnections?: Parameters<
+        typeof StartApprovalSummary
+      >[0]['acpConnections'];
       /** Present: the Permissions chip is a picker for `approvalPick`. */
       onApprovalPick?: (mode: ApprovalMode) => void;
     };
@@ -663,6 +666,7 @@ export function StartComposer({
                     <StartApprovalSummary
                       agent={agent.agent}
                       executionAgentId={agent.executionAgentId}
+                      acpConnections={agent.approvalConnections}
                       projectDefault={agent.approvalProjectDefault}
                       projectDefaultUnavailable={
                         agent.approvalProjectDefaultUnavailable
