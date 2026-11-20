@@ -118,6 +118,7 @@ describe('paged turn Markdown', () => {
     ...base,
     method: 'content.text-delta',
     eventId,
+    itemId: eventId,
     delta,
   });
   const read = (name: string): CanonicalRuntimeEvent[] => [
@@ -125,6 +126,7 @@ describe('paged turn Markdown', () => {
       ...base,
       method: 'tool.started',
       eventId: `${name}-started`,
+      itemId: name,
       toolCallId: name,
       toolName: 'Read',
       arguments: { file_path: `${name}.ts` },
@@ -133,6 +135,7 @@ describe('paged turn Markdown', () => {
       ...base,
       method: 'tool.completed',
       eventId: `${name}-completed`,
+      itemId: name,
       toolCallId: name,
       toolName: 'Read',
       status: 'success',
