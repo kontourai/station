@@ -628,6 +628,12 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  {
+    pattern: 'tests/gallery-screen-sources.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/gallery-screen-coverage.test.ts'],
+    reason: 'the Gallery source module reads this JSON at runtime',
+  },
   ...[
     'src-ui/src/pages/AppearancePage.tsx',
     'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
