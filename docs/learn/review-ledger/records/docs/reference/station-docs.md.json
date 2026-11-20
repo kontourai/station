@@ -128,7 +128,17 @@
 
     "src-ui/src/components/chat/TaskProposalCard.tsx",
 
-    "docs/learn/atlas.json"
+    "docs/learn/atlas.json",
+
+    "esbuild.config.mjs",
+
+    "src-server/providers/adapters/claude-station-docs.ts",
+
+    "src-server/tools/station-docs-binding.ts",
+
+    "src-server/tools/station-docs-tools.ts",
+
+    "src-server/tools/__tests__/station-docs-bundle.test.ts"
   ],
 
   "checks": [

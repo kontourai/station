@@ -61,6 +61,15 @@ but cannot perform them through the docs tools. The [connection guide](../guides
 Say which capabilities are actually available; do not imply an operation ran
 because its documentation was retrieved.
 
+On supported macOS hosts, the built-in Station Agent on Claude advertises its
+shipped documentation tools when the session starts and launches the docs
+helper on the first call. The host verifies the helper against its own build
+and uses the same verified bytes for later launches. Search runs in that
+helper process. The helper exits after idle time or when the Session stops.
+Sessions with authored or restricted tool configuration, and installations
+that cannot verify the helper at initial resolution, use the existing stdio
+delivery path.
+
 ## Projects
 
 A Project is Station's unit of working context and durable work identity. It can organize Tasks, layouts, Agents, knowledge, and settings, with explicit resources and machine-local workspace bindings where needed. An organizational Project need not have a checkout; a Task or Session that requires files must resolve an authorized available workspace instead of inferring one from a similar name.
