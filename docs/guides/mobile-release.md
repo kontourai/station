@@ -239,6 +239,8 @@ with Xcode 27.1 selected explicitly. The job requires iOS SDK 27 or later
 before building and checks the exported app's `DTSDKName` before staging
 the IPA. Apple announced this minimum for App Store Connect uploads
 starting in April 2027.
+The separate TestFlight upload job uses the same hosted runner pool and
+consumes the audited IPA retained by the build job.
 The Rust setup includes `llvm-tools`: the pinned `swift-rs` uses its
 `llvm-objcopy` to export Swift `@_cdecl` bridges on Xcode 27. Without it,
 Tauri and plugin entry points can remain undefined at link time.
