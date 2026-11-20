@@ -1040,7 +1040,7 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/source-availability.yml':
         'reports on merged main and files issues; observational, not a build',
       '.github/workflows/container-smoke.yml':
-        'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
+        'exercises the built container on classified main pushes or manual dispatch; PR checks cover container release wiring',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
@@ -1196,61 +1196,53 @@ describe('CI verification workflow contracts', () => {
     expect(consumers).toEqual([]);
   });
 
-  it('lets the container smoke wait out every desktop-win lease it cannot share the host with', () => {
-    // Run 33589882367: the smoke (weight 9 of 10) waited 600s behind the
-    // Windows PR floor (weight 5, budgeted 45 min, runs on every PR), timed
-    // out, and main-health reopened #917 for a red with no code cause. Two
-    // relations hold this closed, both read from the parsed workflows so a
-    // renamed key or a string-typed number cannot satisfy them by accident.
+  it('runs container smoke on an isolated hosted VM with the same Docker checks', () => {
     type Step = {
       id?: string;
       name?: string;
       if?: string;
       uses?: string;
       with?: Record<string, unknown>;
+      run?: string;
     };
-    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
-    const documents = readWorkflowDocuments();
-    const job = (file: string, jobId: string): Job => {
-      const document = documents.find(
-        (entry) => entry.file === `.github/workflows/${file}`,
-      )?.document as { jobs?: Record<string, Job> } | undefined;
-      const found = document?.jobs?.[jobId];
-      expect(found, `${file} must define job "${jobId}"`).toBeDefined();
-      return found as Job;
+    const document = readWorkflowDocuments().find(
+      (entry) => entry.file === '.github/workflows/container-smoke.yml',
+    )?.document as {
+      jobs: {
+        smoke: {
+          'runs-on': unknown;
+          'continue-on-error'?: boolean;
+          'timeout-minutes': number;
+          steps: Step[];
+        };
+      };
     };
-    const capacityStep = (candidate: Job): Step => {
-      const step = candidate.steps?.find((entry) =>
-        entry.uses?.startsWith(
-          'kontourai/.github/actions/physical-host-capacity@',
-        ),
-      );
-      expect(step, 'job must reserve physical-host capacity').toBeDefined();
-      return step as Step;
-    };
-
-    const smoke = job('container-smoke.yml', 'smoke');
-    const smokeCapacity = capacityStep(smoke);
-    const smokeWaitSeconds = Number(smokeCapacity.with?.['timeout-seconds']);
-    const smokeBudgetMinutes = Number(smoke['timeout-minutes']);
-    expect(Number.isInteger(smokeWaitSeconds)).toBe(true);
-    expect(Number.isInteger(smokeBudgetMinutes)).toBe(true);
-
-    // (1) Whatever the wait is, the job must keep the smoke's own running
-    // time after it: raising the wait alone moves the red from the reserve
-    // step to the job timeout. 25 minutes is the observed smoke duration
-    // (af2ae065: 03:45 -> 04:06) with margin.
-    expect(smokeBudgetMinutes * 60 - smokeWaitSeconds).toBeGreaterThanOrEqual(
-      25 * 60,
+    const smoke = document.jobs.smoke;
+    expect(smoke['runs-on']).toBe('ubuntu-24.04');
+    expect(smoke['timeout-minutes']).toBe(80);
+    expect(smoke['continue-on-error']).toBeUndefined();
+    expect(smoke.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uses: expect.stringMatching(/runner-preflight@[a-f0-9]{40}$/),
+          with: { 'require-docker': 'true' },
+        }),
+        expect.objectContaining({
+          run: expect.stringContaining(
+            'playwright install --with-deps chromium',
+          ),
+        }),
+        expect.objectContaining({ run: 'scripts/container-smoke.sh' }),
+        expect.objectContaining({
+          run: 'node deploy/public-ingress/smoke.mjs',
+        }),
+      ]),
     );
 
-    // (2) The Docker-state cleanup is conditional on the isolate step having
-    // run. With a bare `always()` it refused the empty DOCKER_CONFIG after a
-    // failed reservation and reported that refusal as the job's last error.
-    const isolate = smoke.steps?.find(
+    const isolate = smoke.steps.find(
       (step) => step.name === 'Isolate Docker client state',
     );
-    const remove = smoke.steps?.find(
+    const remove = smoke.steps.find(
       (step) => step.name === 'Remove isolated Docker client state',
     );
     expect(isolate?.id).toEqual(expect.any(String));
@@ -1274,11 +1266,6 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
-    expect(
-      workflow('container-smoke.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toHaveLength(1);
     // Only playwright-full holds the physical-host lease now (#2416):
     // coverage moved to hosted coverage-shard/coverage-merge jobs, which
     // need nothing from the fleet host.
@@ -1294,6 +1281,7 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      'container-smoke.yml',
       // #1645: the gallery capture moved to a digest-pinned Playwright
       // container on a hosted runner, so it no longer reserves half of
       // desktop-win for up to its owner lifetime. It held `lease-weight: "5"`
@@ -2790,9 +2778,7 @@ describe('CI verification workflow contracts', () => {
     expect(performance).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
-    expect(workflow('container-smoke.yml')).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
-    );
+    expect(workflow('container-smoke.yml')).not.toContain('self-hosted');
     expect(workflow('ci-extended.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
