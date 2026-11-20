@@ -186,7 +186,7 @@ export function StationSwitcherMenu({
       return;
     }
     const previous = menuRef.current?.querySelector<HTMLElement>(
-      '[data-station-row]:not([aria-checked="true"]):not(:disabled)',
+      '[data-station-row]:not([aria-checked="true"]):not(:disabled):not([aria-disabled="true"])',
     );
     if (previous) previous.focus();
     else if (coarse) menuRef.current?.focus();
@@ -246,9 +246,32 @@ export function StationSwitcherMenu({
   const forget = async (targets: SavedConnection[]) => {
     setArmedId(null);
     setBulkArmed(false);
-    // Keep focus inside the menu: a focused row that unmounts would leave it
-    // on <body>, and the menu dismisses itself when focus leaves.
-    (filterRef.current ?? menuRef.current)?.focus();
+    // Keep focus inside the menu: a focused element that unmounts would leave
+    // it on <body>, and the menu dismisses itself when focus leaves. The
+    // filter is no refuge: it unmounts once fewer than five Stations remain.
+    // Land on the row after the forgotten one, else the one before, else the
+    // footer's first action, so a screen reader is on a live item.
+    const forgotten = new Set(targets.map((target) => target.id));
+    const rows = [
+      ...(menuRef.current?.querySelectorAll<HTMLElement>(
+        '[data-station-row]',
+      ) ?? []),
+    ];
+    const survivors = rows.filter(
+      (row, index) =>
+        !forgotten.has(visible[index]?.id ?? '') &&
+        !(row as HTMLButtonElement).disabled,
+    );
+    const firstGone = visible.findIndex((c) => forgotten.has(c.id));
+    const after = survivors.find((row) => rows.indexOf(row) > firstGone);
+    (
+      after ??
+      survivors.at(-1) ??
+      menuRef.current?.querySelector<HTMLElement>(
+        '.station-switcher__footer button:not(:disabled)',
+      ) ??
+      menuRef.current
+    )?.focus();
     setRemoving((current) => {
       const next = new Set(current);
       for (const target of targets) next.add(target.id);
@@ -440,7 +463,25 @@ export function StationSwitcherMenu({
                     aria-keyshortcuts={
                       canForget(connection) ? 'Delete' : undefined
                     }
-                    disabled={switchingId !== null || unavailable}
+                    // A row that can be forgotten is `aria-disabled`, not
+                    // `disabled`: a disabled button cannot take focus, and
+                    // Delete on the focused row is how the keyboard forgets a
+                    // Station that stopped answering. `select` refuses a row
+                    // that is not ready. A row with nothing to offer stays
+                    // disabled, so arrow keys pass over it.
+                    // Keep the selected row focusable while a pending
+                    // navigation guard owns the choice. Native disabling
+                    // moves focus out and can dismiss the menu prematurely.
+                    aria-disabled={
+                      switchingId !== null ||
+                      (unavailable && canForget(connection)) ||
+                      undefined
+                    }
+                    disabled={
+                      switchingId !== connection.id &&
+                      unavailable &&
+                      !canForget(connection)
+                    }
                     className="menu-row station-switcher__row"
                     onClick={() => select(connection)}
                     onKeyDown={(event) => onRowKeyDown(event, connection)}

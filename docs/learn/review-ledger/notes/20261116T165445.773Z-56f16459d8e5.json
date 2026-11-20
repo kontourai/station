@@ -1,0 +1,7 @@
+{
+  "revision": "382eb00677f99b2c727952fc724f921d5fc8bc9c",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"Regenerated for #5056: rows are now sorted by declared name with no source digest, declaration count or per-row line links, so independent additions merge cleanly. Prose states the omission, the sort, the restricted grammar and that declarations are not emitted-metric evidence; docs:metrics:check still compares the exact rendering.","inputs":["docs/reference/metrics.md","scripts/__tests__/metric-reference.test.ts","scripts/generate-metric-reference.mjs"]}
+  ]
+}

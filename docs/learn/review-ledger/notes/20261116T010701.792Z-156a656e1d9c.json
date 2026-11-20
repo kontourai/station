@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Added the probe's opt-in session/list step: bounds from ACP_SESSION_LISTING_BOUNDS, never fails the probe, Cursor's signed-out refusal recorded as failed, probe sessions and Grok/OpenCode excluded, list-only because session/load resumes; verified against acp-probe.ts, acp-session-listing.ts and the captured frames fixture.","inputs":["docs/guides/acp.md"]}
+  ]
+}

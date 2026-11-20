@@ -230,12 +230,18 @@ describe('e2e manifest', () => {
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
       // Own paired Stations, peer grants and source preview state.
       'tests/station-connection-chat.spec.ts',
+      // Pairs two disposable Stations and owns the handoff's peer grants.
+      'tests/station-conversation-handoff.spec.ts',
       // Creates real Projects, channels and read markers on the instance.
       'tests/project-channel-navigation.spec.ts',
       // Owns an isolated Station with accounts and sharing (#4796, #4812).
       'tests/project-room-message-actions.spec.ts',
+      // Owns an isolated Station with accounts and sharing (#4798).
+      'tests/project-room-live.spec.ts',
       'tests/conversation-surfaces.spec.ts',
       'tests/owned-work-custody.spec.ts',
+      // Copies opt-in UI review captures to a shared output directory.
+      'tests/engine-app-home-override.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
       'tests/operator-sessions.spec.ts',
       'tests/connect-modal.spec.ts',

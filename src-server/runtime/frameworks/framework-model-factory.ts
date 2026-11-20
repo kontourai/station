@@ -25,6 +25,7 @@ import {
   inheritDirectModelIdentity,
   modelConnectionConfigurationDigest,
 } from './model-generation-identity.js';
+import { durableStrandsModel } from './strands-durable-model.js';
 
 export interface FrameworkModelOptions {
   providerConnection: ProviderConnectionConfig | null;
@@ -316,14 +317,6 @@ export function createVoltAgentManagedModel(
   return createManagedLanguageModel(options);
 }
 
-/**
- * The Strands durable wrapper carries the Strands SDK, which only a Strands
- * Agent run needs; the factory's other callers build AI SDK models.
- */
-function loadStrandsDurableModel() {
-  return import('./strands-durable-model.js');
-}
-
 export async function createStrandsManagedModel(
   options: FrameworkModelOptions,
 ): Promise<BedrockModel | VercelModel> {
@@ -332,7 +325,6 @@ export async function createStrandsManagedModel(
     options.providerConnection.type === 'bedrock'
   ) {
     const { BedrockModel } = await import('@strands-agents/sdk');
-    const { durableStrandsModel } = await loadStrandsDurableModel();
     const bedrockOptions = {
       modelId: options.modelId,
       region: bedrockRegionFor(options),
@@ -358,7 +350,6 @@ export async function createStrandsManagedModel(
   }
 
   const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
-  const { durableStrandsModel } = await loadStrandsDurableModel();
   return durableStrandsModel(
     new VercelModel({
       provider: createManagedLanguageModel(options),
@@ -426,7 +417,6 @@ export async function createStrandsAiSdkModel(
   options: Pick<FrameworkModelOptions, 'spec' | 'appConfig'>,
 ): Promise<VercelModel> {
   const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
-  const { durableStrandsModel } = await loadStrandsDurableModel();
   return durableStrandsModel(
     new VercelModel({
       provider,

@@ -6,7 +6,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { FAST_CHECKS_PART_JOBS } from './lib/fast-checks-shards.mjs';
-import { FAST_CHECKS_PROVISIONAL_STEP } from './source-verification-policy.mjs';
+import {
+  FAST_CHECKS_PROVISIONAL_STEP,
+  HEAVY_DEFERRED_STEP,
+  HEAVY_RAN_STEP,
+} from './source-verification-policy.mjs';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
@@ -190,10 +194,17 @@ export function collectPrimaryCiWorkflowTriggerFindings(workflowText) {
   if (
     triggers.has('pull_request_target') &&
     JSON.stringify(pullRequestTargetTypes) !==
-      JSON.stringify(['opened', 'synchronize', 'reopened', 'edited'])
+      JSON.stringify([
+        'opened',
+        'synchronize',
+        'reopened',
+        'edited',
+        // STATION_PR_HEAVY_CHECKS=when-armed spends the heavy checks on arming.
+        'auto_merge_enabled',
+      ])
   ) {
     findings.push(
-      'Primary CI pull_request_target must include exactly opened, synchronize, reopened, and edited types.',
+      'Primary CI pull_request_target must include exactly opened, synchronize, reopened, edited and auto_merge_enabled types.',
     );
   }
   if (!triggers.has('workflow_dispatch')) {
@@ -435,7 +446,7 @@ export function findVerdictBearingContinueOnError(workflowText) {
  */
 export const REQUIRED_FAST_CHECKS_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /**
  * #4748: the pinned actionlint archive is fetched once, by the trusted
@@ -446,7 +457,7 @@ export const REQUIRED_FAST_CHECKS_CONDITION =
 export const ACTIONLINT_ARTIFACT_JOB = 'actionlint-artifact';
 const ACTIONLINT_ARTIFACT_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository)) }}";
+  "${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository)) }}";
 
 /**
  * The statics guard: the part-job guard above plus an explicit success of the
@@ -455,7 +466,7 @@ const ACTIONLINT_ARTIFACT_CONDITION =
  */
 export const REQUIRED_FAST_CHECKS_STATICS_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /**
  * The required `fast-checks` aggregator's guard (#2709): the same event
@@ -466,7 +477,7 @@ export const REQUIRED_FAST_CHECKS_STATICS_CONDITION =
  */
 export const REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /** The aggregator's base-controlled half: every part job must have succeeded. */
 /**
@@ -482,7 +493,7 @@ export const FAST_CHECKS_PART_RESULTS_RUN = `echo "$NEEDS" | jq -r 'to_entries[]
 LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
 case "$LEGACY" in
   false)
-    echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or (.["fast-checks-plan"].outputs.empty == "true" and .["fast-checks-shard"].result == "skipped"))' > /dev/null
+    echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or ((.["fast-checks-plan"].outputs.empty == "true" or .["pr-admission"].outputs.heavy == "false") and .["fast-checks-shard"].result == "skipped"))' > /dev/null
     ;;
   true)
     echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
@@ -518,10 +529,26 @@ export const FAST_CHECKS_PLANNED_STEP_IF =
  */
 export const FAST_CHECKS_SHARD_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}";
+  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}";
 export const FAST_CHECKS_AGGREGATE_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
+  "${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.pr-admission.outputs.heavy != 'false' }}";
+/**
+ * STATION_PR_HEAVY_CHECKS (scripts/pr-heavy-checks-decision.mjs): pr-admission
+ * says `heavy=false` only when the switch is `when-armed` and the pull
+ * request is unarmed; the shards, the browser journeys and the optional
+ * extras then skip, and the aggregate records which happened in one of two
+ * marker steps the source policy reads.
+ */
+export const HEAVY_CHECKS_RUN_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ needs.pr-admission.outputs.heavy != 'false' }}";
+export const HEAVY_CHECKS_DEFERRED_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ always() && needs.pr-admission.outputs.heavy == 'false' }}";
+export const HEAVY_CHECKS_DEFERRED_RUN =
+  'echo "heavy checks deferred (STATION_PR_HEAVY_CHECKS=when-armed); they run once the pull request is armed"';
+export const HEAVY_CHECKS_RAN_RUN = 'echo "heavy checks ran on this head"';
 export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
 const FAST_CHECKS_AGGREGATE_STEP_ID = 'verify';
@@ -537,7 +564,11 @@ export const FAST_CHECKS_MATRIX =
   "${{ fromJSON(needs.fast-checks-plan.outputs.shards || '[1,2,3,4]') }}";
 export const FAST_CHECKS_SLICE_RUN = `node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/$SHARD_COUNT"`;
 export const FAST_CHECKS_SHARD_RUN = `npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/$SHARD_COUNT" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"`;
-const FAST_CHECKS_AGGREGATE_NEEDS = ['classify', ...FAST_CHECKS_PART_JOBS];
+const FAST_CHECKS_AGGREGATE_NEEDS = [
+  'classify',
+  'pr-admission',
+  ...FAST_CHECKS_PART_JOBS,
+];
 
 function needsList(job) {
   return typeof job?.needs === 'string' ? [job.needs] : job?.needs;
@@ -679,6 +710,22 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     findings.push(
       'Required fast-checks must mark a deferred plan provisional for the source policy.',
     );
+  // The source policy verifies a head only on the ran marker; renaming
+  // either marker or changing its trigger would change what it reads.
+  const marker = (name) => steps(job).filter((step) => step?.name === name);
+  const deferredMarker = marker(HEAVY_DEFERRED_STEP);
+  const ranMarker = marker(HEAVY_RAN_STEP);
+  if (
+    deferredMarker.length !== 1 ||
+    deferredMarker[0].if !== HEAVY_CHECKS_DEFERRED_IF ||
+    deferredMarker[0].run !== HEAVY_CHECKS_DEFERRED_RUN ||
+    ranMarker.length !== 1 ||
+    ranMarker[0].if !== HEAVY_CHECKS_RUN_IF ||
+    ranMarker[0].run !== HEAVY_CHECKS_RAN_RUN
+  )
+    findings.push(
+      'Required fast-checks must record whether the heavy checks ran for the source policy.',
+    );
 
   for (const [partId, condition, partNeeds] of [
     [
@@ -772,6 +819,7 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     shard.if !== FAST_CHECKS_SHARD_IF ||
     swallowsFailure(shard) ||
     !sameList(needsList(shard), [
+      'pr-admission',
       'fast-checks-plan',
       ACTIONLINT_ARTIFACT_JOB,
     ]) ||
@@ -806,11 +854,11 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
   if (
     smoke.length !== 1 ||
     smoke[0].run !== 'npm run test:e2e:pr-smoke' ||
-    smoke[0].if !== undefined ||
+    smoke[0].if !== HEAVY_CHECKS_RUN_IF ||
     smoke[0]['continue-on-error']
   )
     findings.push(
-      'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
+      'Required browser smoke must execute once whenever the heavy checks run, with its real exit status inside fast-checks-statics.',
     );
   const lane = steps(statics).filter((step) => step?.run === 'npm run ci:fast');
   if (

@@ -178,6 +178,10 @@ A page with new events checks the row once, then each append compares the raw
 stored owner, subject and cursor columns inside its queued attempt. A refusal
 writes nothing, drops the thread's in-memory follow state and logs one warning
 per thread; the next poll rebuilds from the durable cursor.
+When a completed source boundary changes, the committed row triggers a scoped
+refresh of that session's detail. The transcript event may arrive before the
+boundary is available. Continue uses the renewed server detail to decide which
+controls are available, and the command still verifies the source.
 
 Scheduled message-search imports use the same yielding path. Their projection
 and watermark commit in one transaction. On contention budget exhaustion, the

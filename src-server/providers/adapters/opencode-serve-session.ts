@@ -90,6 +90,7 @@ import {
   openCodeFormRequest,
   openCodeHistoryText,
   openCodeMcpStatus,
+  openCodePartKey,
   openCodeStepUsage,
   openCodeToolError,
   openCodeToolOutput,
@@ -238,6 +239,7 @@ export type OpenCodeNativeDecision =
   | 'cancel';
 
 export interface OpenCodeNativeSessionDeps {
+  steerCustody?: { begin(id: string): void; complete(id: string): void };
   readonly threadId: string;
   readonly provider: EngineId;
   /** The engine's name, as output lines and requests attribute it. */
@@ -299,11 +301,15 @@ export interface OpenCodeNativeSessionDeps {
    * adapter declines it (`requestPermission`, `askPersonFor`).
    */
   readonly denyApprovals?: boolean;
-  readonly preToolPolicy?: (tool: {
-    readonly toolName: string;
-    readonly toolCallId: string;
-    readonly toolArgs: unknown;
-  }) => Promise<PreToolPolicyDecision>;
+  readonly preToolPolicy?: (
+    tool: {
+      readonly toolName: string;
+      readonly toolCallId: string;
+      readonly toolArgs: unknown;
+    },
+    /** The session runs at full access (`approvalMode: 'never'`). */
+    fullAccess?: boolean,
+  ) => Promise<PreToolPolicyDecision>;
   /**
    * This session, or one of its descendants, moved to another directory
    * (`session.moved`). OpenCode has loaded that directory's configuration
@@ -363,6 +369,10 @@ interface NativeTurn {
    */
   displacedUnwithdrawn?: { readonly turnId: string };
   outputText: string;
+  stepModel?: Extract<
+    EventBody,
+    { method: 'token-usage.updated' }
+  >['servedModelObservation'];
   readonly openTools: Map<string, string>;
   readonly done: Promise<void>;
   resolveDone(): void;
@@ -424,6 +434,7 @@ interface PendingSteer {
   readonly text: string;
   /** Its prompt is in flight: a withdrawal must be repeated once it lands. */
   posting: boolean;
+  delivered?: boolean;
   withdrawn: boolean;
   resolve(): void;
   reject(error: Error): void;
@@ -633,6 +644,16 @@ export class OpenCodeNativeSession {
 
   /** Refuse, before anything reaches the engine, while a turn runs. */
   assertIdle(): void {
+    if (this.stopped)
+      throw new SendTurnRefusedError(
+        'This OpenCode session has stopped.',
+        'unavailable',
+      );
+    if (this.withdrawalUnconfirmed || this.withdrawingSteers.size > 0)
+      throw new SendTurnRefusedError(
+        'OpenCode steer withdrawal is unconfirmed; this session cannot accept more work.',
+        'unavailable',
+      );
     if (this.rewinding) throw new SessionRewindingError();
     const live = this.turn ?? this.pendingStart;
     if (live && !live.settled) {
@@ -778,6 +799,7 @@ export class OpenCodeNativeSession {
     });
     // A withdrawal can reject it before it is awaited below.
     delivered.catch(() => undefined);
+    this.deps.steerCustody?.begin(inboxId);
     this.steers.set(inboxId, steer);
     try {
       await this.deps.client.request(
@@ -786,12 +808,20 @@ export class OpenCodeNativeSession {
         { id: inboxId, text, delivery: 'steer' },
       );
     } catch (error) {
+      if (steer.delivered) {
+        this.deps.steerCustody?.complete(inboxId);
+        return;
+      }
       this.steers.delete(inboxId);
-      if (steer.withdrawn) throw new ProviderTurnEndedError();
-      throw error;
+      // An HTTP failure does not establish that the prompt was never queued.
+      await this.deleteInboxItem(inboxId, false);
+      throw new Error(
+        `OpenCode did not confirm the steering request; the input may still be queued: ${redactSecrets(errorMessage(error))}`,
+      );
     } finally {
       steer.posting = false;
     }
+    if (steer.delivered) this.deps.steerCustody?.complete(inboxId);
     if (steer.withdrawn) {
       // Withdrawn while in flight: the item it made must not wait for the
       // next execution. This steer takes it back itself, so it leaves the
@@ -799,11 +829,21 @@ export class OpenCodeNativeSession {
       // would otherwise take it back a second time.
       this.steers.delete(inboxId);
       await this.deleteInboxItem(inboxId);
-      steer.reject(new ProviderTurnEndedError());
+      steer.reject(
+        this.withdrawalUnconfirmed
+          ? new Error(
+              'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+            )
+          : new ProviderTurnEndedError(),
+      );
     } else if (turn.settled) {
       // The execution ended while the prompt was in flight.
       void this.withdrawSteer(inboxId);
     }
+    if (this.withdrawalUnconfirmed)
+      throw new Error(
+        'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+      );
     await delivered;
   }
 
@@ -838,7 +878,7 @@ export class OpenCodeNativeSession {
           : undefined;
     if (!turn || turn.settled) return;
     if (!turn.startPublished) this.publishStart(turn, {});
-    this.appendText(turn, `${turnId}:command`, text);
+    this.appendText(turn, `text:${turnId}:command`, text);
     if (!turn.executing && this.pendingStart !== turn)
       this.settle(turn, { method: 'turn.completed', finishReason: 'stop' });
   }
@@ -1079,7 +1119,13 @@ export class OpenCodeNativeSession {
     this.controller.abort();
     for (const [inboxId, steer] of this.steers) {
       this.steers.delete(inboxId);
-      steer.reject(new ProviderTurnEndedError());
+      steer.reject(
+        this.withdrawalUnconfirmed
+          ? new Error(
+              'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+            )
+          : new ProviderTurnEndedError(),
+      );
     }
     for (const turn of [this.turn, this.pendingStart]) {
       if (turn && !turn.settled) {
@@ -1173,9 +1219,7 @@ export class OpenCodeNativeSession {
         }),
       ...[...this.steers.entries()]
         .filter(([, steer]) => !steer.posting)
-        .map(([inboxId]) =>
-          send('DELETE', `/api/session/${this.sessionId}/inbox/${inboxId}`),
-        ),
+        .map(([inboxId]) => this.deleteInboxItem(inboxId)),
     ]);
   }
 
@@ -1218,6 +1262,7 @@ export class OpenCodeNativeSession {
   }
 
   private onDisconnect(): void {
+    if (this.turn) delete this.turn.stepModel;
     for (const part of this.parts.values()) {
       if (part.open) part.gapped = true;
     }
@@ -1268,9 +1313,11 @@ export class OpenCodeNativeSession {
       );
       for (const inboxId of [...this.steers.keys()]) {
         if (queued.has(inboxId)) continue;
-        // No longer queued: delivered during the gap, or the run ended.
-        if (running) this.onSteerDelivered(inboxId);
-        else void this.withdrawSteer(inboxId);
+        // Only the exact user message proves consumption. An absent inbox
+        // item can also be cancelled, or its POST may still be in flight.
+        if (history?.some((item) => ownRecord(item)?.id === inboxId))
+          this.onSteerDelivered(inboxId);
+        else if (!running && history) void this.withdrawSteer(inboxId);
       }
     });
     if (running !== false) return;
@@ -1606,10 +1653,9 @@ export class OpenCodeNativeSession {
       if (!message || !id) continue;
       if (bound(message) !== 'in' || message.type !== 'assistant') continue;
       for (const [key, text] of texts) {
-        if (!key.startsWith(`${id}:`) || !text) continue;
+        if (!key.startsWith(openCodePartKey('text', id, '')) || !text) continue;
         const part = this.parts.get(key);
         if (part) {
-          if (part.kind !== 'text') continue;
           if (
             text.length > part.streamed.length &&
             text.startsWith(part.streamed)
@@ -1717,6 +1763,9 @@ export class OpenCodeNativeSession {
         this.withTurn((turn) => this.onStepEnded(turn, data));
         return;
       case 'session.step.failed':
+        this.withTurn((turn) => {
+          delete turn.stepModel;
+        });
         return;
       case 'session.text.delta':
       case 'session.reasoning.delta':
@@ -1747,12 +1796,13 @@ export class OpenCodeNativeSession {
       case 'session.text.started':
       case 'session.reasoning.started':
         this.withTurn((turn) => {
-          const key = this.partKey(data);
+          const kind =
+            event.type === 'session.text.started' ? 'text' : 'reasoning';
+          const key = this.partKey(data, kind);
           if (key && !this.parts.has(key))
             this.parts.set(key, {
               turnId: turn.turnId,
-              kind:
-                event.type === 'session.text.started' ? 'text' : 'reasoning',
+              kind,
               streamed: '',
               open: true,
               gapped: false,
@@ -2047,21 +2097,55 @@ export class OpenCodeNativeSession {
     if (!steer) return;
     this.steers.delete(inboxId);
     steer.withdrawn = true;
+    this.withdrawingSteers.add(inboxId);
     // Still in flight: `steer` deletes the item once its prompt lands, before
     // it reports the refusal.
-    if (!steer.posting) await this.deleteInboxItem(inboxId);
-    steer.reject(new ProviderTurnEndedError());
+    if (steer.posting) return;
+    await this.deleteInboxItem(inboxId);
+    steer.reject(
+      this.withdrawalUnconfirmed
+        ? new Error(
+            'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+          )
+        : new ProviderTurnEndedError(),
+    );
   }
 
-  private async deleteInboxItem(inboxId: string): Promise<void> {
+  private withdrawalUnconfirmed = false;
+  private readonly withdrawingSteers = new Set<string>();
+
+  private async deleteInboxItem(
+    inboxId: string,
+    postConfirmed = true,
+  ): Promise<void> {
+    if (!postConfirmed) this.withdrawalUnconfirmed = true;
+    this.withdrawingSteers.add(inboxId);
     await this.deps.client
       .request('DELETE', `/api/session/${this.sessionId}/inbox/${inboxId}`)
-      .catch(() => undefined);
+      .then(() => {
+        this.withdrawingSteers.delete(inboxId);
+        if (postConfirmed) this.deps.steerCustody?.complete(inboxId);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof OpenCodeServeHttpError && error.status === 404) {
+          this.withdrawingSteers.delete(inboxId);
+          if (postConfirmed) this.deps.steerCustody?.complete(inboxId);
+          return;
+        }
+        this.withdrawalUnconfirmed = true;
+        this.emit({
+          method: 'runtime.warning',
+          severity: 'warning',
+          message: `OpenCode could not confirm that a queued steer was withdrawn: ${redactSecrets(errorMessage(error))}. This session cannot accept more work.`,
+        });
+      });
   }
 
   private onSteerDelivered(inboxId: string): void {
     const steer = this.steers.get(inboxId);
     if (!steer) return;
+    if (!steer.posting) this.deps.steerCustody?.complete(inboxId);
+    steer.delivered = true;
     this.steers.delete(inboxId);
     this.emit({
       method: 'turn.started',
@@ -2074,6 +2158,21 @@ export class OpenCodeNativeSession {
 
   private onStepStarted(data: Record<string, unknown>): void {
     this.onConfigured(data);
+    this.withTurn((turn) => {
+      const model = ownRecord(data.model);
+      const providerId = readString(model?.providerID);
+      const modelId = readString(model?.id);
+      const assistantMessageId = readString(data.assistantMessageID);
+      delete turn.stepModel;
+      if (providerId && modelId && assistantMessageId) {
+        turn.stepModel = {
+          source: 'opencode-step-started',
+          providerId,
+          modelId,
+          assistantMessageId,
+        };
+      }
+    });
   }
 
   private onConfigured(data: Record<string, unknown>): void {
@@ -2083,36 +2182,51 @@ export class OpenCodeNativeSession {
         ? `${model?.providerID as string}/${model?.id as string}`
         : undefined;
     const agent = readString(data.agent);
-    if (
-      (modelId === undefined || modelId === this.lastModel) &&
-      (agent === undefined || agent === this.lastAgent)
-    )
-      return;
-    this.lastModel = modelId ?? this.lastModel;
-    this.lastAgent = agent ?? this.lastAgent;
-    this.emit({
-      method: 'session.configured',
-      sessionId: this.deps.threadId,
-      ...(this.lastModel ? { model: this.lastModel } : {}),
-      ...(this.lastAgent ? { metadata: { mode: this.lastAgent } } : {}),
-    });
+    if (modelId !== undefined && modelId !== this.lastModel) {
+      this.lastModel = modelId;
+      this.emit({
+        method: 'session.configured',
+        sessionId: this.deps.threadId,
+        model: modelId,
+        cwd: this.deps.cwd,
+      });
+    }
+    if (agent !== undefined && agent !== this.lastAgent) {
+      this.lastAgent = agent;
+      this.emit({ method: 'session.engine-mode-observed', modeId: agent });
+    }
   }
 
   private onStepEnded(turn: NativeTurn, data: Record<string, unknown>): void {
+    const stepModel = turn.stepModel;
+    delete turn.stepModel;
     const usage = openCodeStepUsage(data);
     if (!usage) return;
     this.publishForTurn(turn, {
       method: 'token-usage.updated',
       turnId: turn.turnId,
+      ...(stepModel && stepModel.assistantMessageId === data.assistantMessageID
+        ? { servedModelObservation: stepModel }
+        : {}),
       ...usage,
     });
   }
 
-  private partKey(data: Record<string, unknown>): string | undefined {
+  /**
+   * A streamed part's identity. OpenCode numbers each kind of part on its
+   * own (a reply after reasoning is text `ordinal: 0` beside reasoning
+   * `ordinal: 0`; fixture `opencode-serve-2.3.0-reasoning.jsonl`), so the
+   * kind is part of it. History keys its text the same way
+   * ({@link openCodeHistoryText}).
+   */
+  private partKey(
+    data: Record<string, unknown>,
+    kind: 'text' | 'reasoning',
+  ): string | undefined {
     const messageId = readString(data.assistantMessageID);
     const ordinal = data.ordinal;
     return messageId && typeof ordinal === 'number'
-      ? `${messageId}:${ordinal}`
+      ? openCodePartKey(kind, messageId, ordinal)
       : undefined;
   }
 
@@ -2121,7 +2235,7 @@ export class OpenCodeNativeSession {
     data: Record<string, unknown>,
     kind: 'text' | 'reasoning',
   ): void {
-    const key = this.partKey(data);
+    const key = this.partKey(data, kind);
     const delta = typeof data.delta === 'string' ? data.delta : '';
     if (!key || !delta) return;
     let part = this.parts.get(key);
@@ -2144,7 +2258,7 @@ export class OpenCodeNativeSession {
       this.publishForTurn(turn, {
         method: 'content.reasoning-delta',
         turnId: turn.turnId,
-        itemId: `reasoning:${key}`,
+        itemId: key,
         delta,
       });
     }
@@ -2155,7 +2269,7 @@ export class OpenCodeNativeSession {
     data: Record<string, unknown>,
     kind: 'text' | 'reasoning',
   ): void {
-    const key = this.partKey(data);
+    const key = this.partKey(data, kind);
     if (!key) return;
     const part = this.parts.get(key);
     const full = typeof data.text === 'string' ? data.text : undefined;
@@ -2184,7 +2298,7 @@ export class OpenCodeNativeSession {
     this.publishForTurn(turn, {
       method: 'content.text-delta',
       turnId: turn.turnId,
-      itemId: `text:${key}`,
+      itemId: key,
       delta,
     });
   }
@@ -2418,7 +2532,7 @@ export class OpenCodeNativeSession {
     const cwd = this.askDirectory(ask.sessionId);
     const configNeedsPerson = () =>
       openCodeNativeAskNeedsPerson(request, cwd, this.deps.configEnv);
-    const answer = (personOnly: boolean) => {
+    const answer = (personOnly: boolean, guardianReason?: string) => {
       const decided = personOnly
         ? 'person'
         : openCodeNativeAskAnswer({
@@ -2430,7 +2544,7 @@ export class OpenCodeNativeSession {
             ),
             configNeedsPerson,
           });
-      if (decided === 'person') this.toPerson(ask);
+      if (decided === 'person') this.toPerson(ask, { guardianReason });
       else this.answerAutomatically(ask, decided);
     };
     const policy = this.deps.preToolPolicy;
@@ -2449,11 +2563,14 @@ export class OpenCodeNativeSession {
     // An evaluator that throws, at once or later, denies.
     void Promise.resolve()
       .then(() =>
-        policy({
-          toolName,
-          toolCallId,
-          toolArgs: tool.input ?? ask.metadata ?? {},
-        }),
+        policy(
+          {
+            toolName,
+            toolCallId,
+            toolArgs: tool.input ?? ask.metadata ?? {},
+          },
+          this.deps.approvalMode === 'never',
+        ),
       )
       .catch(
         (error: unknown): PreToolPolicyDecision => ({
@@ -2485,6 +2602,7 @@ export class OpenCodeNativeSession {
         answer(
           needsPerson ||
             (decision.behavior === 'ask' && decision.required === true),
+          decision.behavior === 'ask' ? decision.guardianReason : undefined,
         );
       });
   }
@@ -2891,7 +3009,7 @@ export class OpenCodeNativeSession {
    */
   private toPerson(
     ask: NativeAsk,
-    note: { autoAnswerFailed?: string } = {},
+    note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
     if (this.deps.denyApprovals) {
       const reason = delegatedApprovalDenial(
@@ -2907,7 +3025,7 @@ export class OpenCodeNativeSession {
   /** Show an ask to the person as an approval request. */
   private openPermission(
     ask: NativeAsk,
-    note: { autoAnswerFailed?: string } = {},
+    note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
     const { nativeId, sessionId, action, resources, save } = ask;
     const own = sessionId === this.sessionId;
@@ -2940,6 +3058,7 @@ export class OpenCodeNativeSession {
         method: 'request.opened',
         requestType: 'approval',
         title: `Allow ${action}`,
+        ...(note.guardianReason ? { guardianReason: note.guardianReason } : {}),
         ...(description ? { description } : {}),
         payload: {
           toolName: action,

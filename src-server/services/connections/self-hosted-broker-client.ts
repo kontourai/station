@@ -281,10 +281,7 @@ export class SelfHostedBrokerClient {
       scope.routingGeneration !== this.#scope.routingGeneration ||
       returnedSurface.kind !== 'station-native' ||
       typeof returnedSurface.appIdentifier !== 'string' ||
-      (channel !== 'dev' &&
-        channel !== 'stable' &&
-        channel !== 'beta' &&
-        channel !== 'nightly') ||
+      (channel !== 'dev' && channel !== 'stable' && channel !== 'nightly') ||
       typeof returnedSurface.clientInstanceId !== 'string' ||
       typeof returnedSurface.keyThumbprint !== 'string' ||
       Object.keys(returnedSurface).some(
@@ -462,12 +459,7 @@ export class SelfHostedBrokerClient {
       // String()-based check below rejects too (broker input is JSON, so no
       // boxed strings reach it).
       const channel = surface.channel;
-      if (
-        channel !== 'dev' &&
-        channel !== 'stable' &&
-        channel !== 'beta' &&
-        channel !== 'nightly'
-      )
+      if (channel !== 'dev' && channel !== 'stable' && channel !== 'nightly')
         throw new Error('broker_response_invalid');
       if (
         offer.version !== 'station-broker-native-key-candidate-offer/v1' ||

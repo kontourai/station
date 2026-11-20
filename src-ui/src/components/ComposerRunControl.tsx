@@ -1,19 +1,20 @@
-import {
-  type EngineId,
-  parseEngineId,
-} from '@kontourai/station-contracts/agent-identity';
+import { type EngineId } from '@kontourai/station-contracts/agent-identity';
 import {
   cloneElement,
   isValidElement,
   type ReactNode,
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
 } from 'react';
 import { ComposerChoice } from './ComposerChoice';
-import { ComposerChoiceSummary } from './ComposerChoiceSummary';
-import { AgentIcon } from './icons/AgentIcon';
+import {
+  ComposerChoiceSummary,
+  ComposerRunSetupClose,
+} from './ComposerChoiceSummary';
+import { AgentIcon, agentIconEngineId } from './icons/AgentIcon';
 import {
   BrandIcon,
   hasBundledEngineMark,
@@ -35,6 +36,9 @@ export function ComposerRunControl({
   engineId,
   children,
   loadingLabel,
+  notice,
+  description,
+  closeHandle,
 }: {
   label: string;
   /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
@@ -43,14 +47,22 @@ export function ComposerRunControl({
   engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
+  /** A short fact the closed trigger states beside its label, which gives way first. */
+  notice?: string;
+  /** The trigger's accessible description: the sentence behind `notice`. */
+  description?: string;
+  /**
+   * Receives the panel's close, for a picker rendered outside the panel whose
+   * choice opens a dialog that should replace it (an engine switch on a phone).
+   */
+  closeHandle?: { current: (() => void) | null };
 }) {
   const agent =
     isValidElement<React.ComponentProps<typeof AgentIcon>>(icon) &&
     icon.type === AgentIcon
       ? icon.props.agent
       : undefined;
-  const agentEngine =
-    agent && (agent.engineId ?? parseEngineId(agent.slug ?? agent.id));
+  const agentEngine = agent && agentIconEngineId(agent);
   // Explicit artwork wins over the engine's default mark, just as in BrandIcon.
   const agentBrand = agent?.icon?.startsWith('brand:')
     ? agent.icon.slice(6)
@@ -66,7 +78,16 @@ export function ComposerRunControl({
   // Effort qualifies a Model, so it is shown only beside one.
   const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
+  const descriptionId = useId();
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  useEffect(() => {
+    if (!closeHandle) return;
+    closeHandle.current = close;
+    return () => {
+      closeHandle.current = null;
+    };
+  }, [closeHandle, close]);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
     Record<string, { label: string; safety?: string; changed?: boolean }>
@@ -118,6 +139,7 @@ export function ComposerRunControl({
       ...details,
       ...safety,
       ...(changed ? ['changed for this conversation'] : []),
+      ...(notice ? [notice] : []),
     ]),
   ].join('; ');
   return (
@@ -177,8 +199,20 @@ export function ComposerRunControl({
               )}
             </span>
           }
-          title={summary}
+          notice={
+            notice && (
+              <span className="composer-run-control__notice" aria-hidden="true">
+                {/* The separator collapses with the label it follows. */}
+                <span className="composer-run-control__notice-separator">
+                  {'· '}
+                </span>
+                {notice}
+              </span>
+            )
+          }
+          title={description ? `${summary}. ${description}` : summary}
           aria-label={summary}
+          aria-describedby={description ? descriptionId : undefined}
           data-testid="run-setup-trigger"
           aria-haspopup="dialog"
           aria-controls={contentId}
@@ -186,10 +220,18 @@ export function ComposerRunControl({
           onClick={() => setOpen(true)}
         />
       )}
+      {description && (
+        <span id={descriptionId} hidden>
+          {description}
+        </span>
+      )}
       <ResponsiveDialogSurface
         open={open}
         layer="popover"
-        ariaLabel="Run setup"
+        // A picker opened from a choice here replaces this panel rather than
+        // stacking on it.
+        yieldToChildPopover
+        ariaLabel="Agent & model"
         onClose={() => setOpen(false)}
         anchorRef={trigger}
         returnFocusTarget={trigger.current}
@@ -197,14 +239,16 @@ export function ComposerRunControl({
         panelClassName="composer-popover-panel composer-run-panel"
       >
         <ResponsiveDialogHeader
-          title="Run setup"
-          closeLabel="Close run setup"
+          title="Agent & model"
+          closeLabel="Close settings"
           onClose={() => setOpen(false)}
         />
         <ComposerChoiceSummary.Provider value={publish}>
-          <div id={contentId} className="composer-run-panel__choices">
-            {children}
-          </div>
+          <ComposerRunSetupClose.Provider value={close}>
+            <div id={contentId} className="composer-run-panel__choices">
+              {children}
+            </div>
+          </ComposerRunSetupClose.Provider>
         </ComposerChoiceSummary.Provider>
       </ResponsiveDialogSurface>
     </>

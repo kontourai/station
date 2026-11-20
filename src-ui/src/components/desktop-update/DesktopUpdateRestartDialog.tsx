@@ -1,24 +1,22 @@
 import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-update';
-import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import type { ServerUpdateRunningTurns } from '@kontourai/station-contracts/system-status';
+import { useServerUpdateRunningTurnsQuery } from '@kontourai/station-sdk';
+import { useState } from 'react';
+import { useApiBase } from '../../contexts/ApiBaseContext';
 import { installDesktopUpdateAndRestart } from '../../platform/native/desktopUpdate';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { TechnicalDetails } from '../../views/settings/coreUpdatePresentation';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
-import {
-  type DesktopRestartServerImpact,
-  type RunningTurn,
-  runningTurns,
-} from './restartImpact';
+import type { DesktopRestartServerImpact } from './restartImpact';
 import { useDesktopRestartServerImpact } from './useDesktopRestartServerImpact';
 import './DesktopUpdate.css';
 
 type TurnsRead =
   | { status: 'pending' }
   | { status: 'unavailable' }
-  | { status: 'ready'; turns: RunningTurn[] };
+  | { status: 'ready'; data: ServerUpdateRunningTurns };
 
 interface DesktopUpdateRestartDialogViewProps {
   version: string;
@@ -83,19 +81,31 @@ function TurnsCopy({ turns }: { turns: TurnsRead }) {
       </p>
     );
   }
-  if (turns.turns.length === 0) return <p>Nothing is running right now.</p>;
+  const { turns: listed, hiddenCount } = turns.data;
+  const total = listed.length + hiddenCount;
+  if (total === 0) return <p>Nothing is running right now.</p>;
   return (
     <>
       <p>
-        {turns.turns.length === 1
-          ? 'This agent turn is running and will be interrupted:'
-          : `These ${turns.turns.length} agent turns are running and will be interrupted:`}
+        {total === 1
+          ? 'Restarting will interrupt 1 running agent turn.'
+          : `Restarting will interrupt ${total} running agent turns.`}
       </p>
-      <ul className="desktop-update-dialog__turns">
-        {turns.turns.map((turn) => (
-          <li key={turn.id}>{turn.title}</li>
-        ))}
-      </ul>
+      {listed.length > 0 && (
+        <ul className="desktop-update-dialog__turns">
+          {listed.map((turn) => (
+            <li key={turn.sessionId}>
+              {turn.title ?? 'Untitled conversation'}
+            </li>
+          ))}
+        </ul>
+      )}
+      {hiddenCount > 0 && (
+        <p>
+          {hiddenCount} running {hiddenCount === 1 ? 'turn is' : 'turns are'}{' '}
+          private.
+        </p>
+      )}
     </>
   );
 }
@@ -112,7 +122,7 @@ function DesktopUpdateRestartDialogView({
   onClose,
   returnFocusTarget,
 }: DesktopUpdateRestartDialogViewProps) {
-  const turnsMatter = impact === 'sidecar-restarts' || impact === 'unknown';
+  const turnsMatter = impact === 'sidecar-restarts';
   // Restart is offered only once the user can see what it interrupts.
   const awaitingTurns = turnsMatter && turns.status === 'pending';
   return (
@@ -177,13 +187,10 @@ export function DesktopUpdateRestartDialog({
   returnFocusTarget?: HTMLElement | null;
 }) {
   const impact = useDesktopRestartServerImpact();
-  const turnsMatter = impact === 'sidecar-restarts' || impact === 'unknown';
-  const sessions = useOrchestrationSessionsQuery({ enabled: turnsMatter });
-  const { refetch } = sessions;
-  // The cached list may be minutes old; the dialog is about now.
-  useEffect(() => {
-    if (turnsMatter) void refetch();
-  }, [turnsMatter, refetch]);
+  const { apiBase } = useApiBase();
+  const runningTurns = useServerUpdateRunningTurnsQuery(apiBase, {
+    enabled: impact === 'sidecar-restarts',
+  });
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requested, setRequested] = useState(false);
 
@@ -204,11 +211,11 @@ export function DesktopUpdateRestartDialog({
 
   if (version === null) return null;
 
-  const turns: TurnsRead = sessions.isError
+  const turns: TurnsRead = runningTurns.isError
     ? { status: 'unavailable' }
-    : sessions.data === undefined || sessions.isFetching
+    : runningTurns.data === undefined || runningTurns.isFetching
       ? { status: 'pending' }
-      : { status: 'ready', turns: runningTurns(sessions.data) };
+      : { status: 'ready', data: runningTurns.data };
 
   return (
     <DesktopUpdateRestartDialogView

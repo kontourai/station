@@ -11,6 +11,7 @@ import {
   FAILED_SOURCE_WINDOW_MS,
   FULL_QUALIFICATION_JOB_NAMES,
   failedSourceObservation,
+  github,
   LEDGER_WALK_LIMIT,
   ledgerEquivalentSources,
   ledgerOnlyChange,
@@ -61,6 +62,65 @@ const run = {
   created_at: new Date().toISOString(),
   run_attempt: 1,
 };
+
+describe('GitHub evidence GET recovery', () => {
+  it.each([
+    ['GET', 502, 2, 3, true],
+    ['GET', 503, 1, 2, true],
+    ['GET', 504, 2, 3, true],
+    ['GET', 502, 99, 3, false],
+    ['GET', 403, 1, 1, false],
+    ['POST', 502, 1, 1, false],
+    ['PATCH', 503, 1, 1, false],
+  ] as const)(
+    '%s HTTP %i with %i failures makes %i attempts (recovered=%s)',
+    async (method, status, failures, expectedAttempts, recovered) => {
+      const observed: Array<{ method: string; path: string }> = [];
+      const server = createServer((req, res) => {
+        observed.push({ method: req.method!, path: req.url! });
+        res.setHeader('content-type', 'application/json');
+        if (observed.length <= failures) {
+          res.writeHead(status);
+          res.end('{}');
+        } else {
+          res.end(JSON.stringify({ value: 'observed response' }));
+        }
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      try {
+        const address = server.address();
+        if (!address || typeof address === 'string')
+          throw new Error('Missing listener');
+        const request = github('actions/runs/42/jobs', {
+          method,
+          env: {
+            GITHUB_REPOSITORY: 'owner/repo',
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          },
+        });
+        if (recovered) {
+          await expect(request).resolves.toEqual({
+            value: 'observed response',
+          });
+        } else {
+          await expect(request).rejects.toThrow(`HTTP ${status}`);
+        }
+        expect(observed).toEqual(
+          Array.from({ length: expectedAttempts }, () => ({
+            method,
+            path: '/repos/owner/repo/actions/runs/42/jobs',
+          })),
+        );
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    },
+  );
+});
 
 describe('source qualification evidence', () => {
   it('requires every job and matrix slice of the full-regression workflow for reuse', () => {

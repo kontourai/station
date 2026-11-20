@@ -1,0 +1,97 @@
+{
+  "revision": "70d85eaa00bb99ae6416eefa209349a287979dbc",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Review round 5: checked the quarantine retirement sentence against the module's rejected branch and its production-adapter test.","inputs":["docs/guides/connections.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review round 5: checked retired/session-ended against the coordinator result mapping.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 5: checked the untouched marker, recorded failed outcome and quarantine retirement sentence against the code and tests.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Review round 5: restartCredentialProfileProviderSession marks its two pre-effect refusals (session unavailable, portable consent) with markSessionUntouched; their class, code and message are unchanged. Searched citing pages for claims about these refusals; none changes. Executed orchestration-service tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 5: a restart failure carries sessionTouched=false when the error is marked untouched. Executed production-adapter coordinator tests.","inputs":["src-server/services/orchestration/credential-profile-recovery.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 5: restore vs quarantine is now distinguished; a quarantined consented stop is retired as session-ended; an untouched rejection skips restore. Indeterminate paths unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 5: restore vs quarantine is now distinguished; a quarantined consented stop is retired as session-ended; an untouched rejection skips restore. Indeterminate paths unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 5: restore vs quarantine is now distinguished; a quarantined consented stop is retired as session-ended; an untouched rejection skips restore. Indeterminate paths unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Review round 5: restore vs quarantine is now distinguished; a quarantined consented stop is retired as session-ended; an untouched rejection skips restore. Indeterminate paths unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 5: restore vs quarantine is now distinguished; a quarantined consented stop is retired as session-ended; an untouched rejection skips restore. Indeterminate paths unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 5: records failed/canceled outcomes the module settled itself and maps a retired consented stop to retired; resume-at-reset unchanged.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 5: records failed/canceled outcomes the module settled itself and maps a retired consented stop to retired; resume-at-reset unchanged.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 5: records failed/canceled outcomes the module settled itself and maps a retired consented stop to retired; resume-at-reset unchanged.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 5: internal only: the switch line no longer stores an unused stop id; no copy changed.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 5: internal only: the switch line no longer stores an unused stop id; no copy changed.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 5: internal only: the switch line no longer stores an unused stop id; no copy changed.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Review round 5: regenerated shipped topics for the module-map and guide sentences on quarantine and untouched refusals.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Review round 5: only the Continue on section gained the quarantine sentence; citing claims hold.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Review round 5: only the continue-on route text gained the retired/session-ended case; citing claims hold.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

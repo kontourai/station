@@ -1,0 +1,19 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Card now refreshes on child-work.updated, maps a held finish (finishHeld) to Running, and dates a released finish from the release. Release, store, nightly and README documents cite the publisher only for closed-app delivery availability and registration, which is unchanged; notification-delivery.md was updated for the new phase rule.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]}
+  ]
+}

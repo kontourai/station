@@ -1,0 +1,9 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Adds setProjectLifecycle, the one writer of ProjectConfig.lifecycle; other Project service behavior unchanged.","inputs":["src-server/services/projects/project-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Adds setProjectLifecycle, the one writer of ProjectConfig.lifecycle; other Project service behavior unchanged.","inputs":["src-server/services/projects/project-service.ts"]}
+  ]
+}

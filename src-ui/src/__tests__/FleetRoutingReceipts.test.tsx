@@ -275,7 +275,7 @@ describe('the web fleet routing surface', () => {
   test('renders a failed read as unknown, never as an empty receipt list', () => {
     const text = renderWith({ error: new Error('connection refused') });
     expect(text).toContain('connection refused');
-    expect(text).toContain('unknown, not empty');
+    expect(text).toContain('is unknown until this loads');
     expect(
       screen.queryByText(/has been receipted on this Station yet/),
     ).toBeNull();
@@ -291,7 +291,7 @@ describe('the web fleet routing surface', () => {
     expect(text).toContain("Reading this Station's routing receipts");
     expect(screen.queryByRole('alert')).toBeNull();
     expect(text).not.toContain("Station isn't responding");
-    expect(text).not.toContain('unknown, not empty');
+    expect(text).not.toContain('is unknown until this loads');
   });
 
   test('says nothing has been routed only when the Station said so', () => {
@@ -363,8 +363,8 @@ describe('the web fleet routing surface', () => {
     const text = renderWith({
       error: new StationHttpError(401, 'Unauthorized'),
     });
-    expect(text).not.toContain('retrying automatically');
-    expect(text).toContain('will not retry automatically');
+    expect(text).not.toContain('Retrying automatically');
+    expect(text).toContain('won’t retry');
   });
 
   // "retrying automatically" is honest only for a
@@ -375,8 +375,8 @@ describe('the web fleet routing surface', () => {
     const text = renderWith({
       error: new TypeError('Failed to fetch'),
     });
-    expect(text).toContain('retrying automatically');
-    expect(text).not.toContain('will not retry automatically');
+    expect(text).toContain('Retrying automatically');
+    expect(text).not.toContain('won’t retry');
     expect(text).not.toContain("Couldn't load");
   });
 
@@ -393,7 +393,7 @@ describe('the web fleet routing surface', () => {
     });
     expect(text).toContain("Couldn't load fleet routing receipts.");
     expect(text).not.toContain("Station isn't responding");
-    expect(text).not.toContain('will not retry automatically');
+    expect(text).not.toContain('won’t retry');
     // The server's own sentence survives, in the details block.
     expect(text).toContain(
       'This Station cannot locate its receipt log, so whether it has fleet-routed anything is unknown rather than empty.',
@@ -489,7 +489,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
   test('a failed read is unknown, never an empty served list', () => {
     const text = renderServe({ error: new Error('permission denied') });
     expect(text).toContain('permission denied');
-    expect(text).toContain('unknown, not empty');
+    expect(text).toContain('is unknown until this loads');
     expect(text).not.toContain('has not served any fleet inference yet');
   });
 
@@ -499,7 +499,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).toContain('Reading what this Station has served');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(text).not.toContain("Station isn't responding");
-    expect(text).not.toContain('unknown, not empty');
+    expect(text).not.toContain('is unknown until this loads');
   });
 
   test('says nothing has been served only when the Station said so', () => {
@@ -532,8 +532,8 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     const text = renderServe({
       error: new StationHttpError(403, 'Forbidden'),
     });
-    expect(text).not.toContain('retrying automatically');
-    expect(text).toContain('will not retry automatically');
+    expect(text).not.toContain('Retrying automatically');
+    expect(text).toContain('won’t retry');
   });
 
   // Mirrors the routing side's sibling pair above.
@@ -541,8 +541,8 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     const text = renderServe({
       error: new TypeError('Failed to fetch'),
     });
-    expect(text).toContain('retrying automatically');
-    expect(text).not.toContain('will not retry automatically');
+    expect(text).toContain('Retrying automatically');
+    expect(text).not.toContain('won’t retry');
     expect(text).not.toContain("Couldn't load");
   });
 
@@ -555,7 +555,7 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     });
     expect(text).toContain("Couldn't load fleet inference served receipts.");
     expect(text).not.toContain("Station isn't responding");
-    expect(text).not.toContain('will not retry automatically');
+    expect(text).not.toContain('won’t retry');
     expect(text).toContain(
       'This Station cannot locate its receipt log, so what it has served is unknown rather than empty.',
     );

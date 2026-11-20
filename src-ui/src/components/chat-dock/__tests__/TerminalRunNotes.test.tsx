@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { TerminalRunNotes, terminalRunRefreshKey } from '../TerminalRunNotes';
 
 const { sdk, runs } = vi.hoisted(() => ({
@@ -81,6 +82,8 @@ test('each waiting command is its own card with its exact command and directory'
     within(cards[0]!).getByText('/work/alpha/.worktrees/fix'),
   ).toBeTruthy();
 
+  // Custom CSS is held off while this decision is on screen.
+  expect(mountedDecisionSurfaces()).toContain('terminal-run-decision');
   fireEvent.click(within(cards[0]!).getByRole('button', { name: 'Run' }));
   await waitFor(() => expect(sdk.approve).toHaveBeenCalledWith('run-1'));
   // Running the first approves nothing else: the second still asks.

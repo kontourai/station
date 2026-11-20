@@ -34,7 +34,7 @@ test('one setup button names current choices, opens every picker, and tracks cha
     'Writer · Sonnet; Ask; Plan',
   );
   fireEvent.click(trigger);
-  expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
   for (const name of [
     'Agent: Writer',
     'Model: Sonnet',
@@ -44,7 +44,7 @@ test('one setup button names current choices, opens every picker, and tracks cha
     fireEvent.click(screen.getByRole('button', { name }));
   expect(choose).toHaveBeenCalledTimes(4);
   result.rerender(view('Set by engine'));
-  fireEvent.click(screen.getByRole('button', { name: 'Close run setup' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close settings' }));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.getAllByRole('button')).toHaveLength(1);
   expect(trigger.getAttribute('aria-label')).toContain('Set by engine');
@@ -175,6 +175,35 @@ test('safety is a corner badge and the model has its own untruncated label segme
   expect(
     trigger.querySelector('.composer-run-control__model')?.textContent,
   ).toBe('Mini');
+});
+
+test('a choice that opens its own dialog can close Run setup behind it', () => {
+  const openHandoff = vi.fn();
+  const keep = vi.fn();
+  render(
+    <ComposerRunControl label="Writer" icon={null}>
+      <ComposerChoice
+        aria-label="Agent: Writer"
+        caption="Agent"
+        value="Writer"
+        closesRunSetup
+        onClick={openHandoff}
+      />
+      <ComposerChoice
+        aria-label="Model: Sonnet"
+        caption="Model"
+        value="Sonnet"
+        onClick={keep}
+      />
+    </ComposerRunControl>,
+  );
+  fireEvent.click(screen.getByTestId('run-setup-trigger'));
+  fireEvent.click(screen.getByRole('button', { name: 'Model: Sonnet' }));
+  // An ordinary choice leaves the panel open.
+  expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Agent: Writer' }));
+  expect(openHandoff).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('dialog', { name: 'Agent & model' })).toBeNull();
 });
 
 test('spends visible text on the Model when the Agent mark names the Agent', () => {

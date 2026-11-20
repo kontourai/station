@@ -154,3 +154,10 @@ c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-ad
 # repeated 'A1b2C3d4E5' pattern, not an issued credential). The file no longer
 # holds that literal; it builds the value at runtime.
 2d86f2a487009120ede353d3c6e98e13ab16d540:src-ui/src/__tests__/ChatDockBody.terminalSessionMarker.test.tsx:github-pat:499
+
+# #5133: idempotency-key test fixtures (fixed UUIDs) in the adopted
+# continuation dock route test, read by `generic-api-key` as `const key = '<id>'`.
+# They are request keys the test sends, not credentials. Pinned per line.
+bfe5439f0080d4a4ef048cca5fcceef8babf9948:src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts:generic-api-key:1490
+bfe5439f0080d4a4ef048cca5fcceef8babf9948:src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts:generic-api-key:1590
+bfe5439f0080d4a4ef048cca5fcceef8babf9948:src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts:generic-api-key:1638

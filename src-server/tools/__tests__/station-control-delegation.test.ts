@@ -1752,6 +1752,25 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
     );
     expect(bodyOf(call!)).toMatchObject({ delegation });
+
+    fetchMock.mockClear();
+    const restricted = { ...delegation, toolAllowlistConstraints: [[]] };
+    const { delegateTask } = await import('../station-control-delegation.js');
+    await expect(
+      delegateTask({
+        target: savedTarget(),
+        prompt: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('preserves detail-less remote foreground indeterminacy and ambiguous responses', async () => {
@@ -6090,5 +6109,565 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
         expectedInputRequest: PEER_BINDING,
       }),
     ).rejects.toMatchObject({ code: 'input_request_changed' });
+  });
+});
+
+describe('#5051 a session-list request folds the read model once', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  // Through the REAL route, the REAL refresh it starts, and a REAL
+  // OrchestrationService over a real EventStore: the refresh reads only the
+  // caller's peer delegation records, so the request pays for one full
+  // read-model build, and the refresh still advances peer Activity.
+  test('GET /sessions/read-model builds one full read model and still reconciles readable peer Activity', async () => {
+    const eventStore = new EventStore(
+      join(makeTempDir('delegation-peer-refresh-'), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      service.initialize();
+      const authorityFor = (userId: string) =>
+        sessionReadAuthorityFromRequest(userId, undefined, undefined);
+      const dispatch = (taskId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: taskId,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: {
+            id: 'environment-remote',
+            name: 'Station B',
+            kind: 'peer',
+          },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      const at = new Date().toISOString();
+      for (const threadId of ['owner-chat-1', 'owner-chat-2']) {
+        eventStore.upsertSession({
+          provider: 'codex',
+          threadId,
+          status: 'ready',
+          createdAt: at,
+          updatedAt: at,
+        });
+        eventStore.appendEvent({
+          eventId: `${threadId}-started`,
+          provider: 'codex',
+          threadId,
+          createdAt: at,
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { userId: 'owner-user' },
+        });
+      }
+      dispatch('task-peer-5051-mine', 'owner-user');
+      // Another person's record on the same peer: the owner's refresh must
+      // neither read it nor ask the peer about it.
+      dispatch('task-peer-5051-theirs', 'other-user');
+
+      const peerReads: string[] = [];
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        const prefix = `${REMOTE_API}/api/orchestration/delegations/`;
+        if (url.startsWith(prefix)) {
+          const taskId = decodeURIComponent(url.slice(prefix.length));
+          peerReads.push(taskId);
+          return json({
+            success: true,
+            data: {
+              conversationId: taskId,
+              taskId,
+              sessionId: taskId,
+              currentSessionId: taskId,
+              status: 'running',
+              environment: {
+                id: 'environment-remote',
+                name: 'Station B',
+                kind: 'peer',
+              },
+              target: { kind: 'agent', id: 'codex' },
+              eventCount: 1,
+              canInterrupt: false,
+              resumable: false,
+            },
+          });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      const reads: Array<{ purpose: string; scoped: boolean }> = [];
+      const listSessionReadModel = service.listSessionReadModel.bind(service);
+      vi.spyOn(service, 'listSessionReadModel').mockImplementation(
+        (authority, options) => {
+          reads.push({
+            purpose: options.purpose,
+            scoped: options.threadIds !== undefined,
+          });
+          return listSessionReadModel(authority, options);
+        },
+      );
+      const { refreshPeerDelegationActivity } = await import(
+        '../station-control-delegation.js'
+      );
+      const { createOrchestrationRoutes } = await import(
+        '../../routes/orchestration/orchestration.js'
+      );
+      const refreshes: Promise<void>[] = [];
+      const app = createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'owner-user',
+        refreshDelegatedTaskActivity: (input) => {
+          const refresh = refreshPeerDelegationActivity(
+            { ...input, readAuthority: authorityFor(input.userId) },
+            service,
+          );
+          refreshes.push(refresh);
+          return refresh;
+        },
+      });
+
+      const response = await app.request('/sessions/read-model');
+      expect(response.status).toBe(200);
+      expect(refreshes).toHaveLength(1);
+      await refreshes[0];
+
+      // One full build for the request; the refresh's read is scoped.
+      expect(reads.filter((read) => !read.scoped)).toEqual([
+        { purpose: 'session-list', scoped: false },
+      ]);
+      expect(reads.filter((read) => read.scoped)).toEqual([
+        { purpose: 'peer-delegation-refresh', scoped: true },
+      ]);
+      const byPurpose = service.sessionReadModelMeasurement().byPurpose;
+      expect(byPurpose['session-list']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 0,
+      });
+      expect(byPurpose['peer-delegation-refresh']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 1,
+        threadsConsidered: 1,
+      });
+
+      // The refresh asked the peer about the caller's own record only, and
+      // advanced it; the unreadable record is untouched.
+      expect(peerReads).toEqual(['task-peer-5051-mine']);
+      const stateOf = async (userId: string, taskId: string) =>
+        (
+          await listSessionReadModel(authorityFor(userId), {
+            purpose: 'session-list',
+          })
+        ).find((session) => session.delegation?.taskId === taskId)
+          ?.lifecycleState;
+      expect(await stateOf('owner-user', 'task-peer-5051-mine')).toBe(
+        'running',
+      );
+      expect(await stateOf('owner-user', 'task-peer-5051-theirs')).toBe(
+        undefined,
+      );
+      expect(await stateOf('other-user', 'task-peer-5051-theirs')).toBe(
+        'queued',
+      );
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  });
+});
+
+describe('#5077 task event cursors are bounded by the per-thread high water', () => {
+  const TASK_ID = 'task-events-gap';
+  const authority = sessionReadAuthorityFromRequest(
+    'shared-user',
+    undefined,
+    undefined,
+  );
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  /**
+   * A real EventStore + OrchestrationService holding one delegated task whose
+   * thread sequences run 1..8: session.started, the launch binding, then six
+   * text deltas (`delta-1`..`delta-6` at sequences 3..8).
+   */
+  async function withDelegatedTask(
+    run: (fixture: {
+      eventStore: EventStore;
+      service: OrchestrationService;
+      deleteEvents: (...eventIds: string[]) => void;
+    }) => Promise<void>,
+  ) {
+    const eventStore = new EventStore(
+      join(makeTempDir('task-events-gap-'), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      service.initialize();
+      const at = '2026-11-16T00:00:00.000Z';
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: TASK_ID,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'gap-started',
+        provider: 'claude',
+        threadId: TASK_ID,
+        sessionId: TASK_ID,
+        method: 'session.started',
+        metadata: { userId: 'shared-user' },
+        createdAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'gap-configured',
+        provider: 'claude',
+        threadId: TASK_ID,
+        sessionId: TASK_ID,
+        method: 'session.configured',
+        metadata: {
+          taskId: TASK_ID,
+          conversationId: TASK_ID,
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+          userId: 'shared-user',
+        },
+        createdAt: at,
+      });
+      for (let index = 1; index <= 6; index += 1) {
+        eventStore.appendEvent({
+          eventId: `delta-${index}`,
+          provider: 'claude',
+          threadId: TASK_ID,
+          method: 'content.text-delta',
+          itemId: 'item-1',
+          delta: `part ${index}`,
+          createdAt: at,
+        });
+      }
+      const deleteEvents = (...eventIds: string[]) => {
+        const remove = eventStore['db'].prepare(
+          'DELETE FROM orchestration_events WHERE id = ?',
+        );
+        for (const eventId of eventIds) remove.run(eventId);
+      };
+      await run({ eventStore, service, deleteEvents });
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  }
+
+  async function pageThrough(
+    read: (cursor: string | undefined) => Promise<{
+      events: Array<{ sequence: number; eventId?: string }>;
+      eventCount: number;
+      nextCursor: string;
+      hasMore: boolean;
+    }>,
+  ) {
+    const seen: Array<{ sequence: number; eventId?: string }> = [];
+    const cursors: string[] = [];
+    let cursor: string | undefined;
+    for (let pages = 0; pages < 20; pages += 1) {
+      const page = await read(cursor);
+      seen.push(
+        ...page.events.map(({ sequence, eventId }) => ({ sequence, eventId })),
+      );
+      cursors.push(page.nextCursor);
+      cursor = page.nextCursor;
+      if (!page.hasMore) return { seen, cursors, eventCount: page.eventCount };
+    }
+    throw new Error('task event paging did not finish');
+  }
+
+  test('pages every remaining event in order across per-thread sequence gaps', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ eventStore, service, deleteEvents }) => {
+      // Sequences 4 and 6 go; 8 (the thread's high water) stays. Six events
+      // remain, so the final page's nextSequence (8) exceeds the count.
+      deleteEvents('delta-2', 'delta-4');
+      expect(eventStore.countEventsByThread(TASK_ID)).toBe(6);
+
+      const { seen, cursors, eventCount } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 2, readAuthority: authority },
+          service as never,
+        ),
+      );
+
+      expect(seen).toEqual([
+        { sequence: 1, eventId: 'gap-started' },
+        { sequence: 2, eventId: 'gap-configured' },
+        { sequence: 3, eventId: 'delta-1' },
+        { sequence: 5, eventId: 'delta-3' },
+        { sequence: 7, eventId: 'delta-5' },
+        { sequence: 8, eventId: 'delta-6' },
+      ]);
+      expect(cursors).toEqual([
+        'station-task-events:v1:2',
+        'station-task-events:v1:5',
+        'station-task-events:v1:8',
+      ]);
+      expect(eventCount).toBe(6);
+
+      // A cursor above the count but within the high water is a valid resume.
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:7',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).resolves.toMatchObject({
+        events: [{ sequence: 8, eventId: 'delta-6' }],
+        nextCursor: 'station-task-events:v1:8',
+        hasMore: false,
+      });
+    });
+  });
+
+  test('still refuses a cursor beyond the high water of a gapped thread', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ service, deleteEvents }) => {
+      deleteEvents('delta-2', 'delta-4');
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:9',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow(
+        'The task event cursor is ahead of the available task history; restart without a cursor',
+      );
+    });
+  });
+
+  test('pages a gap-free thread exactly as before', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ service }) => {
+      const { seen, cursors, eventCount } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 3, readAuthority: authority },
+          service as never,
+        ),
+      );
+      expect(seen.map(({ sequence }) => sequence)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8,
+      ]);
+      expect(cursors).toEqual([
+        'station-task-events:v1:3',
+        'station-task-events:v1:6',
+        'station-task-events:v1:8',
+      ]);
+      expect(eventCount).toBe(8);
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:9',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow('ahead of the available task history');
+    });
+  });
+
+  // Every Station since the founding commit answers a remote task-events read
+  // through its own `/delegations/:taskId/events` route and validates the page
+  // against its own store; the calling client only relays the canonical page.
+  // So a client of any version paging a newer, gapped host never applies the
+  // count check itself. This drives the client's canonical path against the
+  // real route over a gapped store.
+  test('a client reading a gapped host through the canonical route pages without a client-side bound', async () => {
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    const { createOrchestrationRoutes } = await import(
+      '../../routes/orchestration/orchestration.js'
+    );
+    await withDelegatedTask(async ({ service, deleteEvents }) => {
+      deleteEvents('delta-2', 'delta-4');
+      const host = createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'shared-user',
+        observeDelegatedTaskEvents: (input) =>
+          observeDelegatedTaskEvents(
+            { ...input, readAuthority: authority },
+            service as never,
+          ),
+      });
+      const routed: string[] = [];
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        const prefix = `${CURRENT_API}/api/orchestration`;
+        if (url.startsWith(`${prefix}/delegations/`)) {
+          routed.push(url.slice(prefix.length));
+          return host.request(url.slice(prefix.length));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      // No local service: this is the relaying client, not the host.
+      const { seen, cursors } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents({ taskId: TASK_ID, cursor, limit: 2 }),
+      );
+      expect(seen.map(({ sequence }) => sequence)).toEqual([1, 2, 3, 5, 7, 8]);
+      expect(cursors.at(-1)).toBe('station-task-events:v1:8');
+      expect(routed).toHaveLength(3);
+    });
+  });
+
+  // A newer client reading a page from a host that predates
+  // `highWaterSequence` falls back to the count, which is that host's high
+  // water because its log has no gaps.
+  test('falls back to the event count for a page without a high water', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    const binding = {
+      method: 'session.configured',
+      createdAt: '2026-11-16T00:00:00.000Z',
+      metadata: {
+        taskId: TASK_ID,
+        environmentId: 'environment-current',
+        environmentName: 'Current environment',
+        targetKind: 'agent',
+        targetId: 'reviewer',
+      },
+    };
+    const olderHost = (page: {
+      eventCount: number;
+      nextSequence: number;
+      sequences: number[];
+      highWaterSequence?: number;
+    }) => {
+      const session = {
+        threadId: TASK_ID,
+        lifecycleState: 'completed',
+        eventCount: page.eventCount,
+        delegation: {
+          taskId: TASK_ID,
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      };
+      const detail = { session, events: [binding] };
+      return {
+        readSession: vi.fn(async () => detail),
+        readCurrentConversationSession: vi.fn(async () => detail),
+        readSessionEventPage: vi.fn(async () => ({
+          session,
+          events: page.sequences.map((sequence) => ({
+            sequence,
+            event: binding,
+          })),
+          nextSequence: page.nextSequence,
+          hasMore: false,
+          ...(page.highWaterSequence === undefined
+            ? {}
+            : { highWaterSequence: page.highWaterSequence }),
+        })),
+      };
+    };
+
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 2,
+          sequences: [1, 2],
+        }) as never,
+      ),
+    ).resolves.toMatchObject({ nextCursor: 'station-task-events:v1:2' });
+    await expect(
+      observeDelegatedTaskEvents(
+        {
+          taskId: TASK_ID,
+          cursor: 'station-task-events:v1:3',
+          readAuthority: authority,
+        },
+        olderHost({ eventCount: 2, nextSequence: 3, sequences: [] }) as never,
+      ),
+    ).rejects.toThrow('ahead of the available task history');
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+        }) as never,
+      ),
+    ).rejects.toThrow('The selected Station returned invalid task event state');
+    // The same page with a high water is a valid gapped page.
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+          highWaterSequence: 3,
+        }) as never,
+      ),
+    ).resolves.toMatchObject({
+      events: [{ sequence: 1 }, { sequence: 3 }],
+      nextCursor: 'station-task-events:v1:3',
+    });
   });
 });

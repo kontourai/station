@@ -151,8 +151,8 @@ export async function registerRuntimeConversationKnowledgeRoot(deps: {
     provider: deps.provider,
     persistence: deps.persistence,
     sessionReader: {
-      listSessionReadModel: (scope) =>
-        deps.sessions.listSessionReadModel(scope),
+      listSessionReadModel: (scope, options) =>
+        deps.sessions.listSessionReadModel(scope, options),
       sessionQueries: deps.sessions.sessionQueries,
       // The cheap readability check the graph reads use (no transcript).
       canReadConversation: (conversationId, scope) =>

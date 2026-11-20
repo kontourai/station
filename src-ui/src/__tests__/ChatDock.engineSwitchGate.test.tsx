@@ -187,7 +187,7 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
   }),
 }));
 vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
+  useChatDockActiveChatSync: () => ({ pendingChat: null }),
 }));
 vi.mock('../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,

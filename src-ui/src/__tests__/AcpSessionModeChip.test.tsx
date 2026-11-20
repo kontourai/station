@@ -66,9 +66,9 @@ describe('AcpSessionModeChip', () => {
     expect(within(chip).getByText('Build')).toBeTruthy();
   });
 
-  test('selecting an advertised mode reports that id', async () => {
+  test('selecting an advertised mode requests it until the engine reports it', async () => {
     const onChange = vi.fn();
-    render(
+    const { rerender } = render(
       <AcpSessionModeChip
         modes={MODES}
         currentModeId="build"
@@ -81,6 +81,27 @@ describe('AcpSessionModeChip', () => {
     await screen.findByRole('radiogroup', { name: 'Session mode' });
     fireEvent.click(screen.getByRole('radio', { name: /Plan/ }));
     expect(onChange).toHaveBeenCalledWith('plan');
+    rerender(
+      <AcpSessionModeChip
+        modes={MODES}
+        currentModeId="build"
+        requestedModeId="plan"
+        onChange={onChange}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: /^Session mode: Plan · next send/ }),
+    ).toBeTruthy();
+    rerender(
+      <AcpSessionModeChip
+        modes={MODES}
+        currentModeId="plan"
+        onChange={onChange}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: /^Session mode: Plan\./ }),
+    ).toBeTruthy();
   });
 });
 

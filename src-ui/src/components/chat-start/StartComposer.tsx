@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useOptionalPreview } from '../../contexts/PreviewContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
@@ -45,21 +46,42 @@ export interface StartComposerFiles {
   onRemove: (index: number) => void;
 }
 
+/** An image file's thumbnail; it opens the transcript's previewer. */
 function StartFileThumbnail({ file }: { file: File }) {
   const [preview, setPreview] = useState<string>();
+  const previewer = useOptionalPreview();
   useEffect(() => {
     if (!file.type.startsWith('image/')) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
-  return preview ? (
+  if (!preview) return null;
+  const image = (
     <img
       className="start-composer__file-thumbnail"
       src={preview}
-      alt={file.name}
+      alt={previewer ? '' : file.name}
     />
-  ) : null;
+  );
+  if (!previewer) return image;
+  return (
+    <button
+      type="button"
+      className="start-composer__file-preview"
+      aria-label={`Preview ${file.name}`}
+      title={`Preview ${file.name}`}
+      onClick={() =>
+        previewer.openPreview({
+          url: preview,
+          mediaType: file.type,
+          name: file.name,
+        })
+      }
+    >
+      {image}
+    </button>
+  );
 }
 
 /** Dictation into the prompt; the same control the chat composer offers. */
@@ -147,6 +169,9 @@ export type StartAgentChip =
       approvalProjectDefaultUnavailable?: boolean;
       /** This start's own approval pick, if one was made. */
       approvalPick?: ApprovalMode;
+      approvalConnections?: Parameters<
+        typeof StartApprovalSummary
+      >[0]['acpConnections'];
       /** Present: the Permissions chip is a picker for `approvalPick`. */
       onApprovalPick?: (mode: ApprovalMode) => void;
     };
@@ -251,6 +276,7 @@ export function StartComposer({
   compact = false,
   layout = 'hero',
   heading,
+  headingLevel = 2,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -283,6 +309,7 @@ export function StartComposer({
    */
   layout?: 'hero' | 'draft';
   heading?: string;
+  headingLevel?: 1 | 2;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -344,6 +371,7 @@ export function StartComposer({
       ? (agent.agent?.name ?? 'Choose agent')
       : startAgentChipText(agent);
   const draft = layout === 'draft';
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const projectControl = (
     <>
       {project.status === 'ready' && (
@@ -397,23 +425,23 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>
-          {heading ?? (compact ? 'Start work' : 'What would you like to do')}
-          {!compact && (
+        <Heading>
+          {heading ?? 'What would you like to do'}
+          {!heading && (
             <>
               {project.status === 'ready' && !project.isGlobal && (
                 <> in {projectControl}</>
               )}
-              {!heading && '?'}
+              ?
             </>
           )}
-        </h2>
-        {compact ||
+        </Heading>
+        {heading ||
         project.status === 'loading' ||
         (project.status === 'ready' && project.isGlobal)
           ? projectControl
           : null}
-        {!compact &&
+        {!heading &&
           !projectFixed &&
           project.status === 'ready' &&
           !project.isGlobal &&
@@ -638,6 +666,7 @@ export function StartComposer({
                     <StartApprovalSummary
                       agent={agent.agent}
                       executionAgentId={agent.executionAgentId}
+                      acpConnections={agent.approvalConnections}
                       projectDefault={agent.approvalProjectDefault}
                       projectDefaultUnavailable={
                         agent.approvalProjectDefaultUnavailable

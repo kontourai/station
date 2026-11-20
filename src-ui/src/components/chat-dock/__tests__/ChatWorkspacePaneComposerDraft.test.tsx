@@ -254,8 +254,15 @@ vi.mock('../ChatDockBody', async () => {
     // Reports its composer as the real body does, so focus requests reach it.
     ChatDockBody: ({
       onComposerEnabledChange,
+      secondaryActions,
     }: {
       onComposerEnabledChange?: (el: HTMLTextAreaElement | null) => void;
+      secondaryActions?: {
+        onOpenCodingLayout?: () => void;
+        codingLayoutLabel?: string;
+        onOpenTerminal?: () => void;
+        terminalDisabledReason?: string;
+      };
     }) => {
       const composer = useRef<HTMLTextAreaElement>(null);
       useEffect(() => {
@@ -266,6 +273,22 @@ vi.mock('../ChatDockBody', async () => {
         <div data-testid="active-chat-body">
           <p data-testid="answer-selection">Ready for review.</p>
           <textarea aria-label="Chat composer" ref={composer} />
+          {/* The composer "+" menu's coding row, as the real composer wires it. */}
+          {secondaryActions?.onOpenCodingLayout && (
+            <button type="button" onClick={secondaryActions.onOpenCodingLayout}>
+              {secondaryActions.codingLayoutLabel}
+            </button>
+          )}
+          {secondaryActions?.onOpenTerminal && (
+            <button
+              type="button"
+              disabled={Boolean(secondaryActions.terminalDisabledReason)}
+              title={secondaryActions.terminalDisabledReason}
+              onClick={secondaryActions.onOpenTerminal}
+            >
+              Open terminal
+            </button>
+          )}
         </div>
       );
     },
@@ -676,17 +699,46 @@ test('a foreign chat’s code layout is its own Project’s, not the future defa
   await act(async () => {});
 
   // The bar carries no branch badge any more (the context card's Branch row
-  // does); the More menu's Open in Coding still follows the chat's Project.
+  // does); the composer menu's Open in Coding still follows the chat's Project.
   expect(
     document.querySelector('.chat-dock__project-context .git-badge'),
   ).toBeNull();
 
-  fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
   fireEvent.click(
-    await screen.findByRole('menuitem', { name: 'Open in Coding' }),
+    await screen.findByRole('button', { name: 'Open in Coding' }),
   );
   expect(navigationStore.getSnapshot().pathname).toBe(
     '/projects/other/layouts/other-code',
+  );
+});
+
+test('the composer’s Open terminal places this Project’s Terminal in the bottom dock', async () => {
+  openForeignChatInPulseBoundDock();
+  // Bind the dock to the chat's own Project, so the Terminal is this chat's.
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'other'));
+  // The region shells are mounted, as in the app (`RegionShells` registers).
+  let unregister: (() => void) | undefined;
+  act(() => {
+    unregister = regionModel!.registerRegionSurfaceHost();
+  });
+  await act(async () => {});
+  const open = await screen.findByRole('button', { name: 'Open terminal' });
+  expect((open as HTMLButtonElement).disabled).toBe(false);
+  act(() => fireEvent.click(open));
+  await act(async () => {});
+  expect(regionModel!.readRegions().bottom.panes).toContain('coding:terminal');
+  expect(regionModel!.readRegions().bottom.visible).toBe(true);
+  act(() => unregister?.());
+});
+
+test('a dock bound to another Project refuses Open terminal and names that Project', async () => {
+  openForeignChatInPulseBoundDock();
+  await act(async () => {});
+  const open = await screen.findByRole('button', { name: 'Open terminal' });
+  expect((open as HTMLButtonElement).disabled).toBe(true);
+  expect(open.getAttribute('title')).toBe('Dock is on pulse');
+  expect(regionModel!.readRegions().bottom.panes).not.toContain(
+    'coding:terminal',
   );
 });
 
@@ -802,9 +854,7 @@ test('a phone opens its dock at the inbox without adding a modal layer', async (
   const inbox = await screen.findByRole('region', { name: 'Inbox' });
   expect(inbox.closest('.chat-dock__workspace')).not.toBeNull();
   expect(screen.queryByRole('dialog', { name: 'Chats and tasks' })).toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Pulse chat, pulse' }),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Pulse chat\b/ })).toBeTruthy();
 });
 
 test('returning to the inbox keeps the reader mounted and preserves its unsent text', async () => {
@@ -1372,7 +1422,7 @@ test('a real failed history open stays at Inbox instead of falling back to the i
   act(addSavedConversation);
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
   const saved = await screen.findByRole('button', {
-    name: 'Saved conversation, pulse',
+    name: /^Saved conversation\b/,
   });
   fireEvent.click(saved);
   await act(async () => {});
@@ -1552,7 +1602,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
     act(addSavedConversation);
     fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Saved conversation, pulse' }),
+      await screen.findByRole('button', { name: /^Saved conversation\b/ }),
     );
     expect(finishOpen).toBeDefined();
     if (next === 'same-loading-chat') {
@@ -1577,7 +1627,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
       act(() => openChatsStore.focus({ sessionId: 'late-saved-tab' }));
     } else if (next === 'another-chat')
       fireEvent.click(
-        screen.getByRole('button', { name: 'Later conversation, pulse' }),
+        screen.getByRole('button', { name: /^Later conversation\b/ }),
       );
     else act(() => dispatchNewChatIntent({}));
     if (next === 'another-chat')

@@ -1,0 +1,7 @@
+{
+  "revision": "4edd1fba8b5274af5b2b0cbc8b41411776d7d3e4",
+
+  "notes": [
+    {"path":"docs/design/verified-action-replay.md","note":"The decision record gained two sentences about Codex catalog continuations (first adoption, browser/device copies). verified-action-replay cites it for browser action replay, which those sentences do not touch; its claims are unchanged.","inputs":["docs/decisions/browser-agent-actions-and-bound-channel.md"]}
+  ]
+}

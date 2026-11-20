@@ -1,0 +1,11 @@
+{
+  "revision": "dda782fc179791048d20713a2ac49eff256047ca",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"This branch adds pre-push steps (main-conflict warning, push-range whitespace and test temp-dir checks, docs freshness, scoped code health), gate:for rows for them, and a failed-test block in the fast-checks shard log. Re-read this page's claims about the hook, gate:for and shard output: none states the old step list or contradicts the new steps.","inputs":["scripts/gate-for.mjs"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"This branch adds pre-push steps (main-conflict warning, push-range whitespace and test temp-dir checks, docs freshness, scoped code health), gate:for rows for them, and a failed-test block in the fast-checks shard log. Re-read this page's claims about the hook, gate:for and shard output: none states the old step list or contradicts the new steps.","inputs":["scripts/gate-for.mjs"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"This branch adds pre-push steps (main-conflict warning, push-range whitespace and test temp-dir checks, docs freshness, scoped code health), gate:for rows for them, and a failed-test block in the fast-checks shard log. Re-read this page's claims about the hook, gate:for and shard output: none states the old step list or contradicts the new steps.","inputs":["scripts/gate-for.mjs"]}
+  ]
+}

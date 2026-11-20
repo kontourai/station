@@ -127,8 +127,10 @@ the sheet scrolls or activates what it started on.
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification, toolbar-menu and palette
-tiers as well as sticky/dialog/system. A surface popover stays above the dock
-but below navigation and notification chrome. A menu opened from the toolbar
+tiers as well as sticky/dialog/system. A desktop surface popover stays above
+the dock and below navigation and notification chrome. An anchored popover
+takes the dialog layer when it presents as a phone sheet. The dock's command
+launcher and mobile task context also portal to the dialog layer. A menu opened from the toolbar
 (or the sidebar's account control) sits just above notifications, because the
 toolbar's right end opens into their column; its dismiss backdrop stays below
 them. A modal dialog supersedes notification chrome.
@@ -216,8 +218,9 @@ shell, or a home-screen web app) locks page zoom through
 `platform/installedAppZoom.ts`. Transient toasts dismiss with a sideways touch
 swipe; approval and pairing cards keep their explicit dismiss.
 
-The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
-desktop and phones. Keeping secondary actions there avoids wrapping the
+The chat header's **⋯** menu holds **Chat inventory** (the full reader) and
+**Browse turns** on desktop and phones; the **This chat** card's footer link
+opens the compact inventory beside the transcript. Keeping secondary actions there avoids wrapping the
 phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
@@ -284,9 +287,12 @@ with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share
 [ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
-Agent/model trigger opens Run setup, containing the existing
+Agent/model trigger opens Agent & model, containing the existing
 [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
-trigger labels truncate; the sheet owns the full choices. Attach, mic and Start
+trigger labels truncate; the sheet owns the full choices. On desktop a picker
+opened from Agent & model takes the panel's place (`yieldToChildPopover` on
+`ResponsiveDialogSurface`) and is clamped inside the composer column
+(`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge
 sheets on phones with their own
 scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
@@ -313,8 +319,9 @@ rechecks on foreground or network return. A refused credential waits for explici
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
 inside the available width. A disconnected
-phone starts with pairing and a computer-setup handoff. Host addresses and broker
-routes are under **Other ways to connect**. Native capability and coarse-pointer
+phone starts with pairing and a computer-setup handoff. **Enter a pairing code**
+and **Enter Station address** sit under the QR action; nearby discovery and saved
+Stations are under **More ways to connect**. Native capability and coarse-pointer
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
@@ -344,18 +351,31 @@ cannot add a scroll row below a dock that fills the viewport.
 ### Phone app toolbar
 
 On a phone the Station chip shows its dot and the connected Station's name in
-every state. Its width fits short names and caps long names with an ellipsis.
-State changes and overlaid Station notices preserve that width, keeping nearby
-controls still. That name takes priority over the app wordmark:
-the wordmark wraps away whole wherever the row cannot hold it, and the logo
-stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
-measures the row at every phone width it supports.
+every state. The app wordmark wraps away whole before the Station name yields
+space, and the home logo stays. The Station name can then ellipsize to keep
+the toolbar's controls inside the side gutters. Holding the Station chip
+reveals the full name. The notification badge shows `9+` above nine, and the
+button's accessible name states the exact count.
+
+[`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts) checks
+each visible control's center and the right gutter with a long Station name
+and the capped badge, including widths on either side of the tight-gap rule.
+
+Shared tooltips use Station's 12px label size. Secondary metadata such as
+message timestamps may use 11px.
 
 ### Action rows
 
 A header, toolbar or action row shows at most two labelled actions. Further
 actions go into an overflow menu; an icon-only button with an accessible name
 does not count.
+
+Check action placement in the clean, edited and pending states. In Project
+settings, Back stays beside the Project name and Save appears at the
+trailing edge for a pending draft, including while viewing an autosaving
+section. In a wizard, keep Continue in the same place across steps. Verify
+the actual clickable area of adjacent compact actions and the keyboard focus
+destination after an action disappears.
 
 Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
@@ -500,8 +520,14 @@ work, or deleting a draft. Inbox search reveals matching dismissed items and
 their Restore action. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
-adopted into Station.
+adopted into Station. With Open and Settled inbox on, owned rows offer Settle
+instead of Dismiss, and Hide records a third-party Session on the host for the
+person rather than in the browser; the action keeps the same row, tray and
+Details placement.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+On desktop, move the pointer from an Inbox row into its preview to scroll
+long content such as Basis. The preview stays inside the window as late
+details arrive. Escape or scrolling the Inbox closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains

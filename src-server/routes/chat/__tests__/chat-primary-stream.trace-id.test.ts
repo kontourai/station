@@ -10,6 +10,12 @@ import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from '@opentelemetry/sdk-trace-base';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
@@ -67,7 +73,11 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
       ) => operation(),
     }) as any;
 
-  const run = async (streamText: ReturnType<typeof vi.fn>) => {
+  const run = async (
+    streamText: ReturnType<typeof vi.fn>,
+    restOptions: Record<string, unknown> = {},
+    signal?: AbortSignal,
+  ) => {
     const ctx = buildCtx();
     const app = new Hono();
     app.post('/chat', (c) =>
@@ -77,7 +87,7 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
         slug: 'assistant',
         plugin: '',
         input: 'hello',
-        restOptions: {},
+        restOptions,
         injectContext: null,
         ragContext: null,
         agent: {
@@ -89,7 +99,7 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
         dedupStore,
       }),
     );
-    const response = await app.request('/chat', { method: 'POST' });
+    const response = await app.request('/chat', { method: 'POST', signal });
     const wire = await response.text();
     await ctx.monitoringEmitter.flush();
     return {
@@ -122,6 +132,27 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('persisted inherited tool restrictions refuse a chat continuation', async () => {
+    memoryAdapter.getConversation = vi.fn(async () => ({
+      id: 'policy-chat',
+      metadata: { delegation: { toolAllowlistConstraints: [[]] } },
+    }));
+    const streamText = vi.fn(async () => ({
+      fullStream: emptyStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const options = { conversationId: 'policy-chat', userId: 'owner' };
+    const { wire } = await run(streamText, options);
+    expect(wire).toContain('"type":"error"');
+    expect(streamText).not.toHaveBeenCalled();
+
+    memoryAdapter.getConversation = vi.fn(async () => ({ id: 'policy-chat' }));
+    await run(streamText, options);
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
 
   test('step frames exclude provider requests, responses and nested errors while text still streams', async () => {
@@ -178,6 +209,68 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
     expect(complete?.[K.TRACE_ID]).toContain(
       complete?.[K.CONVERSATION_ID] as string,
     );
+  });
+
+  test('exported primary chat spans preserve failure, success, and client cancellation', async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    expect(trace.setGlobalTracerProvider(provider)).toBe(true);
+    try {
+      const normal = () => ({
+        fullStream: emptyStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      });
+      const failure = new Error('synthetic engine failure');
+      await run(
+        vi.fn(async () => {
+          throw failure;
+        }),
+      );
+      await run(
+        vi.fn(async () => ({
+          ...normal(),
+          fullStream: (async function* () {
+            yield { type: 'finish', finishReason: 'error' };
+          })(),
+          finishReason: Promise.resolve('error'),
+        })),
+      );
+      await run(vi.fn(async () => normal()));
+      const controller = new AbortController();
+      await run(
+        vi.fn(async () => {
+          controller.abort();
+          throw new DOMException('Cancelled by the browser', 'AbortError');
+        }),
+        {},
+        controller.signal,
+      );
+      const spans = exporter
+        .getFinishedSpans()
+        .filter((span) => span.name === 'station.chat');
+      expect(spans.map((span) => span.status.code)).toEqual([
+        SpanStatusCode.ERROR,
+        SpanStatusCode.ERROR,
+        SpanStatusCode.OK,
+        SpanStatusCode.UNSET,
+      ]);
+      expect(spans[0]?.events).toMatchObject([
+        {
+          name: 'exception',
+          attributes: { 'exception.message': failure.message },
+        },
+      ]);
+      expect(spans[1]?.events).toHaveLength(0);
+      expect(spans[2]?.events).toHaveLength(0);
+      expect(spans[3]?.events).toHaveLength(0);
+    } finally {
+      await provider.shutdown();
+      trace.disable();
+    }
   });
 
   test('a turn that succeeds reports the same trace id shape', async () => {

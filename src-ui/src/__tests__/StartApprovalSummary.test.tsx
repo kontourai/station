@@ -9,6 +9,11 @@ import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
 import { approvalModeChipLabel } from '../utils/approvalMode';
 
 const agents: AgentData[] = [];
+const connections: {
+  id: string;
+  command: string;
+  stationApprovalRequests?: true;
+}[] = [];
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agents,
@@ -43,6 +48,36 @@ describe('StartApprovalSummary on the engine default', () => {
     expect(chip.getAttribute('title')).toBe(
       'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat’s own folder.',
     );
+  });
+
+  test('an Antigravity connection alias can pick Full access before the first turn', async () => {
+    const agent = agentOn('google-on-bmedia');
+    agents.splice(0, agents.length, agent);
+    connections.push({
+      id: 'google-on-bmedia',
+      command: '/usr/bin/agy',
+      stationApprovalRequests: true,
+    });
+    render(
+      <DialogHistoryHostBoundary>
+        <StartApprovalSummary
+          acpConnections={connections}
+          agent={agent}
+          onPick={vi.fn()}
+        />
+      </DialogHistoryHostBoundary>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Permissions: / }));
+    expect(
+      await screen.findByRole('radio', { name: /Full access/ }),
+    ).toBeTruthy();
+  });
+
+  test('an Antigravity connection id alone offers no approval picker', () => {
+    const agent = agentOn('antigravity');
+    agents.splice(0, agents.length, agent);
+    render(<StartApprovalSummary agent={agent} onPick={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /^Permissions: / })).toBeNull();
   });
 
   test('another engine keeps the unconfirmed-mode explanation', () => {

@@ -194,6 +194,7 @@ function sheetMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
   work = { items: ITEMS, facts: FACTS },
+  searchVisible = false,
 ): string {
   seed();
   const { unmount } = render(
@@ -218,6 +219,8 @@ function sheetMarkup(
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
+  if (searchVisible)
+    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
   const markup = document.body.innerHTML;
   unmount();
   return markup;
@@ -255,6 +258,63 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('the shared search control and hover actions align without custom input chrome', async () => {
+    const artifacts = resolve(REPO_ROOT, '.surface/inbox-chat-polish');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440])
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 900 } });
+        try {
+          await pg.setContent(
+            page(
+              width === 390
+                ? sheetMarkup(undefined, undefined, undefined, true)
+                : panelMarkup(),
+            ).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          const search = pg.getByRole('searchbox', {
+            name: width === 390 ? 'Search chats and tasks' : 'Search inbox',
+          });
+          const searchBox = (await search.boundingBox())!;
+          expect(searchBox.height).toBeGreaterThanOrEqual(
+            width === 390 ? 44 : 40,
+          );
+          expect(searchBox.height).toBeLessThanOrEqual(48);
+          if (width === 1440) {
+            const toolbar = (await pg
+              .locator('.filter-toolbar')
+              .boundingBox())!;
+            expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(
+              toolbar.x + toolbar.width,
+            );
+            const row = pg.locator('.inbox-row--card').first();
+            await row.hover();
+            // The actions take over the time slot, on the headline.
+            const slotLine = (await row
+              .locator('.inbox-row__headline')
+              .boundingBox())!;
+            for (const action of await row
+              .locator('.inbox-row__actions button')
+              .all()) {
+              const box = (await action.boundingBox())!;
+              expect(
+                Math.abs(
+                  box.y + box.height / 2 - (slotLine.y + slotLine.height / 2),
+                ),
+              ).toBeLessThanOrEqual(0.5);
+            }
+          }
+          await pg.screenshot({
+            path: resolve(artifacts, `inbox-${width}-${theme}.png`),
+            animations: 'disabled',
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+  });
 
   test('renders lane D Station identity and mobile header controls at desktop and phone widths', async () => {
     seed();

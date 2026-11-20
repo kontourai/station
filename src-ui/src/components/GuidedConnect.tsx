@@ -207,7 +207,7 @@ export function GuidedConnect({
               className="guided-connect__action"
               onClick={() => setOpenPanel('add')}
             >
-              Enter a host address
+              Enter Station address
             </Button>
             {(profile.isTauri || (phone && isLocal)) && (
               <Button
@@ -250,15 +250,14 @@ export function GuidedConnect({
         )}
         {onExploreSample && (
           <div className="guided-connect__footer">
-            <span>Just looking around?</span>{' '}
             <button
               type="button"
               className="guided-connect__tour"
               onClick={onExploreSample}
             >
-              See how Station works
+              Explore a sample workspace
             </button>
-            <p>Explore a sample workspace. No connection required.</p>
+            <p>Works without a Station</p>
           </div>
         )}
       </div>

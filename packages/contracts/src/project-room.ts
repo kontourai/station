@@ -27,6 +27,10 @@ export const PROJECT_ROOM_LIMITS = {
   reactionEmojiBytes: 32,
   /** Superseding edits of one message; a delete is one of them. */
   revisionsPerMessage: 50,
+  /** Structured person mentions on one message (#4799). */
+  mentionsPerMessage: 32,
+  /** UTF-16 code units of a mention's display text, without its `@`. */
+  mentionDisplayLength: 80,
 } as const;
 /** Name the migration gives a Project's existing room. */
 export const PROJECT_ROOM_DEFAULT_CHANNEL_NAME = 'general';
@@ -209,12 +213,26 @@ export interface ProjectRoomIdentity {
  * no read authority on its own.
  */
 export type ProjectRoomAttachment = TaskRoomAttachment;
+/**
+ * A person named in a message (#4799). The text keeps `@display` at
+ * `offset` (UTF-16), so a reader without mention support still reads it;
+ * clients render the span by `actorId`, with that person's current name.
+ * A display string alone is never a mention, and a mention grants nothing.
+ */
+export interface ProjectRoomMention {
+  kind: 'person';
+  actorId: string;
+  display: string;
+  offset: number;
+}
 export interface ProjectRoomAppendInput {
   intentId: string;
   /** May be empty only when the message carries attachments. */
   text: string;
   replyTo?: string;
   attachments?: ProjectRoomAttachment[];
+  /** In text order, non-overlapping; each span reads `@display`. */
+  mentions?: ProjectRoomMention[];
 }
 /** Who reacted with one emoji, in the order they reacted. */
 export interface ProjectRoomReaction {
@@ -248,6 +266,8 @@ export interface ProjectRoomReactionInput {
 export interface ProjectRoomEditInput {
   intentId: string;
   text: string;
+  /** The edited text's mentions; an edit without them names nobody. */
+  mentions?: ProjectRoomMention[];
 }
 /** Replaces the caller's own message with a tombstone. */
 export interface ProjectRoomDeleteInput {
@@ -349,7 +369,8 @@ export function parseProjectRoomAppendInput(
   const v = object(value);
   if (
     Object.keys(v).some(
-      (k) => !['intentId', 'text', 'replyTo', 'attachments'].includes(k),
+      (k) =>
+        !['intentId', 'text', 'replyTo', 'attachments', 'mentions'].includes(k),
     ) ||
     !isProjectRoomUuid(v.intentId) ||
     (v.replyTo !== undefined && !isProjectRoomUuid(v.replyTo))
@@ -359,12 +380,68 @@ export function parseProjectRoomAppendInput(
     v.attachments === undefined
       ? undefined
       : parseProjectRoomAttachments(v.attachments);
+  const body = text(v.text, PROJECT_ROOM_LIMITS.textBytes, !!attachments);
+  const mentions =
+    v.mentions === undefined
+      ? undefined
+      : parseProjectRoomMentions(body, v.mentions);
   return {
     intentId: v.intentId,
-    text: text(v.text, PROJECT_ROOM_LIMITS.textBytes, !!attachments),
+    text: body,
     ...(v.replyTo === undefined ? {} : { replyTo: v.replyTo }),
     ...(attachments ? { attachments } : {}),
+    ...(mentions ? { mentions } : {}),
   };
+}
+const actorId = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= 2048 &&
+  value.trim() === value;
+/**
+ * Mentions of `text`: at least one, at most the limit, in text order without
+ * overlap, and each span exactly `@display`. A display is one line of
+ * printable text.
+ */
+export function parseProjectRoomMentions(
+  text: string,
+  value: unknown,
+): ProjectRoomMention[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > PROJECT_ROOM_LIMITS.mentionsPerMessage
+  )
+    throw new Error('Invalid Project room mentions');
+  let end = 0;
+  return value.map((item) => {
+    const v = object(item);
+    if (
+      Object.keys(v).some(
+        (k) => !['kind', 'actorId', 'display', 'offset'].includes(k),
+      ) ||
+      v.kind !== 'person' ||
+      !actorId(v.actorId) ||
+      typeof v.display !== 'string' ||
+      !v.display.trim() ||
+      v.display.length > PROJECT_ROOM_LIMITS.mentionDisplayLength ||
+      [...v.display].some((char) => {
+        const code = char.codePointAt(0)!;
+        return code < 0x20 || code === 0x7f;
+      }) ||
+      !Number.isSafeInteger(v.offset) ||
+      (v.offset as number) < end ||
+      !text.startsWith(`@${v.display}`, v.offset as number)
+    )
+      throw new Error('Invalid Project room mentions');
+    end = (v.offset as number) + 1 + v.display.length;
+    return {
+      kind: 'person' as const,
+      actorId: v.actorId,
+      display: v.display,
+      offset: v.offset as number,
+    };
+  });
 }
 export type ProjectRoomReactionEmojiProblem = 'empty' | 'too_long' | 'format';
 /**
@@ -412,13 +489,17 @@ export function parseProjectRoomEditInput(
 ): ProjectRoomEditInput {
   const v = object(value);
   if (
-    Object.keys(v).some((k) => !['intentId', 'text'].includes(k)) ||
+    Object.keys(v).some((k) => !['intentId', 'text', 'mentions'].includes(k)) ||
     !isProjectRoomUuid(v.intentId)
   )
     throw new Error('Invalid Project room edit');
+  const body = text(v.text, PROJECT_ROOM_LIMITS.textBytes, true);
   return {
     intentId: v.intentId,
-    text: text(v.text, PROJECT_ROOM_LIMITS.textBytes, true),
+    text: body,
+    ...(v.mentions === undefined
+      ? {}
+      : { mentions: parseProjectRoomMentions(body, v.mentions) }),
   };
 }
 export function parseProjectRoomDeleteInput(

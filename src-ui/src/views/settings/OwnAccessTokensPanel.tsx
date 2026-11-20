@@ -11,6 +11,7 @@ import { ErrorState } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 import { PersonalTokens, SecretOnce } from './PersonalTokens';
 import './PeopleSection.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * #3557: "Your access tokens", for a paired device tied to a person.
@@ -26,6 +27,7 @@ import './PeopleSection.css';
  * server's `account_bound_person` refusal is explained when it comes back.
  */
 export function OwnAccessTokensPanel() {
+  useDecisionSurface('access-tokens');
   const tokens = useOwnAccessTokensQuery();
   const mint = useMintOwnAccessTokenMutation();
   const revoke = useRevokeOwnAccessTokenMutation();

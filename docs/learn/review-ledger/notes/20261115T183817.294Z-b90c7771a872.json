@@ -1,0 +1,13 @@
+{
+  "revision": "bc0544e11a8263b9cd3931b1a0777bb4e37ccbce",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Bounded delta review: withStationControlRuntimeEnv additionally adds the home's compile-cache directory for the exact built-in station-control/knowledge bundles, behind the unchanged identity gate. Token, tenant and caller-credential claims, the threat model's internal-token boundary, and station-docs' credential- and environment-free delivery are unchanged; third-party servers receive neither token nor cache (unit and real-transport process tests, fault-injected). No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Bounded delta review: withStationControlRuntimeEnv additionally adds the home's compile-cache directory for the exact built-in station-control/knowledge bundles, behind the unchanged identity gate. Token, tenant and caller-credential claims, the threat model's internal-token boundary, and station-docs' credential- and environment-free delivery are unchanged; third-party servers receive neither token nor cache (unit and real-transport process tests, fault-injected). No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Bounded delta review: withStationControlRuntimeEnv additionally adds the home's compile-cache directory for the exact built-in station-control/knowledge bundles, behind the unchanged identity gate. Token, tenant and caller-credential claims, the threat model's internal-token boundary, and station-docs' credential- and environment-free delivery are unchanged; third-party servers receive neither token nor cache (unit and real-transport process tests, fault-injected). No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Bounded delta review: withStationControlRuntimeEnv additionally adds the home's compile-cache directory for the exact built-in station-control/knowledge bundles, behind the unchanged identity gate. Token, tenant and caller-credential claims, the threat model's internal-token boundary, and station-docs' credential- and environment-free delivery are unchanged; third-party servers receive neither token nor cache (unit and real-transport process tests, fault-injected). No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]}
+  ]
+}

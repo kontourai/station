@@ -255,13 +255,17 @@ export function PluginPublishDialog({
             </>
           )}
           <p className="editor-hint">
-            Files your .gitignore excludes are left out. Files hidden only by
-            this folder's .git/info/exclude ARE published: Station does not read
-            the folder's .git, so check the list. Station checks these files'
-            names (.env, keys, credential files) and looks for private-key
-            blocks in them. It is not an exhaustive secret scan: read the list
-            above before you publish.
+            Read the file list before you publish; this is not a full secret
+            scan. Files hidden only by .git/info/exclude are included.
           </p>
+          <details className="editor-disclosure">
+            <summary>What gets checked</summary>
+            <p className="editor-hint">
+              Files your .gitignore excludes are left out. Station checks file
+              names such as .env, keys and credential files, and looks for
+              private-key blocks.
+            </p>
+          </details>
         </section>
 
         <label className="editor-label" htmlFor={ids.url}>

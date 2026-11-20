@@ -1,0 +1,7 @@
+{
+  "revision": "f954ac92a932201768a482b34d48c46c04781fb6",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"publish-packages.yml changed only a comment's replay count (28 of 36); nothing this page describes changed.","inputs":["docs/guides/release-rings.md",".github/workflows/publish-packages.yml"]}
+  ]
+}

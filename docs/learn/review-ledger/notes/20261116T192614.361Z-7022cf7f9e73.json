@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"Regenerated with docs:metrics:generate after adding station.notification.retention_pruned.","inputs":["docs/reference/metrics.md"]}
+  ]
+}

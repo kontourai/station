@@ -18,6 +18,20 @@ export interface ContextInjectionDisclosureProps {
  */
 function contextBlocks(record: TurnProvenanceContextInjection): ContextBlock[] {
   const blocks: ContextBlock[] = [];
+  if (record.projectBrief) {
+    blocks.push({
+      kind: 'Project brief',
+      approxTokens: record.projectBrief.approxTokens,
+    });
+  }
+  if (record.projectMemory) {
+    const { entries, approxTokens } = record.projectMemory;
+    blocks.push({
+      kind: 'Project memory',
+      detail: `${entries} ${entries === 1 ? 'note' : 'notes'}, as background`,
+      approxTokens,
+    });
+  }
   if (record.knowledge) {
     const { chunkCount, sources, omittedSources, approxTokens } =
       record.knowledge;

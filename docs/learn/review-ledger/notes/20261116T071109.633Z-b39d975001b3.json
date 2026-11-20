@@ -1,0 +1,7 @@
+{
+  "revision": "cf12202371963737407b35e44aad645627119d13",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Cites self-configuring-agent.md for the session tools; the sentence added there concerns authority-tool approval only and changes no session API claim.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

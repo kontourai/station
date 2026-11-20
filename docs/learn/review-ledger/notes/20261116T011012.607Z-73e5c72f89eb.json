@@ -1,0 +1,7 @@
+{
+  "revision": "ccd24e15faa7d01b9eca40ca8126a5a3496ebd95",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped MCP topics only; the single change is the module-map CredentialRecoveryModule sentence on consentedProfileRef. Citing pages make no claim about that sentence.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

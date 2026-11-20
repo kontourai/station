@@ -46,8 +46,8 @@ does not yet admit document batch settlement or agent requests. A membership
 change invalidates the captured room admission and wakes the stream to recheck;
 the idle recheck remains as a fallback. See the
 [Task room API](../reference/api.md#account-bound-task-room-access) for the
-exact leaves and independent Device-scope requirements. This does not change
-the read-only shared Task entry described below or qualify real two-person use.
+exact leaves and independent Device-scope requirements. The browser invitation
+entry uses room discovery to determine whether to show a reply box.
 
 ## Enable local accounts without email
 
@@ -519,8 +519,8 @@ The collaborator profile admits account controls, the person's own personal
 access tokens (`GET`/`POST /api/access/tokens`, `DELETE
 /api/access/tokens/:tokenId`), membership-filtered Project
 catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
-the shared-work list, history, document and publication receipt. Shared work is read-only in this
-entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
+the shared-work list, history, document and publication receipt. Sending a
+human reply uses the separately authorized Task room message route. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
 admits those specific paths; the
 [shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts)
 independently require current membership and publication. A member's
@@ -536,7 +536,8 @@ streamed chunk. The audited administration endpoints below and the scoped
 are additional Project mutations admitted here. Admins and Owners may author
 constrained agents and request permitted tool sources; only Owners change
 Project tool policy. Exact Project Room leaves separately admit discussion,
-presence, note edits, channel create/rename/topic/archive (`edit`) and explicit
+presence, typing (`discuss`), the member directory and the one live stream for
+a Project's channels (`view`, #4798), note edits, channel create/rename/topic/archive (`edit`) and explicit
 Agent requests under their current membership actions and transport permission;
 each channel serves the same per-room leaves under `/channels/:channelId`. A Room Agent request also requires Project
 `view`, host execution permission and a verified Project execution root; its Task
@@ -675,7 +676,15 @@ separate work discussed in [#483](https://github.com/kontourai/station/issues/48
 
 ## Invite and manage people from a Project
 
-Open **Project settings → People and access**. The invitation steps explain
+For feedback on a brief, open the Task’s **Share** control. Check the audience
+and publish the Task. Existing and future human room messages and the shared
+document become visible to authorized Project viewers. Choose **Invite a
+teammate** and create an invitation. **Commenter** lets the person read and
+discuss shared work. **Viewer** lets them read. The role applies to the
+Project, including its other published Tasks.
+
+For a Project invitation, choose **Invite people** in the Project header or
+open **Project settings → People and access**. The invitation steps explain
 link creation, recipient acceptance and the separate browser approval. The
 **Sharing setup** shortcut opens **Settings → System**, where the operator
 configures account sign-in. If that control is missing, **Feature previews**
@@ -728,7 +737,13 @@ entry and clears its form state. An earlier acceptance finishing afterward clear
 only its own saved continuation, never the newly received invitation.
 
 After acceptance, this entry requests an immutable account-bound Device and
-shows validated `station.member-project/v1` catalogue and detail metadata.
+opens the accepted Project from the signed-in account’s current catalogue. A
+Task invitation carries its publication ID through local sign-in and browser
+approval. The recipient sees the brief first and can reply there or in Chat.
+A new browser starts with read access. For replies the owner must also grant
+the browser **Participate in shared Projects** under Paired devices. The recipient can
+then choose **Check reply access**. Bookmarking the open Task preserves its
+destination. Reopening checks the current Project and exact publication again.
 It rechecks the exact signed-in principal around each read, removes stale query
 authority when the Station or account changes, and returns to Device approval
 when that grant is revoked. It never mounts the personal Station provider tree

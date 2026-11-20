@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTIVE_RETIRED_USER_TERMS,
   BANNED_WORD_PATTERN,
   maskExpressions,
   RETIRED_NOUN_PATTERN,
   RETIRED_PRODUCT_NOUN_PATTERN,
+  RETIRED_USER_TERMS,
   runGate,
   SCAN_ROOTS,
+  scanCopySourceContent,
   scanFileContent,
   stripComments,
 } from '../noun-consistency-gate.mjs';
@@ -428,6 +431,100 @@ describe('noun-consistency-gate', () => {
       const result = runGate({ files, readFile, allowlist });
       expect(result.unallowlisted).toHaveLength(0);
       expect(result.staleEntries).toHaveLength(1);
+    });
+  });
+
+  // The 2026-11 UI copy pass retires these; copy lanes remove the last uses
+  // before the rules are enforced (RETIRED_USER_TERMS header).
+  describe('RETIRED_USER_TERMS', () => {
+    const VIOLATIONS: Record<string, string> = {
+      'AI app': 'Pick an AI app',
+      'device hub': 'Open the device hub',
+      'Station owner': 'Ask the Station owner',
+      'built-in assistant': 'Use the built-in assistant',
+      'default assistant': 'Set the default assistant',
+      'credential entry': 'Remove this credential entry',
+    };
+    // Plural and lowercase forms of the same terms.
+    const VARIANTS: Record<string, string> = {
+      'AI app': 'connect your ai apps',
+      'device hub': 'Device Hubs nearby',
+      'Station owner': 'station owners can change this',
+      'built-in assistant': 'Built-in Assistants',
+      'default assistant': 'two default assistants',
+      'credential entry': 'Credential entries',
+    };
+
+    it('pins the retired terms, independently of the script', () => {
+      expect(RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(
+        Object.keys(VIOLATIONS),
+      );
+    });
+
+    it('keeps every entry pending until the copy lanes merge', () => {
+      // Flip-on is deleting `pending`; when that happens this expectation
+      // changes with it, deliberately.
+      expect(RETIRED_USER_TERMS.every(({ pending }) => pending)).toBe(true);
+      expect(ACTIVE_RETIRED_USER_TERMS).toEqual([]);
+      for (const text of Object.values(VIOLATIONS)) {
+        expect(scanFileContent('Pending.tsx', `<p>${text}</p>`), text).toEqual(
+          [],
+        );
+      }
+    });
+
+    it('each pending rule catches its term on every user-facing surface once enabled', () => {
+      for (const entry of RETIRED_USER_TERMS) {
+        const text = VIOLATIONS[entry.term];
+        const enabled = [{ ...entry, pending: false }];
+        for (const source of [
+          `export const V = () => <section><p>${text}</p></section>;`,
+          `export const V = () => <Row title="${text}" />;`,
+          `export const V = () => <Row title={'${text}'} />;`,
+          `export const STEPS = [{ label: '${text}' }];`,
+          `export const V = () => <section><p>${VARIANTS[entry.term]}</p></section>;`,
+        ]) {
+          expect(
+            scanFileContent('Enabled.tsx', source, enabled),
+            `${entry.term}: ${source}`,
+          ).toHaveLength(1);
+        }
+        const registry = scanCopySourceContent(
+          'packages/contracts/src/settings-registry.ts',
+          `defineSetting({ label: 'x', help: '${text}', description: 'd', placeholder: 'p' });`,
+          'defineSetting(',
+          enabled,
+        );
+        expect(registry.findings, entry.term).toHaveLength(1);
+        const gated = runGate({
+          files: ['Enabled.tsx'],
+          readFile: () => `export const V = () => <p>${text}</p>;`,
+          allowlist: [],
+          retiredTerms: enabled,
+        });
+        expect(gated.unallowlisted, entry.term).toHaveLength(1);
+      }
+    });
+
+    it('does not flag the replacement vocabulary or the terms in comments and identifiers', () => {
+      const all = RETIRED_USER_TERMS.map((entry) => ({
+        ...entry,
+        pending: false,
+      }));
+      for (const source of [
+        '<p>Pick an engine</p>',
+        '<p>Open the device helper</p>',
+        '<p>Ask the Station operator</p>',
+        "<p>Use Station's engine</p>",
+        '<p>Remove this account</p>',
+        '<p>Email the app owner</p>',
+        '// The device hub predates the device helper.\nconst x = <p>Saved</p>;',
+        'const deviceHub = useDeviceHub(); const x = <p>Saved</p>;',
+        '<div className="ai-app device-hub" />',
+        '<p>Mail apps and AI applications</p>',
+      ]) {
+        expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
+      }
     });
   });
 });

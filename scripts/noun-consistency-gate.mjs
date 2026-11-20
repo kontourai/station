@@ -167,6 +167,77 @@ export const RETIRED_PRODUCT_NOUN_PATTERN = /\bPrompts?\b/;
  */
 export const RETIRED_NOUN_PATTERN = /\b(External agents?|Agent apps?|ACP)\b/;
 
+/**
+ * User-facing terms retired by the 2026-11 UI copy pass (docs/glossary.md,
+ * "User-facing labels"). Each entry is zero-tolerance once active, like the
+ * patterns above, and case-insensitive: none of these phrases has a
+ * legitimate lowercase sense in UI copy.
+ *
+ * An entry marked `pending: true` is written and tested but not enforced:
+ * the copy lanes that remove the last uses land separately, and enforcing a
+ * rule before they merge would fail every unrelated change. To activate one
+ * after those merge, delete its `pending` flag. The test pins that every
+ * pending entry still catches a violation when enabled, so a flip is a
+ * one-line change with a proven rule behind it.
+ */
+export const RETIRED_USER_TERMS = Object.freeze([
+  { term: 'AI app', use: 'engine', pattern: /\bAI apps?\b/i, pending: true },
+  {
+    term: 'device hub',
+    use: 'device helper',
+    pattern: /\bdevice hubs?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Station owner',
+    use: 'Station operator',
+    pattern: /\bStation owners?\b/i,
+    pending: true,
+  },
+  {
+    term: 'built-in assistant',
+    use: "Station's engine or the Station agent",
+    pattern: /\bbuilt-in assistants?\b/i,
+    pending: true,
+  },
+  {
+    term: 'default assistant',
+    use: "Station's engine or the Station agent",
+    pattern: /\bdefault assistants?\b/i,
+    pending: true,
+  },
+  {
+    term: 'credential entry',
+    use: 'account',
+    pattern: /\bcredential entr(?:y|ies)\b/i,
+    pending: true,
+  },
+]);
+
+/** The retired user-facing terms the gate enforces today. */
+export const ACTIVE_RETIRED_USER_TERMS = Object.freeze(
+  RETIRED_USER_TERMS.filter((entry) => !entry.pending),
+);
+
+/**
+ * Every stale-noun pattern, global, for one scan: the fixed families above
+ * plus the given retired user terms. Each is a fresh RegExp so exec loops
+ * never share `lastIndex`.
+ */
+function staleNounPatterns(retiredTerms) {
+  return [
+    new RegExp(BANNED_WORD_PATTERN.source, 'gi'),
+    new RegExp(RETIRED_NOUN_PATTERN.source, 'g'),
+    new RegExp(RETIRED_PRODUCT_NOUN_PATTERN.source, 'g'),
+    ...retiredTerms.map(({ pattern }) => new RegExp(pattern.source, 'gi')),
+  ];
+}
+
+/** Whether one piece of copy carries any stale noun. */
+function hasStaleNoun(text, retiredTerms) {
+  return staleNounPatterns(retiredTerms).some((pattern) => pattern.test(text));
+}
+
 const ATTR_NAMES = [
   'label',
   'title',
@@ -540,7 +611,13 @@ function allMatches(text, pattern) {
   return out;
 }
 
-function scanChildrenBetweenTags(file, content, betweenStart, betweenEnd) {
+function scanChildrenBetweenTags(
+  file,
+  content,
+  betweenStart,
+  betweenEnd,
+  retiredTerms,
+) {
   const between = content.slice(betweenStart, betweenEnd);
   const { masked, unbalanced } = maskExpressions(between);
   if (unbalanced) return [];
@@ -555,11 +632,9 @@ function scanChildrenBetweenTags(file, content, betweenStart, betweenEnd) {
   // RETIRED_*_PATTERN families can't share one flags-set regex, so each gets
   // its own exec loop; matches are merged and sorted so findings still surface
   // in file order.
-  const matches = [
-    ...allMatches(masked, new RegExp(BANNED_WORD_PATTERN.source, 'gi')),
-    ...allMatches(masked, new RegExp(RETIRED_NOUN_PATTERN.source, 'g')),
-    ...allMatches(masked, new RegExp(RETIRED_PRODUCT_NOUN_PATTERN.source, 'g')),
-  ].sort((a, b) => a.index - b.index);
+  const matches = staleNounPatterns(retiredTerms)
+    .flatMap((pattern) => allMatches(masked, pattern))
+    .sort((a, b) => a.index - b.index);
   for (const match of matches) {
     const lineStart = between.lastIndexOf('\n', match.index) + 1;
     let lineEnd = between.indexOf('\n', match.index);
@@ -594,7 +669,11 @@ function objectCopyLiteralText(literal) {
  * review L. Runs over the SAME enumerated file set as the JSX scanners, so
  * the gate never has a layer whose scope diverges from another's.
  */
-export function scanObjectLiteralCopy(file, rawContent) {
+export function scanObjectLiteralCopy(
+  file,
+  rawContent,
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+) {
   const content = stripComments(rawContent);
   const findings = [];
   OBJECT_COPY_FIELD_PATTERN.lastIndex = 0;
@@ -605,12 +684,7 @@ export function scanObjectLiteralCopy(file, rawContent) {
       objectCopyLiteralText(match[1]).replace(/\\(['"`\\])/g, '$1'),
     );
     if (!normalized) continue;
-    if (
-      !BANNED_WORD_PATTERN.test(normalized) &&
-      !RETIRED_NOUN_PATTERN.test(normalized) &&
-      !RETIRED_PRODUCT_NOUN_PATTERN.test(normalized)
-    )
-      continue;
+    if (!hasStaleNoun(normalized, retiredTerms)) continue;
     findings.push({
       file,
       line: lineNumberAt(content, match.index),
@@ -625,10 +699,14 @@ export function scanObjectLiteralCopy(file, rawContent) {
  * surfaces (JSX attribute values, JSX text nodes, object-literal copy
  * fields). Returns an array of findings: { file, line, snippet }.
  */
-export function scanFileContent(file, rawContent) {
+export function scanFileContent(
+  file,
+  rawContent,
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+) {
   const content = stripComments(rawContent);
   const findings = [];
-  findings.push(...scanObjectLiteralCopy(file, content));
+  findings.push(...scanObjectLiteralCopy(file, content, retiredTerms));
 
   function collectAttr(pattern) {
     pattern.lastIndex = 0;
@@ -642,12 +720,7 @@ export function scanFileContent(file, rawContent) {
         match.slice(1).find((group) => group !== undefined) ?? '';
       const normalized = normalizeSnippet(captured);
       if (!normalized) continue;
-      if (
-        !BANNED_WORD_PATTERN.test(normalized) &&
-        !RETIRED_NOUN_PATTERN.test(normalized) &&
-        !RETIRED_PRODUCT_NOUN_PATTERN.test(normalized)
-      )
-        continue;
+      if (!hasStaleNoun(normalized, retiredTerms)) continue;
       if (PROVIDER_COMPONENT_PATTERN.test(match[0])) continue;
       findings.push({
         file,
@@ -681,7 +754,13 @@ export function scanFileContent(file, rawContent) {
     const next = tags[i + 1];
     if (current.end >= next.start) continue;
     findings.push(
-      ...scanChildrenBetweenTags(file, content, current.end, next.start),
+      ...scanChildrenBetweenTags(
+        file,
+        content,
+        current.end,
+        next.start,
+        retiredTerms,
+      ),
     );
   }
 
@@ -744,6 +823,7 @@ export function scanCopySourceContent(
   file,
   rawContent,
   opener = copySourceOpener(file),
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
 ) {
   const content = stripComments(rawContent);
   const findings = [];
@@ -792,12 +872,7 @@ export function scanCopySourceContent(
         valueMatch.slice(1).find((group) => group !== undefined) ?? '';
       const normalized = normalizeSnippet(captured);
       if (!normalized) continue;
-      if (
-        !BANNED_WORD_PATTERN.test(normalized) &&
-        !RETIRED_NOUN_PATTERN.test(normalized) &&
-        !RETIRED_PRODUCT_NOUN_PATTERN.test(normalized)
-      )
-        continue;
+      if (!hasStaleNoun(normalized, retiredTerms)) continue;
       findings.push({ file, line, snippet: normalized });
     }
 
@@ -836,16 +911,27 @@ function allowlistKey(entry) {
  * copy sources (station#1543). `unscannable` carries copy the second scanner
  * could not read — never silently dropped.
  */
-export function runGate({ files, readFile, allowlist, copySourceFiles = [] }) {
+export function runGate({
+  files,
+  readFile,
+  allowlist,
+  copySourceFiles = [],
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+}) {
   const findings = [];
   for (const file of files) {
     const content = readFile(file);
-    findings.push(...scanFileContent(file, content));
+    findings.push(...scanFileContent(file, content, retiredTerms));
   }
 
   const unscannable = [];
   for (const file of copySourceFiles) {
-    const result = scanCopySourceContent(file, readFile(file));
+    const result = scanCopySourceContent(
+      file,
+      readFile(file),
+      copySourceOpener(file),
+      retiredTerms,
+    );
     findings.push(...result.findings);
     unscannable.push(...result.unscannable);
   }
@@ -917,6 +1003,8 @@ function main() {
     for (const finding of unallowlisted) {
       console.error(`  ${finding.file}:${finding.line}: ${finding.snippet}`);
     }
+    for (const { term, use } of ACTIVE_RETIRED_USER_TERMS)
+      console.error(`  "${term}" is retired; say "${use}".`);
     console.error(
       '\nUse the current vocabulary (Skill, Command, Model, Engine) instead, or add a' +
         '\nreasoned scripts/noun-consistency-allowlist.json entry if this is a' +

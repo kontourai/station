@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { STATION_BROWSER_TOOL_NAMES } from '../station-browser-policy.js';
 import { stationControlToolCatalog } from '../station-control-mcp-server.js';
-import { stationDocsToolCatalog } from '../station-docs-tool-catalog.js';
+import { stationDocsToolCatalog } from '../station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../station-knowledge-mcp-server.js';
 
 function registeredToolNames(): string[] {

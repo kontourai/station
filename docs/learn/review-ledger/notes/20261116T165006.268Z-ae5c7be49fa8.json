@@ -1,0 +1,7 @@
+{
+  "revision": "7e7e51117b960cae861a45545c9e7d1aeaefd641",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Hover inbox rows are now two lines (title/time; agent mark, status, project — project yields first; agent in mark tooltip and hover card, words when unmarked) and the desktop hidden-attention notice is a badge on the scope picker; InboxRow.css adds the state line only; row enter and swipe motion untouched.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}

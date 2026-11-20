@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -85,7 +86,10 @@ describe('StartModelPicker', () => {
   test('choosing a Model applies it and closes the picker', async () => {
     const onSelect = vi.fn();
     render(<Harness onSelect={onSelect} />);
-    fireEvent.click(await screen.findByRole('option', { name: /Fast model/ }));
+    const choices = within(
+      await screen.findByRole('group', { name: /^Models$/ }),
+    );
+    fireEvent.click(choices.getByRole('button', { name: /^Fast model/ }));
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'fast-model' }),
     );

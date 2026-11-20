@@ -394,7 +394,7 @@ export function installServerLogSink(
 }
 
 /** The store this module most recently installed, for callers that need the
- * instance itself (the fatal-crash `flushSync` path in `server-main.ts`). Returns
+ * instance itself (the fatal-crash `flushSync` path in `index.ts`). Returns
  * `undefined` before boot has installed one — logger writes stay
  * stdout-only. This is the store registry, not what the logger reads: the
  * logger holds the sink pushed to it by `installServerLogSink`. */

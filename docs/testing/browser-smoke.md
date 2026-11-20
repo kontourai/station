@@ -2,7 +2,10 @@
 
 The `fast-checks-statics` job runs `npm run test:e2e:pr-smoke` for
 same-repository source events and merge-group candidates; metadata-only edits
-do not repeat browser verification. The required
+do not repeat browser verification. With `STATION_PR_HEAVY_CHECKS=when-armed`
+an unarmed pull request skips the smoke until it is armed, and the source
+policy keeps that head pending
+([heavy checks when armed](../guides/testing.md#heavy-checks-when-armed)). The required
 `fast-checks` aggregator requires that job and the affected-test plan/shards to
 succeed; it validates exact-plan receipts or the independently checked empty-plan
 case. Fresh browser startup builds the candidate UI and enforces its bundle budget. Fork pull requests

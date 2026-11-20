@@ -92,7 +92,7 @@ jobs:
   # release key id (install.sh's test-only key override), then installs,
   # starts, upgrades (`station upgrade`, from the recorded manifest URL) and
   # uninstalls with NO Node.js on PATH, and fails if anything builds. The
-  # preview ring exercises this install/upgrade path; Nightly publication
+  # Stable candidate identity exercises this install/upgrade path; Nightly publication
   # has its own signed-manifest workflow and evidence.
   install-prebuilt-archive:
     needs: install-without-clone
@@ -138,11 +138,11 @@ jobs:
         # pushed; the checkout holds no credentials to push it with.
         run: |
           set -euo pipefail
-          npm run build:portable-server -- --ref v0.0.0-preview.1 \
+          npm run build:portable-server -- --ref v0.0.0-rc.1 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-1"
           git -c user.name='install smoke' -c user.email='install-smoke@invalid' \
             commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
-          npm run build:portable-server -- --ref v0.0.0-preview.2 \
+          npm run build:portable-server -- --ref v0.0.1-rc.1 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
       - name: Start a systemd user manager for the service path
         # Linger starts user@<uid>.service without a login session, which is
@@ -226,11 +226,11 @@ jobs:
         # on top that is never pushed.
         run: |
           set -euo pipefail
-          npm run build:portable-server -- --ref v0.0.0-preview.1 \
+          npm run build:portable-server -- --ref v0.0.0-rc.1 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-1"
           git -c user.name='install smoke' -c user.email='install-smoke@invalid' \
             commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
-          npm run build:portable-server -- --ref v0.0.0-preview.2 \
+          npm run build:portable-server -- --ref v0.0.1-rc.1 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
       - name: Stage, install, upgrade and uninstall with install.ps1, no Node.js on PATH
         run: |

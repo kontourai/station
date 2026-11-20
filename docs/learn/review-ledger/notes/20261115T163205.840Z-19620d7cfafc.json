@@ -1,0 +1,7 @@
+{
+  "revision": "81fca05fb00375b2193d7c39f0097cebdba7a257",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Continue an Attached Session now describes the single Continue in Station action with an optional draft; checked against AttachedSessionDetail and its tests.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

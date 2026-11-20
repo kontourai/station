@@ -8,7 +8,6 @@ import {
   STATION_DOCS_BUNDLE,
   type StationDocsBundleTopic,
 } from './station-docs-content.js';
-import { STATION_DOCS_TOOLS } from './station-docs-tool-catalog.js';
 
 /**
  * station-docs — Station's credential-free documentation MCP server
@@ -151,6 +150,37 @@ function shippedSourceEnvelope(): Promise<Readonly<Record<string, string>>> {
       note: "Static documentation bundled with Station. This is not live state: it does not describe this Station's agents, runs, jobs, projects, or settings.",
     }));
   return shippedSource;
+}
+
+const STATION_DOCS_TOOLS = [
+  {
+    name: 'list_station_docs_topics',
+    title: 'Browse documentation',
+    description:
+      "List topics in Station's SHIPPED DOCUMENTATION, including the architecture learning tree. Filter parentId to manual, architecture, or a branch id returned by this tool. Returns bundled documentation, never live state: it cannot tell you what exists on this Station.",
+    group: 'Documentation',
+    readOnly: true,
+  },
+  {
+    name: 'get_station_docs_topic',
+    title: 'Read documentation',
+    description:
+      "Read one topic of Station's SHIPPED DOCUMENTATION by id (use list_station_docs_topics for the ids). Returns bundled documentation, never live state: it describes how Station works in general, not this Station's agents, runs, or settings.",
+    group: 'Documentation',
+    readOnly: true,
+  },
+  {
+    name: 'search_station_docs',
+    title: 'Search documentation',
+    description:
+      "Ranked search across Station's SHIPPED DOCUMENTATION, best match first. Returns bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+    group: 'Documentation',
+    readOnly: true,
+  },
+];
+
+export function stationDocsToolCatalog() {
+  return STATION_DOCS_TOOLS;
 }
 
 export function createStationDocsMcpServer(): McpServer {

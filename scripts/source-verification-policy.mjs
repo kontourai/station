@@ -1,10 +1,15 @@
 import { readFileSync } from 'node:fs';
+import { fetchGitHubEvidence } from './lib/github-evidence-fetch.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
 const CI_PATH = '.github/workflows/ci.yml';
-const METADATA_RUN_NAME =
-  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}";
+// Every ci.yml run-name line that names metadata-only edits `PR metadata`;
+// the second also names arming `PR armed` (STATION_PR_HEAVY_CHECKS).
+const METADATA_RUN_NAMES = Object.freeze([
+  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}",
+  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || github.event_name == 'pull_request_target' && github.event.action == 'auto_merge_enabled' && 'PR armed' || 'Source verification' }}",
+]);
 const SHA = /^[a-f0-9]{40}$/;
 /**
  * #1706: the fast-checks aggregate runs this step only when it passed a plan
@@ -15,6 +20,18 @@ const SHA = /^[a-f0-9]{40}$/;
 export const FAST_CHECKS_PROVISIONAL_STEP = 'Mark fast-checks provisional';
 const PROVISIONAL_NOTE =
   ' (provisional: ci-fast/test-full deferred to full qualification)';
+/**
+ * The fast-checks aggregate runs exactly one of these (ci.yml): the first
+ * when STATION_PR_HEAVY_CHECKS deferred the heavy checks on this run, the
+ * second when they ran. A run carrying either name is verified only by the
+ * second; a run carrying neither predates the switch and ran everything.
+ */
+export const HEAVY_DEFERRED_STEP = 'Record heavy checks deferred until armed';
+export const HEAVY_RAN_STEP = 'Record heavy checks ran';
+export const CHEAP_ONLY_DESCRIPTION =
+  'Cheap checks passed; heavy checks run once armed (or add the full-checks label and re-run)';
+/** ci.yml's run-name for `auto_merge_enabled`. */
+const ARMED_RUN_NAME = 'PR armed';
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
 
@@ -149,6 +166,97 @@ function isCompletedMetadata(jobs, run, trustedCancelledMetadata) {
   return jobs.every((job) => job === title[0] || jobState(job) === 'skipped');
 }
 
+/**
+ * Null when the run predates the switch (neither marker step exists), else
+ * the pending verdict unless the heavy checks demonstrably ran. A missing
+ * step inventory never reads as verified.
+ */
+function heavyVerdict(aggregate) {
+  const steps = aggregate?.steps;
+  if (!Array.isArray(steps))
+    return pending('Heavy-check evidence unavailable for the newest run');
+  const marker = (name) => steps.filter((step) => step?.name === name);
+  const ran = marker(HEAVY_RAN_STEP);
+  const deferred = marker(HEAVY_DEFERRED_STEP);
+  if (ran.length === 0 && deferred.length === 0) return null;
+  if (
+    ran.length === 1 &&
+    ran[0].conclusion === 'success' &&
+    deferred.every((step) => step.conclusion !== 'success')
+  )
+    return null;
+  if (deferred.length === 1 && deferred[0].conclusion === 'success')
+    return pending(CHEAP_ONLY_DESCRIPTION);
+  return pending('Heavy-check evidence is incomplete for the newest run');
+}
+
+/**
+ * A `PR armed` run whose `PR source admission` job has not completed (it is
+ * queued, being evaluated, or skipped because the switch is off or the
+ * candidate is a fork) has made no source decision, so it neither proves nor
+ * refutes the head and the older runs decide. Ignoring it can never verify a
+ * head that the older runs did not already verify.
+ */
+function uninformativeArmRun(run, jobs) {
+  if (run.display_title !== ARMED_RUN_NAME) return false;
+  return !jobs.some(
+    (job) =>
+      job?.name === 'PR source admission' &&
+      job.status === 'completed' &&
+      job.conclusion !== 'skipped',
+  );
+}
+
+/** The aggregate recorded that this run deferred the heavy checks. */
+function cheapOnlyRun(jobs) {
+  const steps = proofJob(jobs, ['fast-checks', 'Fast checks execution'])?.steps;
+  return (
+    Array.isArray(steps) &&
+    steps.some(
+      (step) =>
+        step?.name === HEAVY_DEFERRED_STEP && step.conclusion === 'success',
+    )
+  );
+}
+
+/**
+ * Newest-first proofs of one owner. The newest run decides, and a failure
+ * among runs tied at that start time wins, as before the switch. The one
+ * exception: once the head has a successful proof on a compatible base, a
+ * newer run that provably deferred the heavy checks (its aggregate ran the
+ * deferral marker, which also runs after a failure) is ignored, so a re-run
+ * of an older cheap run or a cheap re-arm run can neither pull a verified head
+ * back to pending nor fail it. Any other newer run, in progress, unknown,
+ * failed or cancelled, still decides: a run that may be heavy is never
+ * assumed to pass.
+ */
+function selectVerdict(proofs) {
+  const verified = proofs.find(
+    (entry) => entry.compatibleBase && entry.proof.state === 'success',
+  );
+  const considered = verified
+    ? proofs.filter(
+        (entry) =>
+          entry === verified ||
+          !entry.cheapOnly ||
+          entry.started < verified.started,
+      )
+    : proofs;
+  const newest = considered[0].started;
+  const tied = considered
+    .filter((entry) => entry.started === newest)
+    .map((entry) =>
+      entry.compatibleBase
+        ? entry.proof
+        : pending('Source base diverged from the live main target'),
+    );
+  return (
+    tied.find((proof) => proof.state === 'failure') ??
+    tied.find((proof) => proof.state === 'pending') ??
+    tied[0]
+  );
+}
+
 function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   const plan = jobState(proofJob(jobs, 'fast-checks plan'));
   const statics = jobState(proofJob(jobs, 'fast-checks statics'));
@@ -157,6 +265,14 @@ function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   // the actual producer jobs, never the aggregate's display-name expression.
   if (plan === 'skipped' && statics === 'skipped' && forkSmoke === 'skipped') {
     if (isCompletedMetadata(jobs, run, trustedCancelledMetadata)) return null;
+    // Arming with the switch off, or a fork's arming: nothing ran, so the
+    // run proves and refutes nothing and the older run's verdict stands.
+    if (
+      run.display_title === ARMED_RUN_NAME &&
+      jobState(proofJob(jobs, ['fast-checks', 'Fast checks execution'])) ===
+        'skipped'
+    )
+      return null;
     const aggregate = jobState(
       proofJob(jobs, ['fast-checks', 'Fast checks execution']),
     );
@@ -187,6 +303,12 @@ function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   if (required.includes('failure'))
     return failure('Newest source proof failed or was cancelled');
   if (required.every((state) => state === 'success')) {
+    if (!fork) {
+      const heavy = heavyVerdict(
+        proofJob(jobs, ['fast-checks', 'Fast checks execution']),
+      );
+      if (heavy) return heavy;
+    }
     const provisional =
       !fork &&
       (
@@ -223,7 +345,7 @@ export async function reconcileSourceVerification({
   if (!SHA.test(sha ?? '')) throw new Error('Missing exact source head');
   let wrote = false;
   const request = async (path, body) => {
-    const response = await fetch(
+    const response = await fetchGitHubEvidence(
       `${apiUrl}/repos/${repository}${path ? `/${path}` : ''}`,
       {
         method: body ? 'POST' : 'GET',
@@ -233,7 +355,6 @@ export async function reconcileSourceVerification({
           'Content-Type': 'application/json',
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(30_000),
       },
     );
     if (!response.ok) throw new Error(`GitHub API ${response.status}: ${path}`);
@@ -361,7 +482,8 @@ export async function reconcileSourceVerification({
           .split(/\r?\n/);
         metadataWorkflows.set(
           revision,
-          header[0] === 'name: "PR: CI"' && header[1] === METADATA_RUN_NAME,
+          header[0] === 'name: "PR: CI"' &&
+            METADATA_RUN_NAMES.includes(header[1]),
         );
       }
       return metadataWorkflows.get(revision) ? revision : false;
@@ -438,14 +560,12 @@ export async function reconcileSourceVerification({
       const verdicts = [];
       for (const owner of owners) {
         let verdict = pending('No source proof for an open exact-head owner');
-        let selectedTime;
-        const tiedProofs = [];
+        const proofs = [];
         for (const run of attempts.filter(
           (run) =>
             run.event === 'pull_request_target' && associatedOwner(run, owner),
         )) {
           const started = Date.parse(run.run_started_at);
-          if (selectedTime !== undefined && started < selectedTime) break;
           const sourceBase = associatedOwner(run, owner).base.sha;
           const liveBase = owner.base.sha;
           let compatibleBase = sourceBase === liveBase;
@@ -481,20 +601,15 @@ export async function reconcileSourceVerification({
             proofRows(jobs),
             verifiedMetadata || null,
           ]);
-          if (proof) {
-            selectedTime = started;
-            tiedProofs.push(
-              compatibleBase
-                ? proof
-                : pending('Source base diverged from the live main target'),
-            );
-          }
+          if (proof && !uninformativeArmRun(run, jobs))
+            proofs.push({
+              started,
+              proof,
+              compatibleBase,
+              cheapOnly: cheapOnlyRun(jobs),
+            });
         }
-        if (tiedProofs.length)
-          verdict =
-            tiedProofs.find((proof) => proof.state === 'failure') ??
-            tiedProofs.find((proof) => proof.state === 'pending') ??
-            tiedProofs[0];
+        if (proofs.length) verdict = selectVerdict(proofs);
         verdicts.push(verdict);
       }
       // Merge-group heads do not own live PR heads. Only a genuine synthesized

@@ -1,0 +1,13 @@
+{
+  "revision": "7daf688f3ba1649dd075e02bc77eb7c4a9116c21",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Bounded delta review: the built-in cache handoff now passes through the linked-root check (withStationCompileCache options object); a linked or non-directory cache root under the home hands no cache. Token, tenant and caller-credential behavior and the third-party boundary are unchanged; citing pages make no claim about this. No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Bounded delta review: the built-in cache handoff now passes through the linked-root check (withStationCompileCache options object); a linked or non-directory cache root under the home hands no cache. Token, tenant and caller-credential behavior and the third-party boundary are unchanged; citing pages make no claim about this. No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Bounded delta review: the built-in cache handoff now passes through the linked-root check (withStationCompileCache options object); a linked or non-directory cache root under the home hands no cache. Token, tenant and caller-credential behavior and the third-party boundary are unchanged; citing pages make no claim about this. No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Bounded delta review: the built-in cache handoff now passes through the linked-root check (withStationCompileCache options object); a linked or non-directory cache root under the home hands no cache. Token, tenant and caller-credential behavior and the third-party boundary are unchanged; citing pages make no claim about this. No prose change.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]}
+  ]
+}

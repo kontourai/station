@@ -2,10 +2,18 @@ import type {
   AgentJobProposal,
   ConversationAgentSchedule,
 } from '@kontourai/station-contracts/agent-schedule';
-import { getJson, mutateJson } from '@kontourai/station-sdk';
+import type { AutomationProposal } from '@kontourai/station-contracts/automation';
+import {
+  getJson,
+  mutateJson,
+  orchestrationQueries,
+  readEnvelopeOrThrow,
+  StationHttpError,
+} from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { StationUiError } from '../utils/StationUiError';
 
 /**
  * What an agent scheduled in one conversation: its check-backs, the job and
@@ -97,11 +105,25 @@ export function useAgentSchedule(
     if (!enabled || due === undefined) return;
     const wait = due - Date.now() + SETTLE_MS;
     if (wait > MAX_TIMER_MS) return;
-    const timer = setTimeout(() => void query.refetch(), Math.max(0, wait));
+    const timer = setTimeout(
+      () => {
+        void query.refetch();
+        void client.invalidateQueries({
+          queryKey: orchestrationQueries.sessions(scope).queryKey,
+        });
+      },
+      Math.max(0, wait),
+    );
     return () => clearTimeout(timer);
-  }, [enabled, due, query.refetch]);
+  }, [enabled, due, query.refetch, client, scope]);
 
-  const settle = () => client.invalidateQueries({ queryKey: key });
+  const settle = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: key }),
+      client.invalidateQueries({
+        queryKey: orchestrationQueries.sessions(scope).queryKey,
+      }),
+    ]);
   const cancelWakeUp = useMutation({
     mutationFn: async (wakeUpId: string) =>
       readData(
@@ -167,16 +189,51 @@ export function useAgentSchedule(
    * #4830: a person answers an agent's Automation proposal. Confirm creates
    * it disabled (a source) or observing (a rule) unless `enable` is set.
    */
+  const confirmationScope = JSON.stringify(key);
   const confirmAutomationProposal = useMutation({
-    mutationFn: async (input: { id: string; enable: boolean }) =>
-      readData(
-        await mutateJson(
-          `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
-          'POST',
-          options(),
-          { enable: input.enable },
-        ),
-      ),
+    mutationKey: [...key, 'confirm-automation'],
+    onMutate: () => confirmationScope,
+    mutationFn: async (input: {
+      id: string;
+      kind: AutomationProposal['kind'];
+      enable: boolean;
+    }) => {
+      const response = await mutateJson(
+        `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
+        'POST',
+        options(),
+        { enable: input.enable },
+      );
+      const result = await readEnvelopeOrThrow<{
+        createdId: string;
+        enabled: boolean;
+        message?: string;
+      }>(response).catch((error: unknown) => {
+        if (
+          error instanceof StationHttpError &&
+          error.status === 409 &&
+          error.code === 'automation_proposal_binding_changed'
+        )
+          throw new StationUiError(
+            'The reviewed Agent or its Project access changed. Decline it and ask the Agent again.',
+          );
+        throw error;
+      });
+      if (
+        typeof result?.createdId !== 'string' ||
+        result.createdId.length === 0 ||
+        typeof result.enabled !== 'boolean'
+      )
+        throw new StationUiError(
+          'Station did not report the confirmation outcome. Check the proposal before trying again.',
+        );
+      return {
+        createdId: result.createdId,
+        enabled: result.enabled,
+        message:
+          typeof result.message === 'string' ? result.message : undefined,
+      };
+    },
     onSettled: settle,
   });
   const declineAutomationProposal = useMutation({
@@ -205,6 +262,10 @@ export function useAgentSchedule(
       void client.invalidateQueries({ queryKey: ['usage-limit-recovery'] });
     },
   });
+  const currentConfirmation =
+    enabled && confirmAutomationProposal.context === confirmationScope
+      ? confirmAutomationProposal
+      : undefined;
   return {
     schedule: data,
     /** The server's list has been read (what is shown is not a placeholder). */
@@ -215,6 +276,16 @@ export function useAgentSchedule(
     declineProposal,
     approveProposal,
     confirmAutomationProposal,
+    automationConfirmation:
+      currentConfirmation?.data && currentConfirmation.variables
+        ? {
+            ...currentConfirmation.data,
+            proposalId: currentConfirmation.variables.id,
+            kind: currentConfirmation.variables.kind,
+            requestedEnable: currentConfirmation.variables.enable,
+          }
+        : undefined,
+    automationConfirmationError: currentConfirmation?.error,
     declineAutomationProposal,
     holdResume,
   };

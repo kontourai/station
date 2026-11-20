@@ -1,0 +1,7 @@
+{
+  "revision": "43aa15ba5e70a9c7c3983615e1c0b810b7c47370",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"The Inbox browser helper now accepts the Playwright accessible-name matcher type used by the existing swipe cases. Both browser journeys passed with the same locator patterns, actions and expectations.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

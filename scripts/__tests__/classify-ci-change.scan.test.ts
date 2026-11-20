@@ -64,7 +64,6 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
       'packages/cli/src/commands/profile-store.ts',
       'patches/android-native-keyring-store/Cargo.toml',
       'schemas/resource',
-      'src-ui/public/favicon-beta.png',
       'src-ui/public/favicon-dev.png',
       'src-ui/public/favicon-nightly.png',
       'src-ui/public/favicon.png',

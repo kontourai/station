@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   a11yEnabled,
+  assertMeasurable,
   biomeLintInvocation,
   countViolations,
   evaluate,
@@ -194,5 +195,37 @@ describe('biome invocation', () => {
     expect(result.stdout).toMatch(
       /OK: \d+ violation\(s\), none above ceiling\./,
     );
+  });
+});
+
+describe('assertMeasurable', () => {
+  it('passes a run that printed its summary', () => {
+    const output = 'warning\nChecked 12 files in 40ms. No fixes applied.\n';
+    expect(assertMeasurable(output, { status: 0, signal: null })).toBe(output);
+  });
+
+  it('names the signal and keeps the tail of a killed run', () => {
+    const output = `${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}\n`;
+    expect(() =>
+      assertMeasurable(output, { status: null, signal: 'SIGKILL' }),
+    ).toThrowError(/killed by SIGKILL[\s\S]*line 29$/);
+    expect(() =>
+      assertMeasurable(output, { status: null, signal: 'SIGKILL' }),
+    ).not.toThrowError(/line 9\b/);
+  });
+
+  it('names the exit status of a run that stopped early', () => {
+    expect(() =>
+      assertMeasurable('Waiting for a Biome slot…\n', {
+        status: 1,
+        signal: null,
+      }),
+    ).toThrowError(/exited with status 1[\s\S]*Waiting for a Biome slot/);
+  });
+
+  it('says when the run wrote nothing', () => {
+    expect(() =>
+      assertMeasurable('', { status: 2, signal: null }),
+    ).toThrowError(/exited with status 2[\s\S]*It wrote no output\./);
   });
 });

@@ -3,43 +3,60 @@
 Start with [integration, qualification and releases](releasing.md) for the
 cadence, exact-source evidence, repair ownership and full release procedure.
 
-Station's default portable installer uses GitHub-attested release rings.
-Stable is the default;
-Beta is opt-in with `STATION_CHANNEL=beta`. Its public release protocol remains
-named `preview`, and a preview tag has the form
-`vMAJOR.MINOR.PATCH-preview.N`; a stable tag has the form `vMAJOR.MINOR.PATCH`.
-Promotion creates a new stable tag from the exact reviewed preview commit. The
-repository's `package.json` carries the stable base version (`X.Y.Z`) once;
-preview numbering lives only in immutable `vX.Y.Z-preview.N` tags and their
-release overlays. Promotion never edits source, moves a tag, or relabels a
-preview artifact.
+Station has two release channels: Stable and Nightly. A release candidate is
+an acceptance step toward Stable, not another runtime channel. Beta, the
+`preview` ring, `vX.Y.Z-preview.N` tags and `STATION_CHANNEL=beta` are retired
+([#4929](https://github.com/kontourai/station/issues/4929)). They are rejected,
+not redirected to Stable.
 
-> **Beta is being retired ([#4929](https://github.com/kontourai/station/issues/4929)).**
-> `Release: Stage` no longer accepts `vX.Y.Z-preview.N` tags. A release
-> candidate is tagged `vX.Y.Z-rc.N` (N from 1 to 98) and builds with Stable
-> identity and the bare base version `X.Y.Z`, taking store build slot N; a
-> final `vX.Y.Z` tag takes slot 99. A candidate stages a complete draft: asset
-> names, SBOM subjects and the container descriptor are named for the rc tag,
-> while the inventory, SBOMs and host payload record the base version and the
-> Stable ring. The candidate's container descriptor lists only the rc tag and
-> `sha-<source>`, never `latest` or the bare version, and the host payload's
-> archive URLs point at the rc tag's release. `Release: Publish` refuses rc
-> tags until rc publication lands. The `preview` ring and Beta installer text below are
-> removed by later slices of that issue.
+An immutable `vX.Y.Z-rc.N` tag (N from 1 to 98) builds Stable application
+identity and the bare product version `X.Y.Z`. Its asset names, inventory tag,
+SBOM subjects and attestation source ref retain the producing RC tag. Native
+store builds use slot N; a separately built direct-final `vX.Y.Z` uses slot 99.
+Promotion retains the RC's slot N and all original bytes. The repository's
+private root `package.json` owns the product base; published CLI/library
+packages keep their own Changesets versions.
+
+`Release: Publish` has three explicit modes:
+
+| Mode | Input tag | Result |
+| --- | --- | --- |
+| `rc` | `vX.Y.Z-rc.N` | Public GitHub prerelease for acceptance; no Stable rolling pointer, mobile feed, container alias, deploy ledger or issue availability projection |
+| `promote` | Published `vX.Y.Z-rc.N` | Creates `vX.Y.Z` at the same source without a producer rebuild, transfers unchanged assets and promotes the exact store builds |
+| `stable` | Direct-final `vX.Y.Z` | Publishes that qualified draft; also owns the separately admitted published desktop-pointer repair path |
+
+RC container staging is immutable and candidate-specific, so another RC at the
+same source can consume its own native build slot. RC publication never moves
+`latest`, bare-version or source-SHA aliases. Original RC releases and assets
+must remain public while a promoted release references them: the unchanged
+host payload keeps its RC archive URLs.
+
+New Stable portable server archives carry schema-3 provenance bound to source SHA and
+product version, not the tag where they were staged. An RC and its final release
+can therefore select the same Stable archive bytes. Both installers check the
+authenticated manifest's SHA, version and channel; older schema-2 archives keep
+exact-ref validation. The archived launcher reports a canonical `v<version>`
+identity for schema 3. See the [provenance decision](../decisions/rc-promotion-provenance.md).
+
+An exact source-release pin such as `STATION_VERSION=v0.2.0-rc.1` selects the
+Stable runtime and requires a GitHub prerelease at that exact tag. Its asset
+attestations still verify the producing `refs/tags/v0.2.0-rc.1` and source SHA.
+Unpinned Stable installation continues to select only final releases. This
+selection support does not publish candidates or move Stable pointers.
 
 Nightly is a separate, opt-in signed-public-manifest path:
 `STATION_CHANNEL=nightly` installs from the rolling `portable-nightly`
 manifest unless `STATION_INSTALL_PUBLIC_MANIFEST_URL` names another signed
-manifest. The authenticated GitHub-release path serves Stable and Beta only. See
+manifest. The authenticated GitHub-release path serves Stable only. See
 [channel identity and coexistence](release-channel-ports.md) for Nightly's
 home/port admission and the distinction between the public manifest signature
 and a signed Git tag. Publication remains separate from installer support.
 
 ## Release artifacts and trust boundary
 
-The Stable/preview source-archive path uses these three installer inputs:
+The Stable source-archive path, including an exact RC pin, uses these three installer inputs:
 
-- `station-release-ring-stable.json` or `station-release-ring-preview.json`
+- `station-release-ring-stable.json`
 - `station-portable.tar.gz.sha256`
 - `station-portable.tar.gz`
 
@@ -47,14 +64,16 @@ The tag-triggered release workflow produces those inputs and uploads
 them only after the full native release inventory validates. It creates a draft;
 the protected manual `Release: Publish` workflow revalidates that draft
 and is the only workflow allowed to publish it. The tag workflow identity and
-the release tag must name the same Git ref.
+the producer tag must name the same Git ref. A promoted final release also
+requires the default-branch publication receipt that authenticates the
+producer-to-final transfer; its original assets retain RC attestations.
 
 The default installer path requires an authenticated `gh` with attestation support. Before it
 parses a manifest, checksum, or archive, it verifies that file against:
 
 - repository `kontourai/station`
 - workflow `kontourai/station/.github/workflows/release.yml`
-- the selected release tag and its resolved source commit
+- the producing release tag and its resolved source commit
 - GitHub's OIDC issuer and GitHub-hosted runner environment
 
 The workflow pins `actions/attest-build-provenance` by commit. The portable OIDC
@@ -117,9 +136,10 @@ The key is the `STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY` secret in the
 `native-release-publish` environment. Its public half is
 `station-portable-release-2026-09` in
 [`config/release-manifest-keys.json`](../../config/release-manifest-keys.json),
-and it may sign `stable` and `preview` only. With the variable enabled and the
+and it may sign `stable` only. With the variable enabled and the
 secret missing, the job fails before the release is published. With the gate
-on, the publish job:
+on, RC publication signs and attaches the versioned manifest but skips all
+rolling-pointer operations. Final publication performs these steps:
 
 1. signs the payload and verifies it with the pinned table;
 2. requires the owner's rolling pointer release to exist and be public;
@@ -135,8 +155,8 @@ reports the release public, even if a later publish step such as the deploy
 ledger failed (but not after the owner cancels the run), and its own failure
 never skips the ledger or release availability. Re-running the failed job retries only the pointer. It holds no
 secret: it downloads the signed manifest and its payload from the public
-versioned release, requires the payload to name this run's version, tag and
-source SHA, and verifies them with the pinned key table before any pointer
+versioned release, requires the payload to name this run's version, producing tag and
+source SHA (and its authenticated producer tag for promotion), and verifies them with the pinned key table before any pointer
 write. The pointer plan also refuses a signed manifest for any other
 version. It then re-downloads the versioned archives and manifest
 anonymously, compares them with the payload, and plans the pointer again:
@@ -174,28 +194,27 @@ stops at the empty-pointer refusal. To recover, check the versioned release,
 then re-run `Publish Station release` for that tag with
 `allow_empty_host_manifest_bootstrap`.
 
-A tag built before this workflow change carries no host archives or payload,
-so its draft fails revalidation and cannot be published with it. No such tag
-exists: no tagged release has completed (#1243).
+A tag without the required host archives or payload fails revalidation.
+Inspect current GitHub release state for delivery history; source support does
+not establish that a tagged release completed.
 
 The locations come from one base,
 [`scripts/lib/public-release-locations.mjs`](../../scripts/lib/public-release-locations.mjs):
 `https://github.com/kontourai/station/releases/download/`. The versioned
-manifest is `v<version>/station-portable-<ring>-manifest.json`. The rolling
-pointers are `portable-stable/station-portable-stable-manifest.json` and
-`portable-preview/station-portable-preview-manifest.json`. Nightly's
-`portable-nightly` pointer derives from the same base, and
-`scripts/install-script-generated.mjs` projects it into `install.sh` and
-`install.ps1` as the Nightly default. Stable and preview
-versions order numerically on `X.Y.Z` and `X.Y.Z-preview.N`.
+manifest is `<publication-tag>/station-portable-stable-manifest.json`. Its
+payload can retain the producing RC tag in archive URLs. Stable's rolling
+pointer is `portable-stable/station-portable-stable-manifest.json`.
+Nightly's separate `portable-nightly` pointer derives from the same base, and
+`scripts/install-script-generated.mjs` projects it into both installers as the
+Nightly default.
 
-Nothing has been published this way yet. These remain owner actions: add the
-secret, create the `portable-stable` and `portable-preview` pointer releases
-(public), set the variable, cut a tagged release that completes (#1243), and
-set `allow_empty_host_manifest_bootstrap` on each ring's first publish.
-The installer's defaults are unchanged. `install.sh` already accepts a stable
-or preview manifest through `STATION_INSTALL_PUBLIC_MANIFEST_URL`, and making
-these URLs its default is #2960.
+Before the first Stable host publication, the owner provisions the signing
+secret, creates the public `portable-stable` pointer release, sets the
+publication variable, and explicitly sets `allow_empty_host_manifest_bootstrap`.
+These are operational prerequisites, not facts established by this guide.
+Stable's default installer path remains GitHub-attested; selecting its signed
+public manifest uses `STATION_INSTALL_PUBLIC_MANIFEST_URL`. Making that URL
+the default remains #2960.
 
 ## Author telemetry in official builds
 
@@ -211,8 +230,10 @@ flow, an owner with repository administration access can open **Settings →
 Secrets and variables → Actions → Variables**, create the repository variable
 `STATION_AUTHOR_TELEMETRY_ENDPOINT`, and enter the receiver's HTTPS URL. For
 the [Kontour Worker receiver](../../deploy/telemetry-worker/README.md) that is
-`https://telemetry.kontourai.io/v1/lite/station`. Senders post the daily ping
-to this URL unchanged. The `station` source lists every ring's channel and the
+`https://telemetry.kontourai.io/v1/lite/station`. Official builds post anonymous
+daily counts to this URL unchanged. Station disables Detailed for this
+receiver. Operators can choose Detailed for a compatible additional
+destination under **Privacy & sharing → Advanced**. The `station` source lists every ring's channel and the
 ping carries its own, so one URL serves every ring. Never revoke `station`
 while builds post to it: senders record a refused ping as dropped without
 retrying, so revoking it would silently lose every ring's pings. Its channel
@@ -231,26 +252,24 @@ The injection boundary is the official producer, not a workflow-wide `env`:
 
 | Build path | Endpoint and channel |
 | --- | --- |
-| Tagged stable/preview desktop, macOS/Windows/Linux (`release.yml`) | Repo variable and `STATION_CHANNEL` only in desktop build steps; the preflight ring maps `preview` to runtime channel `beta`. Tauri resource builds inherit both. |
+| Tagged Stable RC/final desktop, macOS/Windows/Linux (`release.yml`) | Repo variable and `STATION_CHANNEL` only in desktop build steps; RC and final builds both use runtime channel `stable`. Tauri resource builds inherit both. |
 | Nightly desktop, macOS/Windows (`nightly-native-stage.yml`, called by `nightly.yml`) | Repo variable only in build steps for official main Nightly runs; server build stamp records `nightly`. The Windows wrapper and nested resource builds inherit it. There is no Nightly Linux release producer. |
-| Five portable server archive targets, stable/preview/nightly (`portable-server-archives.yml`) | Repo variable in both the initial server/UI build and the archive-packaging step, which rebuilds the server. Official tag or main Nightly callers must supply release inputs. Both builds use the runtime channel (`beta` for the `preview` ring); staging reads it from packaged-release metadata. Direct dispatch and PR packaging proof get no endpoint. |
-| npm CLI stable/Nightly and portable CLI | No endpoint injection: the CLI has no author sink. It installs or connects to a separately distributed host, whose server stamp owns telemetry. Existing CLI channel metadata is unchanged. There is no preview npm publisher. |
-| iOS device/simulator and Android stable/preview/nightly | These clients build the UI, not a Node server. No server author constant or author sink is embedded in those apps. A connected host uses its own build's endpoint and channel. Mobile channel metadata remains owned by the native release pipeline. |
+| Five portable server archive targets, Stable/Nightly (`portable-server-archives.yml`) | Repo variable in both the initial server/UI build and the archive-packaging step, which rebuilds the server. Official tag or main Nightly callers must supply release inputs. Both builds use the selected runtime channel; staging reads it from packaged-release metadata. Direct dispatch and PR packaging proof get no endpoint. |
+| npm CLI stable/Nightly and portable CLI | No endpoint injection: the CLI has no author sink. It installs or connects to a separately distributed host, whose server stamp owns telemetry. CLI package versions remain independent from the product base. |
+| iOS device/simulator and Android Stable/Nightly | These clients build the UI, not a Node server. No server author constant or author sink is embedded in those apps. A connected host uses its own build's endpoint and channel. Mobile channel metadata remains owned by the native release pipeline. |
 | Portable source archives (`station-portable.tar.gz`) | Source archives contain no built server. Building them on the user's machine remains a source build without an author endpoint. Use the prebuilt server archives above for an official server stamp. |
 | Source, development, PR/fork CI, Docker images | No endpoint. Docker release producers are deliberately outside desktop job environments. |
 
 The channel source is the server's existing `__STATION_SERVER_BUILD__.channel`
 metadata, also exposed as `BuildProvenance.channel` by the system API. Official
-server builds use runtime channels `stable`, `beta` and `nightly`; the release
-protocol calls the `beta` ring `preview`. The shared
+server builds use runtime channels `stable` and `nightly`; RCs report `stable`.
+The shared
 [`mapRuntimeChannelToTelemetryChannel`](../../packages/shared/src/product-telemetry.ts)
-maps runtime `beta` to telemetry `preview`, preserves other permitted telemetry
-channels, and omits unknown channels. The usage telemetry service applies it
-when capturing build metadata. There is no separate telemetry channel export
-or setting. This
-preserves ADR 0020's separate client/host identities and ring-tagged build
-model. A future promotion model must revisit baked channel metadata together
-with the existing release identity, rather than relabeling these bytes.
+preserves permitted current channels and omits unknown channels. The historical
+telemetry `preview` dimension remains a data-reader compatibility contract; it
+is not a runtime channel or an authorization to produce Beta builds. The usage
+telemetry service applies the mapping when capturing build metadata. There is
+no separate telemetry-channel export or setting.
 
 [`author-telemetry-build.mjs`](../../scripts/lib/author-telemetry-build.mjs)
 refuses a nonempty endpoint outside the official repository's release workflow
@@ -259,74 +278,130 @@ contexts or when it disagrees with the existing build channel.
 checks the producer allowlist and excludes workflow-wide, PR and container
 injection; the ordinary actionlint gate runs it too. The focused build test
 runs the real server bundler into a temporary directory, checks exit statuses
-and baked metadata, compares desktop/portable preview channels, and exercises
+and baked metadata, compares desktop/portable Stable and Nightly channels, and exercises
 URL/context rejection and workflow leaks:
 
 ```sh
 npm run test:focused -- scripts/__tests__/author-telemetry-build.test.ts
 ```
 
+For release acceptance, use an installed candidate with an isolated Station
+home on a supported desktop or portable host. Record its version, channel and
+source SHA. Confirm that Kontour offers anonymous counts and Off, and that a
+fresh desktop home sends only after the usage notice is handled. Run the host
+across a UTC day boundary with anonymous counts enabled, then inspect
+`station telemetry outbox --publisher kontour` for an acknowledged
+`station_daily` row with that version and channel. Read the exact version and
+channel breakdown in [private Insights](https://telemetry.kontourai.io/insights)
+for the corresponding receiver arrival day. Record the receiver evidence
+alongside the sender evidence. Public weekly estimates include privacy noise
+and may be published without reports.
+
 These are build and policy checks. They do not deploy a receiver, enable data
 flow, or prove signed native artifacts or store delivery.
 
-## Publish a preview
+## Publish a release candidate
 
-Release actions below require an authorized release handoff. Use a clean
-exclusive checkout of the exact reviewed `main` commit, and choose the version
-from current repository/provider state rather than these illustrative tags:
+Release actions require an authorized release handoff. Use a clean sibling
+worktree and an exact reviewed main source with successful full qualification.
+Choose an unused base from current repository/provider state; these tags are
+illustrative. Root product version `0.2.0` is the first planned full-release
+base, not evidence of an existing public release.
 
 ```sh
 git status --short
-reviewed_sha=<exact-reviewed-commit>
-git tag -s v0.2.0-preview.1 "$reviewed_sha" -m 'Station v0.2.0-preview.1'
-git push origin v0.2.0-preview.1
+reviewed_sha=<exact-reviewed-qualified-main-commit>
+git tag -s v0.2.0-rc.1 "$reviewed_sha" -m 'Station v0.2.0-rc.1'
+git push origin v0.2.0-rc.1
 ```
 
-Wait for `Release: Stage`. Inspect its draft and inventory, then approve
-`Release: Publish` for that tag. Confirm that the manual workflow
-published a prerelease and verify each downloaded input independently:
+Wait for `Release: Stage`, then inspect its complete draft, signing status,
+checksums, inventory, SBOMs and store upload receipts. Approve RC publication:
+
+```sh
+gh workflow run publish-release.yml --repo kontourai/station --ref main \
+  -f mode=rc -f tag=v0.2.0-rc.1
+```
+
+The protected workflow re-admits exact-source qualification and current advisory
+policy. Verify the resulting prerelease and every downloaded input against the
+producing ref and digest, for example:
 
 ```sh
 work=$(mktemp -d)
-gh release download v0.2.0-preview.1 --repo kontourai/station --dir "$work"
-for file in \
-  station-release-ring-preview.json \
-  station-portable.tar.gz.sha256 \
-  station-portable.tar.gz
-do
+gh release download v0.2.0-rc.1 --repo kontourai/station --dir "$work"
+for file in station-release-ring-stable.json station-portable.tar.gz.sha256 station-portable.tar.gz; do
   gh attestation verify "$work/$file" \
     --repo kontourai/station \
     --signer-workflow kontourai/station/.github/workflows/release.yml \
-    --source-ref refs/tags/v0.2.0-preview.1 \
-    --source-digest "$(git rev-parse v0.2.0-preview.1^{commit})" \
-    --cert-identity-regex '^https://github.com/kontourai/station/.github/workflows/release\.yml@refs/tags/v0\.2\.0-preview\.1$' \
+    --source-ref refs/tags/v0.2.0-rc.1 \
+    --source-digest "$(git rev-parse v0.2.0-rc.1^{commit})" \
+    --cert-identity-regex '^https://github.com/kontourai/station/.github/workflows/release\.yml@refs/tags/v0\.2\.0-rc\.1$' \
     --cert-oidc-issuer https://token.actions.githubusercontent.com \
     --deny-self-hosted-runners
 done
-rm -rf "$work"
 ```
 
-Install or switch an existing portable install to Beta using the authenticated
-bootstrap command in the README with `STATION_CHANNEL=beta`. `station upgrade`
-then remains on the signed preview release ring until the installer explicitly
-switches channels.
+Use the authenticated bootstrap command in the README with
+`STATION_CHANNEL=stable STATION_VERSION=v0.2.0-rc.1` to install that exact source
+candidate. Exercise startup, critical journeys, upgrade, rollback and supported
+native/device paths. RC desktop testers reinstall to move from rc.1 to rc.2:
+both report `X.Y.Z`, so the updater does not offer the second as newer. Portable
+testers moving between different candidate bytes at the same version explicitly
+set `STATION_INSTALL_ALLOW_ROLLBACK=1`. Unpinned Stable installs continue to choose
+final releases. A fix takes a new immutable RC tag and fresh matching evidence.
+
+Immediately after a cut, prepare main's next development base through the
+[release-cut command](native-releases.md#product-version-and-release-cut).
+Do not edit the frozen candidate or its tag.
 
 ## Promote to stable
 
-After preview dogfooding, tag the same reviewed commit with its stable version.
-If a fix was needed, publish and dogfood a new preview tag from that newer
-commit first; Stable always names bytes that Beta already exercised:
+After acceptance, dispatch promotion with the published RC tag. Do not push a
+new final tag by hand: the protected workflow creates it using its workflow
+credential, which does not retrigger the tag producer. For a first Play
+production launch explicitly select fraction 1; later updates may use an
+owner-reviewed staged fraction.
 
 ```sh
-reviewed_sha=$(git rev-parse 'v0.2.0-preview.1^{commit}')
-git tag -s v0.2.0 "$reviewed_sha" -m 'Station v0.2.0'
-git push origin v0.2.0
+gh workflow run publish-release.yml --repo kontourai/station --ref main \
+  -f mode=promote -f tag=v0.2.0-rc.1 -f android_rollout_fraction=1
 ```
 
-Repeat the three-file verification above using
-`station-release-ring-stable.json`, `refs/tags/v0.2.0`, and the stable identity
-regex. Stable should follow preview only after its smoke and dogfood evidence is
-reviewed; do not promote on a fixed calendar when evidence is incomplete.
+The final `v0.2.0` release retains the RC asset names, inventory, SBOMs,
+attestations and store slot. The digest-bound `station-release-promotion.json`
+receipt relates producer and publication tags, source SHA, policy SHA,
+publication-workflow SHA and transferred asset hashes. The receipt is attested
+by `publish-release.yml` on the default branch at its recorded workflow SHA;
+asset attestations still name `release.yml` at the producing RC ref/source SHA.
+A later policy checkout is not the receipt's workflow certificate source.
+
+Store promotion requires definite authenticated RC upload authority. Play moves
+the exact uploaded version code to production; Apple submits the exact existing
+build for App Review with manual release. Neither operation rebuilds or uploads a
+replacement. Provider review, production availability and physical installation
+remain separate outcomes. See [store prerequisites](store-entry.md) and
+[native publication and recovery](native-releases.md#stage-inspect-publish-and-roll-back).
+
+On the first final publication, bootstrap only the authorities proven empty:
+`allow_empty_updater_channel_bootstrap`, `allow_empty_host_manifest_bootstrap`
+when host signing is enabled, and `allow_empty_availability_baseline`. The last
+permits a successful first-release history result and writes no issue labels;
+failed or ambiguous history never counts as empty. Existing authorities must
+pass their ordinary validation.
+
+Keep the original RC release public and retain all assets referenced by the
+unchanged host payload. Inspect provider state and retained journals after any
+attempted or unknown effect; do not blindly retry. An existing final ref is not
+permission to overwrite it. Published-destination repair requires its completed,
+attested promotion receipt and explicit repair admission.
+
+An App Store-action custom feed remains at its previous version while the
+selected build awaits review or manual release, even when the other Stable
+artifacts publish. It advances only after exact released-build readback. See
+[App Store feed recovery](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed)
+for the explicit operation and RC-authority limits; native store-managed updates
+remain separate.
 
 ## Upgrade and rollback behavior
 
@@ -349,7 +424,10 @@ extracted archive has no installer-owned upgrade target and still requires
 manual replacement. [Channel coexistence](release-channel-ports.md) describes
 the shared home/state and owned-file removal boundaries.
 
-For a failed draft, fix the source and use a new immutable tag. Do not move
+For a failed draft, fix the source and use a new immutable tag admitted by
+the existing main-ancestry, product-base and qualification guards. The
+[release-cut limit](native-releases.md#product-version-and-release-cut) still
+applies after main advances. Do not move
 or reuse the failed tag. Retaining its draft, artifacts and receipts preserves
 diagnosis; deletion is a separate owner-managed retention decision, not a
 routine prerequisite to the replacement release.
@@ -405,8 +483,8 @@ for the ring.
 
 Treat a pin update as a release-policy change: review the upstream action release
 and commit, update the workflow and installer assumptions together, run the local
-release-ring tests, publish a preview, verify all three real attestations, dogfood
-the preview, and only then promote a new stable version.
+release-ring tests, publish an RC, verify all three real attestations, dogfood
+the candidate, and only then promote a new stable version.
 
 Real GitHub OIDC publication and hosted macOS/Linux smoke evidence remain
 `NOT_VERIFIED` until an authorized Actions run executes. Local fake-verifier tests

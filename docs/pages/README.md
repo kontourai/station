@@ -36,7 +36,10 @@ Product images on the home page are not separate captures. The build copies
 the screens named in `PAGES_GALLERY_SCREENS` (`scripts/build-github-pages.mjs`)
 from the committed screenshot-gallery baseline in `tests/screenshots.baseline/`
 to `media/<screen>.png`, so they change when that baseline is regenerated. The
-root README embeds the same baseline images. A renamed, dropped, or volatile
+home page names light and dark captures, and phone captures beside desktop ones,
+through `<picture>` sources: the reader's theme and screen width pick one, so
+each image the page references, including every `srcset`, must be in that list.
+The root README embeds the same baseline images. A renamed, dropped, or volatile
 baseline screen fails the build or `product-docs-source-links.test.ts`. The
 `og:image` and `twitter:image` URLs point at the published `media/` copy.
 
@@ -44,8 +47,11 @@ Rendered headings have section IDs from their visible text, using the same
 heading rules as the learning reader. Repeated headings receive unique numeric
 suffixes within each document. Links such as the getting-started guide's
 `#install-nightly` resolve to those sections in the generated page. The Pages
-link checker validates target files; the renderer tests cover these heading
-targets. Neither check proves the hosted site has deployed the current source.
+link checker validates target files, and a fragment on a link to another page
+must name an element in that page (the docs header links to the home page's
+`#how`); the renderer tests cover these heading targets. Fragments within the
+same page are not checked. Neither check proves the hosted site has deployed
+the current source.
 
 An admitted document may link relatively only to another admitted document;
 link anything else by its absolute

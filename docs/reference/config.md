@@ -9,6 +9,19 @@ For usage context, see [docs/guides/agent-configuration.md](../guides/agent-conf
 
 ---
 
+## Project brief and models
+
+With the `project-coordination` Feature Preview on,
+[ProjectConfig](../../packages/contracts/src/project.ts) also carries the
+Project brief and models (#5062, #5068): `goal` (one line, at most 200
+characters), `instructions` (at most 16,000 characters), `coordinatorEffort`
+(`low`, `medium` or `high`, for the Project's own chats; a new Project starts at
+`medium`), and `taskProviderId`, `taskModel` and `taskEffort` for Tasks it
+dispatches. `PUT /api/projects/:slug` drops each on `null` or blank text.
+`instructionsMigratedAt` records the one-time copy of legacy `project-rules.md`
+into `instructions`. See
+[Project settings](../user/settings.md#project-brief-memory-and-models).
+
 ## Project tool defaults
 
 [ProjectConfig](../../packages/contracts/src/project.ts) accepts optional
@@ -68,11 +81,11 @@ additional first-run, workspace, approval, contribution, and preview settings.
 
 | field | type | default | description |
 |---|---|---|---|
-| `defaultMaxTurns` | positive integer | `200` | VoltAgent step cap after `guardrails.maxSteps` and top-level Agent `maxSteps`. Missing/zero values fall through in the resolver, but the settings write interface requires a positive integer. This is a finite cap, not unlimited execution; the Strands adapter does not apply this setting. |
+| `defaultMaxTurns` | positive integer | `200` | VoltAgent fallback after an authored Agent cap. It also sets the built-in Agent’s cap when explicitly configured. Without an explicit value, the built-in Agent uses VoltAgent’s own default. Strands and external engines use their own limits. |
 | `checkoutStaleAfterCommits` | positive integer | `50` | Commits behind its upstream branch at which a Project's checkout reads as stale for the `stale-project-checkout` preview ([Project checkout freshness](api.md#project-checkout-freshness)). |
 | `checkoutStaleAfterDays` | positive integer | `3` | Days a Project's checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale for the same preview. |
 | `defaultMaxOutputTokens` | positive integer | no Station-applied cap | Output-token cap passed by Station's framework adapters when an Agent has no `guardrails.maxTokens`. Provider/model limits still apply. |
-| `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended to Agent instructions by Station's engine. An absent or empty value is reseeded on load. |
+| `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended when Station builds an authored Agent’s prompt. It replaces the built-in Station instructions. External runtimes receive their own Agent’s authored prompt. An absent or empty value is reseeded on load. |
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |
 | `defaultChatFontSize` | number | `14` | Chat UI font size in pixels (10–24) |
 | `titleModel` | string (≤255) | unset | Model that names a Station-run conversation after its first completed turn, in the background. Only this setting turns it on: unset, no model is called (`structureModel` is never used for titles, since the prompt quotes the conversation), and the conversation keeps the title derived from its first message that names something (a prompt like "Continue" or "ok" never titles it). A generated title replaces only a prompt-derived one, never one supplied with the start. A hosted Station never generates titles. The generator uses bounded text generation, not a structured-output pass: it truncates each source text after 500 characters, requests at most 64 output tokens, waits up to 10 seconds, and normalizes accepted titles to NFC with a 60-character limit. The timeout stops waiting, not the provider call; failure leaves the existing title. See the [runtime caller](../../src-server/services/orchestration/conversation-title-generation.ts) and [model call](../../src-server/routes/chat/chat-title-generation.ts). |
@@ -93,7 +106,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `terminalHistoryMaxAgeDays` | integer 1–3650 | `30` | Days after a terminal ends before its history is deleted. |
 | `terminalHistoryMaxTerminalMiB` | integer 1–1024 | `16` | History each terminal keeps; the oldest output goes first. |
 | `terminalHistoryMaxTotalMiB` | integer 16–1048576 | `1024` | History all terminals keep together, and at least the per-terminal size; the oldest ended terminals go first. Values outside any of these ranges are refused, not clamped. |
-| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Station follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from history, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
+| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Station follows Claude Code, Codex, Grok and OpenCode conversations on this machine (and, with `STATION_EXTERNAL_ACP_SESSIONS=1`, the sessions ACP engines list) whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from history, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Whether a personal Station adds past conversations to Knowledge as the read-only `root:conversations` source. Read once at [startup](../../src-server/knowledge-store/conversation-root-bootstrap.ts), so a change applies after a restart. The conversations become searchable after a Knowledge reindex, which needs an embedding connection and the local operator. Turning it off does not remove the root, and the root cannot be deleted. Hosted Stations never register it. Settings → My knowledge store → Past conversations in Knowledge. |
 | `claudeArtifactsEnabled` | boolean | `false` | Turns on Claude Code's Artifact tool, which publishes a local HTML or Markdown file as a page on claude.ai. Read when each Claude session starts, so a running session keeps its value. [`claudeArtifactsSpawnEnv`](../../src-server/providers/adapters/claude-adapter.ts) sets `CLAUDE_CODE_ARTIFACT=1` when on and `CLAUDE_CODE_ARTIFACT=0` when off, overriding Station's own environment and the connection's `env`, so the setting decides. The engine offers the tool only to a claude.ai subscription login; API-key, Bedrock and Vertex sessions do not get it. A publish shows in chat as a link to its claude.ai page, taken from the tool's structured output and shown only for an `https://claude.ai` address. Settings → Agent runs → Claude Code artifacts. |
 
@@ -149,7 +162,9 @@ remain fallbacks (`false` means Off). Distribution/operator policy inputs only
 lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`
 is a build-time server-banner constant, empty in source, never a runtime enabling
 variable. It is exposed in resolved telemetry configuration independently of the
-operator address; its independent sender remains inert when the build value is empty. See the [program decision](../decisions/telemetry-tiers.md).
+operator address. An empty build value leaves the sender inactive. An author
+address under `/v1/lite/` limits Kontour to anonymous counts after notice and
+fixed-choice feedback. See the [program decision](../decisions/telemetry-tiers.md).
 
 URLs cannot contain embedded credentials, a query or a fragment. Destination
 and key-reference writes through the live route require the operator or an
@@ -180,7 +195,7 @@ same-named built-ins. External engines do not automatically run this function.
 | `key` | string | Variable name used as `{{key}}` in prompts |
 | `type` | `"static"` \| `"date"` \| `"time"` \| `"datetime"` \| `"custom"` | How the value is resolved |
 | `value` | string | The value (required for `static` and `custom`) |
-| `format` | string | JSON-encoded `Intl.DateTimeFormatOptions` for date/time types. For example, `"{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}"`. Writes and file loads reject malformed JSON, non-object values, and options invalid for the chosen date/time type before substitution. A pattern such as `YYYY-MM-DD` is not accepted. Use the built-in `{{iso_date}}` for an ISO date. |
+| `format` | string | JSON-encoded `Intl.DateTimeFormatOptions` for date/time types. For example, `"{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}"`. Writes, file loads, and prompt expansion reject malformed JSON, non-object values, unknown option names, and invalid types or values for the chosen date/time format. Explicit options use `en-US`. Omitted or empty formats preserve the host locale and time zone. A pattern such as `YYYY-MM-DD` is not accepted. Use the built-in `{{iso_date}}` for an ISO date. |
 
 ### Ollama-first example (local, no credentials)
 
@@ -217,7 +232,7 @@ connection and account. They do not assert current provider availability.
   "systemPrompt": "You are working in the {{project}} project. Today is {{date}}.",
   "templateVariables": [
     { "key": "project", "type": "static", "value": "my-app" },
-    { "key": "date", "type": "date", "format": "{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\"}" }
+    { "key": "date", "type": "date", "format": "{\"year\":\"numeric\",\"month\":\"2-digit\",\"day\":\"2-digit\",\"timeZone\":\"UTC\"}" }
   ],
   "defaultChatFontSize": 14,
   "registryUrl": "https://registry.example.com"
@@ -262,6 +277,34 @@ Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
 Stdout and the local store serialize separate redacted and unredacted records;
 they cannot safely share the same serialized bytes.
 
+**Repeated warnings.** The [logger seam](../../src-server/utils/logger.ts) limits
+repeated identical warnings ([limiter](../../src-server/utils/log-repeat-limiter.ts)).
+Two `warn` records are identical when they come from the same logger name, carry
+the same message, and carry the same error identity: the error's name, code and
+message, with digit runs folded so a changing pid or port does not count as a new
+error. Other context fields are not compared. The first five identical warnings
+in a 60-second window are written. Later ones are dropped and counted. When the
+window ends, one `warn` line, `Suppressed K repeats of: <message>`, reports the
+count. A graceful shutdown writes every summary still pending before it exits,
+so a window open at shutdown is not lost. `error` and `fatal` records are never limited, and neither are levels
+below `warn`. Suppressed records increment the `station.logs.suppressed_records`
+counter, with attributes `component` (the logger name) and `level`. At most 512
+identities are tracked at once, and the oldest is summarized and dropped first.
+
+**The stdout log file.** `station start` and the service supervisor send the
+server's stdout and stderr to `<home>/logs/<instance>.log`
+(`station-<instance>.log` from a plain `station start`), passed to the server as
+`STATION_LOG_FILE`. The server checks that file's size at boot and every 30
+seconds. Once it reaches the cap, the server copies it to `<file>.1`, shifts
+older copies up to the retained count, removes any beyond it, and truncates the
+file in place ([source](../../src-server/services/infra/server-stdout-log-file.ts)).
+The diagnostics bundle, the failed-start report and smoke diagnostics read the
+tail of the current file, which always holds the newest output. They do not read
+the numbered copies. The day files above are the searchable history. Output
+another process writes to the same descriptor between the copy and the truncate
+can be lost. Rotations increment `station.logs.stdout_file.rotations`, with
+`outcome` `rotated` or `failed`.
+
 A successful read — a 2xx/304 `GET` or `HEAD` — is logged at `debug`; every other request (any other status, every mutation, and every streaming response) is logged at `info`. Because the level is applied before the durable store is written, at the default `info` those successful reads are not recorded at all rather than filed one level down, and the Developer → Logs level filter cannot recover them: set `STATION_LOG_LEVEL=debug` (or `logLevel` in `app.json`) before reproducing if you need the full access log.
 
 The Tauri desktop shell has a separate log and level (`STATION_DESKTOP_LOG_LEVEL`), documented with its recovery and privacy boundaries in [Recover a desktop start](../user/native-recovery.md#check-the-local-diagnosis). Do not substitute server-log output for evidence of native-window or renderer behavior.
@@ -297,6 +340,10 @@ issuance and read boundaries.
 | `STATION_LOG_LEVEL` | — | Overrides `app.json`'s `logLevel` for every logger in this process — every `createLogger()` call site resolves it at creation, and a later `app.json` change is pushed to all of them via `setGlobalLogLevel`, not just Station's own root logger. Takes precedence over the configured value, but not over a [managed policy](../guides/managed-policy.md#settings) lock on `logLevel`, which every logger applies instead, including those created before the policy loaded; an invalid value is ignored (falls back to `logLevel`/`"info"`) with a single startup warning. `"fatal"` is not a valid value here — fatal is emit-only, never a configurable filter floor. |
 | `STATION_SERVER_LOG_RETENTION_DAYS` | `30` | Days of server log files retained on disk (the active day is always kept regardless of age). |
 | `STATION_SERVER_LOG_MAX_BYTES` | `268435456` (256 MiB) | Maximum total bytes retained across server log files; oldest non-active-day files are removed first once the budget is exceeded. |
+| `STATION_LOG_REPEAT_LIMIT` | `5` | Identical warnings written per window before the rest are counted and summarized (see Repeated warnings above). `0` writes every repeat, for diagnosing a noisy loop. |
+| `STATION_LOG_REPEAT_WINDOW_SECONDS` | `60` | Length of the repeated-warning window, in seconds. |
+| `STATION_LOG_FILE_MAX_BYTES` | `67108864` (64 MiB) | Size at which the server rotates its stdout log file (`STATION_LOG_FILE`). |
+| `STATION_LOG_FILE_GENERATIONS` | `3` | Rotated copies of the stdout log file kept (`<file>.1` is newest; at most 20). `0` truncates without keeping a copy. |
 
 ## Chat attachments
 
@@ -339,9 +386,11 @@ refused before it is dispatched.
 
 Task room uploads use a separate store under
 `<STATION_HOME>/task-room-attachments`, with the same retention variables and
-defaults applied to that store independently; descriptors remain in room
-history after byte eviction, even while their message stands (#4947). Project
-channel uploads use another store under
+defaults applied to that store independently. When admitting an upload, Station
+reclaims only blobs that a complete binding scan shows are unbound. An unknown
+binding skips reclamation. A batch that would add unique bytes beyond the size
+budget returns 409. A batch that adds no new bytes can still fit when an existing
+store already exceeds the budget. Project channel uploads use another store under
 `<STATION_HOME>/project-room-attachments` that the retention variables do not
 apply to: it never evicts by age or size, deletes only bytes no file names,
 and stops deleting and pauses new uploads while any file record or store
@@ -426,6 +475,32 @@ attempt into any resulting session, rather than assuming the IDs match.
 
 ---
 
+## Notification retention
+
+The notification feed (`<STATION_HOME>/notifications.json`) keeps a record
+while it is pending or delivered, however old. A settled record (expired,
+actioned or dismissed) is removed once its settle time is older than the
+retention window. The settle time is the record's last change, so a producer
+that keeps updating a settled record by its dedupe tag keeps it. Removal
+happens inside the notification service's own locked write: every change to
+the feed first drops what is due, and startup does the same for a home that
+went quiet. Open inbox and history views are told to refetch. The principal
+feed (`principal-notifications.json`) is separate and keeps its own 100-record
+cap per person.
+
+A removed record that held a dedupe tag leaves a tombstone (tag, id, source,
+status, settle time) in `<STATION_HOME>/notification-tombstones.json`. A
+producer that schedules that tag again gets the settled record's id and status
+back, and nothing is created, delivered or pushed. A tombstone is kept for one
+window after the removal or after the last schedule that hit it, so a tag is
+forgotten only once its producer has been silent for a whole window. A record
+someone clears by hand leaves no tombstone, as before.
+([source](../../src-server/services/notifications/notification-service.ts))
+
+| variable | default | description |
+|---|---|---|
+| `STATION_NOTIFICATION_RETENTION_DAYS` | `30` | Days a settled notification record is kept after it settled, and a dedupe tombstone after its last use. A value that is not a positive integer falls back to the default. |
+
 ## agent.json
 
 **Location:** `<STATION_HOME>/agents/<slug>/agent.json`
@@ -442,7 +517,7 @@ Defines a single agent. The directory name is the agent's slug.
 | `icon` | string | no | Icon identifier for the UI |
 | `model` | string | no | Legacy model selection fallback. `execution.modelId` and the selected Model connection determine current routing; the ID is not necessarily a Bedrock model. |
 | `region` | string | no | AWS region override for this agent |
-| `maxSteps` | integer | no | VoltAgent step cap, below any in-memory `guardrails.maxSteps` and above `defaultMaxTurns`. The Agent file schema accepts 1–100. `maxTurns` is not the Agent field. |
+| `maxSteps` | integer or null | no | VoltAgent model steps per turn, including a turn with a model override. Valid values are 1–100. Null or absent uses `defaultMaxTurns` or the finite fallback. Strands and external engines use their own limits. |
 | `tools` | object | no | Tool and MCP server configuration |
 | `guardrails` | object | no | Model inference constraints |
 | `commands` | object | no | Slash commands available in this agent's chat |
@@ -634,29 +709,22 @@ show where token and sampling values are passed.
 | field | type | description |
 |---|---|---|
 | `maxTokens` | number | Maximum output tokens (overrides `defaultMaxOutputTokens`) |
-| `maxSteps` | number | Present in the TypeScript type and read by VoltAgent, but rejected inside `guardrails` by the current Agent JSON schema. Set top-level `maxSteps` in `agent.json`. Strands does not apply the configured step cap. |
 | `temperature` | number | Sampling temperature; file schema accepts 0–2, while a provider may impose narrower limits. |
 | `topP` | number | Nucleus sampling probability. On VoltAgent it is ignored, with a warning, when `temperature` is also set: several providers reject both together, so `temperature` wins. Strands passes both through. |
 | `stopSequences` | string[] | Not currently applied. Typed and accepted, but no engine reads it today — do not rely on it to constrain output. |
 
-### ui / quickPrompts
+### Retired Agent fields
 
-`ui.quickPrompts` is a retained configuration shape. The file loader validates
-its prompt text, but the current UI does not consume it. Saving these entries
-does not create chat buttons or route a prompt to another Agent.
-
-| field | type | description |
-|---|---|---|
-| `id` | string | Unique identifier |
-| `label` | string | Intended button label; no current renderer |
-| `prompt` | string | Stored prompt text |
-| `agent` | string | Retained optional routing field; no current UI consumer |
+Remove `streaming` and `ui.quickPrompts` from new Agent definitions. The current
+authoring schema rejects both fields. Existing Agents load with those fields
+omitted while their source files stay intact. An ordinary save writes the
+current shape. Station also omits the fields when importing or exporting
+Agent guidance. `ui.component` and `ui.workflowShortcuts` remain supported.
 
 ### complete example
 
 This is a file-shape example. Replace connection, model, integration, and tool
-IDs with configured values. Quick prompts are retained metadata as described
-above; they do not currently appear as buttons.
+IDs with configured values.
 
 ```json
 {
@@ -676,20 +744,6 @@ above; they do not currently appear as buttons.
   "guardrails": {
     "maxTokens": 8192,
     "temperature": 0.3
-  },
-  "ui": {
-    "quickPrompts": [
-      {
-        "id": "review-pr",
-        "label": "Review open PR",
-        "prompt": "Review the most recently opened pull request and summarize findings."
-      },
-      {
-        "id": "security-scan",
-        "label": "Security scan",
-        "prompt": "Scan the current directory for common security vulnerabilities."
-      }
-    ]
   }
 }
 ```

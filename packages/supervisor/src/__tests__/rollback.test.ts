@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.ts';
 import {
@@ -11,6 +11,40 @@ import {
 const makeTempDir = trackTempDirs();
 
 describe('supervisor handoff rollback (real processes)', () => {
+  it.each(['STATION_MANAGED_POLICY_INVALID', 'STATION_HOME_RESET_REQUIRED'])(
+    'delivers the terminal rollback result before stopping for %s',
+    async (marker) => {
+      const home = makeTempDir('sup-terminal-rollback-');
+      const buildRoot = makeTempDir('sup-terminal-build-');
+      const goodEntry = realpathSync(writeCoreVariant(buildRoot, 'core', {}));
+      const badEntry = writeCoreVariant(buildRoot, 'bad-core', {
+        FAKE_CORE_EXIT_AFTER_PROMOTE: '1',
+      });
+      const supervisor = await startSupervisor({ home, entry: goodEntry });
+      // Model a terminal condition introduced after the CLI's preflight:
+      // the old process keeps serving, but its rollback entry now refuses.
+      writeFileSync(
+        goodEntry,
+        `console.error('${marker}: repair required'); process.exit(78);`,
+      );
+      const reply = await supervisor.handoff({ entry: badEntry });
+      expect(reply).toMatchObject({
+        type: 'handoff.result',
+        outcome: 'refused',
+      });
+      expect(reply.reason).toContain('previous entry refused startup');
+      expect(reply.reason).not.toContain('restarting');
+      expect(reply).not.toHaveProperty('terminalStartupRefusal');
+      expect(await supervisor.exited).toEqual({ code: 1, signal: null });
+      expect(supervisor.output()).toContain(`${marker}: repair required`);
+      expect(supervisor.output().match(/generation \d+ started/g)).toHaveLength(
+        3,
+      );
+      expect(supervisor.output()).not.toContain('restarting in');
+    },
+    60_000,
+  );
+
   it.each<{ name: string; env: Record<string, string>; reason: string }>([
     {
       name: 'never reports ready',

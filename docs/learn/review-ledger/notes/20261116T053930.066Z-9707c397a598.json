@@ -1,0 +1,7 @@
+{
+  "revision": "77ed9afe6f8a3fbfb2959a0b2156731bb096be84",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Edited (#3593). Checked against scripts/lib/publish-nightly-desktop.mjs and scripts/retain-nightly-desktop-assets.mjs and the new workflow step: fixed names now 'normally' serve the newest build (replacement is delete then upload, publisher comment says the same); retention runs after readback and recorded claims (step after macos_provider_state), keeps newest 30 cohorts by parsed version, current cohort, cohorts latest.json names, cohorts with an incomplete upload, all non-exact names; removes whole cohorts oldest first, at most 25 assets per run; refuses truncated/duplicate/changing listings and runs before latest.json names the cohort; re-reads each asset by id and name; deletes only when STATION_NIGHTLY_DESKTOP_PRUNE is exactly enabled; failures warn, continue-on-error. Legacy station-nightly-desktop-* assets: the live latest.json (read 2026-11-16) names versioned downloads only. Verified by nightly-desktop-asset-retention(.workflow).test.ts with fault injection. Not executed: a hosted Nightly with this step.","inputs":["docs/guides/nightly.md",".github/workflows/nightly-native-cohort.yml"]}
+  ]
+}

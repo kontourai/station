@@ -116,7 +116,7 @@ describe('install.sh generated blocks', () => {
 
   it('projects every installable ring and its channel ports into install.sh', () => {
     const script = readFileSync(INSTALL_SCRIPT_PATH, 'utf8');
-    expect(Object.keys(rings)).toEqual(['stable', 'preview', 'nightly']);
+    expect(Object.keys(rings)).toEqual(['stable', 'nightly']);
     for (const [ring, entry] of Object.entries(rings)) {
       const { serverPort, uiPort } = ports[entry.runtimeChannel];
       expect(script).toContain(
@@ -133,7 +133,6 @@ describe('install.sh generated blocks', () => {
     expect(script).toContain(
       `RELEASE_RINGS_JSON='${JSON.stringify({
         stable: { runtimeChannel: 'stable', prerelease: false },
-        preview: { runtimeChannel: 'beta', prerelease: true },
         nightly: { runtimeChannel: 'nightly', prerelease: true },
       })}'`,
     );
@@ -284,7 +283,7 @@ describe('install.ps1 generated blocks (#2675 slice W)', () => {
       `$PinnedNodeEntry = '${pin.file.replace(/\.zip$/, '')}/node.exe'\n`,
     );
     expect(script).toContain(
-      "$InstallableRuntimeChannels = @('stable', 'beta', 'nightly')\n",
+      "$InstallableRuntimeChannels = @('stable', 'nightly')\n",
     );
     // Each generated name is assigned exactly once, so nothing after the
     // blocks can shadow them.
@@ -312,8 +311,8 @@ describe('install.ps1 generated blocks (#2675 slice W)', () => {
     ],
     [
       'a hand-edited channel list',
-      "@('stable', 'beta', 'nightly')",
-      "@('stable', 'beta', 'nightly', 'dev')",
+      "@('stable', 'nightly')",
+      "@('stable', 'nightly', 'beta')",
     ],
   ])('fails the check for %s, and --sync restores it', (_name, from, to) => {
     const path = scratchPs1Copy();

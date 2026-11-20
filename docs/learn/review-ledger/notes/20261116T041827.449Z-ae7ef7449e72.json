@@ -1,0 +1,7 @@
+{
+  "revision": "16e88eff3858c698bd785254d4e7a7573581a6fe",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Polish round: Continue in Station still continues with no message and an optional draft; its placement moved beside the origin, which this guide does not describe.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx","src-ui/src/index.css"]}
+  ]
+}

@@ -167,7 +167,7 @@ vi.mock('../../EnginePicker', () => ({
     // `title` unless the panel answers a different question. Mirrored here
     // because a stub that reported nothing hid a live defect: the chapter had
     // stopped passing `title` at all, the picker fell back to its own default
-    // ("Choose what powers your default assistant"), and the shared header
+    // ("Choose the engine for the Station agent"), and the shared header
     // printed a name this run's step table does not have.
     useEffect(() => {
       onTitleChange?.(title ?? '');
@@ -565,9 +565,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
 
     // Deferred is a snooze, not terminal completion: the still-pending run is
     // offered non-modally and can be resumed explicitly from where it stopped.
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Personalize Station' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open setup' }));
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(firstRunStore.getSnapshot().chapter).not.toBe('done');
   });
@@ -594,9 +592,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Personalize Station' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open setup' }));
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
   });
 
@@ -606,9 +602,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       skippedAt: '2026-01-01T00:00:00.000Z',
     };
     render(<FirstRunHomeChapter />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Personalize Station' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open setup' }));
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(recordFirstRunDecision).not.toHaveBeenCalled();
   });
@@ -668,9 +662,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     // chapter is re-openable inside that window — and closing it must not
     // write a deferral over the completion that just happened.
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Personalize Station' }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Open setup' }));
     });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
@@ -1207,8 +1199,7 @@ describe('the engine-role screen is a counted step of the run', () => {
     disclosureState.outstanding = false;
     configValue.builtinAgentEngineConnectionId = undefined;
     engineState.engines = [];
-    enginePickerTitleOverride =
-      'No connected engine can run the built-in assistant';
+    enginePickerTitleOverride = 'No connected engine can run the Station agent';
     render(<FirstRunHomeChapter />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
@@ -1225,7 +1216,7 @@ describe('the engine-role screen is a counted step of the run', () => {
     expect(
       document.getElementById('first-run-chapter-title')?.textContent,
       'the header kept asking a question the step had stopped answering',
-    ).toBe('No connected engine can run the built-in assistant');
+    ).toBe('No connected engine can run the Station agent');
   });
 
   test('stops counting the role screen when the role is answered mid-run', async () => {
@@ -1252,9 +1243,7 @@ describe('intent-first Home', () => {
   test('does not open optional configuration before the user asks for it', () => {
     render(<FirstRunHomeChapter intentFirst />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Personalize Station' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open setup' }));
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
   });
   test('returns to the task after the usage decision without asking engine or profile questions', async () => {

@@ -63,12 +63,21 @@ This is the `propose_job` pattern Station already uses for scheduled jobs.
   that only a person may hold.
 - **Confirm decides it again.** Confirm reruns the dispatch scope rule for
   the proposing chat's recorded caller, now. It requires each Agent to be the
-  one named: the same slug, its own Project, and a digest of its whole
-  definition. Agents have no identity beyond their slug, so the digest is
-  what tells a moved, deleted or replaced Agent apart. Confirm checks before
-  claiming the proposal, then again inside the configuration store's lock
-  for creation and for enabling. A binding that changed or cannot be read
-  creates nothing.
+  one named: the same slug, Project, definition digest and incarnation.
+  Station assigns a persisted incarnation to Station-owned Agent directories
+  at first proposal use. Plugin Agents use the installation generation. The
+  operator needs to update a plugin without a usable generation before its
+  Agents can be proposed as targets. Saving the same definition keeps the
+  incarnation.
+  Deleting and recreating the Agent through Station produces a fresh one.
+  An older proposal with no incarnation binding for a target must be
+  declined and proposed again. Confirm checks before claiming the proposal
+  and again under both the Agent identity and configuration store locks
+  for creation and activation. If the binding changes before creation,
+  the proposal stays open. If it changes between creation and activation,
+  the saved source stays disabled or the rule stays observing. The chat
+  keeps the save outcome, reason and saved object ID after refreshing its
+  open proposals.
 - **Only a turn a person typed may propose (fail closed).** An automation
   run still cannot change automations (§5 "Never"). A proposal is allowed
   only when the calling Session acts for a recorded owner and the turn making
@@ -156,10 +165,15 @@ source type's `plan()` can describe the source, it should write a proposal's
 - An Agent recreated with an identical definition under the same slug
   matches the recorded binding. It is indistinguishable, and it grants the
   same authority.
-- A Station-engine Agent whose station-control connection carries no
-  verified caller (for example one on a model connection) cannot propose:
-  the guard refuses it (`station_control_caller_required`). Engines that
-  carry a verified caller can.
+- Every engine's session carries a verified caller, Station's own engine
+  included (#2377 slice D), and so does a Station-engine run an
+  authenticated request starts without a session (the invoke endpoints, the
+  SDK's raw tool call or direct chat stream), acting for that request's
+  principal. So does a signed-in voice session (its person) and a scheduled
+  job (its recorded owner). A run with no caller at all (a voice session with
+  no credential, which is offered no Station tools, or a job with no recorded
+  owner on a shared or hosted Station) cannot propose: the guard refuses it
+  (`station_control_caller_required`).
 - Station does not yet have a route that removes a source or rule (it is
   proposed in [#4646](https://github.com/kontourai/station/pull/4646)), so
   "removing a rule leaves things exactly as before" is not covered here.

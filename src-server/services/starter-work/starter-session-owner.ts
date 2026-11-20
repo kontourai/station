@@ -1,4 +1,5 @@
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
+import { ADOPTION_SOURCE_ACTIVE_CODE } from '@kontourai/station-contracts/provider-failure';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type { StarterSessionOwner } from './starter-registry.js';
@@ -34,6 +35,7 @@ export function createStarterSessionOwner(
       sourceSessionId,
       operationId,
       target,
+      continueWhileSourceActive,
       fullAccessGrant,
       owner,
       clientOrigin,
@@ -44,6 +46,9 @@ export function createStarterSessionOwner(
           sourceThreadId: sourceSessionId,
           idempotencyKey: operationId,
           ...(target ? { target } : {}),
+          ...(continueWhileSourceActive
+            ? { continueWhileSourceActive: true as const }
+            : {}),
         };
         // The caller's principal authorizes the source and owns the child.
         const outcome = await orchestration.dispatchWithReceipt(command, {
@@ -82,17 +87,24 @@ export function createStarterSessionOwner(
         // reservation is gone, so the outcome is certain and a retry after
         // setting the engine up is safe.
         const notStarted = observed.code === 'continuation_engine_not_ready';
+        // Refused before anything was reserved because the source is still
+        // running; the same launch with the override proceeds.
+        const sourceActive = observed.code === ADOPTION_SOURCE_ACTIVE_CODE;
         return {
           // A folder refusal happens before anything is created or recorded,
           // so its outcome is certain: it failed.
           state:
-            permanent || notStarted || observed.receiptStatus === 'persisted'
+            permanent ||
+            notStarted ||
+            sourceActive ||
+            observed.receiptStatus === 'persisted'
               ? ('failed' as const)
               : ('indeterminate' as const),
           reason:
             observed.message ??
             'The Session continuation outcome is unavailable.',
           retrySafe: !permanent,
+          ...(sourceActive ? { code: ADOPTION_SOURCE_ACTIVE_CODE } : {}),
           ...(observed.receipt?.commandId
             ? { receiptId: observed.receipt.commandId }
             : {}),

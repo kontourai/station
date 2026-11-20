@@ -10,8 +10,13 @@ import {
   parseProjectRoomChannelList,
 } from '@kontourai/station-contracts/project-room';
 import {
+  PROJECT_ROOM_LIVE_AGENT_REQUESTS,
+  PROJECT_ROOM_LIVE_WORKING_REQUESTS,
+  PROJECT_ROOM_TYPING_TTL_MS,
+  type ProjectRoomLiveFrame,
   parseProjectRoomBrowserView,
   parseProjectRoomHistory,
+  parseProjectRoomLiveFrame,
   parseProjectRoomMessage,
   parseProjectRoomNote,
 } from '@kontourai/station-contracts/project-room-browser';
@@ -29,8 +34,10 @@ import {
   ProjectMembershipRefusal,
   ProjectMembershipStore,
 } from '../../services/projects/project-membership-store.js';
+import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import {
   type ProjectRoomAccessPort,
+  type ProjectRoomMentionEvent,
   ProjectRoomService,
 } from '../../services/projects/project-room-service.js';
 import {
@@ -44,10 +51,13 @@ import {
   RoomAttachments,
 } from '../../services/projects/task-room-attachments.js';
 import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
+import { projectRoomLiveResponse } from './project-room-live.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
 const member = humanPrincipal('deployment', 'bob', 'Bob');
+/** A real, authenticated person who was never invited to the Project. */
+const outsider = humanPrincipal('deployment', 'carol', 'Carol');
 const makeTempDir = trackTempDirs();
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -99,6 +109,7 @@ async function harness(
   });
   const alice = authority(owner, () => aliceLive);
   const bob = authority(member, () => bobLive);
+  const carol = authority(outsider, () => true);
   const enabled = await membership.enable('example', project.id, alice);
   const offer = await membership.invite(
     enabled.scope,
@@ -116,6 +127,8 @@ async function harness(
       return { auth: alice, live: () => aliceLive };
     if (credential === 'Bearer bob-session')
       return { auth: bob, live: () => bobLive };
+    if (credential === 'Bearer carol-session')
+      return { auth: carol, live: () => true };
     throw new ProjectMembershipRefusal('forbidden');
   };
   let beforeCommit: (() => void) | undefined;
@@ -159,6 +172,15 @@ async function harness(
         live,
       );
     },
+    // The runtime's directory (#4799): the Project's viewing members.
+    // An over-sharing port on purpose: the service must strip `email`.
+    members: (scope) =>
+      membership.viewingMembers(scope).map((principal) => ({
+        id: principal.id,
+        displayName: principal.display,
+        kind: 'person' as const,
+        email: `${principal.id}@example.invalid`,
+      })),
     async current(request, scope, actorId, action) {
       const { auth, live } = resolve(request);
       return membership.currentActionAdmission(
@@ -172,10 +194,12 @@ async function harness(
   };
   const runtime = createProjectRoomRuntime(home);
   cleanup.push(() => runtime.close());
+  const mentions: ProjectRoomMentionEvent[] = [];
   const service = new ProjectRoomService(
     runtime.store,
     port,
     new ProjectRoomAttachments(join(home, 'project-room-attachments')),
+    (event) => mentions.push(event),
   );
   cleanup.push(() => service.close());
   if (provision)
@@ -211,6 +235,7 @@ async function harness(
     app,
     service,
     runtime,
+    mentions,
     request,
     discover,
     membership,
@@ -1475,7 +1500,7 @@ test('message files: a full quota recovers from deleted messages and old unsent 
   const deleted = await f.send([gone]);
   const [recent] = (await f.upload(png('recent.png'))) as { id: string }[];
   // Fill the binding to its 1280 files with uploads no message names.
-  const bytes = new RoomAttachments(f.root, 'room', { retention: false });
+  const bytes = new RoomAttachments(f.root, 'room');
   const unsent = Array.from(
     { length: 1280 - 3 },
     () =>
@@ -1905,11 +1930,17 @@ test('message files: Task retention and Project reclamation stay in separate roo
     taskId: 'task',
     taskCreatedAt: 'now',
   };
-  const [taskFile] = task.store(scope, [asInput(png('task.png'))]);
+  const [taskFile] = (await task.store(
+    async () => scope,
+    [asInput(png('task.png'))],
+  ))!;
   const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
   utimesSync(f.blobOf(file!.id), old, old);
   vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000);
-  task.store(scope, [asInput(pngVariant('different.png', 'different'))]);
+  await task.store(
+    async () => scope,
+    [asInput(pngVariant('different.png', 'different'))],
+  );
   expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(200);
   expect(await f.remove(sent.messageId)).toBe(200);
   expect(task.read(scope, taskFile!.id)?.bytes).toEqual(PNG);
@@ -2275,6 +2306,658 @@ test('message files: one recovered hash cannot make a second truncated reference
       attachments: [png('refused.png')],
     }),
   );
+});
+
+/** Reads whole SSE frames off one stream, in order (#4798). */
+function liveReader(response: Response) {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const next = async (): Promise<ProjectRoomLiveFrame> => {
+    for (;;) {
+      const end = buffer.indexOf('\n\n');
+      if (end >= 0) {
+        const raw = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        if (raw.startsWith(':')) continue;
+        const event = /^event: (.*)$/m.exec(raw)?.[1] ?? '';
+        const value = JSON.parse(/^data: (.*)$/m.exec(raw)?.[1] ?? 'null');
+        return parseProjectRoomLiveFrame(event, value);
+      }
+      const chunk = await reader.read();
+      if (chunk.done) throw new Error('stream ended');
+      buffer += decoder.decode(chunk.value, { stream: true });
+    }
+  };
+  /** The next frame of `kind`, skipping others (presence, typing, agents). */
+  const until = async <K extends ProjectRoomLiveFrame['kind']>(
+    kind: K,
+    key?: string,
+  ) => {
+    for (;;) {
+      const value = await next();
+      if (value.kind === kind && (key === undefined || value.key === key))
+        return value as Extract<ProjectRoomLiveFrame, { kind: K }>;
+    }
+  };
+  return { next, until, cancel: () => reader.cancel() };
+}
+function live(
+  h: Harness,
+  who: 'alice' | 'bob',
+  channels: string[],
+  client = randomUUID(),
+) {
+  const query = new URLSearchParams(channels.map((id) => ['channel', id]));
+  query.set('client', client);
+  return api(h, who, `/rooms/live?${query}`);
+}
+
+test('live (#4798): ten rooms stream over one connection, each admitted on its own', async () => {
+  const h = await harness();
+  const general = await h.discover('alice');
+  const channels = [general.roomId];
+  for (let index = 1; index < 10; index++)
+    channels.push(
+      parseProjectRoomChannel(
+        await data(await createChannel(h, 'alice', `room-${index}`)),
+      ).channelId,
+    );
+  const missing = randomUUID();
+  const history = vi.spyOn(h.service, 'history');
+  const response = await live(h, 'bob', [...channels, missing]);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toContain('text/event-stream');
+  const stream = liveReader(response);
+  const subscribed = new Set<string>();
+  let unavailable = '';
+  while (subscribed.size < 10 || !unavailable) {
+    const value = await stream.next();
+    if (value.kind === 'subscribed') subscribed.add(value.key);
+    if (value.kind === 'unavailable') unavailable = value.key;
+  }
+  expect([...subscribed].sort()).toEqual([...channels].sort());
+  // A room nobody can read answers like one that does not exist.
+  expect(unavailable).toBe(missing);
+  // Each subscription was admitted by that channel's own history read.
+  expect(history.mock.calls.map((call) => call[4]).sort()).toEqual(
+    [...channels, missing].sort(),
+  );
+  // A message in the tenth room arrives as an append on the same stream.
+  const tenth = channels[9]!;
+  const view = parseProjectRoomBrowserView(
+    await data(await api(h, 'alice', `/channels/${tenth}`)),
+  );
+  await api(h, 'alice', `/channels/${tenth}/messages`, 'POST', {
+    ...guard(view),
+    intentId: randomUUID(),
+    text: 'over one connection',
+  });
+  const appended = await stream.until('append', tenth);
+  expect(appended.message).toMatchObject({
+    seq: 1,
+    text: 'over one connection',
+  });
+  await stream.cancel();
+});
+
+test('live (#4798): appends carry the next sequence; a reaction, edit and delete are one update each with its activity range', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  const subscribed = await stream.until('subscribed');
+  expect(subscribed).toMatchObject({ lastSeq: 0, activity: 0 });
+  const message = parseProjectRoomMessage(
+    await data(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'first',
+      }),
+    ),
+  );
+  expect((await stream.until('append')).message).toEqual(message);
+  let activity = 0;
+  for (const change of [
+    () =>
+      h.request('alice', `/messages/${message.messageId}/reactions`, 'POST', {
+        ...guard(a),
+        emoji: '🎉',
+        reacted: true,
+      }),
+    () =>
+      h.request('alice', `/messages/${message.messageId}/edit`, 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'first, edited',
+      }),
+    () =>
+      h.request('alice', `/messages/${message.messageId}/delete`, 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+      }),
+  ]) {
+    expect((await change()).status).toBe(200);
+    const update = await stream.until('update');
+    expect(update).toMatchObject({
+      fromActivity: activity,
+      activity: activity + 1,
+    });
+    activity += 1;
+    expect(update.messages.map((m) => m.messageId)).toEqual([
+      message.messageId,
+    ]);
+  }
+  const deleted = parseProjectRoomHistory(
+    await data(await h.request('bob', '/messages')),
+  ).messages[0];
+  expect(deleted?.deletedAt).toBeDefined();
+  await stream.cancel();
+});
+
+test('live (#4798): more appends than one pass may describe is a resync, never a silent skip', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  await stream.until('subscribed');
+  // Synchronous commits: the stream cannot run between them, so it next
+  // sees 30 new messages at once, more than one pass may carry.
+  for (let index = 0; index < 30; index++)
+    h.runtime.store.append(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), text: `bulk ${index}` },
+      () => {},
+    );
+  const resync = await stream.until('resync');
+  expect(resync).toMatchObject({ lastSeq: 30, activity: 0 });
+  await stream.cancel();
+});
+
+test('live (#4798): typing shows, clears when the typist stops, and clears when their stream drops', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const bobClient = randomUUID();
+  const watcher = liveReader(await live(h, 'alice', [a.roomId]));
+  await watcher.until('subscribed');
+  const typist = liveReader(await live(h, 'bob', [b.roomId], bobClient));
+  await typist.until('subscribed');
+  const type = (typing: boolean) =>
+    h.request('bob', '/typing', 'POST', {
+      ...guard(b),
+      clientId: bobClient,
+      typing,
+    });
+  const nextTyping = async () => (await watcher.until('typing')).actors;
+  expect((await type(true)).status).toBe(200);
+  // The first typing frame may be the empty baseline.
+  let actors = await nextTyping();
+  if (!actors.length) actors = await nextTyping();
+  expect(actors.map((actor) => actor.id)).toEqual([member.id]);
+  // Cleared by the stop itself, well before the signal would lapse.
+  let stoppedAt = Date.now();
+  expect((await type(false)).status).toBe(200);
+  expect(await nextTyping()).toEqual([]);
+  expect(Date.now() - stoppedAt).toBeLessThan(PROJECT_ROOM_TYPING_TTL_MS / 2);
+  // Typing again, then the typist's stream goes away: cleared with it.
+  await type(true);
+  expect((await nextTyping()).map((actor) => actor.id)).toEqual([member.id]);
+  stoppedAt = Date.now();
+  await typist.cancel();
+  expect(await nextTyping()).toEqual([]);
+  expect(Date.now() - stoppedAt).toBeLessThan(PROJECT_ROOM_TYPING_TTL_MS / 2);
+  // A viewer cannot type: typing is a discuss action.
+  await watcher.cancel();
+});
+
+test('live (#4798): typing expires on its own when it is not renewed', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  const now = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+  await h.request('bob', '/typing', 'POST', {
+    ...guard(b),
+    clientId: randomUUID(),
+    typing: true,
+  });
+  expect(h.service.typing(a.roomId).map((actor) => actor.id)).toEqual([
+    member.id,
+  ]);
+  clock.mockReturnValue(now + PROJECT_ROOM_TYPING_TTL_MS + 1);
+  expect(h.service.typing(a.roomId)).toEqual([]);
+});
+
+test('live (#4798): losing access ends that room with revoked, and a viewer cannot type', async () => {
+  const h = await harness('viewer');
+  const a = await h.discover('alice');
+  const b = await h.discover('bob');
+  expect(
+    (
+      await h.request('bob', '/typing', 'POST', {
+        ...guard(b),
+        clientId: randomUUID(),
+        typing: true,
+      })
+    ).status,
+  ).toBe(403);
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  await stream.until('subscribed');
+  h.revokeMember();
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: 'after revocation',
+  });
+  const next = await Promise.race([
+    stream.until('revoked').then(() => 'revoked'),
+    stream.until('append').then(() => 'leaked'),
+  ]).catch(() => 'closed');
+  expect(next).not.toBe('leaked');
+  await stream.cancel().catch(() => {});
+});
+
+test('live (#4800): an Agent request shows from reserved to settled, from the request record alone', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  await stream.until('subscribed');
+  expect((await stream.until('agents')).requests).toEqual([]);
+  const request = h.runtime.store.reserveRequest(
+    h.scope,
+    a.actor,
+    { intentId: randomUUID(), agentId: 'writer', text: 'draft it' },
+    () => {},
+  );
+  expect((await stream.until('agents')).requests).toMatchObject([
+    { requestId: request.requestId, agentId: 'writer', state: 'reserved' },
+  ]);
+  h.runtime.store.markStarted(h.scope, request.requestId, () => {});
+  expect((await stream.until('agents')).requests[0]?.state).toBe('started');
+  h.runtime.store.cancelRequest(h.scope, request.requestId, () => {});
+  expect((await stream.until('agents')).requests[0]?.state).toBe('cancelled');
+  await stream.cancel();
+});
+
+test('live (#4800): a request still working is carried however many newer requests have settled', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const first = h.runtime.store.reserveRequest(
+    h.scope,
+    a.actor,
+    { intentId: randomUUID(), agentId: 'scout', text: 'long running' },
+    () => {},
+  );
+  h.runtime.store.markStarted(h.scope, first.requestId, () => {});
+  // As many newer, settled requests as the frame's recent-outcome limit.
+  expect(PROJECT_ROOM_LIVE_AGENT_REQUESTS).toBe(20);
+  for (let index = 0; index < PROJECT_ROOM_LIVE_AGENT_REQUESTS; index++) {
+    const request = h.runtime.store.reserveRequest(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), agentId: 'scout', text: `newer ${index}` },
+      () => {},
+    );
+    h.runtime.store.cancelRequest(h.scope, request.requestId, () => {});
+  }
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  try {
+    await stream.until('subscribed');
+    // Parsed by the contract's own reader, as the client parses it.
+    const frame = await stream.until('agents');
+    expect(
+      frame.requests.find((request) => request.requestId === first.requestId)
+        ?.state,
+    ).toBe('started');
+  } finally {
+    await stream.cancel();
+  }
+});
+
+test('live (#4800): failed preparations never crowd a request still working out of the frame', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  let unavailable = false;
+  const agents = createProjectRoomAgentRuntime(h.home, h.runtime.store, {
+    async prepare() {
+      if (unavailable) throw new Error('unavailable');
+      return { label: 'Scout' };
+    },
+    async launch() {},
+    async answer() {
+      return null;
+    },
+    async cancel() {},
+  });
+  cleanup.push(() => agents.close());
+  const authority = {
+    scope: h.scope,
+    requester: a.actor,
+    executionRoot: h.home,
+    assertCurrent: () => {},
+  };
+  const first = await agents.module.request(authority, {
+    intentId: randomUUID(),
+    agentId: 'scout',
+    text: 'really working',
+  });
+  expect(first.state).toBe('started');
+  expect(first.failure).toBeUndefined();
+  unavailable = true;
+  // As many failed preparations as the frame keeps working requests: each
+  // stays reserved with a recorded failure.
+  expect(PROJECT_ROOM_LIVE_WORKING_REQUESTS).toBe(50);
+  for (let index = 0; index < PROJECT_ROOM_LIVE_WORKING_REQUESTS; index++) {
+    const failed = await agents.module.request(authority, {
+      intentId: randomUUID(),
+      agentId: 'scout',
+      text: `failed preparation ${index}`,
+    });
+    expect(failed.state).toBe('reserved');
+    expect(failed.failure).toBe('agent_unavailable');
+  }
+  const app = new Hono();
+  app.get('/api/projects/:slug/rooms/live', (c) =>
+    projectRoomLiveResponse(c, h.service, (ids) => agents.module.failures(ids)),
+  );
+  const stream = liveReader(
+    await app.request(
+      `/api/projects/example/rooms/live?channel=${a.roomId}&client=${randomUUID()}`,
+      { headers: { authorization: 'Bearer bob-session' } },
+    ),
+  );
+  try {
+    await stream.until('subscribed');
+    const frame = await stream.until('agents');
+    const working = frame.requests.find(
+      (request) => request.requestId === first.requestId,
+    );
+    expect(working?.state).toBe('started');
+    expect(working?.failure).toBeUndefined();
+  } finally {
+    await stream.cancel();
+  }
+});
+
+test('live (#4800): working requests are found past more failed ones than one page of the selection holds', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const reserve = (text: string) =>
+    h.runtime.store.reserveRequest(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), agentId: 'scout', text },
+      () => {},
+    );
+  const running = reserve('running');
+  h.runtime.store.markStarted(h.scope, running.requestId, () => {});
+  // 150 newer unsettled requests, all failed: more than one page of 100.
+  const failed = new Set(
+    Array.from({ length: 150 }, (_, i) => reserve(`failed ${i}`).requestId),
+  );
+  const requests = h.service.recentRequests(
+    a.roomId,
+    PROJECT_ROOM_LIVE_AGENT_REQUESTS,
+    PROJECT_ROOM_LIVE_WORKING_REQUESTS,
+    (ids) => new Set(ids.filter((id) => failed.has(id))),
+  );
+  expect(requests).toHaveLength(PROJECT_ROOM_LIVE_AGENT_REQUESTS + 1);
+  expect(requests.at(-1)?.requestId).toBe(running.requestId);
+});
+
+test('live (#4800): a frame reads the failure journal a fixed number of times, however many requests failed', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  let unavailable = false;
+  const agents = createProjectRoomAgentRuntime(h.home, h.runtime.store, {
+    async prepare() {
+      if (unavailable) throw new Error('unavailable');
+      return { label: 'Scout' };
+    },
+    async launch() {},
+    async answer() {
+      return null;
+    },
+    async cancel() {},
+  });
+  cleanup.push(() => agents.close());
+  const authority = {
+    scope: h.scope,
+    requester: a.actor,
+    executionRoot: h.home,
+    assertCurrent: () => {},
+  };
+  const first = await agents.module.request(authority, {
+    intentId: randomUUID(),
+    agentId: 'scout',
+    text: 'really running',
+  });
+  unavailable = true;
+  // One room's whole request allowance, all but the first failed.
+  for (let index = 1; index < 1000; index++)
+    await agents.module.request(authority, {
+      intentId: randomUUID(),
+      agentId: 'scout',
+      text: `failure ${index}`,
+    });
+  // Every execution of a statement that reads the failure journal.
+  let journalReads = 0;
+  const prepare = DatabaseSync.prototype.prepare;
+  const spy = vi
+    .spyOn(DatabaseSync.prototype, 'prepare')
+    .mockImplementation(function (this: DatabaseSync, sql: string) {
+      const statement = prepare.call(this, sql);
+      if (/^\s*SELECT\b[\s\S]*\bproject_room_agent_failures\b/i.test(sql))
+        for (const method of ['get', 'all', 'iterate'] as const) {
+          const run = statement[method].bind(statement);
+          (statement as unknown as Record<string, unknown>)[method] = (
+            ...args: unknown[]
+          ) => {
+            journalReads += 1;
+            return (run as (...values: unknown[]) => unknown)(...args);
+          };
+        }
+      return statement;
+    });
+  const app = new Hono();
+  app.get('/api/projects/:slug/rooms/live', (c) =>
+    projectRoomLiveResponse(c, h.service, (ids) => agents.module.failures(ids)),
+  );
+  const open = async () =>
+    liveReader(
+      await app.request(
+        `/api/projects/example/rooms/live?channel=${a.roomId}&client=${randomUUID()}`,
+        { headers: { authorization: 'Bearer bob-session' } },
+      ),
+    );
+  const one = await open();
+  let two: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    await one.until('subscribed');
+    const frame = await one.until('agents');
+    expect(
+      frame.requests.find((r) => r.requestId === first.requestId)?.state,
+    ).toBe('started');
+    // One batched read answers the selection; the newest 20 are among the
+    // unsettled requests it already asked about, so projecting the frame
+    // asks again for nothing.
+    const opened = journalReads;
+    expect(opened).toBe(1);
+    two = await open();
+    await two.until('subscribed');
+    await two.until('agents');
+    expect(journalReads - opened).toBe(1);
+    // One change re-sends both subscribers' frames. The settled request is
+    // neither among the newest 20 nor working, so it leaves the frame.
+    const before = journalReads;
+    h.runtime.store.cancelRequest(h.scope, first.requestId, () => {});
+    for (const stream of [one, two]) {
+      const settled = await stream.until('agents');
+      expect(
+        settled.requests.some((r) => r.requestId === first.requestId),
+      ).toBe(false);
+    }
+    expect(journalReads - before).toBe(2);
+  } finally {
+    spy.mockRestore();
+    await one.cancel();
+    await two?.cancel();
+  }
+});
+
+test('live (#4800): with more than fifty working, the newest fifty are kept and a settled one is replaced', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const reserve = () =>
+    h.runtime.store.reserveRequest(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), agentId: 'scout', text: 'working' },
+      () => {},
+    );
+  const working = Array.from({ length: 55 }, () => {
+    const request = reserve();
+    h.runtime.store.markStarted(h.scope, request.requestId, () => {});
+    return request.requestId;
+  });
+  for (let index = 0; index < 20; index++)
+    h.runtime.store.cancelRequest(h.scope, reserve().requestId, () => {});
+  const none = () => new Map();
+  let requests = h.service.recentRequests(a.roomId, 20, 50, none);
+  expect(requests).toHaveLength(70);
+  expect(
+    requests.filter((r) => r.state === 'started').map((r) => r.requestId),
+  ).toEqual(working.slice(5).reverse());
+  h.runtime.store.cancelRequest(h.scope, working[54]!, () => {});
+  requests = h.service.recentRequests(a.roomId, 20, 50, none);
+  expect(
+    requests.filter((r) => r.state === 'started').map((r) => r.requestId),
+  ).toEqual(working.slice(4, 54).reverse());
+});
+
+test('mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const text = '@Bob can you check this?';
+  const mention = {
+    kind: 'person',
+    actorId: member.id,
+    display: 'Bob',
+    offset: 0,
+  };
+  const response = await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text,
+    mentions: [mention],
+  });
+  if (response.status !== 200) throw new Error(await response.text());
+  const sent = parseProjectRoomMessage(await data(response));
+  expect(sent.mentions).toEqual([mention]);
+  expect(h.mentions.map((event) => event.recipients)).toEqual([[member.id]]);
+  expect(h.mentions[0]?.message.messageId).toBe(sent.messageId);
+  // History serves the same structured mention.
+  expect(
+    parseProjectRoomHistory(await data(await h.request('bob', '/messages')))
+      .messages[0]?.mentions,
+  ).toEqual([mention]);
+  // An edit that keeps Bob tells nobody again; naming yourself tells nobody.
+  await h.request('alice', `/messages/${sent.messageId}/edit`, 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '@Bob and @Alice, please check',
+    mentions: [
+      mention,
+      { kind: 'person', actorId: owner.id, display: 'Alice', offset: 9 },
+    ],
+  });
+  expect(h.mentions).toHaveLength(1);
+  // Mentioning someone who is not a member is refused at send time.
+  expect(
+    await code(
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: '@Mallory hi',
+        mentions: [
+          {
+            kind: 'person',
+            actorId: 'human:deployment:mallory',
+            display: 'Mallory',
+            offset: 0,
+          },
+        ],
+      }),
+    ),
+  ).toEqual({ status: 400, code: 'project_room_invalid' });
+  // A span that does not read `@display` is not a mention.
+  expect(
+    (
+      await h.request('alice', '/messages', 'POST', {
+        ...guard(a),
+        intentId: randomUUID(),
+        text: 'hello Bob',
+        mentions: [{ ...mention, offset: 6 }],
+      })
+    ).status,
+  ).toBe(400);
+  expect(h.mentions).toHaveLength(1);
+});
+
+test('mentions (#4799): the member directory lists the Project people with current names', async () => {
+  const h = await harness();
+  const listed = (await data(await h.request('bob', '/members'))) as {
+    members: { id: string; displayName: string }[];
+  };
+  expect(listed.members.map((m) => [m.id, m.displayName]).sort()).toEqual(
+    [
+      [owner.id, 'Alice'],
+      [member.id, 'Bob'],
+    ].sort(),
+  );
+});
+
+test('mentions (#4799): the read summary marks a room whose unread messages name the reader', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const source = projectRoomVersionSource(h.service);
+  const bobRequest = new Request('http://localhost', {
+    headers: { authorization: 'Bearer bob-session' },
+  });
+  const target = { projectSlug: 'example', roomId: a.roomId };
+  expect(await source.mentionedAfter?.(target, 0, bobRequest)).toBe(false);
+  // A message naming only someone else is no mention of Bob.
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '@Alice note to self',
+    mentions: [
+      { kind: 'person', actorId: owner.id, display: 'Alice', offset: 0 },
+    ],
+  });
+  expect(await source.mentionedAfter?.(target, 0, bobRequest)).toBe(false);
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: '@Bob look',
+    mentions: [
+      { kind: 'person', actorId: member.id, display: 'Bob', offset: 0 },
+    ],
+  });
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: 'no mention here',
+  });
+  expect(await source.mentionedAfter?.(target, 0, bobRequest)).toBe(true);
+  // Read past the mention: nothing unread names Bob.
+  expect(await source.mentionedAfter?.(target, 2, bobRequest)).toBe(false);
+  // Alice wrote it; it does not mention her.
+  const aliceRequest = new Request('http://localhost', {
+    headers: { authorization: 'Bearer alice-session' },
+  });
+  expect(await source.mentionedAfter?.(target, 0, aliceRequest)).toBe(false);
 });
 
 // Independent round-5 review probes. No production seam is added.
@@ -3111,3 +3794,87 @@ test.skipIf(process.getuid?.() === 0)(
     expect(fs.existsSync(blob)).toBe(false);
   },
 );
+
+test('members (#4799): only a current room reader may list, and the list is active people with id, name and kind only', async () => {
+  const h = await harness('viewer');
+  const general = await h.discover('alice');
+  // A viewer already reads this Project's rooms, so it may list. Exactly
+  // three public fields leave the service, even when the port offers more.
+  const response = await h.request('bob', '/members');
+  const text = await response.text();
+  expect(response.status).toBe(200);
+  expect(text).not.toContain('example.invalid');
+  const listed = JSON.parse(text).data as {
+    members: Record<string, unknown>[];
+  };
+  expect(listed.members).toHaveLength(2);
+  for (const entry of listed.members)
+    expect(Object.keys(entry).sort()).toEqual(['displayName', 'id', 'kind']);
+  // A signed-in person who is not a member is refused and sees no roster,
+  // on the default room and on a channel address alike.
+  for (const path of [
+    '/api/projects/example/room/members',
+    `/api/projects/example/channels/${general.roomId}/members`,
+  ]) {
+    const refused = await h.app.request(path, {
+      headers: { authorization: 'Bearer carol-session' },
+    });
+    expect(refused.status, path).toBe(403);
+    expect(await refused.text()).not.toContain('Alice');
+  }
+  // A revoked member is refused too, and no longer listed for anyone.
+  h.revokeMember();
+  const revoked = await h.request('bob', '/members');
+  expect(revoked.status).toBe(403);
+  expect(await revoked.text()).not.toContain('Alice');
+  const after = (await data(await h.request('alice', '/members'))) as {
+    members: { id: string }[];
+  };
+  expect(after.members.map((m) => m.id)).toEqual([owner.id]);
+});
+
+test('live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  await stream.until('subscribed');
+  const seen: ProjectRoomLiveFrame['kind'][] = [];
+  const reading = (async () => {
+    try {
+      for (;;) {
+        const frame = await stream.next();
+        seen.push(frame.kind);
+        if (frame.kind === 'revoked') return;
+      }
+    } catch {
+      /* The stream ended. */
+    }
+  })();
+  // Let the baseline frames arrive, then revoke and make the room busy.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const before = seen.length;
+  h.revokeMember();
+  const aliceClient = randomUUID();
+  await h.request('alice', '/presence', 'POST', {
+    ...guard(a),
+    clientId: aliceClient,
+    state: 'join',
+  });
+  await h.request('alice', '/typing', 'POST', {
+    ...guard(a),
+    clientId: aliceClient,
+    typing: true,
+  });
+  await h.request('alice', '/messages', 'POST', {
+    ...guard(a),
+    intentId: randomUUID(),
+    text: 'after the revocation',
+  });
+  await Promise.race([
+    reading,
+    new Promise((resolve) => setTimeout(resolve, 5000)),
+  ]);
+  // The per-frame re-check answers with `revoked`, and nothing else gets out.
+  expect(seen.slice(before)).toEqual(['revoked']);
+  await stream.cancel().catch(() => {});
+});

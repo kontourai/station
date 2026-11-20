@@ -873,13 +873,23 @@ export function JoinDevicePairingPanel({
          * on — deleted from this screen.
          */}
         <p className="pairing-wait__instruction">
-          On <strong>{target}</strong>, approve <strong>“{deviceName}”</strong>{' '}
-          to connect {hostAppName ? 'this device' : 'this browser'}.
+          {accountBoundDeviceRequest ? (
+            <>
+              The Station owner can approve <strong>“{deviceName}”</strong> in
+              Notifications. Your shared work opens after approval.
+            </>
+          ) : (
+            <>
+              On <strong>{target}</strong>, approve{' '}
+              <strong>“{deviceName}”</strong> to connect{' '}
+              {hostAppName ? 'this device' : 'this browser'}.
+            </>
+          )}
         </p>
         <span className="pairing-wait__timer" aria-live="off">
           {requestExpiryLabel(pending.expiresAt, now)}
         </span>
-        {pending.requestKind === 'direct' && (
+        {pending.requestKind === 'direct' && !accountBoundDeviceRequest && (
           // Closed by default: this is available when no other
           // trusted session is available, not the instruction. The command
           // itself gets a Copy button — the wrapped monospace text beneath
@@ -1062,16 +1072,19 @@ export function JoinDevicePairingPanel({
               lineHeight: 1.45,
             }}
           >
-            {directLabel
-              ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
-              : originIsStation
-                ? 'Ask to connect. Approve this device on the computer running Station.'
-                : 'Enter the address of the computer running Station, then request access.'}{' '}
-            {/* The approver reads this same level ("asks for full device
-                access"); say it here too, rather than leave it unchosen. */}
-            {accountBoundDeviceRequest
-              ? 'It asks for Standard access; whoever approves it decides.'
-              : 'It asks for full device access; whoever approves it can limit that.'}
+            {accountBoundDeviceRequest ? (
+              'Ask the Station owner to approve this browser for shared Projects.'
+            ) : (
+              <>
+                {directLabel
+                  ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
+                  : originIsStation
+                    ? 'Ask to connect. Approve this device on the computer running Station.'
+                    : 'Enter the address of the computer running Station, then request access.'}{' '}
+                It asks for full device access; whoever approves it can limit
+                that.
+              </>
+            )}
           </p>
           {!knowsEndpoint && (
             <input
@@ -2444,7 +2457,7 @@ export function HostDevicePairingPanel({
                         }}
                       >
                         {request.requireAccountBinding
-                          ? 'The invitee requested account-bound access. Approval can create only this account-bound Device. The pilot can view permitted Projects; editing and running work are unavailable.'
+                          ? 'They can read shared work in this browser. To allow replies, choose “Participate in shared Projects” under Paired devices after they connect.'
                           : 'Requires this account to sign in again. This pilot can view permitted Projects; editing and running work are unavailable. It does not grant membership.'}
                       </small>
                     </span>
@@ -2816,7 +2829,6 @@ export function HostDevicePairingPanel({
                     className="pairing-select"
                   >
                     <option value="stable">Station</option>
-                    <option value="beta">Station Beta</option>
                     <option value="nightly">Station Nightly</option>
                   </select>
                 </label>
@@ -3062,7 +3074,6 @@ export function HostDevicePairingPanel({
               className="pairing-select"
             >
               <option value="stable">Station</option>
-              <option value="beta">Station Beta</option>
               <option value="nightly">Station Nightly</option>
             </select>
           </label>

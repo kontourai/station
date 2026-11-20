@@ -374,8 +374,9 @@ export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
   steerPlacement: {
     state: 'emulated',
+    boundary: 'engine-defined',
     detail:
-      'Orchestration commands can steer through a live extension or cancel and reprompt. The chat composer does not offer ACP steering.',
+      'Steering cancels the active prompt, waits for its answer, and continues the same task with the additional instruction.',
   },
 };
 
@@ -459,7 +460,10 @@ export interface EngineCapabilityMatrix {
   toolServers: CapabilityDelivery;
   skills: CapabilityDelivery;
   commands: CapabilityDelivery;
-  modelSelection: CapabilityDelivery;
+  modelSelection: CapabilityDelivery & {
+    /** Explicit false keeps an existing conversation's model picker closed. */
+    overridePerTurn?: boolean;
+  };
   /** The declared pre-tool blocking/grant boundary; see `ToolPolicyDelivery`. */
   toolPolicy: ToolPolicyDelivery;
   /** Whether a pasted image reaches the model; see `ImageInputDelivery`. */
@@ -725,27 +729,30 @@ export function toolPolicyDeliveryLabel(
   return 'Station approvals do not apply';
 }
 
-/** The detailed, non-overclaiming explanation paired with the label above. */
+/**
+ * The plain explanation paired with the label above: what Station's approval
+ * rules do for this engine, without overclaiming coverage.
+ */
 export function toolPolicyDeliveryExplanation(
   delivery: ToolPolicyDelivery | undefined,
 ): string {
   if (!delivery) {
-    return 'Station cannot tell whether its tool approvals cover this session: no engine capability matrix resolved.';
+    return "Station can't tell whether its approval rules apply here.";
   }
   if (delivery.state === 'native') {
-    return 'Station checks its blocks and auto-approve grants before every tool call.';
+    return "Station's approval rules apply to every tool call.";
   }
   if (delivery.state === 'partial') {
     const limits = [
-      "Station auto-applies only its matching auto-approve grants; everything else still goes through this engine's own approval flow.",
+      "Station auto-approves what your rules allow; everything else follows this engine's own approvals.",
       delivery.coverageLimit,
       delivery.toolIdentity === 'self-reported'
-        ? 'Tool identity is self-reported by the engine.'
+        ? 'Tool names come from the engine.'
         : undefined,
     ].filter(Boolean);
     return limits.join(' ');
   }
-  return "This engine runs its own approvals; Station's blocks and auto-approve grants are not consulted.";
+  return "This engine handles its own approvals; Station's rules aren't used.";
 }
 
 /**
@@ -789,21 +796,18 @@ export const ACP_MODEL_OVERRIDE_PER_TURN = false;
  *   by the chat's approval mode (Ask: a person decides; Auto: file edits are
  *   allowed; full access: every request is allowed). The approval control
  *   offers Station's approval modes.
- * - `engine`: Station has no channel into the engine's permission rules. It
- *   answers only the requests the engine chooses to send, so the approval
- *   control says the engine decides and offers no mode.
+ * - `requests`: Station's approval mode answers the ACP permission requests
+ *   the engine sends. Its own tool rules still decide when it asks.
+ * - `engine`: Station has no confirmed ACP connection to apply a mode to.
  */
-export type AcpApprovalControl = 'station' | 'engine';
+export type AcpApprovalControl = 'station' | 'requests' | 'engine';
 
-/** ACP engines whose launch configuration Station sets (#3290). */
-export type AcpStationApprovalEngine = 'opencode';
+/** ACP engine identities with specific approval settings or descriptions. */
+export type AcpStationApprovalEngine = 'opencode' | 'antigravity';
 
 /**
- * The ACP engine a connection's command launches, when Station sets its
- * approval rules at launch. Matched on the executable's own name (any
- * directory, a Windows launcher extension ignored), the identity the
- * OpenCode model listing also uses. A wrapper such as `npx opencode-ai` is
- * not recognized, so that connection is `engine`-decided.
+ * Identifies an ACP engine with specific approval settings or descriptions.
+ * Unrecognized executables can still send the standard ACP permission requests.
  */
 export function acpStationApprovalEngine(
   command: string | null | undefined,
@@ -816,7 +820,9 @@ export function acpStationApprovalEngine(
     .pop()
     ?.toLowerCase()
     .replace(/\.(exe|cmd|bat)$/, '');
-  return executable === 'opencode' ? 'opencode' : undefined;
+  if (executable === 'opencode') return 'opencode';
+  if (executable === 'agy') return 'antigravity';
+  return undefined;
 }
 
 /**
@@ -847,7 +853,8 @@ export function isOpenCodeAcpConnection(
 export function acpApprovalControl(
   command: string | null | undefined,
 ): AcpApprovalControl {
-  return acpStationApprovalEngine(command) ? 'station' : 'engine';
+  if (acpStationApprovalEngine(command) === 'opencode') return 'station';
+  return command?.trim() ? 'requests' : 'engine';
 }
 
 export const ENGINE_CAPABILITY_MATRICES: Record<
@@ -856,6 +863,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
 > = {
   station: {
     engineId: toEngineId('station'),
+    // Of Station's two frameworks, VoltAgent applies an authored Agent's
+    // maxSteps. Strands and the external engine rows use their own limits.
     durability: STATION_ENGINE_DURABILITY,
     systemPrompt: { state: 'native' },
     // Native systemPrompt already delivers the authored prompt; the
@@ -1318,6 +1327,14 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   acp: {
     engineId: toEngineId('acp'),
     durability: ACP_ENGINE_DURABILITY,
+    // `AcpSessionListSource` lists sessions an ACP agent ran outside Station,
+    // read-only and without history. Nothing shows that resuming one keeps
+    // its conversation, so continuing one is not offered.
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station lists these sessions read-only and has no evidence that resuming one keeps its history.',
+    },
     systemPrompt: { state: 'unsupported' },
     // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
     // `{type:'text', text: input.input}` prompt content block on every
@@ -1375,7 +1392,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // catalog advertises the value: a model config option whose response
     // confirms the exact currentValue, else a `models` list switched with
     // session/set_model (#352). Resume/per-turn remain unsupported.
-    modelSelection: { state: 'session', channel: 'wire' },
+    modelSelection: {
+      state: 'session',
+      channel: 'wire',
+      overridePerTurn: ACP_MODEL_OVERRIDE_PER_TURN,
+    },
     // ACP enters the shared staged policy at requestPermission. Coverage is
     // still partial: ACP does not guarantee every tool call requests
     // permission, and the tool identity is reported by the external engine.
@@ -1474,9 +1495,13 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // own commands run through `engine-command-dispatch.ts`.
     commands: { state: 'unsupported' },
     // Native: `POST /api/session` carries `model: {providerID, id}`
-    // (`readModelRef`); ACP: the session's catalog, as for `acp`. Start
-    // time only on both.
-    modelSelection: { state: 'session', channel: 'wire' },
+    // after checking the model catalog; subsequent native turns switch with
+    // `POST /api/session/{id}/model`. ACP fallback selects only at start.
+    modelSelection: {
+      state: 'session',
+      channel: 'wire',
+      overridePerTurn: true,
+    },
     // Station's staged policy, for a session started as an Agent, on both
     // transports. ACP: at `requestPermission`, exactly as on the `acp` row
     // (the declared hook and module, which the tool-policy tripwire checks).

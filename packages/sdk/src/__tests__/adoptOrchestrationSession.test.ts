@@ -80,6 +80,72 @@ describe('adoptOrchestrationSession failure classification', () => {
     expect(other).not.toHaveProperty('refusal');
   });
 
+  it('carries a source-still-running refusal as a retryable error with its code', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error:
+              'Still running in Claude Code, so no continuation was created.',
+            code: 'continuation_source_active',
+            kind: 'busy',
+            retryable: true,
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+    const error = await adoptOrchestrationSession({
+      sourceThreadId: 'source-active',
+      apiBase: 'https://station.test',
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AdoptSessionError);
+    expect(error).toMatchObject({
+      failureClass: 'certain-response',
+      retryable: true,
+      status: 409,
+      code: 'continuation_source_active',
+    });
+    expect(error).not.toHaveProperty('refusal');
+  });
+
+  it('sends continueWhileSourceActive only when asked', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({ success: true, data: { threadId: 'child' } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const intent = createAdoptOrchestrationSessionIntent();
+    await adoptOrchestrationSession({
+      sourceThreadId: 'source-1',
+      apiBase: 'https://station.test',
+      intent,
+      continueWhileSourceActive: true,
+    });
+    await adoptOrchestrationSession({
+      sourceThreadId: 'source-1',
+      apiBase: 'https://station.test',
+      intent,
+    });
+    const bodies = fetchMock.mock.calls.map(
+      (call) => JSON.parse(String((call[1] as RequestInit).body)) as object,
+    );
+    expect(bodies[0]).toEqual({
+      type: 'adoptSession',
+      sourceThreadId: 'source-1',
+      idempotencyKey: intent.idempotencyKey,
+      continueWhileSourceActive: true,
+    });
+    expect(bodies[1]).not.toHaveProperty('continueWhileSourceActive');
+  });
+
   it('classifies a provable connection refusal as certainly not sent and retryable', async () => {
     vi.stubGlobal(
       'fetch',

@@ -80,25 +80,23 @@ export function CompanionArchivePreparation({
   return (
     <section aria-label="Companion archive preparation">
       <p>
-        Prepare the signed parent archive in this Station's private storage.
-        This downloads, verifies and prepares companion files; it does not start
-        services or enable sending.
+        Download and verify the signed companion archive into this Station's
+        private storage. This doesn't start services or turn on sending.
       </p>
       {!state.data.supported ? (
         <p>
-          This Station host does not support archive preparation. Connect to a
-          supported Unix host.
+          This Station can't prepare the archive. Use a Station running on macOS
+          or Linux.
         </p>
       ) : !state.data.mayPrepare ? (
         <p>
-          This session lacks companion-management authority. An operator can
-          explicitly grant Manage telemetry companion to an eligible operator
+          Ask a Station operator to grant “Manage telemetry companion” to this
           device in device access settings.
         </p>
       ) : !artifactReady ? (
         <p>
-          A verified parent release and host prerequisites are required before
-          preparation.
+          Preparation needs a verified companion release and the Station
+          prerequisites above.
         </p>
       ) : null}
       {prepare.isPending ? <p role="status">Preparing archive…</p> : null}
@@ -107,8 +105,8 @@ export function CompanionArchivePreparation({
           {receipt.phase === 'authenticated'
             ? `Archive bytes verified for ${receipt.version}. Installation is still unavailable.`
             : receipt.phase === 'failed'
-              ? 'Preparation failed. Captured files were retained; a new attempt requires another explicit action.'
-              : 'Preparation intent recorded. This does not confirm a running operation.'}
+              ? 'Preparation failed; downloaded files were kept. Prepare again to retry.'
+              : "Preparation started. Station hasn't confirmed it's still running."}
         </p>
       ) : null}
       {receipt?.payloadPrepared ? (
@@ -116,20 +114,19 @@ export function CompanionArchivePreparation({
       ) : null}
       {unconfirmed ? (
         <p role="alert">
-          The preparation outcome is unconfirmed. Check its receipt before
-          starting another attempt.
+          Station didn't confirm the result. Check status before retrying.
         </p>
       ) : null}
       {state.data.hasOperationLock && !prepare.isPending ? (
         <p>
-          An operation lock is recorded. Its running state is unknown; reconcile
-          it before preparing another archive.
+          Another operation may still be running. Check status before
+          continuing.
         </p>
       ) : null}
       {state.data.latestOperationId && !state.data.latest ? (
         <p>
-          The recorded operation has no readable receipt and needs
-          reconciliation.
+          The last operation's result can't be read. Check status before
+          continuing.
         </p>
       ) : null}
       {!cryptoAvailable ? (

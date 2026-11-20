@@ -15,6 +15,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { DeploymentAuthenticationResult } from '@kontourai/station-contracts/deployment-authentication';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectAccessAdministrationView } from '@kontourai/station-contracts/project-membership';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -30,6 +31,7 @@ import { LazyOperatorPasskeyRegistry } from '../../../services/identity/operator
 import {
   OPERATOR_SESSION_IDLE_MS,
   OperatorSessionService,
+  parseOperatorSessionCookie,
 } from '../../../services/identity/operator-sessions.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
@@ -200,24 +202,64 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       membership.close();
     });
 
-    const pair = (name: string, scope = PHONE_SCOPE) => {
+    const pair = (
+      name: string,
+      scope = PHONE_SCOPE,
+      homePossession = false,
+    ) => {
       const pairing = security.devicePairing;
+      const offer = pairing.createOffer({
+        endpoint: APP,
+        scope,
+        ...(homePossession ? { homePossession: true } : {}),
+      });
+      const pending = pairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: name,
+        requesterPosition: 'unproven',
+        source: homePossession ? 'same-origin' : 'pairing-code',
+      });
+      pairing.confirmRequest(pending.requestId, {
+        kind: homePossession ? 'local-grant' : 'presented-credential',
+      });
+      return pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+        ...(homePossession
+          ? {
+              locality: 'home-possession',
+              mintKind: 'local-grant',
+            }
+          : {}),
+      });
+    };
+    const pairPersonDevice = (login: string, name: string, scope: string) => {
+      const pairing = security.devicePairing;
+      const person = humanPrincipal('tailscale-serve', login, login);
       const offer = pairing.createOffer({ endpoint: APP, scope });
       const pending = pairing.requestPairing({
         offerId: offer.offerId,
         proof: offer.challenge,
         deviceName: name,
         requesterPosition: 'unproven',
-        source: 'pairing-code',
+        source: 'tailnet',
+        requester: { provider: 'tailscale-serve', login },
       });
-      pairing.confirmRequest(pending.requestId, {
-        kind: 'presented-credential',
-      });
-      return pairing.exchange({
-        offerId: offer.offerId,
-        proof: offer.challenge,
-        requestId: pending.requestId,
-      });
+      pairing.confirmRequest(
+        pending.requestId,
+        { kind: 'presented-credential' },
+        { principalId: person.id, kind: 'verified-ingress' },
+      );
+      return {
+        person,
+        ...pairing.exchange({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+        }),
+      };
     };
     const phone = pair('Owner phone');
     const project = await projectService.createProject({
@@ -413,6 +455,7 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       phone,
       project,
       pair,
+      pairPersonDevice,
       warn,
       call,
       enable,
@@ -425,6 +468,223 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       shared,
     };
   }
+
+  test('real Desktop credentials retain read access when People writes require an operator', async () => {
+    const h = await setup();
+    const desktop = h.pair('Fixture Desktop', 'access:manage', true);
+    expect(
+      h.security.devicePairing.isLocalGrantMintedCredential(desktop.credential),
+    ).toBe(true);
+
+    const person = 'human:device:fixture-person';
+    const base = `/api/pairing/people/${encodeURIComponent(person)}`;
+    const callAsDevice = (credential: string, path: string, method = 'GET') =>
+      h.app.request(`${APP}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${credential}`, origin: APP },
+      });
+    expect(
+      (await callAsDevice(desktop.credential, '/api/pairing/people')).status,
+    ).toBe(200);
+    for (const [method, path] of [
+      ['PUT', `${base}/group`],
+      ['POST', `${base}/tokens`],
+      ['DELETE', `${base}/tokens/fixture-token`],
+    ]) {
+      const response = await callAsDevice(desktop.credential, path, method);
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'operator_credential_required' },
+      });
+    }
+
+    const poll = await callAsDevice(
+      desktop.credential,
+      '/api/pairing/device-access-transactions/unavailable',
+    );
+    expect(poll.status).toBe(403);
+    expect(await poll.json()).toMatchObject({
+      error: { code: 'operator_session_required' },
+    });
+    expect(
+      (await callAsDevice(desktop.credential, '/api/pairing/people')).status,
+    ).toBe(200);
+
+    h.security.devicePairing.revokeDevice(
+      desktop.device.id,
+      'operator-credential',
+    );
+    const revoked = await callAsDevice(
+      desktop.credential,
+      `${base}/group`,
+      'PUT',
+    );
+    expect(revoked.status).toBe(401);
+  });
+
+  test.each(['after-verification', 'before-commit'] as const)(
+    'operator session lost %s settles as ended before applying a change',
+    async (when) => {
+      const h = await setup();
+      const signed = await h.signIn();
+      const target = h.pair('Device to revoke');
+      const secret = parseOperatorSessionCookie(signed.cookie);
+      if (!secret)
+        throw new Error('The fixture did not mint an operator session');
+      const endSession = () => {
+        expect(h.sessions.signOut(secret, h.phone.credential)).toBe(true);
+        h.security.devicePairing.setDeviceScope(
+          target.device.id,
+          ['orchestration:read'],
+          { kind: 'presented-credential' },
+        );
+      };
+      if (when === 'after-verification') {
+        const verify = h.sessions.verifyStepUp.bind(h.sessions);
+        vi.spyOn(h.sessions, 'verifyStepUp').mockImplementationOnce(
+          async (...args) => {
+            const passkey = await verify(...args);
+            endSession();
+            return passkey;
+          },
+        );
+      } else {
+        const create = h.channel.store.create.bind(h.channel.store);
+        vi.spyOn(h.channel.store, 'create').mockImplementationOnce((input) =>
+          create({
+            ...input,
+            revalidateTarget: async () => {
+              const target = await input.revalidateTarget();
+              endSession();
+              return target;
+            },
+          }),
+        );
+      }
+      const write = vi.spyOn(h.security.devicePairing, 'revokeDevice');
+      const pending = await h.call(
+        `/api/pairing/devices/${target.device.id}`,
+        signed.cookie,
+        { method: 'DELETE' },
+      );
+      expect(pending.status, await pending.clone().text()).toBe(202);
+      const { transaction } = (await pending.json()) as {
+        transaction: { id: string };
+      };
+      const rendered = await h.review(signed, transaction.id);
+      const response = await h.decide(signed, transaction.id, rendered);
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toMatchObject({ error: 'session_ended' });
+      expect(
+        h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+      ).toBe('session_ended');
+      expect(write).not.toHaveBeenCalled();
+      expect(
+        h.security.devicePairing.identifyDevice(target.credential),
+      ).toMatchObject({
+        scope: 'orchestration:read',
+        revokedAt: null,
+      });
+
+      const poll = await h.call(
+        `/api/pairing/device-access-transactions/${transaction.id}`,
+        signed.cookie,
+      );
+      expect(poll.status, await poll.clone().text()).toBe(403);
+      expect(await poll.json()).toMatchObject({
+        error: { code: 'operator_session_required' },
+      });
+    },
+  );
+
+  test.each([true, false])(
+    'group promotion reviews newly effective full access when it is stored (%s)',
+    async (stored) => {
+      const h = await setup();
+      const signed = await h.signIn();
+      const featured = h.pairPersonDevice(
+        'fixture-person@example.test',
+        'Fixture named device',
+        stored
+          ? 'orchestration:read approval:full-access'
+          : 'orchestration:read',
+      );
+      h.pairPersonDevice(
+        'fixture-person@example.test',
+        'Fixture ordinary device',
+        'orchestration:read',
+      );
+      h.pairPersonDevice(
+        'unrelated-person@example.test',
+        'Fixture other person',
+        'orchestration:read approval:full-access',
+      );
+      const scope = () =>
+        h.security.devicePairing.effectiveScopeOfDevice(featured.device.id);
+      expect(scope()).toBe('orchestration:read');
+      const pending = await h.call(
+        `/api/pairing/people/${encodeURIComponent(featured.person.id)}/group`,
+        signed.cookie,
+        { method: 'PUT', body: { group: 'admin' } },
+      );
+      expect(pending.status, await pending.clone().text()).toBe(202);
+      const { transaction } = (await pending.json()) as {
+        transaction: { id: string };
+      };
+      const review = await h.review(signed, transaction.id);
+      if (stored) {
+        expect(review.html).toContain(
+          'Full access will become effective on Fixture named device.',
+        );
+        expect(review.html).not.toContain('Fixture ordinary device');
+        expect(review.html).not.toContain('Fixture other person');
+      } else {
+        expect(review.html).not.toContain('Full access will become effective');
+      }
+      expect(h.security.groupOf(featured.person.id)).toBe('member');
+      const accepted = await h.decide(signed, transaction.id, review);
+      expect(accepted.status, await accepted.clone().text()).toBe(200);
+      expect(h.security.groupOf(featured.person.id)).toBe('admin');
+      expect(scope()).toBe(
+        stored
+          ? 'orchestration:read approval:full-access'
+          : 'orchestration:read',
+      );
+    },
+  );
+
+  test('a stale group review cannot promote a Device whose full-access impact changed', async () => {
+    const h = await setup();
+    const signed = await h.signIn();
+    const { person, device } = h.pairPersonDevice(
+      'fixture-person@example.test',
+      'Fixture named device',
+      'orchestration:read',
+    );
+    const pending = await h.call(
+      `/api/pairing/people/${encodeURIComponent(person.id)}/group`,
+      signed.cookie,
+      { method: 'PUT', body: { group: 'admin' } },
+    );
+    expect(pending.status, await pending.clone().text()).toBe(202);
+    const { transaction } = (await pending.json()) as {
+      transaction: { id: string };
+    };
+    const review = await h.review(signed, transaction.id);
+    expect(review.html).not.toContain('Full access will become effective');
+    h.security.devicePairing.setDeviceScope(
+      device.id,
+      ['orchestration:read', 'approval:full-access'],
+      { kind: 'presented-credential' },
+    );
+    const response = await h.decide(signed, transaction.id, review);
+    expect(response.status, await response.clone().text()).toBe(409);
+    expect(await response.json()).toMatchObject({ error: 'target_changed' });
+    expect(h.security.groupOf(person.id)).toBe('member');
+    expect(h.security.devicePairing.effectiveScopeOfDevice(device.id)).toBe(
+      'orchestration:read',
+    );
+  });
 
   test('sharing refusal discloses only to a current admitted operator session', async () => {
     const h = await setup();

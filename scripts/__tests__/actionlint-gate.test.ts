@@ -1042,7 +1042,7 @@ describe('persistent runner policy', () => {
       [
         'fast-checks-shard',
         'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
-        'fast-checks-plan, actionlint-artifact',
+        'pr-admission, fast-checks-plan, actionlint-artifact',
         'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
       ],
       [
@@ -2979,7 +2979,7 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fast-checks',
       message:
-        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
+        'Required browser smoke must execute once whenever the heavy checks run, with its real exit status inside fast-checks-statics.',
     });
   });
 

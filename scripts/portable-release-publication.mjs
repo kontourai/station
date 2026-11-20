@@ -44,7 +44,7 @@ const DEFAULT_KEY_TABLE = resolve(
   '../config/release-manifest-keys.json',
 );
 /** The rings a tagged release publishes; nightly has its own key and job. */
-export const RELEASE_RINGS = Object.freeze(['stable', 'preview']);
+export const RELEASE_RINGS = Object.freeze(['stable']);
 /** The pinned key id authorized for stable and preview (config/release-manifest-keys.json). */
 export const RELEASE_SIGNING_KEY_ID = 'station-portable-release-2026-09';
 /** A key id no installer pins, so a dry-run envelope can never pass as real. */

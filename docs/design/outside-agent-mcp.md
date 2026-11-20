@@ -111,7 +111,7 @@ Enable explicitly per instance, only after R6's compiled release gate (section
 11). Configure one canonical origin `O`, normally HTTPS. A separate explicit
 same-machine HTTP opt-in requires a literal `127.0.0.1` or `[::1]` issuer.
 The runtime currently defaults to `0.0.0.0` in
-[server-main.ts](../../src-server/server-main.ts); binding alone cannot establish local-only
+[index.ts](../../src-server/index.ts); binding alone cannot establish local-only
 requests. For **every request** in the outside OAuth/MCP route family, including
 metadata and preflight, loopback HTTP is admitted only if all conditions hold:
 
@@ -722,12 +722,16 @@ approval bypass.
 | Authorization code | `oac_` + 32 random bytes, base64url; hash stored with client, actual redirect, S256 challenge, R, request/approval-intent version and exchanged family ID | 60 seconds; atomically consume after successful verifier and binding checks. Correctly bound reuse refuses and revokes the issued family/grant. |
 | Access token | `oat_` + 32 random bytes, base64url; opaque, hash stored with issuer/station, R, grant ID/version, client, subject, family and scopes | 60 minutes (`expires_in: 3600` when not capped), capped by grant expiry; valid only as `/mcp` Authorization bearer. |
 | Refresh token | `ort_` + 32 random bytes, base64url; hash with client/R/grant/family/sequence, issued/used timestamps | Rotate on first use; 7 days idle, capped by the grant's absolute expiry. Any reuse revokes its only family and grant (`refresh_replay`); idle expiry expires both (`idle`); no grace. |
-| Grant | Random ID; active/revoked/expired (approval intent is separate); delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
+| Authorization request | ID `oar_` + 32 random bytes, base64url (47 characters); an opaque identifier, not a token or credential; pending/approved/coded/active/denied/expired/replaced | Pending until approved, denied, replaced or expired. The host CLI takes the ID as an operand. |
+| Grant | ID `oag_` + 32 random bytes, base64url (47 characters); an opaque identifier, not a token or credential; active/revoked/expired (approval intent is separate); delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
 | MCP session | Random opaque ID bound to grant, family, version, issuer and transport | At most 30 minutes since the last HTTP request, including an open GET stream, and never beyond grant expiry; ID alone grants nothing. Reauthenticate each request. |
 
 Hash all high-entropy secrets using domain-separated SHA-256; perform constant-time
 comparison when comparing secret-derived bytes. Prefixes are format separation,
-not authority. Keep token responses `Cache-Control: no-store`; tokens never
+not authority. The request and grant prefixes also keep an ID from starting
+with `--`, which the host CLI's argument parser would read as a flag. A request
+or grant created before these prefixes, in a private or development store, can
+still have such an ID and cannot be addressed by the CLI; it is not migrated. Keep token responses `Cache-Control: no-store`; tokens never
 appear in URLs, logs, traces, analytics, audit or Connections. The client is
 responsible for its own token custody. Store no verifier; retain only the S256
 challenge and binding digests needed for exchange/replay checks as specified

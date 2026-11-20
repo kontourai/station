@@ -6,7 +6,7 @@
  * and writes this marker BEFORE it hands off to the next release. The
  * supervisor alone then promotes or rolls back. Whichever release boots
  * next reads the marker before the home schema gate
- * (`consumeStationHomeRestoreMarker`, called from src-server/server-main.ts) and
+ * (`consumeStationHomeRestoreMarker`, called from src-server/index.ts) and
  * DERIVES what happened from which release it is:
  *
  * - it is the marker's from-release: the handoff was rolled back, and the

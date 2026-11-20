@@ -484,7 +484,7 @@ describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
             onClose={() => {}}
           />,
         );
-        await screen.findByRole('option', { name: /GPT 6.1 Terra/ });
+        await screen.findByRole('button', { name: /^GPT 6.1 Terra/ });
         const overlay = document.querySelector('.composer-popover-overlay');
         if (!overlay) throw new Error('Model picker did not render');
         const markup = overlay.outerHTML;

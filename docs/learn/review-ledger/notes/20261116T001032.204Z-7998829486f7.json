@@ -1,0 +1,7 @@
+{
+  "revision": "695eb41ef8af4b59108e1b675bc7392c26fa3369",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Added that an unmeasurable Biome run fails the ratchet and names its exit status or signal with the last 20 output lines; matches assertMeasurable and its tests. Other ratchet claims unchanged.","inputs":["docs/guides/code-quality.md","scripts/__tests__/a11y-ratchet.test.ts","scripts/a11y-ratchet.mjs"]}
+  ]
+}

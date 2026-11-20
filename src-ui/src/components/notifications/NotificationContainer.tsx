@@ -32,9 +32,14 @@ import {
 } from '../status/approvalReveal';
 import { TroubleshootAction } from '../troubleshoot/TroubleshootAction';
 import './NotificationContainer.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
+
+function belongsToApprovalQueue(item: Notification) {
+  return item.type === 'tool-approval' || item.type === 'pairing-request';
+}
 
 function ToastCard({
   notification,
@@ -70,6 +75,22 @@ function ToastCard({
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
+  const eyebrow = isApproval
+    ? 'Approval request'
+    : isActivity
+      ? 'Tool activity'
+      : isTurn
+        ? 'Agent turn'
+        : isPairing
+          ? 'Pairing request'
+          : null;
+  // Any notification that carries actions can be a decision (a tool approval,
+  // a pairing request, or a decision a newer server sends), so all of them
+  // hold custom CSS off while shown.
+  useDecisionSurface(
+    'approval-toast',
+    isApproval || isPairing || (notification.actions?.length ?? 0) > 0,
+  );
   const cardRef = useRef<HTMLElement>(null);
   const swipe = useSwipeToDismiss(swipeToDismiss, () =>
     dismissToast(notification.id),
@@ -199,20 +220,9 @@ function ToastCard({
     >
       <div className="toast-card__header">
         <div className="toast-card__content">
-          {(isApproval || isPairing || isActivity || isTurn) && (
+          {eyebrow && (
             <div className="toast-card__meta">
-              {isApproval && (
-                <span className="toast-card__eyebrow">Approval request</span>
-              )}
-              {isActivity && (
-                <span className="toast-card__eyebrow">Tool activity</span>
-              )}
-              {isTurn && (
-                <span className="toast-card__eyebrow">Agent turn</span>
-              )}
-              {isPairing && (
-                <span className="toast-card__eyebrow">Pairing request</span>
-              )}
+              <span className="toast-card__eyebrow">{eyebrow}</span>
               <time className="toast-card__time">
                 {relativeTime(notification.timestamp, Date.now())}
               </time>
@@ -410,6 +420,26 @@ export function NotificationContainer() {
   // withheld on a coarse primary pointer rather than shown as dead text.
   const coarsePointer = useCoarsePointer();
   const { navigate } = useNavigationActions();
+  const measureStack = useCallback((container: HTMLDivElement | null) => {
+    if (!container) return;
+    const { style } = container.ownerDocument.documentElement;
+    const property = '--notification-stack-clearance';
+    const update = () =>
+      style.setProperty(
+        property,
+        `calc(${container.offsetHeight}px + var(--k-space-2))`,
+      );
+    update();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(update);
+    observer?.observe(container);
+    return () => {
+      observer?.disconnect();
+      style.removeProperty(property);
+    };
+  }, []);
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);
@@ -438,9 +468,7 @@ export function NotificationContainer() {
   }, []);
 
   const activeNotifications = history.filter((item) => !item.dismissed);
-  const allApprovals = activeNotifications.filter(
-    (item) => item.type === 'tool-approval' || item.type === 'pairing-request',
-  );
+  const allApprovals = activeNotifications.filter(belongsToApprovalQueue);
   // A chat pane presenting its own approval in its status pill claims its
   // threads; the queue does not float a second copy of those over the pane.
   // Asked to open from that pill (its card could not be brought on screen),
@@ -473,7 +501,7 @@ export function NotificationContainer() {
     if (!approvalQueueOpen) setShowAllApprovals(false);
   }, [approvalQueueOpen]);
   const transientNotifications = activeNotifications.filter(
-    (item) => item.type !== 'tool-approval' && item.type !== 'pairing-request',
+    (item) => !belongsToApprovalQueue(item),
   );
   const stackedTransients = selectToastStackItems(transientNotifications);
   useEffect(() => {
@@ -590,7 +618,11 @@ export function NotificationContainer() {
   const approvalCountLabel = `${approvals.length} pending approval${approvals.length === 1 ? '' : 's'}`;
 
   return (
-    <div className="notification-container" aria-live="polite">
+    <div
+      ref={measureStack}
+      className="notification-container"
+      aria-live="polite"
+    >
       {approvals.length > 0 && (
         <div className="notification-approval-queue" ref={approvalQueueRef}>
           <button

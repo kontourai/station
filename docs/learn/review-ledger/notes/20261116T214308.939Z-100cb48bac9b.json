@@ -1,0 +1,77 @@
+{
+  "revision": "9e066eb51adb6caa2d531b0b7b57d395ff62c90b",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the job-owner passage against refuseStoredTarget and admitAutomationJobFor (owner admission), backfillJobOwners (one-time marker) and the scheduler's hosted 404; recorded the accepted gaps (full person authority, listed-but-refused tools, hosted unreachable).","inputs":["docs/reference/api.md","src-server/routes/operations/scheduler.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the voice passage against voice.ts (loopback cookie path behind verifyClient's Origin check, auth frame, speech-only for an unresolved credential, refusal only on failed verification) and recorded the accepted full-authority gap.","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/operations/voice.ts","src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D review: the voice listener also recognizes the local UI's device session cookie (identifyDevice). Citing docs do not describe voice authentication; the threat model now does.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D review: the personal-Station owner backfill is a recorded one-time ledger migration. The API reference and automations guide describe it; other citing passages do not describe job ownership.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D review: the personal-Station owner backfill is a recorded one-time ledger migration. The API reference and automations guide describe it; other citing passages do not describe job ownership.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D review: the personal-Station owner backfill is a recorded one-time ledger migration. The API reference and automations guide describe it; other citing passages do not describe job ownership.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D review: the personal-Station owner backfill is a recorded one-time ledger migration. The API reference and automations guide describe it; other citing passages do not describe job ownership.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D review: a job with a target or an owner is admitted against its owner (person or agent acting for them) before edit, run, enable, disable or delete. The API reference and automations guide describe it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#2377 slice D review: a job with a target or an owner is admitted against its owner (person or agent acting for them) before edit, run, enable, disable or delete. The API reference and automations guide describe it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#2377 slice D review: a job with a target or an owner is admitted against its owner (person or agent acting for them) before edit, run, enable, disable or delete. The API reference and automations guide describe it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D review: a job with a target or an owner is admitted against its owner (person or agent acting for them) before edit, run, enable, disable or delete. The API reference and automations guide describe it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D review: a provider factory that throws closes the session's request run. No cited claim changes.","inputs":["src-server/voice/voice-session.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D review: a provider factory that throws closes the session's request run. No cited claim changes.","inputs":["src-server/voice/voice-session.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D review: a provider factory that throws closes the session's request run. No cited claim changes.","inputs":["src-server/voice/voice-session.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D review: a loopback upgrade authenticates with the UI device cookie after the Origin check; a verified credential that names no person keeps speech with no Station tools; only failed verification is refused. The threat model records it; the connections passage on the credential-free loopback path stays accurate.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#2377 slice D review: a loopback upgrade authenticates with the UI device cookie after the Origin check; a verified credential that names no person keeps speech with no Station tools; only failed verification is refused. The threat model records it; the connections passage on the credential-free loopback path stays accurate.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D review: a loopback upgrade authenticates with the UI device cookie after the Origin check; a verified credential that names no person keeps speech with no Station tools; only failed verification is refused. The threat model records it; the connections passage on the credential-free loopback path stays accurate.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"README.md","note":"#2377 slice D review: comment only (the local UI's HttpOnly cookie rides the loopback upgrade). No cited claim changes.","inputs":["src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D review: comment only (the local UI's HttpOnly cookie rides the loopback upgrade). No cited claim changes.","inputs":["src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D review: backfillJobOwners runs once, recorded under job-owner-backfill-v1. Citing starter-work and module-map passages do not describe it.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D review: backfillJobOwners runs once, recorded under job-owner-backfill-v1. Citing starter-work and module-map passages do not describe it.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#2377 slice D review expands the job-owner passage; citing documents do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2377 slice D review expands the job-owner passage; citing documents do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/automations.md","note":"#2377 slice D review rewrites the voice sentence; citing documents do not depend on it.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

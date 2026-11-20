@@ -31,11 +31,16 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import {
   ChatDockHeader,
   type ChatDockWorkspaceControls as WorkspaceControls,
 } from '../components/chat-dock/ChatDockHeader';
 import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 function workspaceControls(
   overrides: Partial<WorkspaceControls> = {},
@@ -99,6 +104,14 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     expect(row.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(row);
     expect(controls.onToggleInbox).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders the chat-header custom-appearance hook', async () => {
+    renderHeader({ workspaceControls: workspaceControls() });
+    const toggle = await screen.findByRole('button', { name: 'Hide inbox' });
+    expect(
+      document.querySelector(appearanceHook('chat-header'))?.contains(toggle),
+    ).toBe(true);
   });
 
   test('collapsed state renders "Show inbox" unchecked', async () => {
@@ -454,11 +467,16 @@ describe('one-bar rule (#3309)', () => {
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Hide inbox',
+      // Chat settings came back out of the menu as the bar's one gear.
+      'Chat settings',
       'More dock actions',
     ]);
     expect(screen.queryByLabelText('Hide Chat')).toBeNull();
-    // The gear is a row of that one menu now, not a control of its own.
-    expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
+    // Chat settings is the bar's gear, and so not also a row of the menu.
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    expect(
+      screen.queryByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeNull();
   });
 
   test('the context meter is not a header control: it lives in the composer', () => {
@@ -638,5 +656,89 @@ describe('the region’s commands fold into the More menu', () => {
     expect(release).toHaveBeenCalledTimes(1);
     leading.remove();
     trailing.remove();
+  });
+});
+
+describe('ChatDockHeader More menu groups', () => {
+  test('while the This chat card is beside the transcript, the menu drops what the card carries', () => {
+    renderHeader({
+      workspaceControls: workspaceControls(),
+      backgroundTasksBadgeHidden: true,
+      moreActions: [
+        {
+          key: 'turn-into-task',
+          label: 'New Task from this',
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    const menu = screen.getByRole('menu');
+    expect(
+      within(menu).queryByRole('menuitem', { name: /Background tasks/ }),
+    ).toBeNull();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeNull();
+    // Chat settings is the bar's gear instead, one press.
+    expect(screen.getByRole('button', { name: 'Chat settings' })).toBeTruthy();
+  });
+
+  test('rows render by group — switch, this chat, copy, about — with one separator per boundary', () => {
+    renderHeader({
+      workspaceControls: workspaceControls(),
+      // Listed out of order on purpose: the header owns the order.
+      moreActions: [
+        {
+          key: 'copy-thread-id',
+          group: 'copy',
+          label: 'Copy chat ID',
+          onSelect: vi.fn(),
+        },
+        {
+          key: 'input-origin',
+          group: 'about',
+          label: 'From a Task',
+          disabled: true,
+          onSelect: vi.fn(),
+        },
+        {
+          key: 'panel-files',
+          group: 'chat',
+          label: 'Changed files',
+          checked: false,
+          onSelect: vi.fn(),
+        },
+        {
+          key: 'turn-into-task',
+          label: 'New Task from this',
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    const menu = screen.getByRole('menu');
+    const rows = Array.from(
+      menu.querySelectorAll(
+        '[role^="menuitem"], hr.action-overflow__separator',
+      ),
+    ).map((node) => (node.tagName === 'HR' ? '—' : node.textContent?.trim()));
+    expect(rows).toEqual([
+      expect.stringMatching(/^Open chat…/),
+      '—',
+      'Changed files',
+      'New Task from this',
+      'Background tasks',
+      '—',
+      'Copy chat ID',
+      '—',
+      'From a Task',
+    ]);
+    // A panel toggle reports its state.
+    expect(
+      within(menu)
+        .getByRole('menuitemcheckbox', { name: 'Changed files' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
   });
 });

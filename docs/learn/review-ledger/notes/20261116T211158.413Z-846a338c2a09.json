@@ -1,0 +1,15 @@
+{
+  "revision": "46768f0accfae9abb46e9cfe322d77ea7a4c31f1",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#5077 delta reviewed: event pages gain an optional highWaterSequence (thread MAX(sequence), read in the page's snapshot) and get_task_events bounds cursors by it, falling back to eventCount for older hosts. No cited claim covers per-thread sequence contiguity, event-page cursor bounds or eventCount semantics; events stay append-only (nothing deletes rows), so the page remains accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#5077 delta reviewed: event pages gain an optional highWaterSequence (thread MAX(sequence), read in the page's snapshot) and get_task_events bounds cursors by it, falling back to eventCount for older hosts. No cited claim covers per-thread sequence contiguity, event-page cursor bounds or eventCount semantics; events stay append-only (nothing deletes rows), so the page remains accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"#5077 delta reviewed: event pages gain an optional highWaterSequence (thread MAX(sequence), read in the page's snapshot) and get_task_events bounds cursors by it, falling back to eventCount for older hosts. No cited claim covers per-thread sequence contiguity, event-page cursor bounds or eventCount semantics; events stay append-only (nothing deletes rows), so the page remains accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#5077 delta reviewed: event pages gain an optional highWaterSequence (thread MAX(sequence), read in the page's snapshot) and get_task_events bounds cursors by it, falling back to eventCount for older hosts. No cited claim covers per-thread sequence contiguity, event-page cursor bounds or eventCount semantics; events stay append-only (nothing deletes rows), so the page remains accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5077 delta reviewed: event pages gain an optional highWaterSequence (thread MAX(sequence), read in the page's snapshot) and get_task_events bounds cursors by it, falling back to eventCount for older hosts. No cited claim covers per-thread sequence contiguity, event-page cursor bounds or eventCount semantics; events stay append-only (nothing deletes rows), so the page remains accurate.","inputs":["packages/contracts/src/orchestration.ts"]}
+  ]
+}

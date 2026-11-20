@@ -27,6 +27,7 @@ import {
   referenceAdapterDiagnostics,
   referenceEvaluatorExitFailure,
   runInteractiveWorkspacePerformance,
+  sweepReferenceFixtures,
 } from '../interactive-workspace-performance.mjs';
 import {
   closedControlReason,
@@ -51,8 +52,6 @@ const configPath = resolve(
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const roots: string[] = [];
 
-const RUNNER_PREFLIGHT_ACTION =
-  'kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef';
 const PHYSICAL_HOST_CAPACITY_ACTION = `kontourai/.github/actions/physical-host-capacity@${REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA}`;
 
 type WorkflowStep = {
@@ -71,6 +70,14 @@ function expectWindowsPhysicalAcceptanceStepPrefix(
   capacityName: string,
   ownerLifetimeSeconds: string,
 ) {
+  const preflight = job.steps?.filter(({ uses }) =>
+    uses?.startsWith('kontourai/.github/actions/runner-preflight@'),
+  );
+  expect(preflight).toHaveLength(1);
+  const preflightAction = preflight?.[0]?.uses;
+  expect(preflightAction).toMatch(
+    /^kontourai\/\.github\/actions\/runner-preflight@[0-9a-f]{40}$/,
+  );
   expect(job.steps?.slice(0, 4)).toEqual([
     {
       uses: CHECKOUT_ACTION,
@@ -80,7 +87,7 @@ function expectWindowsPhysicalAcceptanceStepPrefix(
       uses: SETUP_NODE_ACTION,
       with: { 'node-version-file': '.nvmrc' },
     },
-    { uses: RUNNER_PREFLIGHT_ACTION },
+    { uses: preflightAction },
     {
       name: capacityName,
       uses: PHYSICAL_HOST_CAPACITY_ACTION,
@@ -94,6 +101,7 @@ function expectWindowsPhysicalAcceptanceStepPrefix(
       },
     },
   ]);
+  return preflightAction;
 }
 type Observation = {
   fixtureId: string;
@@ -1289,6 +1297,106 @@ describe('interactive workspace performance contract', () => {
     }
   });
 
+  it('publishes every fixture through the hosted receipt consumer after budget and setup failures', async () => {
+    const selected = {
+      ...config,
+      fixtures: config.fixtures.filter((fixture: { id: string }) =>
+        [
+          'local-input-apply',
+          'remote-apply',
+          'reconnect-10k-operations',
+          'long-session-bounded-growth',
+        ].includes(fixture.id),
+      ),
+    };
+    const { observations } = validateProductionBridgeEvidence(
+      config,
+      bridgeEvidence(),
+    );
+    const output = tempOutput();
+    const attempted: string[] = [];
+    const written: string[] = [];
+    const { report, failures } = await sweepReferenceFixtures(selected, {
+      expectedRevision: 'a'.repeat(40),
+      platformName: 'win32',
+      unavailableReason: (id: string) =>
+        id === 'long-session-bounded-growth'
+          ? 'ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'
+          : undefined,
+      retainReport: (retained: unknown) => {
+        const serialized = JSON.stringify(retained);
+        writeFileSync(output, serialized);
+        written.push(serialized);
+      },
+      runFixture: async (fixture: { id: string }) => {
+        attempted.push(fixture.id);
+        if (fixture.id === 'remote-apply') throw new Error('setup refused');
+        const observation = observations.find(
+          (row: Observation) => row.fixtureId === fixture.id,
+        );
+        const failed = fixture.id === 'local-input-apply';
+        const run = referenceRun([
+          failed
+            ? { ...observation, counts: { failures: 1, degraded: 0 } }
+            : observation,
+        ]);
+        const result = evaluateInteractiveWorkspacePerformance(
+          { ...selected, fixtures: [fixture] },
+          run,
+          {
+            mode: 'reference',
+            now: () => new Date(),
+            expectedRevision: 'a'.repeat(40),
+          },
+        );
+        return { exitCode: failed ? 1 : 0, report: { ...result, run } };
+      },
+    });
+    expect(attempted).toEqual([
+      'local-input-apply',
+      'remote-apply',
+      'reconnect-10k-operations',
+    ]);
+    expect(JSON.parse(written[0])).toMatchObject({
+      fixtures: [
+        { fixtureId: 'local-input-apply', status: 'NOT_VERIFIED' },
+        { fixtureId: 'remote-apply', status: 'NOT_VERIFIED' },
+        { fixtureId: 'reconnect-10k-operations', status: 'NOT_VERIFIED' },
+        { fixtureId: 'long-session-bounded-growth', status: 'NOT_VERIFIED' },
+      ],
+    });
+    expect(report.summary).toMatchObject({ PASS: 1, FAIL: 1, NOT_VERIFIED: 2 });
+    expect(failures).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('exited 1 for local-input-apply'),
+        'remote-apply: fixture execution failed before a report was available',
+      ]),
+    );
+    expect(failures.join(' ')).not.toContain('reconnect-10k-operations');
+    const [line] = performanceReceiptLogLines(resolve(output, '..'));
+    const receipt = JSON.parse(
+      line.slice(line.indexOf('receipt=') + 'receipt='.length),
+    );
+    expect(receipt.fixtures).toMatchObject([
+      { fixtureId: 'local-input-apply', status: 'FAIL' },
+      {
+        fixtureId: 'remote-apply',
+        status: 'NOT_VERIFIED',
+        reasonCodes: expect.arrayContaining([
+          'REFERENCE_FIXTURE_EXECUTION_FAILED',
+        ]),
+      },
+      { fixtureId: 'reconnect-10k-operations', status: 'PASS' },
+      {
+        fixtureId: 'long-session-bounded-growth',
+        status: 'NOT_VERIFIED',
+        reasonCodes: expect.arrayContaining([
+          'ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN',
+        ]),
+      },
+    ]);
+  });
+
   it('keeps unavailable real seams per-fixture NOT_VERIFIED and propagates adapter counts', () => {
     const run = referenceRun(
       config.fixtures.map((fixture: any) => ({
@@ -1714,8 +1822,21 @@ describe('interactive workspace performance contract', () => {
     let isolatedContexts = 0;
     let closedContexts = 0;
     let bridgeCalls = 0;
+    const brief = {
+      waitFor: async () => {},
+      isEditable: async () => true,
+      getAttribute: async () => 'task-1',
+    };
+    const plan = {
+      getByRole: (role: string) =>
+        role === 'textbox' ? brief : { click: async () => {} },
+    };
     const page = {
       goto: async () => ({ text: async () => html }),
+      url: () => 'http://station.test/tasks/task-1',
+      exposeBinding: async () => {},
+      getByRole: (role: string) =>
+        role === 'tabpanel' ? plan : { click: async () => {} },
       locator: () => ({ getAttribute: async () => 'abc1234' }),
       waitForFunction: async () => true,
       evaluate: async (_bridge: unknown, input: unknown) => {
@@ -1953,15 +2074,18 @@ describe('interactive workspace performance contract', () => {
         '7800',
       ],
     ] as const;
-    for (const [jobId, capacityName, ownerLifetimeSeconds] of physicalJobs) {
-      const job = jobs?.[jobId];
-      expect(job).toBeDefined();
-      expectWindowsPhysicalAcceptanceStepPrefix(
-        job as WorkflowJob,
-        capacityName,
-        ownerLifetimeSeconds,
-      );
-    }
+    const preflightActions = physicalJobs.map(
+      ([jobId, capacityName, ownerLifetimeSeconds]) => {
+        const job = jobs?.[jobId];
+        expect(job).toBeDefined();
+        return expectWindowsPhysicalAcceptanceStepPrefix(
+          job as WorkflowJob,
+          capacityName,
+          ownerLifetimeSeconds,
+        );
+      },
+    );
+    expect(new Set(preflightActions).size).toBe(1);
 
     const referenceSteps = jobs?.['reference-performance'].steps;
     expect(referenceSteps).toBeDefined();

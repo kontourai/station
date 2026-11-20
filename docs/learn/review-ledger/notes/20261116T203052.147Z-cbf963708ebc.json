@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Documents the shrink reset and the older-Station fallback (nextOffset paging, hasLaterPage, re-read while running); checked against chatRuntimeOrchestration.ts and its tests.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

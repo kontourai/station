@@ -19,7 +19,7 @@
   padding-block: var(--k-space-5);
   text-align: center;
 }
-.start-composer__destination h2 {
+.start-composer__destination :is(h1, h2) {
   flex-basis: 100%;
   margin: 0;
   color: var(--k-text);
@@ -41,6 +41,8 @@
 .start-composer__without-project {
   flex-basis: 100%;
   color: var(--k-text-muted);
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
 }
 .start-composer__location {
   display: flex;
@@ -132,15 +134,6 @@
   /* Match the global focus rule's priority; the box draws the ring. */
   outline: none !important;
 }
-.start-composer--compact .start-composer__destination {
-  justify-content: flex-start;
-  padding-block: 0;
-  text-align: left;
-}
-.start-composer--compact .start-composer__destination h2 {
-  flex-basis: auto;
-  font-size: var(--k-text-md);
-}
 .start-composer__input {
   width: 100%;
   box-sizing: border-box;
@@ -176,6 +169,7 @@
 .start-composer__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--k-space-2);
   flex: 0 0 auto;
 }
@@ -224,6 +218,7 @@
   cursor: pointer;
 }
 .start-composer__chip-remove:focus-visible,
+.start-composer__file-preview:focus-visible,
 .start-composer__context-chip:focus-visible {
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
@@ -570,6 +565,18 @@
   margin-right: var(--k-space-2);
 }
 
+/* The thumbnail is the preview control; the image keeps its own size. */
+.start-composer__file-preview {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  min-height: 44px;
+  background: none;
+  border-radius: var(--k-radius-sm);
+  cursor: zoom-in;
+}
+
 .start-composer__actions {
   flex: 1 1 0;
   min-width: 0;
@@ -591,4 +598,12 @@
 .start-composer {
   container-type: inline-size;
   --composer-label-collapse: 310px;
+}
+/* A Station that cannot take work now: listed, greyed, with its reason. */
+.start-menu__list .start-menu__station--unavailable {
+  color: var(--k-text-muted);
+}
+.start-menu__list .start-menu__station--unavailable:disabled {
+  background: transparent;
+  cursor: not-allowed;
 }

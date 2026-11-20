@@ -1,0 +1,7 @@
+{
+  "revision": "d313a7bad426f3deabedf3acaf527daeda8ef668",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Delta-review round: managed drop-ins are now described as the engine reads them (files or links named *.json, not dot-prefixed; rule taken from the engine's ohe/rEa walk), the 256 cap counts only those, and the MDM/server paragraph says the engine reports projectInstructions as honoured only for now and to set instructionFiles. EXECUTED in a Linux container with the real 2.1.322 engine and a real /etc/claude-code: a .disabled-policy.json no longer suppresses Station's setting (AGENTS.md loads); managed-settings.json or a 10-policy.json drop-in with projectInstructions none still makes Station defer, and the engine drops both files. Legacy-key alternative measured and rejected: a managed explicit-default instructionFiles loses to a flag projectInstructions.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-instruction-files.ts"]}
+  ]
+}

@@ -19,7 +19,6 @@ const inspect: typeof inspectAppStoreDistributionProfile = (xml, options) =>
 describe('iOS TestFlight channel readiness', () => {
   test.each([
     ['stable', 'io.kontourai.station', 'Station by Kontour AI'],
-    ['beta', 'io.kontourai.station.beta', 'Station Beta by Kontour AI'],
     [
       'nightly',
       'io.kontourai.station.nightly',
@@ -47,7 +46,7 @@ describe('iOS TestFlight channel readiness', () => {
   test('rejects malformed group identifiers and a mismatched profile', () => {
     expect(() =>
       iosTestFlightReadiness({
-        channel: 'beta',
+        channel: 'nightly',
         profilePath: '/profile',
         team: 'ABCDE12345',
         groupId: 'bad group',
@@ -57,7 +56,7 @@ describe('iOS TestFlight channel readiness', () => {
     ).toThrow(/group ID/);
     expect(() =>
       iosTestFlightReadiness({
-        channel: 'beta',
+        channel: 'nightly',
         profilePath: '/profile',
         team: 'ABCDE12345',
         groupId: 'group',

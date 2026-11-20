@@ -46,7 +46,7 @@ import {
   toolServerCredentialWrites,
 } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
-import { stationDocsToolCatalog } from '../../tools/station-docs-tool-catalog.js';
+import { stationDocsToolCatalog } from '../../tools/station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { normalizeToolName } from '../../utils/tool-name-normalizer.js';

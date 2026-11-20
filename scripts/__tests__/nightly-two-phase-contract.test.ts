@@ -372,7 +372,12 @@ describe('two-phase native Nightly', () => {
           ),
       ),
     );
-    expect(finalAttest.map(([id]) => id)).toEqual(['protected-finalize']);
+    // The second attempt is the same verifier, run only when the first never
+    // got a runner; both attest under this workflow's identity.
+    expect(finalAttest.map(([id]) => id)).toEqual([
+      'protected-finalize',
+      'protected-finalize-retry',
+    ]);
     const verify = (
       cohort.jobs?.['record-native-completion']?.steps ?? []
     ).find((step) =>

@@ -287,6 +287,34 @@ describe('environment endpoint profiles', () => {
     expect(copy.action).toBe('Trying again shortly.');
   });
 
+  it.each(['', '  ', null, undefined])(
+    'describes an unresolved target without a host label (%s)',
+    (host) => {
+      for (const reason of ['undetermined', 'host-unavailable'] as const) {
+        expect(connectionFailureCopy(reason, host)).toEqual({
+          summary: "Couldn't confirm the connection.",
+          action: 'Trying again shortly.',
+        });
+      }
+    },
+  );
+
+  it('keeps host-independent offline and invalid address guidance', () => {
+    expect(connectionFailureCopy('offline').summary).toBe(
+      'This device is offline.',
+    );
+    expect(connectionFailureCopy('invalid-endpoint').summary).toBe(
+      "That doesn't look like a Station address.",
+    );
+  });
+
+  it('names a known address when its display label is absent', () => {
+    expect(
+      connectionFailureCopy('unreachable', undefined, 'http://station.test')
+        .summary,
+    ).toBe("Can't reach http://station.test.");
+  });
+
   /**
    * station#1776 AC2 — the vocabulary rule from the connection-truth plan:
    * none of these strings may describe the *code's* concept of the failure

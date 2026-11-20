@@ -1,5 +1,6 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
+  ChildWorkItem,
   ChildWorkKind,
   ChildWorkModel,
   ChildWorkSummarySource,
@@ -16,11 +17,16 @@ import type {
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalMode,
+  type EngineApprovalReviewer,
   type EngineId,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import type { ConversationEngineMcpServer } from '@kontourai/station-contracts/runtime';
-import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
+import type {
+  FlowGateDiagnosticDetails,
+  FlowGateVerdict,
+  FlowRunFreshness,
+} from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
@@ -103,7 +109,8 @@ export type FlowRunBinding = {
 
 export type FlowGateVerdictInfo = {
   runId: string;
-  verdict: 'pass' | 'route-back' | 'block' | 'wait';
+  verdict: FlowGateVerdict;
+  diagnostics?: FlowGateDiagnosticDetails;
   gateId?: string;
   summary?: string;
   nextAction?: string;
@@ -257,6 +264,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
+  child?: ChildWorkItem;
   status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
@@ -642,6 +650,7 @@ export type ChatUIState = {
    * chip can show a pending state instead of overclaiming.
    */
   lastAppliedApprovalMode?: ApprovalMode;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * Whether the engine refused the recorded full access on its latest turn
    * (`turn.started` metadata `approvalEscalationRejected`). Not persisted,

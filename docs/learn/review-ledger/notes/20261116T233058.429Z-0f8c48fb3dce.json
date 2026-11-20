@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked the survey-flow-review-service diff: list/listAll projection and the gate-review queue shape served by GET /api/survey-flow-reviews are unchanged; only adapter module loading moved to first use.","inputs":["docs/reference/session-api.md","src-server/services/flow/survey-flow-review-service.ts"]}
+  ]
+}

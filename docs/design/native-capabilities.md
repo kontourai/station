@@ -27,9 +27,17 @@ The boundary reports `enabled`, `disabled`, `unsupported`, or
 or error result. Tauri's `native_capability_report` command reports its actual
 compile target and Station-enabled states. Before that report is read,
 desktop-tray remains `disabled` rather than being guessed from the JavaScript
-host. The adapter skips a capability id it does not know (a newer shell's),
+host. After the host reports Android or iOS, the adapter skips the desktop
+tray subscription and replay commands. On desktop, subscribing before
+draining still lets pending actions replay at the renderer's early mount. The adapter skips a capability id it does not know (a newer shell's),
 but rejects the whole report for a malformed entry, a repeated id or a
 missing required id; an id the shell omits stays at its initial state.
+An older host may omit `channel`; an explicit retired, unknown or malformed
+channel rejects the report. A rejected report leaves the profile without a
+supported channel or startup mark. A failed refresh clears the cached target
+and restores report-derived availability to its initial states; a fresh valid
+report may enable those features again. Native host command authorization
+remains separate from these availability states.
 
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
@@ -37,7 +45,7 @@ missing required id; an id the shell omits stays at its initial state.
 | Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation and bundled-server status. |
 | Native image share receiver (`image-share-intake`) | unsupported | Android enabled; iOS and desktop disabled | `station-media-intake` receives `image/*` `ACTION_SEND`/`ACTION_SEND_MULTIPLE` and opens the conversation picker. iOS needs a Share Extension that is not built. See [Clipboard images and the share target](#clipboard-images-and-the-share-target). |
 | Clipboard images (`clipboard-image`) | unsupported (the room composer uses `navigator.clipboard.read()` on a touch browser) | enabled on mobile; unsupported on desktop | `station-media-intake` reads the system clipboard for the room composer’s **Paste image** action. Reply and start composers use Attach or textarea paste events. |
-| Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
+| Pairing deep link | unsupported | enabled | Release schemes are `station-stable` and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
 | Fold geometry | CSS Viewport Segments where the engine has them | iOS 27.1+ (`station-fold`); Android and desktop use the web path | Read-only hinge geometry and posture for foldable displays. Safari has no segments API, so on an iPhone only the native shell reports a crease. See [Fold geometry](#fold-geometry). |
@@ -55,6 +63,15 @@ stale-receipt, loss, explicit retry, activation-deferral, and dev bypass
 semantics. OS window reveal, startup cover/dialog wiring and physical
 packaged-channel proof remain **NOT_VERIFIED**. Readiness does not depend on a window-state
 plugin; conditional desktop updater registration is a separate owner below.
+
+Native mobile startup uses a 30-second renderer deadline shared by the
+[platform bootstrap](../../src-ui/src/platform/PlatformProfileContext.tsx) and
+the [pairing controls](../../src-ui/src/components/NativeConnectionStartup.tsx).
+The bootstrap bounds the capability, app identity, and saved-Station waits.
+A stage that stalls shows a fixed explanation and **Reload Station**. A late
+response cannot mount the workspace from that attempt. Reload starts a fresh
+renderer attempt using the existing saved profiles and pairing data. A clean
+unpaired device reaches the welcome screen after the pairing controls load.
 
 The current host does not emit inbound text share events
 (`station://share-received`) yet. That event name is a future-compatible
@@ -288,11 +305,13 @@ mobile storage behavior or a completed collaborator journey.
 
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
-operations. It is the exact JavaScript permission inventory; event listening
-is not its only permission. `scripts/native-platform-boundary.mjs` refuses any
-updater or process grant in every file under `capabilities/` and
-`permissions/` and in `app.security.capabilities` of every Tauri config, and
-refuses any file there that is not JSON, since the gate parses only JSON.
+operations. The [source gate](../../scripts/native-platform-boundary.mjs)
+checks explicit updater and process grant declarations in the desktop
+capability manifests, the desktop root's Tauri configuration files, and its
+optional `permissions` subtree when present.
+Files it scans for these declarations must be JSON. Resolved Tauri ACL
+coverage, including plugin permission sets and generated packaging overlays,
+is tracked in #3864.
 Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
 `shell:allow-open`, or `shell:allow-execute`. The desktop tray opens its validated local Station UI or fixed `/ui` API-docs
@@ -317,8 +336,11 @@ or Project authority. The separate [selected-route owner](../../src-ui/src/platf
 and [fresh enrollment ceremony](native-relay-enrollment.md) supply those distinct
 source paths. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
 
-The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
-`__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
+The static `native-platform:ratchet` checks native adapter access and
+credential-hydration references in tracked TypeScript and TSX under
+`src-ui/src`, excluding `__tests__`. It separately checks the named Connect
+connection-list component for the manual credential guard. The gate reports
+the source roots and file counts it inspected.
 
 <a id="desktop-application-signaling-commands"></a>
 

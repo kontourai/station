@@ -205,7 +205,9 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     setQuery,
     groups,
     openChatIds,
-    hasVisibleItems: groups.some((group) => group.items.length > 0),
+    hasVisibleItems: groups.some(
+      (group) => group.items.length > 0 || Boolean(group.older?.length),
+    ),
     notice: dismissals.notice,
     rowActions: {
       onActivate: (item: HomeWorkItem) => {

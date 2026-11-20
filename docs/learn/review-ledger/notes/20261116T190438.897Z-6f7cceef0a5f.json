@@ -1,0 +1,11 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Adds a Schedules section (project-schedules preview) and moves the Danger zone into ProjectLifecycleSection, which adds Pause/Archive (project-pause-archive preview) and a counted Delete confirmation. Section navigation keeps its existing labels.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Adds a Schedules section (project-schedules preview) and moves the Danger zone into ProjectLifecycleSection, which adds Pause/Archive (project-pause-archive preview) and a counted Delete confirmation. Section navigation keeps its existing labels.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Adds a Schedules section (project-schedules preview) and moves the Danger zone into ProjectLifecycleSection, which adds Pause/Archive (project-pause-archive preview) and a counted Delete confirmation. Section navigation keeps its existing labels.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

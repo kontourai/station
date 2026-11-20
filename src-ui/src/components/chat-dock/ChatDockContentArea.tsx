@@ -36,6 +36,9 @@ const loadSkillExperiencePanel = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  transcriptSnapshotRef?: ComponentProps<
+    typeof ChatDockBody
+  >['transcriptSnapshotRef'];
   connection?: import('../../connections/station-connection').StationConnection;
   workingDirectory?: string | null;
   /**
@@ -78,6 +81,7 @@ interface ChatDockContentAreaProps {
   >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
   onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
+  sendQueuedForUploads?: boolean;
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: ComponentProps<
@@ -115,6 +119,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  transcriptSnapshotRef,
   connection,
   workingDirectory,
   activeOrchestrationSession,
@@ -145,6 +150,7 @@ function ChatDockContentAreaImpl({
   modelsLoading,
   chatInput,
   onComposerEnabledChange,
+  sendQueuedForUploads,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -208,7 +214,10 @@ function ChatDockContentAreaImpl({
                   </div>
                 </div>
                 <div className="conversation-history__list">
-                  <LazyBoundaryError onRetry={onRetry} />
+                  <LazyBoundaryError
+                    onRetry={onRetry}
+                    surface={{ id: 'conversation-history', label: 'History' }}
+                  />
                 </div>
               </div>
             )}
@@ -257,6 +266,7 @@ function ChatDockContentAreaImpl({
             <ChatDockBody
               connection={connection}
               activeSession={activeSession}
+              transcriptSnapshotRef={transcriptSnapshotRef}
               workingDirectory={workingDirectory}
               activeOrchestrationSession={activeOrchestrationSession}
               activeOrchestrationSessionRead={activeOrchestrationSessionRead}
@@ -281,6 +291,7 @@ function ChatDockContentAreaImpl({
               modelsLoading={modelsLoading}
               chatInput={chatInput}
               onComposerEnabledChange={onComposerEnabledChange}
+              sendQueuedForUploads={sendQueuedForUploads}
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}

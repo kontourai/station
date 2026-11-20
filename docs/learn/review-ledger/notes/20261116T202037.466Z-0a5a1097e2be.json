@@ -1,0 +1,11 @@
+{
+  "revision": "f82fb31525d0f137e7b98d4cced92f1cfe517afc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The startup wiring test now pins the hidden main window in the two remaining release desktop configs (tauri.conf.json, tauri.nightly.conf.json) after #5010 deleted tauri.beta.conf.json; the cited claims (release-channel hidden-window configuration, one native reveal authority, fronting gate) remain accurate and unchanged.","inputs":["scripts/__tests__/startup-readiness-static.test.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"The startup wiring test now pins the hidden main window in the two remaining release desktop configs (tauri.conf.json, tauri.nightly.conf.json) after #5010 deleted tauri.beta.conf.json; the cited claims (release-channel hidden-window configuration, one native reveal authority, fronting gate) remain accurate and unchanged.","inputs":["scripts/__tests__/startup-readiness-static.test.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The startup wiring test now pins the hidden main window in the two remaining release desktop configs (tauri.conf.json, tauri.nightly.conf.json) after #5010 deleted tauri.beta.conf.json; the cited claims (release-channel hidden-window configuration, one native reveal authority, fronting gate) remain accurate and unchanged.","inputs":["scripts/__tests__/startup-readiness-static.test.ts"]}
+  ]
+}

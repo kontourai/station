@@ -1,0 +1,11 @@
+{
+  "revision": "8ea5e664bdebcf99c6cfebb31884d6e8ca450e2c",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList now renders the post-turn background work through ChatBackgroundStrip (count line plus uncarded running rows in one card); placement.md's claim that the banner lists the BackgroundTaskActivity line still holds. Other citing claims (bridge, placement, transcript behavior) are unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ChatMessageList now renders the post-turn background work through ChatBackgroundStrip (count line plus uncarded running rows in one card); placement.md's claim that the banner lists the BackgroundTaskActivity line still holds. Other citing claims (bridge, placement, transcript behavior) are unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatMessageList now renders the post-turn background work through ChatBackgroundStrip (count line plus uncarded running rows in one card); placement.md's claim that the banner lists the BackgroundTaskActivity line still holds. Other citing claims (bridge, placement, transcript behavior) are unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

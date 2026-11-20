@@ -32,6 +32,13 @@ export const acpConnectionSchema = z.object({
     .refine((value) => parseEngineConnectionId(value) !== undefined, {
       message:
         'must be a clean engine identity using lowercase letters, digits, and hyphens',
+    })
+    // Remote task engine connections own this prefix: their vendor token
+    // shares the engine vault, keyed by connection id
+    // (docs/decisions/remote-task-engines.md).
+    .refine((value) => !value.startsWith('remote-task-'), {
+      message:
+        'must not start with "remote-task-", which remote task engines use',
     }),
   command: z.string().min(1),
   name: z.string().optional(),
@@ -218,6 +225,15 @@ export const credentialRecoveryPolicyRequestSchema = z.object({
 export const credentialProfileImportRequestSchema = z.object({
   includeCredentials: z.boolean().optional(),
 });
+
+/** "Continue on <label>" on a usage-limit stop: the profile the person chose. */
+export const usageLimitContinueOnRequestSchema = z
+  .object({
+    profileRef: credentialProfileRefSchema,
+    /** The stop the account was offered for; a newer stop refuses it. */
+    stopId: z.string().min(1).max(1024),
+  })
+  .strict();
 
 export const credentialProfileApplyRequestSchema = z.object({
   // Applying a profile sends one bounded provider turn. `true` is a separate

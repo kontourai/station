@@ -369,6 +369,52 @@ const PLAN_REVIEW_TOOLS: ReadonlySet<string> = new Set(['cursor/createplan']);
  * adapter publishes Cursor's question and plan review under their method
  * names (`cursor/ask_question`, `cursor/create_plan`).
  */
+/**
+ * Owner decision (2026-11-16): built-in Station tools that change who or what
+ * holds authority — Station's configuration (approval defaults included),
+ * Agents and their instructions or allowances, plugins, integrations, skills
+ * and SSH hosts. Each call asks a person, once, even under full access: full
+ * access trusts an agent with the work, never with widening its own trust,
+ * so no session grant or pattern answers it; on Station's own engine an
+ * operator-enabled approval guardian still may (archive#2016). (Tools that run
+ * host code or store credentials are already person-only at the
+ * station-control guard and never reach an agent.)
+ */
+export const STATION_AUTHORITY_TOOLS: readonly string[] = [
+  'update_config',
+  'create_agent',
+  'update_agent',
+  'install_plugin',
+  'update_plugin',
+  'remove_plugin',
+  'delete_integration',
+  'install_skill',
+  'uninstall_skill',
+  'update_skill',
+  'create_ssh_environment',
+  'connect_ssh_environment',
+  'remove_ssh_environment',
+];
+const STATION_AUTHORITY_KEYS: ReadonlySet<string> = new Set(
+  STATION_AUTHORITY_TOOLS.flatMap((tool) => [
+    `stationcontrol${canonicalKey(tool)}`,
+    `mcpstationcontrol${canonicalKey(tool)}`,
+  ]),
+);
+
+/**
+ * Whether a call is one of `STATION_AUTHORITY_TOOLS`, in any of the names an
+ * engine gives it: `mcp__station-control__update_config` (Claude, ACP),
+ * `station-control_update_config`, or the Station engine's
+ * `stationControl_updateConfig`.
+ */
+export function toolRequestChangesAuthority(
+  toolName: string | null | undefined,
+): boolean {
+  const trimmed = toolName?.trim();
+  return !!trimmed && STATION_AUTHORITY_KEYS.has(canonicalKey(trimmed));
+}
+
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
   'askuserquestion',
   'sandboxnetworkaccess',
@@ -683,14 +729,16 @@ export function toolRequestIsPlanReview(
  * it: no session grant is offered or honoured and no `tools.autoApprove`
  * pattern covers it. True for a plan exit (`toolRequestIsPlanExit`), for
  * a harness question (Claude's `AskUserQuestion`, #3021), whose answer is
- * the person's own input, and for Claude's sandbox network-host ask
- * (`SandboxNetworkAccess`, #2932), which is asked per host.
+ * the person's own input, for Claude's sandbox network-host ask
+ * (`SandboxNetworkAccess`, #2932), which is asked per host, and for a
+ * built-in tool that changes authority (`toolRequestChangesAuthority`).
  */
 export function toolRequestNeedsPerson(
   toolName: string | null | undefined,
   toolKind?: unknown,
 ): boolean {
   if (toolRequestIsPlanExit(toolName, toolKind)) return true;
+  if (toolRequestChangesAuthority(toolName)) return true;
   const trimmed = toolName?.trim();
   return !!trimmed && TOOLS_WITHOUT_SESSION_GRANT.has(canonicalKey(trimmed));
 }
@@ -707,11 +755,59 @@ export type BashWarningReading = 'plain' | 'escalate';
  * The session grant a person's answer may give. A whole-tool grant answers
  * Claude's Bash command-analysis warnings (owner decision); see
  * `toolRequestIsPlainCall` for the stricter reading patterns use.
+ *
+ * Owner decision (2026-11-16): a person may allow a tool for the session on
+ * every tool approval, an escalation included (a path outside the session's
+ * directories, a safety check, a rule- or hook-forced ask, an untrusted-content
+ * ask). Where the narrower grants below apply (`edit-mode`, a folder) they are
+ * still offered as the session answer; everywhere else the whole-tool grant
+ * is. Only a request addressed to a person (`toolRequestNeedsPerson`: a plan
+ * exit, a question, a per-host sandbox network ask) offers none. A pattern,
+ * the guardian and a delegated child still answer plain calls only
+ * (`toolRequestIsPlainCall`), since a person's own session answer is the only
+ * grant the owner extended to escalations.
  */
 export function toolRequestSessionGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestSessionGrant {
+  const grant = sessionGrantFor(request, 'plain');
+  if (grant !== 'none') return grant;
+  return toolRequestNeedsPerson(request.toolName?.trim(), request.toolKind)
+    ? 'none'
+    : 'tool';
+}
+
+/**
+ * The session grant before the owner's escalation widening: what a plain
+ * call's session answer gives, and `none` for an escalation with no narrower
+ * grant to forward. It is the reading the command-prefix choice is offered
+ * from, and the classification `toolRequestSessionGrant` widens.
+ */
+export function toolRequestStrictSessionGrant(
+  request: ToolRequestGrantInput,
+): ToolRequestSessionGrant {
   return sessionGrantFor(request, 'plain');
+}
+
+/** `toolRequestStrictSessionGrant` over a whole `request.opened` payload. */
+export function toolRequestStrictSessionGrantFromPayload(
+  payload: Record<string, unknown> | undefined,
+): ToolRequestSessionGrant {
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
+  return toolRequestStrictSessionGrant({
+    toolName,
+    toolInput,
+    decisionReason: payload?.decisionReason,
+    suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
+    defaultToNo: payload?.defaultToNo,
+    requiresUserInteraction: payload?.requiresUserInteraction,
+    claudeAsk: payload?.claudeAsk,
+    suggestions: payload?.suggestions,
+    blockedPath: payload?.blockedPath,
+    matchedAskRule: payload?.matchedAskRule,
+    permissionMode: payload?.permissionMode,
+    toolKind: payload?.toolKind,
+  });
 }
 
 function sessionGrantFor(
@@ -788,8 +884,10 @@ export function toolRequestIsPlainCall(
 export function toolRequestServerGrant(
   request: ToolRequestGrantInput,
 ): ToolRequestServerGrant {
+  // A plain call only: the server-wide answer is never widened to an
+  // escalation (the per-tool grant is offered for those).
   return request.authenticStationBrowser === true &&
-    toolRequestSessionGrant(request) === 'tool'
+    sessionGrantFor(request, 'plain') === 'tool'
     ? 'server'
     : 'none';
 }
@@ -923,7 +1021,9 @@ export function toolRequestRuleGrant(
     request.toolName?.trim() !== 'Bash' ||
     !isRecord(request.claudeAsk) ||
     Array.isArray(request.claudeAsk) ||
-    toolRequestSessionGrant(request) !== 'tool'
+    // The strict reading: a prefix rule the engine keeps for itself is
+    // offered for a plain call only, never widened to an escalation.
+    sessionGrantFor(request, 'plain') !== 'tool'
   )
     return undefined;
   const rules = [

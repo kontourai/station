@@ -1,0 +1,7 @@
+{
+  "revision": "cc228b56259cc025f6ee1b19c6309359b42313ba",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the Gallery capture section after the capture helper took over emptying the failed-request log before each attempt and the guide stopped calling a failed chunk request direct evidence: the retry rule, identity format, budget, what is and is not detected, and the not-verified statements match tests/helpers/gallery-screen-attempt.ts, gallery-app-error-state.ts and the spec's call site.","inputs":["docs/guides/testing.md","tests/helpers/gallery-app-error-state.ts","tests/helpers/gallery-screen-attempt.ts","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Rechecked the Codex observation paragraph: per-home threads and affinity, credentialProfileEnvForHome overlay on continuation (invalid refuses), per-home budget, refresh-on-miss resolution; ACP list-only text unchanged.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

@@ -1801,6 +1801,9 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         'null',
         '{"year":"banana"}',
         '{"timeStyle":"short"}',
+        '{"mont":"2-digit"}',
+        '{"hour12":"false"}',
+        '{"fractionalSecondDigits":1.5}',
       ]) {
         const response = await app.request('/app', {
           method: 'PUT',

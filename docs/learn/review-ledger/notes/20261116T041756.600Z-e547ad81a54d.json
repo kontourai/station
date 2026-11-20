@@ -1,0 +1,7 @@
+{
+  "revision": "16e88eff3858c698bd785254d4e7a7573581a6fe",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Polish round: external Continue now sits with the origin (dock title bar, phone origin row, Activity header) with one quiet notice line, composer is Message…/Send; the picker is Switch agent/Switch engine, replaces Run setup on a phone, never carries or clears attachments, and maps the busy-predecessor refusal. Checked against AttachedSessionDetail, ImportedConversationPane, ChatDock, ConversationHandoffDialog and rendered screenshots.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useChatInput.ts","src-ui/src/index.css"]}
+  ]
+}

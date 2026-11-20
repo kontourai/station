@@ -1,0 +1,35 @@
+{
+  "revision": "56bec5e17ef5b2405f77a1fdef72e12f6b65d5fe",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Fix round 2: the facts section now says reads past the deadline continue in the background, the GitHub status cache lasts 150 s, observedAt is the forge read time, the outside-Station staleness limit, and that projectId is validated first; checked against task-pull-request-facts.ts, github-pull-request-provider.ts, tasks.ts and their tests.","inputs":["docs/reference/api.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 2: adds that useMergePullRequestMutation invalidates every Project's facts query; checked against pullRequests.ts and its test.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Fix round 2: the facts route checks projectId before the hosted answer; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md's pull request facts section changed (background reads, 150 s cache, staleness limit); no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md's pull request facts section changed (background reads, 150 s cache, staleness limit); no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md's facts entry gained the merge invalidation sentence; no claim this page cites from it changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md's facts entry gained the merge invalidation sentence; no claim this page cites from it changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Fix round 2: the optional status read's doc lists every placeholder field and its return carries observedAt; no row in this page enumerates either.","inputs":["packages/contracts/src/pull-request-provider.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Fix round 2: focus is no longer pulled back after a deliberate blur; the board and actions this page describes are unchanged.","inputs":["src-ui/src/components/ProjectTaskBoard.tsx"]}
+  ]
+}

@@ -26,6 +26,13 @@ const hoisted = vi.hoisted(() => ({
     | {
         getAppHomeEnv?: (ref?: string) => Promise<unknown>;
         resolveMcpOAuth?: EngineMcpOAuthResolver;
+        resolveSourceHome?: (affinity: {
+          kind: string;
+          ref: string;
+        }) => string | null | Promise<string | null>;
+        resolveSourceHomeEnv?: (
+          home: string,
+        ) => Promise<Record<string, string> | undefined>;
       },
   muse: undefined as
     | undefined
@@ -211,6 +218,33 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
         CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy'),
       },
     });
+    // A session discovered in that profile's home continues there, with the
+    // profile's overlay: the runtime lists the profile home for discovery
+    // (configuredEngineHomes) and maps the home back to its overlay.
+    const profileHome = credentialProfileAppHomeDir('codex', 'proxy');
+    const sessions = join(profileHome, 'sessions', '2026', '11', '15');
+    mkdirSync(sessions, { recursive: true });
+    writeFileSync(
+      join(sessions, 'rollout-profile.jsonl'),
+      `${JSON.stringify({
+        timestamp: '2026-11-15T12:00:00.000Z',
+        type: 'session_meta',
+        payload: { id: 'profile-session', cwd: '/workspace' },
+      })}\n`,
+    );
+    const { deriveConfigHomeAffinity } = await import(
+      '../../../providers/sessions/transcript-file-io.js'
+    );
+    const profileIdentity = deriveConfigHomeAffinity(
+      'codex-config-home',
+      profileHome,
+    )!;
+    await expect(
+      hoisted.codex?.resolveSourceHome?.(profileIdentity.affinity),
+    ).resolves.toBe(profileIdentity.canonicalRoot);
+    await expect(
+      hoisted.codex?.resolveSourceHomeEnv?.(profileIdentity.canonicalRoot),
+    ).resolves.toEqual({ OPENAI_BASE_URL: 'http://127.0.0.1:9000' });
     const input = {
       threadId: 'oauth-session',
       agent: {

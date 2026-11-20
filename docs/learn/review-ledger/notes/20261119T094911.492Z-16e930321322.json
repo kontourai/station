@@ -1,0 +1,7 @@
+{
+  "revision": "c510281ae5229e740c3f4e2659807e031f1fa5e9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reproduced the current aggregate guardrail failure. Reviewed query retry versus direct network calls and both legs of the Web Push SDK boundary. The real guardrail script and all 33 focused cases passed, including genuine negative controls; the verification lane and its exit contract are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}

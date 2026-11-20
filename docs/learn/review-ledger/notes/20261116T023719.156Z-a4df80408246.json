@@ -1,0 +1,13 @@
+{
+  "revision": "1d83584d2baf428cbf1ae7b399e172ea9a99c4e6",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Delta fixes: exact Codex affinity validation before resolving, coalesced home-list refreshes, a configurable 512 total ceiling that stops walking homes once full. Discovery and continuation claims in getting-started and session-api still hold.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Delta fixes: exact Codex affinity validation before resolving, coalesced home-list refreshes, a configurable 512 total ceiling that stops walking homes once full. Discovery and continuation claims in getting-started and session-api still hold.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Delta fixes: exact Codex affinity validation before resolving, coalesced home-list refreshes, a configurable 512 total ceiling that stops walking homes once full. Discovery and continuation claims in getting-started and session-api still hold.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Delta fixes: exact Codex affinity validation before resolving, coalesced home-list refreshes, a configurable 512 total ceiling that stops walking homes once full. Discovery and continuation claims in getting-started and session-api still hold.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]}
+  ]
+}

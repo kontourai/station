@@ -34,6 +34,231 @@ afterEach(() => {
 });
 
 describe('ClaudeTranscriptSessionSource', () => {
+  // Delta review item 4: subagent bounds count transcripts, not the
+  // `.meta.json` beside each, and refuse past either bound rather than
+  // truncating; a scan is reused while the directory is unchanged, briefly.
+  describe('subagent write bounds', () => {
+    function sessionWithSubagents(root: string) {
+      const directory = join(root, 'projects', 'encoded-project');
+      mkdirSync(directory, { recursive: true });
+      const transcript = join(directory, 'session-a.jsonl');
+      writeFileSync(
+        transcript,
+        record({
+          type: 'user',
+          uuid: 'user-1',
+          sessionId: 'session-a',
+          cwd: '/workspace/project',
+          timestamp: '2026-07-22T00:00:00.000Z',
+          message: { role: 'user', content: 'delegate' },
+        }),
+      );
+      const subagents = join(directory, 'session-a', 'subagents');
+      mkdirSync(subagents, { recursive: true });
+      return { transcript, subagents };
+    }
+    function stamp(path: string, at: Date) {
+      utimesSync(path, at, at);
+    }
+    function subagent(subagents: string, name: string, at: Date, meta = true) {
+      const file = join(subagents, `${name}.jsonl`);
+      writeFileSync(file, '{}\n');
+      stamp(file, at);
+      if (meta) writeFileSync(join(subagents, `${name}.meta.json`), '{}');
+      return file;
+    }
+
+    test('metadata siblings do not count toward the transcript bound', async () => {
+      const root = fixtureDir();
+      const now = Date.now();
+      const { transcript, subagents } = sessionWithSubagents(root);
+      stamp(transcript, new Date(now - 10 * 60_000));
+      // 300 subagents: 600 entries, past the old 512-entry bound.
+      for (let index = 0; index < 299; index += 1)
+        subagent(subagents, `agent-${index}`, new Date(now - 30 * 60_000));
+      const newest = new Date(now - 30_000);
+      subagent(subagents, 'agent-newest', newest);
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+      expect((await source.read(session!)).sourceWriteAt).toBe(
+        newest.toISOString(),
+      );
+    });
+
+    test('one transcript past its bound refuses the scan; the bound itself is read', async () => {
+      const root = fixtureDir();
+      const now = Date.now();
+      const { transcript, subagents } = sessionWithSubagents(root);
+      const main = new Date(now - 10 * 60_000);
+      stamp(transcript, main);
+      const newest = new Date(now - 30_000);
+      subagent(subagents, 'agent-0', new Date(now - 60_000), false);
+      subagent(subagents, 'agent-1', newest, false);
+      const atBound = new ClaudeTranscriptSessionSource({
+        configDir: root,
+        maxSubagentTranscripts: 2,
+      });
+      const [session] = (await atBound.discover()).sessions;
+      expect((await atBound.read(session!)).sourceWriteAt).toBe(
+        newest.toISOString(),
+      );
+      subagent(subagents, 'agent-2', new Date(now - 90_000), false);
+      const past = new ClaudeTranscriptSessionSource({
+        configDir: root,
+        maxSubagentTranscripts: 2,
+      });
+      const [again] = (await past.discover()).sessions;
+      expect((await past.read(again!)).sourceWriteAt).toBe(main.toISOString());
+    });
+
+    test('one entry past the directory bound refuses the scan', async () => {
+      const root = fixtureDir();
+      const now = Date.now();
+      const { transcript, subagents } = sessionWithSubagents(root);
+      const main = new Date(now - 10 * 60_000);
+      stamp(transcript, main);
+      const newest = new Date(now - 30_000);
+      subagent(subagents, 'agent-0', newest); // two entries
+      const atBound = new ClaudeTranscriptSessionSource({
+        configDir: root,
+        maxSubagentEntries: 2,
+      });
+      const [session] = (await atBound.discover()).sessions;
+      expect((await atBound.read(session!)).sourceWriteAt).toBe(
+        newest.toISOString(),
+      );
+      writeFileSync(join(subagents, 'notes.txt'), 'x');
+      const past = new ClaudeTranscriptSessionSource({
+        configDir: root,
+        maxSubagentEntries: 2,
+      });
+      const [again] = (await past.discover()).sessions;
+      expect((await past.read(again!)).sourceWriteAt).toBe(main.toISOString());
+    });
+
+    // Review: subagent transcripts are read only inside the projects root.
+    // A session folder, or its subagents folder, linked elsewhere is not read.
+    test('a session or subagents folder linked outside the projects root is not read', async () => {
+      const now = Date.now();
+      for (const linked of ['session', 'subagents'] as const) {
+        const root = fixtureDir();
+        const outside = fixtureDir();
+        const directory = join(root, 'projects', 'encoded-project');
+        mkdirSync(directory, { recursive: true });
+        const transcript = join(directory, 'session-a.jsonl');
+        writeFileSync(
+          transcript,
+          record({
+            type: 'user',
+            uuid: 'user-1',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-07-22T00:00:00.000Z',
+            message: { role: 'user', content: 'delegate' },
+          }),
+        );
+        const main = new Date(now - 10 * 60_000);
+        stamp(transcript, main);
+        const outsideSubagents = join(outside, 'subagents');
+        mkdirSync(outsideSubagents, { recursive: true });
+        subagent(outsideSubagents, 'agent-0', new Date(now - 30_000));
+        if (linked === 'session') {
+          symlinkSync(outside, join(directory, 'session-a'), 'dir');
+        } else {
+          mkdirSync(join(directory, 'session-a'), { recursive: true });
+          symlinkSync(
+            outsideSubagents,
+            join(directory, 'session-a', 'subagents'),
+            'dir',
+          );
+        }
+        const source = new ClaudeTranscriptSessionSource({ configDir: root });
+        const [session] = (await source.discover()).sessions;
+        expect(
+          (await source.read(session!)).sourceWriteAt,
+          `${linked} folder linked outside`,
+        ).toBe(main.toISOString());
+      }
+    });
+
+    test('a scan is reused while the directory is unchanged, for 25 seconds', async () => {
+      const root = fixtureDir();
+      let clock = Date.now();
+      const { transcript, subagents } = sessionWithSubagents(root);
+      stamp(transcript, new Date(clock - 10 * 60_000));
+      const file = subagent(subagents, 'agent-0', new Date(clock - 60_000));
+      const directoryTime = new Date(clock - 120_000);
+      stamp(subagents, directoryTime);
+      const source = new ClaudeTranscriptSessionSource({
+        configDir: root,
+        now: () => clock,
+      });
+      const [session] = (await source.discover()).sessions;
+      const first = await source.read(session!);
+      expect(first.sourceWriteAt).toBe(new Date(clock - 60_000).toISOString());
+      // A subagent appends: its file moves, the directory does not.
+      stamp(file, new Date(clock - 1_000));
+      stamp(subagents, directoryTime);
+      clock += 24_000;
+      expect((await source.read(session!, first.cursor)).sourceWriteAt).toBe(
+        first.sourceWriteAt,
+      );
+      clock += 2_000;
+      expect((await source.read(session!, first.cursor)).sourceWriteAt).toBe(
+        new Date(clock - 27_000).toISOString(),
+      );
+    });
+  });
+
+  // Review item 1: a subagent writes its own transcript beside the session's
+  // (`<session>/subagents/*.jsonl`) while the main transcript stays silent,
+  // so the source reports the newest of those writes, not just its own.
+  test("reports the newest write of the transcript and its subagents' transcripts", async () => {
+    const root = fixtureDir();
+    const directory = join(root, 'projects', 'encoded-project');
+    mkdirSync(directory, { recursive: true });
+    const transcript = join(directory, 'session-a.jsonl');
+    writeFileSync(
+      transcript,
+      record({
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'session-a',
+        cwd: '/workspace/project',
+        timestamp: '2026-07-22T00:00:00.000Z',
+        message: { role: 'user', content: 'delegate this' },
+      }),
+    );
+    const now = Date.now();
+    const mainWrite = new Date(now - 10 * 60_000);
+    utimesSync(transcript, mainWrite, mainWrite);
+    const source = new ClaudeTranscriptSessionSource({ configDir: root });
+    const [session] = (await source.discover()).sessions;
+    const alone = await source.read(session!);
+    expect(alone.sourceWriteAt).toBe(mainWrite.toISOString());
+
+    const subagents = join(directory, 'session-a', 'subagents');
+    mkdirSync(subagents, { recursive: true });
+    const sidechain = join(subagents, 'agent-a1.jsonl');
+    writeFileSync(sidechain, record({ type: 'assistant', isSidechain: true }));
+    const subagentWrite = new Date(now - 60_000);
+    utimesSync(sidechain, subagentWrite, subagentWrite);
+    // A metadata file beside it is not a transcript write.
+    const meta = join(subagents, 'agent-a1.meta.json');
+    writeFileSync(meta, '{}');
+    const later = new Date(now);
+    utimesSync(meta, later, later);
+
+    const withSubagent = await source.read(session!, alone.cursor);
+    expect(withSubagent.sourceWriteAt).toBe(subagentWrite.toISOString());
+
+    // A session whose own transcript is hours old is not scanned.
+    const old = new Date(now - 3 * 60 * 60_000);
+    utimesSync(transcript, old, old);
+    const stale = await source.read(session!, withSubagent.cursor);
+    expect(stale.sourceWriteAt).toBe(old.toISOString());
+  });
+
   test('an isolated history root does not scan the authenticated CLI home', async () => {
     const authenticatedHome = fixtureDir();
     const isolatedHistory = fixtureDir();

@@ -219,7 +219,8 @@ feature-specific geometry are not blanket utility conversions.
 
 `npm run lint:component-style` scans shipped shell, SDK and pane-package TSX
 and CSS, including untracked non-ignored source. Its baseline names each
-inherited file/signature: new legacy-token references, standard-action
+inherited file/signature: new legacy-token references (pre-`--k-*` families:
+space, text, radius, font, background, border, accent, color, status and shadow), standard-action
 native-button recipes, native `dialog`/`alertdialog` shells and `role="alert"`
 elements that hold their own button fail. Each finding prints its own fix.
 For an alert that offers a retry or other recovery, use `ErrorState` with an
@@ -230,6 +231,13 @@ geometry and literal code examples are not rejected solely for using native
 elements. A passing scan is not rendered-layout, accessibility or behavioral
 proof. Existing Fallow clone findings remain advisory candidates requiring
 source review; repeated small layout declarations are not automatically defects.
+
+The same command advises on new literal font sizes, padding and gaps in
+stylesheets and direct JSX style objects across the shell, SDK, Connect and
+pane packages. Follow the reported locations to inspect the owning row,
+control or layout recipe. This advisory has no baseline file. It compares
+the current branch and working tree with their merge base and reports a
+narrower scope when that base is unavailable.
 
 The baseline records inherited migration debt, not permission to add more.
 Reduce matching entries when consolidating an owner. New exceptions need owner

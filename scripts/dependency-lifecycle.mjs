@@ -300,12 +300,21 @@ export function pnpmCommand(
   cwd = root,
   invocation = pnpmInvocation({ cwd }),
 ) {
-  command(invocation.command, [...invocation.args, ...args], {
-    cwd,
-    timeout: inertInstallTimeout(),
-    env: { npm_config_ignore_scripts: 'true' },
-    ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
-  });
+  const timeout = inertInstallTimeout();
+  try {
+    command(invocation.command, [...invocation.args, ...args], {
+      cwd,
+      timeout,
+      env: { npm_config_ignore_scripts: 'true' },
+      ...(invocation.argv0 !== undefined ? { argv0: invocation.argv0 } : {}),
+    });
+  } catch (error) {
+    if (error?.code !== 'ETIMEDOUT') throw error;
+    throw new Error(
+      `Inert pnpm command exceeded its ${timeout} ms deadline. Set ${INERT_INSTALL_TIMEOUT_ENV} to override the budget on a slow host.`,
+      { cause: error },
+    );
+  }
 }
 
 /** Refresh resolution only; callers review dependency policy before installing. */

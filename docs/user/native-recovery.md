@@ -9,7 +9,7 @@ Contributor and operator procedures are in the repository's
 
 ## What a normal packaged start does
 
-Stable, Beta, and Nightly configure their main desktop window to start hidden.
+Stable and Nightly configure their main desktop window to start hidden.
 For a Desktop-owned sidecar, the native host proves its exact generation,
 instance ID, boot ID, and local API base. Revealing application content also
 requires the main renderer to have mounted. The native shell starts the
@@ -174,7 +174,7 @@ Keep shell and service logs separate:
 | Desktop shell panic record | `crash.log` beside `station.log` | `crash.log` beside `station.log` | `crash.log` beside `station.log` |
 | Installed service log | `<STATION_HOME>/logs/<instance>-service.out.log` and `<STATION_HOME>/logs/<instance>-service.err.log` | `journalctl --user -u station-<instance>.service` (no service log file) | `<STATION_HOME>/logs/<instance>-service.log` |
 
-Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
+Choose the app identifier for your installed channel (Stable or Nightly)
 from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 The desktop shell honors `STATION_DESKTOP_LOG_LEVEL` set before launch:
@@ -202,6 +202,12 @@ Desktop-owned sidecar it labels the built-in service and does not use service
 controls. Neither a tray click nor a second launch proves that startup readiness
 completed.
 
+## When Station on your phone stops starting
+
+If Station says it stopped waiting for something, choose **Reload Station**.
+This restarts the screen using your saved Stations and pairing. On a new
+phone, choose a pairing method when **Connect to your Station** appears.
+
 ## Evidence limits and open platform work
 
 The source and focused tests cover state transitions and browser-renderer
@@ -217,7 +223,7 @@ native harness must not be presented as packaged or physical-device evidence.
 | EPIPE/closed-stdio handling | Server stdout guard and focused tests exist; no packaged closed-parent recovery journey was run here | **NOT_VERIFIED** on packaged shells; [archive#2006](https://github.com/kontourai/station-archive/issues/2006) |
 | macOS Finder/Dock Apple Event launch panic diagnosis | The historical abort report does not establish a recoverable panic payload or current trigger. The shell now appends Rust panics to `crash.log`, and that recording is unit-tested, but no packaged abort has been observed producing an entry | **NOT_VERIFIED**; [archive#3496](https://github.com/kontourai/station-archive/issues/3496) |
 | Tray rendering, tray activation, and second-launch behavior on release builds | Pure-state/static routing associated with [archive#3808](https://github.com/kontourai/station-archive/issues/3808) | **NOT_VERIFIED** on packaged macOS, Windows, and Linux |
-| Mobile startup and recovery | Desktop readiness code is desktop-only; no equivalent mobile recovery evidence is supplied here | **NOT_VERIFIED** on Android and iOS; historical documentation scope in [archive#3817](https://github.com/kontourai/station-archive/issues/3817) |
+| Mobile startup and recovery | Focused renderer tests and an installed iOS development simulator run. The simulator reached pairing, showed recovery when the saved-Station read stalled, and started a fresh attempt on Reload. | **NOT_VERIFIED** on physical phones or signed releases |
 
 The related implementation history is
 [archive#3808](https://github.com/kontourai/station-archive/issues/3808). An

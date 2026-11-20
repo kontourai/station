@@ -1,0 +1,7 @@
+{
+  "revision": "2e3c7f9039a794e9553de92726ca7961978e8520",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the selection and escalation paragraphs after three supplemental edges were added to scripts/test-impact-manifest.mjs (home-root registry to the dev-home seed suite; the server entry point and the supervisor protocol to the three managed startup suites): the guide describes escalation, supplemental edges and deferral in general and lists none of these edges, so its claims are unchanged.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

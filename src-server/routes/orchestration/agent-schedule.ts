@@ -112,6 +112,10 @@ const JOB_PROPOSAL_REFUSAL_COPY: Record<
     'This chat proposed too many jobs in the last hour. Try again later.',
   job_proposal_agent_out_of_scope:
     'That agent is outside this chat’s Project. Name an agent from this Project, or none.',
+  job_proposal_project_unavailable:
+    'Project schedules are off on this Station. A person can turn them on in Settings → Advanced → Feature previews.',
+  job_proposal_project_out_of_scope:
+    'This chat cannot start work in that Project. Use the id of this chat’s own Project.',
   job_proposal_unavailable: "Job proposals aren't available on this Station.",
 };
 
@@ -146,6 +150,8 @@ const jobProposalBodySchema = z
     schedule: z.unknown(),
     prompt: z.string(),
     agent: z.string().min(1).optional(),
+    /** #5070: propose a schedule that runs as a Task in this Project. */
+    projectId: z.string().min(1).max(200).optional(),
     rationale: z.string().min(1).max(2000).optional(),
   })
   .strict();
@@ -189,6 +195,17 @@ export interface AgentScheduleRoutesDeps {
     agentSlug: string,
     ownerId: string | undefined,
   ): Promise<StationControlResolvedDispatchTarget | undefined>;
+  /**
+   * #5070: the scope rule's `execute` target for starting work in the
+   * Project with this id, owned by the caller's owner. `undefined` when the
+   * Project does not exist or Station cannot read it, which refuses.
+   */
+  jobProjectTarget?(
+    projectId: string,
+    ownerId: string | undefined,
+  ): Promise<StationControlResolvedDispatchTarget | undefined>;
+  /** The `project-schedules` preview; absent or off refuses `projectId`. */
+  projectSchedulesEnabled?(): boolean;
   /**
    * A hosted Station: proposals are refused, since the scheduler that
    * would approve them is not offered there.
@@ -424,6 +441,24 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
       if (stationControlScopeRefusal(caller.policy, target))
         return proposalRefusal(c, 'job_proposal_agent_out_of_scope', 403);
     }
+    // #5070: a Project schedule starts a Task in that Project on every run,
+    // so the caller must be able to start work there itself.
+    const projectId = parsed.data.projectId;
+    if (projectId !== undefined && deps.projectSchedulesEnabled?.() !== true)
+      return proposalRefusal(c, 'job_proposal_project_unavailable', 503);
+    if (projectId !== undefined) {
+      const ownerId = caller.policy.principal?.elevationEligible
+        ? caller.policy.principal.id
+        : undefined;
+      let target: StationControlResolvedDispatchTarget | undefined;
+      try {
+        target = await deps.jobProjectTarget?.(projectId, ownerId);
+      } catch {
+        target = undefined;
+      }
+      if (stationControlScopeRefusal(caller.policy, target))
+        return proposalRefusal(c, 'job_proposal_project_out_of_scope', 403);
+    }
     const proposedJob: AgentJobProposalJob = {
       name: job.data.name,
       schedule: job.data.schedule as AgentJobProposalJob['schedule'],
@@ -431,8 +466,16 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
       ...(job.data.agent ? { agent: job.data.agent } : {}),
       // An approved proposal runs in the chat that proposed it, on that
       // chat's own engine: never as a Station-engine run of an Agent that
-      // engine may not have.
-      target: { kind: 'conversation', conversationId: caller.conversationId },
+      // engine may not have. A Project schedule (#5070) runs as a new Task
+      // in its Project instead.
+      ...(projectId !== undefined
+        ? { projectId }
+        : {
+            target: {
+              kind: 'conversation' as const,
+              conversationId: caller.conversationId,
+            },
+          }),
     };
     const result = deps.store.insertJobProposal({
       conversationId: caller.conversationId,
@@ -633,6 +676,7 @@ const APPROVABLE_FIELDS: ReadonlySet<string> = new Set([
   'prompt',
   'agent',
   'target',
+  'projectId',
 ]);
 
 /**

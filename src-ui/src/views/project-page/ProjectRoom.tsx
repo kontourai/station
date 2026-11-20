@@ -6,6 +6,7 @@ import {
   PROJECT_ROOM_LIMITS,
   type ProjectRoomAttachment,
 } from '@kontourai/station-contracts/project-room';
+import type { ProjectRoomAgentActivity } from '@kontourai/station-contracts/project-room-browser';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   type ApiRequestScope,
@@ -25,7 +26,9 @@ import {
   useProjectRoomAgent,
   useProjectRoomChannels,
   useProjectRoomHistorySpan,
+  useProjectRoomMembers,
   useProjectRoomRetainedHistory,
+  workingProjectRoomAgents,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -55,6 +58,10 @@ import {
 } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import {
+  RoomAgentActivity,
+  type RoomAgentPhase,
+} from '../../components/room/RoomAgentActivity';
+import {
   RoomAttachmentList,
   type RoomAttachmentSource,
 } from '../../components/room/RoomAttachmentList';
@@ -78,6 +85,11 @@ import {
   TrashGlyph,
 } from '../../components/room/RoomReactions';
 import { RoomThreadSummary } from '../../components/room/RoomThreadSummary';
+import {
+  type RoomMentionPerson,
+  roomMentionsIn,
+  roomTypingLabel,
+} from '../../components/room/roomMentions';
 import { useMarkRoomRead } from '../../components/room/useMarkRoomRead';
 import {
   roomDraftKey,
@@ -89,12 +101,20 @@ import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useProjectRoomMessageActions } from '../../hooks/useProjectRoomMessageActions';
 import { useRoomAttachments } from '../../hooks/useRoomAttachments';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import {
+  RoomCoordinatorBar,
+  RoomCoordinatorCard,
+  type RoomCoordinatorPorts,
+  useRoomCoordinatorEnabled,
+} from './ProjectRoomCoordinator';
 import './ProjectRoom.css';
 import {
   type ChannelScreen,
   currentProjectRoomChannel,
   ProjectRoomChannelHeader,
 } from './ProjectRoomChannels';
+import { ProjectWaitingOnYouDot } from './ProjectWaitingOnYouDot';
+import { useProjectSearch } from './project-room-navigation';
 
 export interface ProjectRoomProps {
   slug: string;
@@ -309,16 +329,19 @@ function useFillPageHeight(
 const ROOM_MIN_HEIGHT_PX = 320;
 
 /** One history read: its messages, and its place in the SDK read order. */
-type HistoryRead = { messages: RoomMessage[]; readSeq: number };
+type HistoryRead = {
+  messages: RoomMessage[];
+  readSeq: number;
+  rolledByLiveAppend?: boolean;
+};
 type RoomMessage = NonNullable<
   ReturnType<typeof useProjectRoom>['history']['data']
 >['pages'][number]['messages'][number];
 
 /**
- * Messages already shown for this room. The history window is keyed by the
- * room's latest sequence, so each new message starts a fresh query; keeping
- * the rows already read stops the list from emptying and losing the reader's
- * place while the new window loads.
+ * Messages already shown for this room. Discovery can replace the active
+ * history query, and live appends can roll its newest window in place.
+ * Keeping rows that leave these windows preserves the reader's place.
  *
  * Rows kept from a window the room has moved past are owned by no history
  * query, so `reread` brings them up to date (#4797): each new read of that
@@ -391,7 +414,9 @@ function useRoomMessages(
   // window whose refresh was cancelled as the tail moved, so they are read
   // again now rather than at the next live event (#4852 review).
   const live = new Set(fetched.map((message) => message.messageId));
-  const left = [...retained.current.live]
+  // A contiguous live append already left these rows current. Keep them
+  // under the retained-history reader without fetching once per new message.
+  const left = (pages[0]?.rolledByLiveAppend ? [] : [...retained.current.live])
     .filter((id) => !live.has(id))
     .map((id) => retained.current.byId.get(id))
     .filter((message): message is RoomMessage => !!message)
@@ -433,6 +458,8 @@ interface ProjectRoomDraft {
   text: string;
   replyTo?: string;
   recipient?: { id: string; name: string };
+  /** People picked from the `@` list (#4799); the text says which remain. */
+  people?: RoomMentionPerson[];
   /**
    * This edit's identity (#4855): new on every edit and kept through
    * storage, so an acknowledgement clears only the exact revision it was
@@ -445,6 +472,43 @@ function revised(draft: ProjectRoomDraft): ProjectRoomDraft {
   return { ...draft, revision: randomCorrelationId() };
 }
 const EMPTY_PROJECT_DRAFT: ProjectRoomDraft = { text: '' };
+/** Stop and Retry for the Agent request this reader's composer tracks. */
+interface ProjectRoomAgentControl {
+  cancel(requestId: string): void;
+  retry(requestId: string): void;
+}
+/** Why a request ended without an answer, in the reader's words (#4800). */
+const AGENT_FAILURES: Record<
+  NonNullable<ProjectRoomAgentActivity['failure']>,
+  string
+> = {
+  agent_unavailable: 'The Agent was unavailable.',
+  launch_uncertain: 'It may not have started.',
+  execution_failed: 'It stopped with an error.',
+  publication_failed: 'Its answer could not be posted.',
+};
+/** A request's phase from its record alone; none once its answer is posted. */
+function agentPhase(
+  request: ProjectRoomAgentActivity,
+): RoomAgentPhase | undefined {
+  if (request.state === 'published') return undefined;
+  if (request.state === 'cancelled') return 'stopped';
+  if (request.failure || request.state === 'uncertain') return 'failed';
+  return request.state === 'reserved' ? 'starting' : 'working';
+}
+/** `research-bot` → "Research bot": an Agent with no message here yet. */
+function agentLabel(agentId: string) {
+  const words = agentId.replace(/[-_]+/g, ' ').trim();
+  return words ? words[0]!.toUpperCase() + words.slice(1) : agentId;
+}
+/** The `mentions` field for a send or an edit, when it names anyone. */
+function withMentions(
+  text: string,
+  people: readonly RoomMentionPerson[] | undefined,
+) {
+  const mentions = roomMentionsIn(text, people);
+  return mentions ? { mentions } : {};
+}
 const PROJECT_DRAFT_CODEC = {
   encode: (draft: ProjectRoomDraft) => JSON.stringify(draft),
   decode(raw: string): ProjectRoomDraft | undefined {
@@ -465,6 +529,22 @@ const PROJECT_DRAFT_CODEC = {
       recipient.id.length <= 256
         ? { recipient: { id: recipient.id, name: recipient.name } }
         : {}),
+      ...(Array.isArray(draft.people)
+        ? {
+            people: draft.people
+              .filter(
+                (person): person is RoomMentionPerson =>
+                  !!person &&
+                  typeof person.id === 'string' &&
+                  typeof person.name === 'string' &&
+                  person.id.length > 0 &&
+                  person.id.length <= 2048 &&
+                  person.name.length > 0 &&
+                  person.name.length <= 80,
+              )
+              .slice(0, 32),
+          }
+        : {}),
       ...(typeof draft.revision === 'string' &&
       draft.revision.length > 0 &&
       draft.revision.length <= 64
@@ -483,6 +563,8 @@ interface ProjectRoomEdit {
   text: string;
   /** Files stay on the message, so its text may be emptied. */
   hasFiles: boolean;
+  /** Who the message names; an edit keeps those still written (#4799). */
+  people: RoomMentionPerson[];
 }
 /** What a refused reaction, edit or delete tells the person. */
 function messageActionFailure(error: unknown, action: string) {
@@ -539,6 +621,39 @@ function ProjectRoomSession({
   const compact = useIsMobile();
   const room = useProjectRoom(requestScope, slug, projectId, channelId);
   const channels = useProjectRoomChannels(requestScope, slug, projectId);
+  // #5063: `#general` (the default channel) has the Project's coordinator.
+  const coordinatorOn = useRoomCoordinatorEnabled(channelId === undefined);
+  // Current names by person id (#4799): the `@` list, and how every
+  // mention renders, so a rename shows on old messages too.
+  const members = useProjectRoomMembers(
+    requestScope,
+    slug,
+    projectId,
+    channelId,
+    room.live && !!room.discovery.data && !room.stopped,
+  );
+  const memberNames = useMemo(
+    () =>
+      new Map(
+        (members.data ?? []).map((member) => [member.id, member.displayName]),
+      ),
+    [members.data],
+  );
+  const selfId = room.discovery.data?.actor.id;
+  const people = useMemo(
+    () => ({ nameOf: (id: string) => memberNames.get(id), selfId }),
+    [memberNames, selfId],
+  );
+  // A notification opens the exact message (#4799): `?message=` names it.
+  const search = useProjectSearch();
+  const focusMessage = useMemo(() => {
+    const value = new URLSearchParams(search).get('message');
+    return value && isProjectRoomUuid(value) ? value : undefined;
+  }, [search]);
+  // Stop and Retry act through the composer's Agent request owner, for the
+  // request it tracks for this reader (#4800).
+  const agentControl = useRef<ProjectRoomAgentControl>(null);
+  const [trackedRequest, setTrackedRequest] = useState<string>();
   const channel = currentProjectRoomChannel(channels.list.data, channelId);
   const channelName = channel?.name ?? PROJECT_ROOM_DEFAULT_CHANNEL_NAME;
   const archived = !!channel?.archivedAt;
@@ -616,6 +731,14 @@ function ProjectRoomSession({
       setDraft(({ recipient: previous, ...rest }) => {
         const next = apply(update, previous);
         return revised(next ? { ...rest, recipient: next } : rest);
+      }),
+    [setDraft],
+  );
+  const setPeople = useCallback(
+    (update: Update<RoomMentionPerson[] | undefined>) =>
+      setDraft(({ people: previous, ...rest }) => {
+        const next = apply(update, previous);
+        return revised(next?.length ? { ...rest, people: next } : rest);
       }),
     [setDraft],
   );
@@ -961,6 +1084,43 @@ function ProjectRoomSession({
     !threadRootLoaded &&
     !!room.history.hasNextPage &&
     historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
+  // A notification's message (#4799) is sought the same way, within the
+  // same bound.
+  const focusLoaded =
+    !!focusMessage &&
+    messages.some((message) => message.messageId === focusMessage);
+  const awaitingFocus =
+    !!focusMessage &&
+    !focusLoaded &&
+    room.history.isSuccess &&
+    !!room.history.hasNextPage &&
+    historyPages < PROJECT_ROOM_HISTORY_MAX_PAGES;
+  // A reply opens in its thread, where it is shown.
+  const focusRoot = focusLoaded
+    ? messages.find((message) => message.messageId === focusMessage)?.replyTo
+    : undefined;
+  const openFocusThread = thread?.open;
+  const focusThreadOpened = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!threadsOn || !focusRoot || !focusMessage || !openFocusThread) return;
+    if (focusThreadOpened.current === focusMessage) return;
+    focusThreadOpened.current = focusMessage;
+    let root = focusRoot;
+    const parents = new Map(messages.map((m) => [m.messageId, m.replyTo]));
+    for (let depth = 0; depth < 32; depth += 1) {
+      const parent = parents.get(root);
+      if (!parent || !parents.has(parent)) break;
+      root = parent;
+    }
+    if (threadRoot !== root) openFocusThread(root);
+  }, [
+    threadsOn,
+    focusRoot,
+    focusMessage,
+    openFocusThread,
+    messages,
+    threadRoot,
+  ]);
   // While the root is missing, the query is idle and successful, a next
   // cursor exists and the bound allows, fetch the next window. Progress is
   // read from the history result itself (how many windows are loaded and the
@@ -978,12 +1138,18 @@ function ProjectRoomSession({
   const [seekSettled, setSeekSettled] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the loaded windows, the oldest cursor and each settled fetch re-check for the root.
   useEffect(() => {
-    if (!awaitingThreadRoot || historyFetching || historyFailed) return;
+    if (
+      (!awaitingThreadRoot && !awaitingFocus) ||
+      historyFetching ||
+      historyFailed
+    )
+      return;
     void fetchNextPage({ cancelRefetch: false }).finally(() =>
       setSeekSettled((count) => count + 1),
     );
   }, [
     awaitingThreadRoot,
+    awaitingFocus,
     historyFetching,
     historyFailed,
     historyPages,
@@ -1042,6 +1208,7 @@ function ProjectRoomSession({
       text,
       ...(replyTarget ? { replyTo: replyTarget } : {}),
       ...(attachments.length ? { attachments } : {}),
+      ...withMentions(text, draft.people),
     };
     try {
       // Persist the exact immutable payload before the network can commit it.
@@ -1056,7 +1223,9 @@ function ProjectRoomSession({
     if (!retry) {
       // The message now lives in the conversation as a pending row.
       setText('');
+      setPeople(undefined);
       setReplyTo(undefined);
+      room.notifyTyping(false);
       files.clear(filesFor);
     }
     setNotice('');
@@ -1217,6 +1386,14 @@ function ProjectRoomSession({
     expectedProjectId: projectId,
     expectedActorId: me.id,
   };
+  const coordinatorPorts: RoomCoordinatorPorts | undefined = coordinatorOn
+    ? {
+        requestScope,
+        slug,
+        guards,
+        canStart: view.capabilities.execute,
+      }
+    : undefined;
   // Reacting, editing and deleting need the host's support and discuss.
   const canAct = messageActions && view.capabilities.discuss;
   /** A person's own message that still stands; Agent messages never are. */
@@ -1260,6 +1437,10 @@ function ProjectRoomSession({
       original: message.text,
       text: message.text,
       hasFiles: !!message.attachments?.length,
+      people: (message.mentions ?? []).map((mention) => ({
+        id: mention.actorId,
+        name: mention.display,
+      })),
     });
   };
   async function saveEdit() {
@@ -1274,6 +1455,7 @@ function ProjectRoomSession({
         target: { ...guards, messageId: current.messageId },
         intentId: randomCorrelationId(),
         text: current.text,
+        ...withMentions(current.text, current.people),
       });
       if (mounted.current)
         setEditing((value) =>
@@ -1301,6 +1483,78 @@ function ProjectRoomSession({
       if (mounted.current) setDeleting(undefined);
     }
   }
+  // Agent requests from their records (#4800): working ones, and one that
+  // ended without an answer until the conversation moves past it.
+  const agentName = (agentId: string) =>
+    [...messages]
+      .reverse()
+      .find(
+        (message) =>
+          message.actor.kind === 'agent' && message.actor.id === agentId,
+      )?.actor.displayName ?? agentLabel(agentId);
+  const working = workingProjectRoomAgents(room.agents);
+  const workingIn = new Map<string, string>();
+  if (threadsOn)
+    for (const request of working)
+      if (request.replyTo && byId.has(request.replyTo))
+        workingIn.set(rootOf(request.replyTo), agentName(request.agentId));
+  const agentRows = (root: string | undefined) => {
+    const shown = root
+      ? [byId.get(root), ...(repliesByRoot.get(root) ?? [])]
+      : channelMessages;
+    const lastAt = Date.parse(shown.at(-1)?.createdAt ?? '') || 0;
+    return room.agents
+      .filter((request) => {
+        const inThread =
+          threadsOn && request.replyTo && byId.has(request.replyTo)
+            ? rootOf(request.replyTo)
+            : undefined;
+        if (inThread !== root) return false;
+        const phase = agentPhase(request);
+        if (!phase) return false;
+        // An ending stays in view until someone posts after it.
+        return (
+          phase === 'starting' ||
+          phase === 'working' ||
+          Date.parse(request.updatedAt) >= lastAt
+        );
+      })
+      .slice(0, 3)
+      .map((request) => {
+        const phase = agentPhase(request)!;
+        const mine =
+          request.actor.id === view.actor.id &&
+          trackedRequest === request.requestId &&
+          view.capabilities.execute;
+        return (
+          <RoomAgentActivity
+            key={request.requestId}
+            agent={agentName(request.agentId)}
+            phase={phase}
+            detail={
+              request.failure ? AGENT_FAILURES[request.failure] : undefined
+            }
+            askedBy={
+              request.actor.id === view.actor.id
+                ? 'you'
+                : (memberNames.get(request.actor.id) ??
+                  request.actor.displayName)
+            }
+            at={request.createdAt}
+            onStop={
+              mine
+                ? () => agentControl.current?.cancel(request.requestId)
+                : undefined
+            }
+            onRetry={
+              mine
+                ? () => agentControl.current?.retry(request.requestId)
+                : undefined
+            }
+          />
+        );
+      });
+  };
   const toRow = (
     message: RoomMessage,
     inThread = false,
@@ -1351,16 +1605,28 @@ function ProjectRoomSession({
           ? replyContext(message.replyTo)
           : undefined,
       text: message.text,
+      mentions: message.mentions,
       editedAt: message.editedAt,
       // A tombstone keeps its place, and its thread stays reachable below it.
       deleted: !!message.deletedAt,
       highlighted: editing?.messageId === message.messageId,
       own: message.actor.id === view.actor.id,
       attachments: (
-        <RoomAttachmentList
-          attachments={message.attachments}
-          source={fileSource}
-        />
+        <>
+          <RoomAttachmentList
+            attachments={message.attachments}
+            source={fileSource}
+          />
+          {/* #5063: a coordinator reply's suggested Tasks sit under it. */}
+          {coordinatorPorts &&
+            message.actor.kind === 'agent' &&
+            !message.deletedAt && (
+              <RoomCoordinatorCard
+                messageId={message.messageId}
+                ports={coordinatorPorts}
+              />
+            )}
+        </>
       ),
       reactions: reactions.length ? (
         <RoomReactionBar
@@ -1430,11 +1696,12 @@ function ProjectRoomSession({
           ]
         : undefined,
       footer:
-        replies.length && thread ? (
+        (replies.length || workingIn.has(message.messageId)) && thread ? (
           <RoomThreadSummary
             repliers={repliers}
             count={replies.length}
             lastAt={replies.at(-1)?.createdAt}
+            working={workingIn.get(message.messageId)}
             onOpen={() => thread.open(message.messageId)}
           />
         ) : undefined,
@@ -1566,6 +1833,13 @@ function ProjectRoomSession({
     ? [openThread, ...threadReplies]
     : visibleMessages;
   const lastOwnMessage = [...shownMessages].reverse().find(isOwn);
+  const channelAgentRows = agentRows(undefined);
+  const threadAgentRows = threadRoot ? agentRows(threadRoot) : [];
+  const typingLabel = roomTypingLabel(
+    room.typing.map(
+      (person) => memberNames.get(person.id) ?? person.displayName,
+    ),
+  );
   const leaveThread = () => thread?.open(undefined);
   // Still paging back to the linked root (or reading the first window).
   const threadLoading =
@@ -1585,6 +1859,7 @@ function ProjectRoomSession({
       ))}
     </span>
   );
+  const waitingDot = <ProjectWaitingOnYouDot slug={slug} />;
   return (
     <section
       ref={section}
@@ -1602,7 +1877,12 @@ function ProjectRoomSession({
                     heading: { title: 'Thread', subtitle: `#${channelName}` },
                   }
                 : {}),
-              trailing: participants.length ? faces : undefined,
+              trailing: (
+                <>
+                  {waitingDot}
+                  {participants.length ? faces : null}
+                </>
+              ),
               actions: [
                 tab === 'conversation'
                   ? {
@@ -1622,6 +1902,7 @@ function ProjectRoomSession({
       ) : (
         <header className="project-room__header">
           {channelHeader()}
+          {waitingDot}
           <div
             className="project-room__presence"
             role="status"
@@ -1685,6 +1966,9 @@ function ProjectRoomSession({
       )}
       {tab === 'conversation' ? (
         <>
+          {coordinatorPorts && !threadRoot && (
+            <RoomCoordinatorBar ports={coordinatorPorts} />
+          )}
           {threadRoot && !phone && (
             <div className="project-room__thread-bar">
               <Button
@@ -1705,6 +1989,10 @@ function ProjectRoomSession({
               regionLabel="Messages in this thread"
               className="project-room__conversation"
               rows={threadRows}
+              people={people}
+              focusId={focusMessage}
+              typing={typingLabel}
+              trailing={threadAgentRows.length ? threadAgentRows : undefined}
               loading={threadLoading}
               status={
                 openThread ? undefined : room.history.isError ? (
@@ -1751,6 +2039,10 @@ function ProjectRoomSession({
               regionLabel={`Messages in #${channelName}`}
               className="project-room__conversation"
               rows={rows}
+              people={people}
+              focusId={focusMessage}
+              typing={typingLabel}
+              trailing={channelAgentRows.length ? channelAgentRows : undefined}
               loading={room.history.isPending}
               status={
                 room.history.isError ? (
@@ -1810,6 +2102,18 @@ function ProjectRoomSession({
               recipient={recipient}
               setRecipient={setRecipient}
               participants={participants}
+              members={members.data}
+              addPerson={(person) =>
+                setPeople((current) => [
+                  ...(current ?? []).filter((p) => p.id !== person.id),
+                  person,
+                ])
+              }
+              onTyping={room.notifyTyping}
+              agentControl={agentControl}
+              onTracked={setTrackedRequest}
+              live={room.live}
+              lastSeq={room.lastSeq}
               // Hold sends until a legacy draft's migrated revision has
               // rendered, so an immediate Enter submits the revised draft.
               restored={restored && !unrevised}
@@ -2014,7 +2318,26 @@ function ProjectRoomComposer({
   cancelEdit,
   saveEdit,
   editLast,
+  members,
+  addPerson,
+  onTyping,
+  agentControl,
+  onTracked,
+  live,
+  lastSeq,
 }: {
+  /** The room's newest sequence, live when the stream is. */
+  lastSeq: number;
+  /** Everyone who may be mentioned, with current names (#4799). */
+  members?: readonly ProjectRoomBrowserView['actor'][];
+  /** A person picked from the `@` list. */
+  addPerson(person: RoomMentionPerson): void;
+  /** The reader is (or stopped) typing here (#4798). */
+  onTyping(active: boolean): void;
+  agentControl: RefObject<ProjectRoomAgentControl | null>;
+  onTracked(requestId: string | undefined): void;
+  /** The live stream shows Agent requests in the conversation (#4800). */
+  live: boolean;
   id: string;
   view: ProjectRoomBrowserView;
   slug: string;
@@ -2105,14 +2428,20 @@ function ProjectRoomComposer({
         ?.name ?? pendingAgent)
     : undefined;
   const waiting = !!recipient && !!pendingAgent;
+  // People: the room's members (#4799), or, on a host without the
+  // directory, whoever is here now. Present people first.
+  const here = new Set(participants.map((actor) => actor.id));
+  const people = (members ?? participants).filter(
+    (actor) => actor.id !== view.actor.id && actor.kind === 'person',
+  );
   const candidates: RoomMentionCandidate[] = [
-    ...participants
-      .filter((actor) => actor.id !== view.actor.id && actor.kind === 'person')
+    ...[...people]
+      .sort((a, b) => Number(here.has(b.id)) - Number(here.has(a.id)))
       .map((actor) => ({
         id: actor.id,
         name: actor.displayName,
         agent: false,
-        description: 'Here now',
+        ...(here.has(actor.id) ? { description: 'Here now' } : {}),
         ready: true,
       })),
     ...(agents &&
@@ -2137,11 +2466,15 @@ function ProjectRoomComposer({
         setText(
           (current) => current.slice(0, query.start) + current.slice(query.end),
         );
-      } else
+      } else {
+        // A structured mention (#4799): the text reads `@Name`, and the
+        // person is remembered by id for the send.
         setText(
           (current) =>
             `${current.slice(0, query.start)}@${candidate.name} ${current.slice(query.end)}`,
         );
+        if (members) addPerson({ id: candidate.id, name: candidate.name });
+      }
       composer.current?.focus();
     },
   });
@@ -2174,7 +2507,7 @@ function ProjectRoomComposer({
           actorId={view.actor.id}
           storageKey={`${storageKey}:agent`}
           prompt={text}
-          checkpointSeq={view.checkpoint.lastSeq}
+          checkpointSeq={lastSeq}
           replyTo={replyTo}
           blocked={!restored || blocked || !!editing}
           toolsSlot={toolsSlot}
@@ -2184,6 +2517,9 @@ function ProjectRoomComposer({
           prepareRecap={prepareRecap}
           refresh={refresh}
           inThread={thread}
+          controlRef={agentControl}
+          onTracked={onTracked}
+          live={live}
         />
       )}
       <RoomComposer
@@ -2199,6 +2535,7 @@ function ProjectRoomComposer({
           setText(next);
           setRecipientNotice('');
           mention.find(next, caret);
+          onTyping(!!next.trim());
         }}
         onSend={() => {
           if (editing) saveEdit();
@@ -2395,7 +2732,16 @@ function ProjectRoomAgentPanel({
   askRef,
   onAsked,
   onPendingChange,
+  controlRef,
+  onTracked,
+  live,
 }: {
+  /** Stop and Retry from the conversation's live row (#4800). */
+  controlRef: Ref<ProjectRoomAgentControl>;
+  /** The request this panel tracks for the reader. */
+  onTracked(requestId: string | undefined): void;
+  /** The conversation shows the request's state; this panel need not. */
+  live: boolean;
   requestScope: ApiRequestScope;
   slug: string;
   projectId: string;
@@ -2487,11 +2833,25 @@ function ProjectRoomAgentPanel({
       ? (agent.catalog.data?.agents.filter((a) => a.available !== false) ?? [])
       : [];
   async function act(
-    action: 'request' | 'inspect' | 'reconcile' | 'cancel',
+    requested: 'request' | 'inspect' | 'reconcile' | 'cancel' | 'retry',
     mentioned?: { agentId: string; revision: ProjectRoomDraft },
   ) {
     if (!ready || stopped || busy.current) return;
     let saved = retained;
+    let action: Exclude<typeof requested, 'retry'> =
+      requested === 'retry' ? 'request' : requested;
+    if (requested === 'retry') {
+      // Retry after "Couldn't finish" or "Stopped" is a new request with the
+      // same words: the ended one is never replayed (#4800).
+      if (!saved?.requestId) return;
+      saved = {
+        intent: parseProjectRoomAgentIntent({
+          ...saved.intent,
+          intentId: randomCorrelationId(),
+        }),
+      };
+      action = 'request';
+    }
     const chosen = mentioned?.agentId ?? agentId;
     if (mentioned && retained) {
       // A new @agent ask never reuses the retained intent: that is only for
@@ -2587,6 +2947,21 @@ function ProjectRoomAgentPanel({
   useLayoutEffect(() => {
     requestAction.current = act;
   });
+  useImperativeHandle(controlRef, () => ({
+    cancel: (requestId: string) => {
+      if (retained?.requestId === requestId)
+        void requestAction.current('cancel');
+    },
+    retry: (requestId: string) => {
+      if (retained?.requestId === requestId)
+        void requestAction.current('retry');
+    },
+  }));
+  const trackedId = retained?.requestId;
+  useEffect(() => {
+    onTracked(trackedId);
+  }, [trackedId, onTracked]);
+  useEffect(() => () => onTracked(undefined), [onTracked]);
   useImperativeHandle(askRef, () => ({
     ask: (mentionedAgent: string, revision: ProjectRoomDraft) =>
       void requestAction.current('request', {
@@ -2665,7 +3040,8 @@ function ProjectRoomAgentPanel({
     <div className="project-room__agent">
       {toolsSlot ? createPortal(tools, toolsSlot) : tools}
       {notice && <p role="status">{notice}</p>}
-      {handle && (
+      {/* With the live stream the conversation's own row shows this. */}
+      {handle && !live && (
         <p role="status">
           {handle.failure
             ? `Agent request needs attention: ${handle.failure.replaceAll('_', ' ')}`

@@ -496,6 +496,15 @@ a.room-attachments__file:focus-visible {
   min-width: 44px;
 }
 
+.room-conversation--compact .room-message-text a[href^="/tasks/"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .room-conversation--compact .room-conversation__jump.button {
   /* A phone line runs edge to edge, so no overlay spot is free: the control
      takes its own row under the list while it is shown (#4810 review 8). */
@@ -565,4 +574,34 @@ a.room-attachments__file:focus-visible {
   width: 44px;
   height: 44px;
   border-color: transparent;
+}
+
+/* A person named in a message (#4799): the Task-room chip, inline. */
+.room-mention {
+  display: inline-block;
+  color: var(--k-text);
+  font-weight: 600;
+  background: color-mix(in oklab, var(--k-brand) 14%, transparent);
+  border-radius: var(--k-radius-control);
+  padding-inline: 0.2em;
+}
+/* The reader named: stronger, so a scan of the channel finds it. */
+.room-mention--self {
+  background: color-mix(in oklab, var(--k-caution) 26%, transparent);
+  box-shadow: inset 0 0 0 var(--k-border-thin)
+    color-mix(in oklab, var(--k-caution) 55%, transparent);
+}
+/* The message a notification opened: a still wash the list removes after a
+   moment, so reduced motion loses nothing. */
+.room-row--focused {
+  background: color-mix(in oklab, var(--k-caution) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--k-caution);
+}
+/* "Lin is typing…": one quiet line that keeps its height, so rows never jump. */
+.room-conversation__typing {
+  margin: 0;
+  min-height: var(--room-line);
+  padding-inline: var(--room-inset);
+  color: var(--k-text-muted);
+  font: italic var(--k-text-sm) / var(--room-line) var(--k-font-ui);
 }

@@ -3,11 +3,14 @@ import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClaudeArtifactLink } from './claude-artifact.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { CustomAppearanceProposalReference } from './custom-appearance.js';
 import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
+  type EngineApprovalReviewer,
   type EngineId,
+  isAcpFamilyEngine,
   PROVIDER_CODEX,
 } from './provider.js';
 import type { ProviderFailure } from './provider-failure.js';
@@ -35,6 +38,10 @@ import type {
  * a silent no-op. (Distinct from the per-session CanonicalRuntimeEvent methods
  * below, which describe agent-runtime events, not EventBus channels.)
  */
+/** A committed attached continuation changed the exact session detail read. */
+export const ATTACHED_SESSION_CONTINUATION_REFRESH =
+  'attached-session-continuation';
+
 export const SERVER_EVENTS = {
   /** Exact answer assessment changed; identity-bearing and intentionally scoped. */
   ANSWER_ASSESSMENT_UPDATED: 'answer.assessment.updated',
@@ -359,6 +366,20 @@ export interface SessionConfiguredEvent extends CanonicalRuntimeEventBase {
   metadata?: Record<string, unknown>;
 }
 
+/** A mode confirmed by the engine for the existing Session. */
+export interface SessionEngineModeObservedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.engine-mode-observed';
+  modeId: string;
+}
+
+/** An engine-owned setting observed within the current Session binding. */
+export interface SessionApprovalReviewerObservedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.approval-reviewer-observed';
+  reviewer: EngineApprovalReviewer;
+}
+
 export interface SessionStateChangedEvent extends CanonicalRuntimeEventBase {
   method: 'session.state-changed';
   sessionId: string;
@@ -553,7 +574,9 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
    * shared vocabulary cannot express it (it then reads `'other'`). Opaque
    * engine text: an ACP agent reports `refusal` or `max_turn_requests` here,
    * which would otherwise be indistinguishable from any other `'other'`
-   * stop. It does not change the turn's outcome: the turn still completed.
+   * stop. Older rows carry this field on the terminal completion; current
+   * ACP producers report unsuccessful stops as runtime.error with the
+   * same bounded reason in details.stopReason.
    */
   stopReason?: string;
   outputText?: SpillableText;
@@ -797,6 +820,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * see `station-control-refusal.ts`.
    */
   stationControlRefusal?: StationControlRefusalView;
+  /** Exact appearance proposal identity retained before output excerpts or spill. */
+  appearanceProposal?: CustomAppearanceProposalReference;
   method: 'tool.completed';
   /** Station stamps this from an already-open tool definition, never from result metadata. */
   mcpAppResourceUri?: string;
@@ -918,6 +943,8 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
+  /** Bounded quotation stamped by Station's approval guardian policy. */
+  guardianReason?: string;
   description?: SpillableText;
   payload?: Record<string, unknown>;
   purpose?: string;
@@ -1009,6 +1036,114 @@ export interface RuntimeErrorEvent
   metadata?: Record<string, unknown>;
 }
 
+const ACP_STOP_FAILURE_CODES = [
+  'acp-turn-refused',
+  'acp-turn-request-limit',
+  'acp-turn-outcome-unknown',
+] as const;
+const ACP_STOP_FAILURE_MESSAGES = [
+  'Request declined.',
+  'Request limit reached.',
+  'Result unconfirmed.',
+] as const;
+
+type AcpCompletionEvidence = {
+  provider: string;
+  finishReason?: unknown;
+  stopReason?: unknown;
+};
+
+function acpStopReasonIndex(stopReason: unknown): 0 | 1 | 2 {
+  return stopReason === 'refusal'
+    ? 0
+    : stopReason === 'max_turn_requests'
+      ? 1
+      : 2;
+}
+
+function isHistoricalAcpStop(event: AcpCompletionEvidence): boolean {
+  // Native OpenCode shares the id but does not supply an ACP stop reason.
+  return (
+    event.finishReason === 'other' &&
+    isAcpFamilyEngine(event.provider) &&
+    (event.provider === 'acp' || Boolean(event.stopReason))
+  );
+}
+
+/** Fixed transcript copy for an inconclusive historical ACP completion. */
+export function acpCompletionFailureMessage(
+  event: AcpCompletionEvidence,
+): string | undefined {
+  if (isHistoricalAcpStop(event))
+    return ACP_STOP_FAILURE_MESSAGES[acpStopReasonIndex(event.stopReason)];
+}
+
+/** Display-safe explanation for both wire shapes at the delegation and notice seams. */
+export function describeAcpTurnStopFailure(event: {
+  method?: unknown;
+  provider?: unknown;
+  finishReason?: unknown;
+  stopReason?: unknown;
+  code?: unknown;
+}): { code: string; message: string } | undefined {
+  if (typeof event.provider !== 'string') return undefined;
+  let index: number | undefined;
+  if (event.method === 'turn.completed') {
+    if (isHistoricalAcpStop({ ...event, provider: event.provider }))
+      index = acpStopReasonIndex(event.stopReason);
+  } else if (
+    event.method === 'runtime.error' &&
+    isAcpFamilyEngine(event.provider)
+  ) {
+    index = ACP_STOP_FAILURE_CODES.findIndex((code) => code === event.code);
+  }
+  const code = index === undefined ? undefined : ACP_STOP_FAILURE_CODES[index];
+  const message =
+    index === undefined ? undefined : ACP_STOP_FAILURE_MESSAGES[index];
+  return code && message ? { code, message } : undefined;
+}
+
+/**
+ * Use the established runtime failure event for a non-successful ACP stop.
+ * Read projections may interpret older rows through this same function
+ * without modifying the raw event or honoring its former success stamp.
+ */
+export function interpretAcpTurnStop(
+  event: TurnCompletedEvent,
+  source?: 'acp-transport',
+): TurnCompletedEvent | ProviderRuntimeErrorEvent {
+  if (
+    source === 'acp-transport'
+      ? event.finishReason !== 'other'
+      : !isHistoricalAcpStop(event)
+  )
+    return event;
+  const index = acpStopReasonIndex(event.stopReason);
+  const {
+    finishReason: _finishReason,
+    stopReason,
+    outputText: _outputText,
+    sessionState: _sessionState,
+    previousState: _previousState,
+    transitionReason: _transitionReason,
+    transitionSource: _transitionSource,
+    ...identity
+  } = event;
+  const unknownOutcome = index === 2;
+  return {
+    ...identity,
+    code: ACP_STOP_FAILURE_CODES[index],
+    message: ACP_STOP_FAILURE_MESSAGES[index],
+    method: 'runtime.error',
+    severity: 'error',
+    kind: unknownOutcome ? 'indeterminate' : 'provider_error',
+    failurePhase: unknownOutcome ? 'indeterminate' : 'failed',
+    retryable: false,
+    retriable: false,
+    ...(stopReason ? { details: { stopReason } } : {}),
+  };
+}
+
 /**
  * archive#3451: the ONE `runtime.error` publish this repo's own
  * audit documents as not proof the turn is over — codex's `'error'`
@@ -1079,6 +1214,7 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  servedModelObservation?: UsageReceipt['servedModelObservation'];
   /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
   reasoningTokens?: number;
   /** Contemporaneous route observation, never reconstructed from the current connection. */
@@ -1275,18 +1411,55 @@ export interface FlowRunAttachedEvent extends CanonicalRuntimeEventBase {
   freshness?: FlowRunFreshness;
 }
 
-export type FlowGateVerdict = 'pass' | 'route-back' | 'block' | 'wait';
+export type FlowGateVerdict =
+  | 'pass'
+  | 'route-back'
+  | 'block'
+  | 'wait'
+  | 'not-evaluated';
+
+/** The older empty-outcome fallback looked like a pass without naming a gate. */
+export function isUnevaluatedFlowGateObservation(event: {
+  verdict?: unknown;
+  gateId?: unknown;
+  summary?: unknown;
+}): boolean {
+  return (
+    event.verdict === 'not-evaluated' ||
+    (event.verdict === 'pass' &&
+      event.gateId === undefined &&
+      event.summary === 'all gates passed')
+  );
+}
+
+export interface FlowGateDiagnosticDetails {
+  claims: Array<{
+    expectationId?: string;
+    reason?: string;
+    specificReason?: string;
+    surfaceGaps?: Array<{ type?: string; message?: string }>;
+  }>;
+  truncated?: true;
+}
+
+export interface FlowGateReevaluationDetails {
+  gateId: string;
+  verdict: 'route-back' | 'block' | 'wait';
+  missing: string[];
+  diagnostics?: FlowGateDiagnosticDetails;
+}
 
 /**
  * Emitted by the orchestration layer when a Flow-bound session requests
- * completion and its run is evaluated. A non-pass verdict means the session
- * was NOT marked complete; the event carries the actionable guidance.
+ * completion. A holding verdict carries the actionable guidance.
+ * A not-evaluated observation records a completed run without asserting a gate ran.
  */
 export interface FlowGateVerdictEvent extends CanonicalRuntimeEventBase {
   method: 'flow.gate-verdict';
   runId: string;
   verdict: FlowGateVerdict;
   gateId?: string;
+  diagnostics?: FlowGateDiagnosticDetails;
   summary?: string;
   /** Flow's `state.next_action` text — assistant-visible guidance. */
   nextAction?: string;
@@ -1296,7 +1469,7 @@ export interface FlowGateVerdictEvent extends CanonicalRuntimeEventBase {
   maxAttempts?: number;
   /** Missing expectation ids (verdicts 'wait' and 'block'). */
   missing?: string[];
-  /** Workspace-relative report paths (verdict 'pass'). */
+  /** Workspace-relative report paths for an observed completed run. */
   reportPaths?: { json: string; markdown: string };
   /** True when only a human-accepted exception can unblock (verdict 'block'). */
   exceptionRequired?: boolean;
@@ -1520,6 +1693,8 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
 export type CanonicalRuntimeEvent =
   | SessionStartedEvent
   | SessionConfiguredEvent
+  | SessionEngineModeObservedEvent
+  | SessionApprovalReviewerObservedEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
   | SessionCancellationRequestedEvent

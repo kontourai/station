@@ -1,11 +1,9 @@
 import { resolve } from 'node:path';
-import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
-import {
-  getInternalApiToken,
-  INTERNAL_API_TOKEN_ENV,
-} from '../../utils/internal-api-token.js';
+import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
+import { resolveHomeDir } from '../../utils/paths.js';
+import { withStationCompileCache } from './station-compile-cache.js';
 
 export function builtinStationControlServerPath(): string {
   return resolve(import.meta.dirname || process.cwd(), 'station-control.js');
@@ -137,39 +135,38 @@ export function isBuiltinStationControl(
 }
 
 /**
- * Attach Station's process-local API credential only to the built-in
- * station-control child. The credential must never be persisted in the
- * integration definition, while arbitrary third-party MCP servers must not
- * receive it.
+ * The environment a station-control or station-knowledge child is spawned
+ * with. #2377 slice D: no child holds Station's per-boot internal token any
+ * more. Station's own engine and in-process Claude serve station-control
+ * in-process as the session's verified caller, and the authority guard
+ * refuses every caller-less internal request, so the token would open
+ * nothing for a child but would still be readable by any same-user process
+ * from its environment. It is stripped from every child, with the retired
+ * `STATION_CONTROL_CALLER_TOKEN` and the reserved tenant key, whatever the
+ * parent environment held.
  *
- * A stdio child never carries a per-session caller credential (it is a
- * pooled, caller-less child), and no child inherits one: a stale
- * `STATION_CONTROL_CALLER_TOKEN` in the parent environment is stripped
- * along with the internal token and tenant.
+ * The exact built-in binaries still get the home's Node compile cache
+ * (`withStationCompileCache`); a third-party server never does.
  */
 export function withStationControlRuntimeEnv(
   toolId: string,
   toolDef: ToolDef,
   env: Record<string, string> | undefined,
-  tenantExecutionContext?: TenantExecutionContext,
 ): Record<string, string> | undefined {
   const runtimeEnv = env ? { ...env } : undefined;
   if (runtimeEnv) {
     delete runtimeEnv[INTERNAL_API_TOKEN_ENV];
     delete runtimeEnv[STATION_CONTROL_CALLER_TOKEN_ENV];
-    // A parent process is never tenant authority. Only the trusted execution
-    // context supplied by the server below may carry this reserved value to
-    // the exact built-in child.
+    // A parent process is never tenant authority.
     delete runtimeEnv.STATION_INTERNAL_TENANT;
   }
   if (!builtinStationApiServerId(toolId, toolDef)) return runtimeEnv;
-  return {
-    ...runtimeEnv,
-    [INTERNAL_API_TOKEN_ENV]: getInternalApiToken(),
-    ...(tenantExecutionContext
-      ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
-      : {}),
-  };
+  // The built-in bundle gets the home's compile cache and removes the setting
+  // at its own start; a third-party server never receives it.
+  return withStationCompileCache(
+    { ...runtimeEnv },
+    { resolveHome: resolveHomeDir },
+  );
 }
 
 /**
@@ -183,7 +180,7 @@ export function withStationControlRuntimeEnv(
  * adapter's in-process MCP passthrough — shares one definition. `port` must
  * be the ACTUALLY bound port for this instance (not `process.env.PORT`,
  * which is stale/unset under `PORT=0`/auto-allocate — see
- * `resolveRuntimePort`/`allocateFreePortBlock` in `server-main.ts`).
+ * `resolveRuntimePort`/`allocateFreePortBlock` in `index.ts`).
  */
 export function stationControlSpawnEnv(port: number): Record<string, string> {
   return {

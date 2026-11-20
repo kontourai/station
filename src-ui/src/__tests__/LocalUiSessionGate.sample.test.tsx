@@ -46,7 +46,7 @@ describe('LocalUiSessionGate unpaired sample (station#2652)', () => {
     fireEvent.click(
       await screen.findByRole(
         'button',
-        { name: 'See how Station works' },
+        { name: 'Explore a sample workspace' },
         { timeout: 5000 },
       ),
     );
@@ -70,7 +70,7 @@ describe('LocalUiSessionGate unpaired sample (station#2652)', () => {
     expect(
       await screen.findByRole(
         'button',
-        { name: 'See how Station works' },
+        { name: 'Explore a sample workspace' },
         { timeout: 5000 },
       ),
     ).toBeTruthy();

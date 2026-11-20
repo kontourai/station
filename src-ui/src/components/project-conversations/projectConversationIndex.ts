@@ -15,8 +15,9 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
  * Every fact here comes from a server read. Unread is the read-marker
  * summary's own `unread` (#3075), never a client comparison. A Task is listed
  * only when the summary can read its room: a room that was never opened is
- * `unavailable`, and reading markers never opens one. "Mentions me" is not
- * modelled: nothing computes it until #4799.
+ * `unavailable`, and reading markers never opens one. "Mentions me" is the
+ * summary's own `mentioned` (#4799), and a channel's working Agent is the
+ * live stream's request records (#4800).
  */
 
 /** Recently updated Tasks whose rooms the summary is asked about. */
@@ -28,6 +29,8 @@ export interface ConversationUnread {
   unread: boolean;
   /** Records after the marker; capped by the server at 99. */
   count?: number;
+  /** An unread message names the reader (#4799). */
+  mentioned?: boolean;
 }
 
 export interface ChannelEntry {
@@ -35,6 +38,8 @@ export interface ChannelEntry {
   key: string;
   channel: ProjectRoomChannel;
   unread: ConversationUnread | undefined;
+  /** An Agent request in this channel is reserved or started (#4800). */
+  working: boolean;
 }
 
 export interface TaskRoomEntry {
@@ -94,6 +99,7 @@ function unreadOf(
   return {
     unread: state.unread,
     ...(state.unreadCount !== undefined ? { count: state.unreadCount } : {}),
+    ...(state.mentioned ? { mentioned: true } : {}),
   };
 }
 
@@ -101,6 +107,7 @@ export function channelEntries(
   projectSlug: string,
   channels: readonly ProjectRoomChannel[],
   states: Map<string, ReadMarkerState | 'unavailable'>,
+  workingChannels: ReadonlySet<string> = new Set(),
 ): ChannelEntry[] {
   return channels.map((channel) => {
     const key = readMarkerTargetKey(channelTarget(projectSlug, channel));
@@ -109,6 +116,7 @@ export function channelEntries(
       key,
       channel,
       unread: unreadOf(states.get(key)),
+      working: workingChannels.has(channel.channelId),
     };
   });
 }

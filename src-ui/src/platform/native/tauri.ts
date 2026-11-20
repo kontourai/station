@@ -370,7 +370,10 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
   if (
     typeof candidate.platform !== 'string' ||
     !COMPILE_TARGETS.has(candidate.platform) ||
-    !Array.isArray(candidate.capabilities)
+    !Array.isArray(candidate.capabilities) ||
+    (candidate.channel !== undefined &&
+      (typeof candidate.channel !== 'string' ||
+        !['stable', 'dev', 'nightly'].includes(candidate.channel)))
   ) {
     return null;
   }
@@ -412,7 +415,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
   const pairingDeepLinkScheme =
     typeof candidate.pairingDeepLinkScheme === 'string' &&
     candidate.pairingDeepLinkScheme.length <= 128 &&
-    /^station-(?:stable|beta|nightly|dev-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(
+    /^station-(?:stable|nightly|dev-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(
       candidate.pairingDeepLinkScheme,
     )
       ? candidate.pairingDeepLinkScheme
@@ -421,7 +424,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     platform: candidate.platform as NativeCapabilityReport['platform'],
     channel:
       typeof candidate.channel === 'string' &&
-      ['stable', 'dev', 'beta', 'nightly'].includes(candidate.channel)
+      ['stable', 'dev', 'nightly'].includes(candidate.channel)
         ? (candidate.channel as NativeCapabilityReport['channel'])
         : undefined,
     capabilities,
@@ -729,6 +732,11 @@ function parseAgentActivityLaunchRoute(
       ...(typeof candidate.projectSlug === 'string'
         ? { projectSlug: candidate.projectSlug }
         : {}),
+      // Optional and never a reason to refuse the route: an odd value only
+      // loses the read (`agentActivitySessionTarget` checks its grammar).
+      ...(typeof candidate.notificationId === 'string'
+        ? { notificationId: candidate.notificationId }
+        : {}),
     },
   };
 }
@@ -758,6 +766,15 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
+  private invalidateCapabilityReport(): void {
+    this.capabilityReportReadFailed = true;
+    this.reportedTarget = null;
+    // A failed refresh cannot leave an earlier report as effect availability.
+    for (const capability of Object.values(INITIAL_TAURI_CAPABILITIES)) {
+      this.capabilities[capability.id] = { ...capability };
+    }
+  }
+
   async getCapabilityReport(): Promise<
     NativeCommandResult<NativeCapabilityReport>
   > {
@@ -766,7 +783,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         await this.bridge.invoke<unknown>('native_capability_report'),
       );
       if (!report) {
-        this.capabilityReportReadFailed = true;
+        this.invalidateCapabilityReport();
         return {
           status: 'error',
           command: 'capability-report',
@@ -789,7 +806,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         value: report,
       };
     } catch (error) {
-      this.capabilityReportReadFailed = true;
+      this.invalidateCapabilityReport();
       return {
         status: 'error',
         command: 'capability-report',
@@ -907,6 +924,9 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     listener: (event: NativeTrayNavigationEvent) => void,
     onError?: (error: NativePlatformError) => void,
   ): NativeEventSubscription {
+    if (this.reportedTarget === 'android' || this.reportedTarget === 'ios') {
+      return { dispose() {} };
+    }
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
     let drainInFlight = false;
@@ -1446,13 +1466,13 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   async takeAgentActivityLaunchRoute(): Promise<
     NativeCommandResult<{ route: NativeAgentActivityLaunchRoute | null }>
   > {
-    // Only the Android plugin records card-tap routes; the iOS plugin has no
-    // such command (an iOS tap opens the app where it was).
-    if (this.reportedTarget !== 'android') {
+    // The Android plugin records card and alert taps; the iOS plugin records
+    // alert taps (a Live Activity tap opens the app where it was).
+    if (this.reportedTarget !== 'android' && this.reportedTarget !== 'ios') {
       return {
         status: 'unsupported',
         command: 'take-agent-activity-launch-route',
-        reason: 'Card-tap routes are recorded only by the Android app.',
+        reason: 'Tap routes are recorded only by the phone apps.',
       };
     }
     return this.agentActivityCommand(
@@ -1471,7 +1491,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     const addPluginListener = this.bridge.addPluginListener;
     if (
       this.capabilities['remote-push'].state !== 'enabled' ||
-      this.reportedTarget !== 'android' ||
+      (this.reportedTarget !== 'android' && this.reportedTarget !== 'ios') ||
       !addPluginListener
     )
       return { dispose() {}, ready: Promise.resolve() };

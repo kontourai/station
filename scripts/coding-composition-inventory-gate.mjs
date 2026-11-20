@@ -68,6 +68,10 @@ const expectedDependencies = new Map(
     // sign-in method; the server chose the program and its arguments.
     'src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx':
       'terminal-process',
+    'src-ui/src/components/TerminalCommandAction.tsx': 'terminal-process',
+    // Installer setup attaches to a server-created terminal; it cannot open a shell.
+    'src-ui/src/components/engine-install/EngineInstallTerminal.tsx':
+      'terminal-process',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',
@@ -106,6 +110,9 @@ const expectedDependencies = new Map(
     // sentence per unavailable reason, not a receipt the composition emits.
     'src-ui/src/app-shell/codingEvidenceUnavailableCopy.ts': 'presentation',
     'src-ui/src/components/chat-dock/ChatDock.tsx': 'chat-handoff',
+    // The composer "+" offers Open in Coding (the chat's coding layout, which
+    // shows this chat) as a row; ChatDock supplies the layout and the open.
+    'src-ui/src/components/chat-dock/ComposerActionsMenu.tsx': 'chat-handoff',
     // The composer’s bounded file mention picker reads the project-scoped
     // Coding file-search projection through the SDK. It renders no Coding
     // pane and grants no workspace authority; classify the dependency at the
@@ -255,6 +262,10 @@ const expectedDependencies = new Map(
     // program and the working directory; neither file names one.
     'src-ui/src/workspace-panes/TerminalSessionPane.tsx': 'terminal-process',
     'src-ui/src/workspace-panes/relatedTerminalSessions.ts': 'terminal-process',
+    // A one-shot request, from an explicit Open terminal, that the Project's
+    // Terminal pane open (or adopt) a shell; it starts nothing itself.
+    'src-ui/src/components/coding-layout/terminalShellRequest.ts':
+      'terminal-process',
   }),
 );
 const semantic =

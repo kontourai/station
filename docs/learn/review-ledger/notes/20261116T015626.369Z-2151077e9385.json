@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Review fixes: listing excludes sessions in the probe's managed workspace folder and remembered probe session ids (owner-only file under Station home, 256 max); the 2s floor applies only to background probes. Off by default; acp.md documents it.","inputs":["src-server/services/acp/acp-probe.ts"]}
+  ]
+}

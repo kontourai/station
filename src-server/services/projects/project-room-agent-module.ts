@@ -18,6 +18,7 @@ import {
   roomTaskSnapshotSchema,
   sameRoomTaskScope,
 } from './project-room-agent-task-context.js';
+import type { ProjectRoomCoordinator } from './project-room-coordinator.js';
 import { ProjectRoomStore } from './project-room-store.js';
 
 export interface ProjectRoomAgentAuthority {
@@ -125,11 +126,28 @@ const captureSchema = z
   .strict();
 const captureDigest = ({ digest: _, ...payload }: ProjectRoomAgentCapture) =>
   createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+/** The coordinator frame of a captured request, when it had one (#5063). */
+function capturedFrame(capture: ProjectRoomAgentCapture): {
+  request?: string;
+  coordinator?: unknown;
+} {
+  try {
+    const frame = JSON.parse(capture.context.split('\n')[0]!);
+    return frame && typeof frame === 'object' ? frame : {};
+  } catch {
+    return {};
+  }
+}
 export class ProjectRoomAgentModule {
   constructor(
     private readonly db: DatabaseSync,
     private readonly store: ProjectRoomStore,
     private readonly execution: ProjectRoomAgentExecution,
+    /** #5063: routes `#general` answers while its preview is on. */
+    private readonly coordinator?: Pick<
+      ProjectRoomCoordinator,
+      'enabled' | 'frame' | 'prepare'
+    >,
   ) {
     db.exec(
       'CREATE TABLE IF NOT EXISTS project_room_agent_captures (request_id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT',
@@ -144,7 +162,10 @@ export class ProjectRoomAgentModule {
         'INSERT INTO project_room_agent_failures VALUES (?, ?) ON CONFLICT(request_id) DO UPDATE SET code=excluded.code',
       )
       .run(id, code);
+    // A failure is lifecycle the room shows (#4800): wake its readers.
+    this.store.announceRequest(id);
   }
+
   private capture(
     authority: ProjectRoomAgentAuthority,
     id: string,
@@ -276,6 +297,26 @@ export class ProjectRoomAgentModule {
         : {}),
     };
   }
+  /**
+   * Recorded failure codes of these requests (#4800), for a reader the room
+   * already admitted. Codes only: never a Session or its output.
+   */
+  failures(requestIds: readonly string[]) {
+    const result = new Map<string, ProjectRoomAgentFailure>();
+    if (!requestIds.length) return result;
+    // One read for the whole batch: a live frame asks about a room's
+    // unsettled requests at once (at most LIMITS.requestsPerRoom).
+    const rows = this.db
+      .prepare(
+        'SELECT request_id, code FROM project_room_agent_failures WHERE request_id IN (SELECT value FROM json_each(?))',
+      )
+      .all(JSON.stringify(requestIds));
+    for (const row of rows) {
+      const parsed = failureSchema.safeParse(row.code);
+      if (parsed.success) result.set(String(row.request_id), parsed.data);
+    }
+    return result;
+  }
   /** Validated private coordinate for the completion observer; never expose in handles. */
   publicationSession(
     authority: ProjectRoomAgentAuthority,
@@ -338,6 +379,7 @@ export class ProjectRoomAgentModule {
       checkpoint: ProjectRoomAgentCapture['checkpoint'];
       coverage: { note: string; history: string };
       tasks: RoomTaskSnapshot;
+      coordinator?: ReturnType<ProjectRoomCoordinator['frame']>;
     } = {
       request: value.text,
       tasks: {
@@ -358,6 +400,15 @@ export class ProjectRoomAgentModule {
         history: 'bounded_recent_suffix',
       },
     };
+    // #5063: in `#general` (the default channel) the asked Agent is the
+    // Project's coordinator while its preview is on. Its brief and memory
+    // arrive with its Session start (#5132); the frame adds its routing
+    // instructions and a report per coordinator Task.
+    if (authority.channelId === undefined && this.coordinator?.enabled())
+      frame.coordinator = this.coordinator.frame(
+        authority.scope,
+        first.checkpoint.roomId,
+      );
     const serialize = (selected: unknown[]) =>
       `${JSON.stringify(frame)}\n${JSON.stringify(selected)}`;
     if (Buffer.byteLength(serialize([])) > PROJECT_ROOM_LIMITS.textBytes)
@@ -573,11 +624,36 @@ export class ProjectRoomAgentModule {
       return this.inspect(authority, id);
     }
     if (answer) {
+      // #5063: a coordinator answer in `#general` is routed first: its
+      // routing block becomes a line saying where the message went, and any
+      // card or forwarded message is keyed by this request.
+      const frame = capturedFrame(capture);
+      const routed =
+        this.coordinator &&
+        authority.channelId === undefined &&
+        frame.coordinator !== undefined
+          ? await this.coordinator.prepare({
+              scope: authority.scope,
+              roomId: capture.checkpoint.roomId,
+              requestId: id,
+              requester: {
+                id: capture.requester.id,
+                displayName: capture.requester.displayName,
+              },
+              askedAgentId: capture.agentId,
+              askedAgentLabel: capture.agentLabel,
+              requestText:
+                typeof frame.request === 'string' ? frame.request : '',
+              answerText: answer.text,
+            })
+          : undefined;
+      if (routed) current();
+      const text = routed?.text ?? answer.text;
       // Publish only a representable selected answer, never a private transcript
       // excerpt or provider diagnostic. This durable refusal fences future retries.
       if (
-        !answer.text.trim() ||
-        Buffer.byteLength(answer.text) > PROJECT_ROOM_LIMITS.textBytes
+        !text.trim() ||
+        Buffer.byteLength(text) > PROJECT_ROOM_LIMITS.textBytes
       ) {
         this.failure(id, 'publication_failed');
         if (request.state === 'started')
@@ -599,12 +675,13 @@ export class ProjectRoomAgentModule {
           },
           {
             intentId: stableIntent(id, answer.turnId),
-            text: answer.text,
+            text,
             ...(request.replyTo ? { replyTo: request.replyTo } : {}),
           },
           current,
           authority.channelId,
         );
+        routed?.published(message.messageId);
         this.store.finishPublished(
           authority.scope,
           id,
@@ -613,6 +690,9 @@ export class ProjectRoomAgentModule {
           authority.channelId,
         );
       });
+      // Start what the reply started (a Project that starts without
+      // asking). The pump owns its own failures; the answer stands.
+      await routed?.after().catch(() => undefined);
     }
     return this.inspect(authority, id);
   }
@@ -652,6 +732,7 @@ export function createProjectRoomAgentRuntime(
   home: string,
   store: ProjectRoomStore,
   execution: ProjectRoomAgentExecution,
+  coordinator?: ConstructorParameters<typeof ProjectRoomAgentModule>[3],
 ) {
   const db = openPrivateSqlite(
     join(home, 'security', 'project-room-agent.sqlite'),
@@ -659,7 +740,7 @@ export function createProjectRoomAgentRuntime(
   );
   try {
     return {
-      module: new ProjectRoomAgentModule(db, store, execution),
+      module: new ProjectRoomAgentModule(db, store, execution, coordinator),
       close: () => db.close(),
     };
   } catch (error) {

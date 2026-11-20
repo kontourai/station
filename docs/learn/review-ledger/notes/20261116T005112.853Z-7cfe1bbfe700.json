@@ -1,0 +1,7 @@
+{
+  "revision": "7c25611c349d0272fa13c22c7086f1d6a558bb46",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Continue-a-Session Starter Work entry now states the source-still-running refusal (failed, retrySafe true, code continuation_source_active) and the continueWhileSourceActive override; checked against starter-session-owner.ts and the starter-work route schema.","inputs":["docs/reference/api.md","packages/contracts/src/starter-work.ts","src-server/routes/orchestration/orchestration.ts","src-server/routes/starter-work.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/services/starter-work/starter-registry.ts","src-server/services/starter-work/starter-session-owner.ts"]}
+  ]
+}

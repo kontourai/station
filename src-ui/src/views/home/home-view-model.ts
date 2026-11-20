@@ -44,10 +44,14 @@ import {
   sessionTitle,
 } from '../../utils/sessionDisplay';
 import { chatWaitsOnUser } from '../../utils/waiting-approvals';
-import { isPeerDelegationRecord } from './work-item-open-policy';
+import {
+  isPeerDelegationRecord,
+  remoteWorkItemId,
+} from './work-item-open-policy';
 
 export interface HomeWorkItem {
   receivedAgentMessage?: true;
+  nextWakeUpAt?: string;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
@@ -480,6 +484,7 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
+    nextWakeUpAt: session.nextWakeUpAt,
     // #2312 review: a Draft's own clocks move without anyone touching it — a
     // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
     // bumps `lastEventAt` — and would keep an abandoned Draft out of the
@@ -555,20 +560,6 @@ export function buildOrchestrationItems(
   return sessions.map((session) =>
     buildSessionWorkItem(session, agents, session.threadId, resolveModelLabel),
   );
-}
-
-/**
- * archive#1097: every remote item's `id` is namespaced
- * (`remote:<environmentId>:<threadId>`) — distinct from every local id
- * shape (`task:*` durable Tasks aside, a local chat/session id is a bare
- * conversationId/threadId, never `remote:`-prefixed) — so a remote item can
- * never alias a local item's stable identity in
- * `home-lane-model.ts`'s `withStableIds`, and therefore can never inherit
- * or disturb a local row's position in the active lane ( ordering
- * invariant, extended to this new source).
- */
-function remoteWorkItemId(environmentId: string, threadId: string): string {
-  return `remote:${environmentId}:${threadId}`;
 }
 
 function buildRemoteSessionItems(
@@ -732,6 +723,7 @@ function mergeHomeWorkItems(
       ...(chat ? { chatSessionId: chat.chatSessionId } : {}),
       updatedAt: Math.max(existing.updatedAt, item.updatedAt),
       lifecycleLabel: mergedLifecycleLabel,
+      nextWakeUpAt: orchestration?.nextWakeUpAt,
       activeReason:
         mergedLifecycleLabel === 'Running'
           ? (orchestration?.activeReason ?? chat?.activeReason)
@@ -1212,18 +1204,20 @@ export function buildActiveChatTaskItems({
   const items = Object.entries(chats)
     .filter(([, chat]) => !onlyWork || activeChatHasWork(chat))
     .map<MergeItem>(([id, chat]) => {
-      const agentLabel = safeAgentLabel({
-        slug: chat.agentSlug,
-        name:
-          chat.agentName ||
-          agents.find((agent) => agent.slug === chat.agentSlug)?.name,
-      });
       const host = chatBelongsToStation(chat);
       const currentExecution = host
         ? sessionByThread.get(
             chat.currentSessionId ?? chat.conversationId ?? id,
           )
         : undefined;
+      const agentLabel = safeAgentLabel({
+        slug: chat.agentSlug,
+        name:
+          chat.agentName ||
+          (host
+            ? agents.find((agent) => agent.slug === chat.agentSlug)?.name
+            : undefined),
+      });
       const observedModel =
         currentExecution?.reportedModel ??
         currentExecution?.model ??
@@ -1258,11 +1252,11 @@ export function buildActiveChatTaskItems({
         // `sessionTitle`'s own fallbacks ("Station session") say less than
         // "<Agent> Chat".
         title:
-          chat.title?.trim() ||
+          (chat.title !== 'New chat' ? chat.title?.trim() : undefined) ||
           (currentExecution?.displayTitle?.trim()
             ? sessionTitle(currentExecution)
             : undefined) ||
-          (agentLabel ? `${agentLabel} Chat` : 'Task'),
+          (chat.title === 'New chat' ? 'New chat' : `${agentLabel} Chat`),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
         modelLabel: resolveModelLabel(model),

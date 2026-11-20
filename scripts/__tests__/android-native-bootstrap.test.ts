@@ -64,7 +64,6 @@ describe('Android native bootstrap', () => {
     ['stable', 'io.kontourai.station'],
     ['dev', 'io.kontourai.station'],
     ['onboarding verification', 'io.kontourai.station.onboarding'],
-    ['beta', 'io.kontourai.station.beta'],
     ['nightly', 'io.kontourai.station.nightly'],
   ])(
     'gives the generated %s namespace an onCreate hook without initializing ndk_context',
@@ -143,7 +142,7 @@ describe('Android native bootstrap', () => {
   );
 
   it('removes a legacy ndk_context initializer and keeps custom onCreate work', () => {
-    const source = `package io.kontourai.station.beta
+    const source = `package io.kontourai.station.nightly
 
 import android.os.Bundle
 import io.crates.keyring.Keyring
@@ -156,10 +155,13 @@ class MainActivity : TauriActivity() {
   }
 }
 `;
-    const once = activityWithTauriOnCreate(source, 'io.kontourai.station.beta');
-    expect(activityWithTauriOnCreate(once, 'io.kontourai.station.beta')).toBe(
-      once,
+    const once = activityWithTauriOnCreate(
+      source,
+      'io.kontourai.station.nightly',
     );
+    expect(
+      activityWithTauriOnCreate(once, 'io.kontourai.station.nightly'),
+    ).toBe(once);
     expect(once).not.toContain('initializeNdkContext');
     expect(once).not.toContain('io.crates.keyring');
     expect(once).toContain('enableEdgeToEdge()');
@@ -280,16 +282,16 @@ function expectShareBuffer(activity: string) {
 
 describe('MainActivity share buffer', () => {
   const generated =
-    'package io.kontourai.station.beta\n\nimport android.os.Bundle\n\nclass MainActivity : TauriActivity() {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    super.onCreate(savedInstanceState)\n  }\n}\n';
+    'package io.kontourai.station.nightly\n\nimport android.os.Bundle\n\nclass MainActivity : TauriActivity() {\n  override fun onCreate(savedInstanceState: Bundle?) {\n    super.onCreate(savedInstanceState)\n  }\n}\n';
 
   it('adds one onNewIntent that buffers before Tauri forwards, once', () => {
     const once = activityWithShareIntentBuffer(
       generated,
-      'io.kontourai.station.beta',
+      'io.kontourai.station.nightly',
     );
     expectShareBuffer(once);
     expect(
-      activityWithShareIntentBuffer(once, 'io.kontourai.station.beta'),
+      activityWithShareIntentBuffer(once, 'io.kontourai.station.nightly'),
     ).toBe(once);
   });
 
@@ -310,7 +312,7 @@ describe('MainActivity share buffer', () => {
       '\n  override fun onNewIntent(intent: Intent) {\n    super.onNewIntent(intent)\n  }\n}\n',
     );
     expect(() =>
-      activityWithShareIntentBuffer(custom, 'io.kontourai.station.beta'),
+      activityWithShareIntentBuffer(custom, 'io.kontourai.station.nightly'),
     ).toThrow(/Unmanaged MainActivity onNewIntent/);
   });
 });

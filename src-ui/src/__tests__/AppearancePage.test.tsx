@@ -9,7 +9,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import {
   bindColorThemeToSettings,
@@ -21,6 +21,18 @@ import { COLOR_THEME_OPTIONS } from '../lib/color-themes';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { prefersReducedMotion } from '../lib/reduced-motion';
 import { AppearancePage, themePreview } from '../pages/AppearancePage';
+
+// The Custom section reads the person's server document through the Station
+// connection; this suite covers the device-scope choices above it.
+vi.mock('../pages/CustomAppearanceSection', () => ({
+  CustomAppearanceSection: () => null,
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('../hooks/useAppearanceStudioEnabled', () => ({
+  useAppearanceStudioEnabled: () => false,
+}));
 
 /**
  * The Appearance page against the REAL settings store and lane A's real

@@ -61,6 +61,7 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
+import { boundLabelKeepingTail } from '../../services/orchestration/quoted-text.js';
 import {
   type StationControlDispatchTarget,
   stationControlScopeRefusal,
@@ -261,6 +262,15 @@ function compactMessage(
     ...(tools.length > 0 ? { tools } : {}),
     ...(typeof timestamp === 'number' && Number.isFinite(timestamp)
       ? { createdAt: new Date(timestamp).toISOString() }
+      : {}),
+    ...(typeof message.metadata?.importedFrom === 'string'
+      ? {
+          // Keep the end of the chain: its last hop is the verified one.
+          importedFrom: boundLabelKeepingTail(
+            message.metadata.importedFrom,
+            (label) => serializedBytes(label) <= 256,
+          ),
+        }
       : {}),
   };
 }

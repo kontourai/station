@@ -1,0 +1,7 @@
+{
+  "revision": "46768f0accfae9abb46e9cfe322d77ea7a4c31f1",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#5077: ADR 0010 only routes readers to the session API reference for current routes; the added event-page highWaterSequence paragraph does not change its decision or any claim it makes.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

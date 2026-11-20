@@ -70,6 +70,25 @@ describe('component and style policy', () => {
       ),
     ).toEqual([{ file: 'new.css', key: 'legacy-token:--space-4', added: 1 }]);
   });
+  it('counts the pre-k status and shadow families, but not Station role tokens or component properties', () => {
+    expect(
+      inspectComponentStyle(
+        'panel.css',
+        '.x { color: var(--error-text); border-color: var(--warning-border); background: var(--success-bg); box-shadow: var(--shadow-md); }',
+      ).map(({ key }) => key),
+    ).toEqual([
+      '--error-text',
+      '--warning-border',
+      '--success-bg',
+      '--shadow-md',
+    ]);
+    expect(
+      inspectComponentStyle(
+        'panel.css',
+        '.x { z-index: var(--layer-dialog); transition: opacity var(--motion-fast) var(--ease-out); padding: var(--panel-gap); color: var(--k-negative); }',
+      ),
+    ).toEqual([]);
+  });
   it('refuses malformed inventories instead of accepting missing debt limits', () => {
     for (const baseline of [
       null,

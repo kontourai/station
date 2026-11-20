@@ -1,6 +1,6 @@
 name: "Release: TestFlight delivery"
 
-# One source-owned delivery path for all three separately installed iOS apps.
+# One source-owned delivery path for the Stable and Nightly iOS apps.
 # Callers bind source_sha and both versions before this workflow starts; this
 # workflow never resolves main or a tag itself.
 on:
@@ -27,7 +27,7 @@ on:
       web_build_version:
         description: >-
           The web bundle's build identity (STATION_BUILD_VERSION) when it is
-          more than Apple's bare marketing version: a Nightly's or Beta's full
+          more than Apple's bare marketing version: a Nightly's full
           version, which a client compares with its server (#2675). Defaults
           to marketing_version.
         required: false
@@ -80,7 +80,7 @@ jobs:
   deliver:
     name: Build, sign and audit IPA
     if: ${{ inputs.delivery != 'upload' }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 90
     # Stable retains the existing protected environment. Beta and Nightly are
     # intentionally distinct environments: their profile, app ID and group ID
@@ -118,7 +118,7 @@ jobs:
           persist-credentials: false
       - name: Select reviewed Xcode and enforce App Store SDK minimum
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
           xcodebuild -version
           node scripts/check-ios-store-sdk.mjs "$(xcrun --sdk iphoneos --show-sdk-version)"
       - name: Reconfirm exact frozen source
@@ -133,7 +133,7 @@ jobs:
           short_sha=$(git rev-parse --short=12 HEAD)
           printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > staged-identity/source-identity.json
           source_ref='${{ inputs.source_ref }}'
-          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
@@ -170,7 +170,8 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with: { targets: aarch64-apple-ios }
+        # swift-rs needs llvm-objcopy to export Swift bridge symbols on Xcode 27.
+        with: { targets: aarch64-apple-ios, components: llvm-tools }
       - run: brew install xcodegen libimobiledevice cocoapods
       - name: Resolve whether this channel builds the Live Activity
         id: live_activity
@@ -650,7 +651,7 @@ jobs:
           [[ "$STATION_RELEASE_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
           test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
           source_ref='${{ inputs.source_ref }}'
-          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"

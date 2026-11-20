@@ -344,7 +344,14 @@ Project-room files differ: an Agent request there captures only message text,
 and each file is bound to the person who uploaded it, so account-bound members
 may upload and read Project-room files under the room's `discuss` and `view`
 checks; an upload, like any room write, also needs the Device's operate scope,
-which account binding does not grant by default. A changed membership revision
+which account binding does not grant by default. The same holds for typing
+(#4798). The Project's live stream admits each channel by that channel's own
+history read and re-checks it before every frame, so it carries nothing a
+per-room read would not; its Agent request frames carry lifecycle only, never
+a Session or prompt. Any viewing member may list the Project's members (the
+people a message may mention, #4799); a structured mention grants nothing, and
+its notification reaches only the named person after a fresh membership check.
+A changed membership revision
 invalidates the captured stream admission; an in-process notification prompts
 closure and the idle cadence rechecks within its 15-second interval. Per-delivery
 checks remain. Neither the member preview nor a Task share grants host execution
@@ -434,7 +441,24 @@ The voice listener still accepts its direct-loopback business path without
 the remote first-frame credential check. Browser-shaped upgrades
 must present an allowed Station Origin, while non-browser local clients have
 no Origin requirement. This retained local path is distinct from protected HTTP
-authorization and is not a paired-Device scope boundary.
+authorization and is not a paired-Device scope boundary. Since #2377 slice D a
+session's Station tools act only for a person. A loopback upgrade carrying the
+local UI's HttpOnly device session cookie authenticates with it (parsed and
+verified as the HTTP boundary does), and only on loopback, where `verifyClient`
+has already held a browser-shaped upgrade to an allowed Station Origin, so
+another site's page cannot ride the browser's ambient cookie. A cookie that
+fails verification is audited and counted against the peer's failure budget,
+and a peer over that budget is refused (4429) before its cookie is verified,
+as an auth frame is. A client holding
+a bearer credential presents it in the auth frame (a loopback one asks with
+`?authenticate=1`). Either way the session's tools act for the person the
+credential resolves to. A credential that verifies but names no person (an
+account-bound device or token), and a session with no credential, keep speech
+with no Station tools; only a credential that fails verification is refused.
+Accepted: a session's tools act with that person's full authority, not the
+presenting device's pairing scope, as an agent session's do. Known gap: the
+desktop app's voice has speech but no Station tools until its Rust host opens
+the voice socket with its own operator credential.
 
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or
@@ -1306,7 +1330,31 @@ on the host (`ui-bootstrap`):
   [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
   so the owner can chat on a paired Station from a phone. The bridge's own
   allowlist and agent-origin refusal still apply, and the receiver still
-  checks the saved peer grant. Every other peer-family write (adding,
+  checks the saved peer grant. The exact leaf
+  `POST /api/environments/peers/:id/conversation-handoffs`
+  (`isPeerConversationHandoff`) is admitted the same way: it sends history the
+  caller can already read here to the paired Station under the saved peer
+  grant. On that Station, `POST /agents/:slug/conversation-imports` accepts only
+  an authenticated delegation Device (another Station's grant at the operate
+  tier) and names the sender by the Device name it requested at pairing, which
+  this Station's operator approved, never from the body. The imported rows are
+  the sender's claim and carry `importedFrom`. Every seed built from them (the
+  first turn, later Agent/engine handoffs, successor Sessions) and the target
+  Agent's memory copy quote each line, including after a shortening cut, so
+  none can pose as a turn. Conversation summaries (`POST
+  /agents/:slug/conversations/:id/summary`) read the copied rows too and quote
+  them the same way; context-compaction summaries read runtime events, which
+  never include them. `read_conversation` returns `importedFrom` with each such
+  row. A row the sender itself imported keeps its origin ("Laptop, via Studio
+  Mac"): only the last hop is verified (this Station's own pairing record);
+  earlier hops are the sender's claim. Origins and titles are cleaned of
+  controls, terminal escapes, bidi embedding/override/isolate controls and
+  invisible fillers; joiners, variation selectors, weak direction marks and
+  emoji tag sequences stay, so real names in any script survive. A label left
+  blank, or holding only joiners or marks, is refused, and any length bound cuts
+  whole graphemes from the earlier hops, never the verified last one. Transcript views show
+  them as ordinary user and assistant rows. Pairing a Station therefore
+  lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
 
@@ -1411,6 +1459,22 @@ binding, from its engine host-auth vault, for a process it launched from a
 built-in descriptor with that binding's delegation arguments; every other
 credential callback is still refused (ADR 0013, narrowed by the
 [engine credential provider decision](../decisions/engine-credential-provider.md)).
+
+Remote task engines ([the decision](../decisions/remote-task-engines.md)) are a
+different trust boundary: the work runs on the vendor's machines, so prompts
+and repository code leave the host, and confinement and approval do not apply
+there. The `/remote-task-engines` routes are behind a Feature Preview, the
+managed policy's `limits.engines.remoteTasks` (off on a managed machine unless
+it names the vendor), and a per-connection acknowledgement that names the
+vendor. Reads are `orchestration:read` and changes `orchestration:operate`.
+Storing or clearing a connection's vendor token
+(`/remote-task-engines/connections/:id/credential`) is an `engine:login` leaf
+with the same operator-in-person exception as an engine key. Every route refuses
+a request that may be an agent's, so an agent cannot send host code off the
+machine. The token lives in the engine host-auth vault in its connection's own
+bucket, in a family (`remote-task-credential`) that removing an engine
+connection of the same id never reaches. It is never returned or logged, and a vendor's error text and error code are
+redacted of it. It reaches only that connection's vendor requests.
 
 Quota reads remain `access:manage`: they borrow a selected account's stored token
 for an outbound provider request. An engine-login grant alone admits neither
@@ -1879,6 +1943,61 @@ supplies the peer credential store. A missing credential or remote authenticatio
 rejection is reported as `authenticationRequired`; loopback arrival does not
 bypass the remote Station's authentication.
 
+Opening one of those rows reads its history through the same tunnel and
+bearer (`GET /api/environments/ssh/sessions/:environmentId/:threadId/history`,
+[route](../../src-server/routes/operations/ssh-environments.ts)). This
+includes external Claude, Codex, OpenCode and Grok sessions. The remote
+Station discovered those on its own host with its own follower, so no
+transcript path, source handle or provider home crosses the tunnel: the remote
+answers its ordinary bounded `window-v1` session read, and the remote Station
+authorizes it. The relay never dials an environment that is not already
+connected. It refuses a page that names a different session, carries more
+than 2,000 events, or whose response passes 262,144 bytes. The byte limit
+covers a remote that ignores `view=window-v1` and sends its whole detail. A
+current remote's window answers at most 64,000 bytes. These pages are
+refused, not truncated. It caps a page at the remote route's own 20-turn and
+512-character cursor bounds. The list asks the remote for its newest 200
+sessions (`limit=200`) and is capped at 8,388,608 bytes, which holds 200
+summaries at the largest measured size. An older remote that ignores `limit`
+sends every session. The cap would hold about 2,000 typical ones, but the
+list's 2-second fetch deadline usually expires first on a remote that large,
+so such a remote mostly reads as unavailable. One Home list read fans out to
+at most 16 connected environments at once, and there is no server-side
+single-flight across overlapping reads. The accepted worst case is therefore
+16 × 8 MiB (128 MiB) of buffered remote answers per read in flight. A remote's
+search answer is capped at
+262,144 bytes. Past either cap the answer is not parsed. The existing status
+then reports the remote as unavailable (list) or unreachable (search), even
+though it did answer, and this Station logs the refusal by environment id
+alone. Only the page's own top-level fields cross. The
+session summary and each event are relayed as the remote's authorized read
+returned them: the events are the transcript, and the summary has the same
+shape, working folder included, that the list already relays to this caller.
+The environment name on the result comes from this Station's profile, never
+from the remote's answer. A remote 401 is reported as `authentication_required`
+with a 409, never as a 401 from this Station, which a client would read as its
+own credential being refused. The read is view-only: this Station offers no
+continuation of a remote session.
+
+The remote Station authorizes the outbound peer bearer, and that bearer is
+Station-wide: it does not say which local caller asked. So every read of
+another Station through this one admits only the person that bearer stands
+for: the list, the history read, and the remote part of message search
+(`GET /api/conversations/search`). This is the same rule the paired Station
+chat relay applies over the same credential. One
+[read authority](../../src-server/security/remote-station-read-authority.ts)
+decides all three. The caller
+must be the bound owner, the request principal must still be current, and the
+request must not be one an agent could have sent (an agent tool origin or the
+internal token). Any other paired device, including an operate-scoped device
+bound to another person, gets 403 and nothing is sent to the remote. A Station
+whose runtime composed no read authority fails closed the same way. A hosted
+Station has no tenant binding for the bearer, so it serves neither read
+(404) and searches no remote Station. Its handshake withdraws
+`remoteSessionHistory` to match. A refused caller's message search still
+returns their local results. The remote part is withheld entirely: no remote
+Station is named and no bearer is sent.
+
 Separately, disclosing that read to a caller of this Station is gated at
 `orchestration:operate` here — deliberately stricter than the
 `orchestration:read` the rest of the `/api/environments/ssh` family uses for
@@ -2272,9 +2391,12 @@ machine", and the difference is the residue, stated without softening:
   per-boot `STATION_UI_BOOTSTRAP_TOKEN`). Spawned PTYs and generic engine
   subprocesses do **not** inherit those keys: `childProcessEnvironment()` /
   `scrubBootInternalSecrets()` delete them at every production spawn/PTY
-  seam. The one child that still receives the internal token is the built-in
-  `station-control` MCP server, via `withStationControlRuntimeEnv` after the
-  scrub, because that child is Station's own loopback API client.
+  seam. Since #2377 slice D no child receives it, the built-in
+  `station-control` MCP server included: Station's own engine and
+  in-process Claude serve station-control in-process as the session's
+  verified caller, and `withStationControlRuntimeEnv` strips the token from
+  every child. A holder of the bare token is refused by the station-control
+  authority guard on every route except the CLI readiness probes.
 - **Accepted boundary (UX audit D6).** A paired principal with
   `terminal:operate` (or agent execution) runs as the Station OS user. That
   principal can read `<STATION_HOME>/logs/server/` from disk even when the

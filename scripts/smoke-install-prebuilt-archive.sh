@@ -25,7 +25,7 @@
 #   scripts/smoke-install-prebuilt-archive.sh <first archive> <second archive> <work dir>
 #
 # Each archive needs its builder descriptor (<archive>.json) beside it, and
-# both must be the preview ring (vX.Y.Z-preview.N) for this host. The
+# both must carry Stable version-bound provenance for this host. The
 # manifests are signed with a throwaway key under the pinned release key id,
 # through install.sh's test-only key override; nothing is published. This
 # script runs Node.js itself (to sign), but every installer and launcher run
@@ -44,9 +44,9 @@ rm -rf "$work"
 mkdir -p "$work/serve" "$work/home"
 smoke_home="$work/home"
 station_root="$smoke_home/.station"
-install_root="$station_root/installs/beta"
-station_home="$station_root/instances/beta"
-launcher="$smoke_home/.local/bin/station-beta"
+install_root="$station_root/installs/stable"
+station_home="$station_root/instances/stable"
+launcher="$smoke_home/.local/bin/station"
 
 # A PATH with the base OS tools and no Node.js. A directory that holds node
 # is replaced by links to everything else in it.
@@ -78,11 +78,11 @@ node -e '
   fs.writeFileSync(publicPath, publicKey.export({ format: "pem", type: "spki" }));
 ' "$work/private.pem" "$work/serve/public.pem"
 
-# Serves <archive> as its version's asset and signs serve/preview.json for it.
+# Serves <archive> as its version's asset and signs serve/stable.json for it.
 publish() {
   archive="$1"
   descriptor="$archive.json"
-  tag="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).release.ref' "$descriptor")"
+  tag="$(node -p 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).release; r.schemaVersion === 3 ? `v${r.version}` : r.ref' "$descriptor")"
   mkdir -p "$work/serve/$tag"
   cp "$archive" "$work/serve/$tag/"
   node -e '
@@ -90,24 +90,25 @@ publish() {
     const [descriptorPath, output, base] = process.argv.slice(1);
     const d = JSON.parse(fs.readFileSync(descriptorPath, "utf8"));
     const [os, arch] = d.target.split("-");
-    const version = d.release.ref.slice(1);
+    const version = d.release.schemaVersion === 3 ? d.release.version : d.release.ref.slice(1);
+    const tag = `v${version}`;
     fs.writeFileSync(output, `${JSON.stringify({
       schemaVersion: 2,
       channel: d.release.releaseChannel,
       version,
-      releaseTag: d.release.ref,
+      releaseTag: tag,
       sourceSha: d.release.sha,
       publishedAt: new Date().toISOString(),
       nodeVersion: d.node.version,
       launcherProtocol: { min: 1, max: 1 },
-      artifacts: [{ os, arch, name: d.name, url: `${base}${d.release.ref}/${d.name}`, sha256: d.sha256, size: d.size, format: d.format }],
+      artifacts: [{ os, arch, name: d.name, url: `${base}${tag}/${d.name}`, sha256: d.sha256, size: d.size, format: d.format }],
     }, null, 2)}\n`);
   ' "$descriptor" "$work/payload.json" "http://127.0.0.1:$serve_port/"
   STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$repo/scripts/ecosystem-manifest.mjs" create \
     --payload "$work/payload.json" \
     --private-key "$work/private.pem" \
     --key-id station-portable-release-2026-09 \
-    --output "$work/serve/preview.json" >&2
+    --output "$work/serve/stable.json" >&2
   printf '%s\n' "${tag#v}"
 }
 
@@ -136,7 +137,7 @@ done
 installer_env=(
   HOME="$smoke_home"
   PATH="$no_node_path"
-  STATION_CHANNEL=beta
+  STATION_CHANNEL=stable
   STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL="http://127.0.0.1:$serve_port/public.pem"
   STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1
   STATION_INSTALL_SERVER_PORT="$server_port"
@@ -145,7 +146,7 @@ installer_env=(
 
 echo "== install $first_version with no Node.js on PATH"
 curl -fsSL "file://$repo/install.sh" | env -i "${installer_env[@]}" \
-  STATION_INSTALL_PUBLIC_MANIFEST_URL="http://127.0.0.1:$serve_port/preview.json" \
+  STATION_INSTALL_PUBLIC_MANIFEST_URL="http://127.0.0.1:$serve_port/stable.json" \
   sh 2>&1 | tee "$work/install.log"
 grep -q 'Downloading Node.js' "$work/install.log"
 if grep -q 'Building application' "$work/install.log"; then
@@ -162,7 +163,7 @@ fi
 node -e '
   const state = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
   if (state.schemaVersion !== 4 || state.manifestUrl !== process.argv[2]) process.exit(1);
-' "$install_root/.station-release-state.json" "http://127.0.0.1:$serve_port/preview.json"
+' "$install_root/.station-release-state.json" "http://127.0.0.1:$serve_port/stable.json"
 curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
   "http://127.0.0.1:$ui_port/__station/identity" | tee "$work/identity-1.json"
 echo
@@ -219,7 +220,7 @@ service_env=(
   DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
   STATION_ROOT="$station_root"
   STATION_BIN_DIR="$smoke_home/.local/bin"
-  STATION_CHANNEL=beta
+  STATION_CHANNEL=stable
   STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL="http://127.0.0.1:$serve_port/public.pem"
   STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1
   STATION_INSTALL_SERVER_PORT="$server_port"
@@ -247,7 +248,7 @@ service_identity() {
 
 publish "$first_archive" >/dev/null
 env -i "${service_env[@]}" STATION_INSTALL_NO_START=1 \
-  STATION_INSTALL_PUBLIC_MANIFEST_URL="http://127.0.0.1:$serve_port/preview.json" \
+  STATION_INSTALL_PUBLIC_MANIFEST_URL="http://127.0.0.1:$serve_port/stable.json" \
   sh "$repo/install.sh" 2>&1 | tee "$work/service-install-archive.log"
 test "$(readlink "$install_root/current")" = "$(cd "$install_root" && pwd -P)/versions/$first_version"
 service_installed=true

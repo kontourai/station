@@ -82,9 +82,7 @@
 
     "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
 
-    "packages/telemetry-broker/artifact-manifest.mjs",
-
-    "src-server/server-main.ts"
+    "packages/telemetry-broker/artifact-manifest.mjs"
   ],
 
   "checks": [

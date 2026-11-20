@@ -804,7 +804,11 @@ async function main() {
     if (!realpathSync(identity.execPath).startsWith(`${root}${sep}`)) {
       fail(`launcher ran ${identity.execPath}, outside the archive ${root}`);
     }
-    if (identity.ref !== release.ref || identity.sha !== release.sha) {
+    if (
+      identity.ref !==
+        (release.schemaVersion === 3 ? `v${release.version}` : release.ref) ||
+      identity.sha !== release.sha
+    ) {
       fail('launcher identity does not match .station-release.json');
     }
     if (identity.platform !== `${process.platform}-${process.arch}`) {

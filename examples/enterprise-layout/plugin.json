@@ -34,7 +34,7 @@
   "knowledge": {
     "namespaces": [
       {
-        "id": "notes",
+        "id": "enterprise-notes",
         "label": "Meeting Notes",
         "behavior": "rag"
       }

@@ -136,10 +136,9 @@ export function PluginVisibilitySection() {
     >
       <div {...settingsRow('plugin-visibility')} tabIndex={-1}>
         <p className="plugin-visibility__intro">
-          Plugins are installed once for this Station. Choose which of them each
-          person who has paired with it can see and build a Board from. Someone
-          who cannot see a plugin never receives it in their plugin list, and a
-          Board pane from it tells them it has not been shared.
+          Choose which plugins each paired person can see and build Boards from.
+          Hidden plugins don’t appear for them, and their Board panes say the
+          plugin isn’t shared.
         </p>
 
         {installed.isLoading && <Skeleton variant="line" />}

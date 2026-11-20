@@ -387,6 +387,12 @@ A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, p
 
 The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.
 
+In Plugins, a partial update check lists the updates it found and offers a
+retry. An unavailable check gives no confirmation that updates are absent.
+Install previews and recovery reviews show the registry claim and pin for
+each dependency when Station has verified them. The installed view shows the
+stored verification for the selected plugin.
+
 Station uses MCP for tool servers, ACP for supported external-engine
 connections, OpenTelemetry for configured observability, and MCP-UI for
 rendered tool resources. Each integration has its own supported mechanisms

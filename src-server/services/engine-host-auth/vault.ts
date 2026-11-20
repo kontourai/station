@@ -175,10 +175,31 @@ function engineSecretBucketKey(scope: EngineCredentialScope): string {
   return `${SECRET_FAMILY}:${scope.connectionId}:${profile}`;
 }
 
-/** Whether a bucket id belongs to `connectionId`, in either family. */
+/**
+ * The family remote task engine connections keep their vendor token in
+ * (docs/decisions/remote-task-engines.md). Its own family, so removing an
+ * engine connection of the same id (`removeConnection`) never reaches it.
+ */
+const REMOTE_TASK_FAMILY = 'remote-task-credential';
+
+function remoteTaskBucketKey(connectionId: string): string {
+  if (!connectionId || connectionId.includes(':'))
+    throw new Error('connectionId must be non-empty and contain no ":"');
+  return `${REMOTE_TASK_FAMILY}:${connectionId}:${ENGINE_CREDENTIAL_DEFAULT_PROFILE}`;
+}
+
+/**
+ * Whether a bucket id belongs to `connectionId` in a family an engine
+ * connection owns (its credentials and its engine-held secrets); a remote
+ * task connection's bucket is never one.
+ */
 function bucketBelongsTo(bucketId: string, connectionId: string): boolean {
   const parts = bucketId.split(':');
-  return parts.length === 3 && parts[1] === connectionId;
+  return (
+    parts.length === 3 &&
+    parts[0] !== REMOTE_TASK_FAMILY &&
+    parts[1] === connectionId
+  );
 }
 
 export class EngineHostAuthVault {
@@ -303,6 +324,25 @@ export class EngineHostAuthVault {
 
   async removeSecret(scope: EngineCredentialScope, key: string): Promise<void> {
     await this.#store.remove(engineSecretBucketKey(scope), key);
+  }
+
+  // --- remote task engine tokens ----------------------------------------------
+
+  readRemoteTaskToken(connectionId: string, key: string): string | undefined {
+    return this.#store.read(remoteTaskBucketKey(connectionId), key);
+  }
+
+  async writeRemoteTaskToken(
+    connectionId: string,
+    key: string,
+    value: string,
+  ): Promise<void> {
+    await this.#store.upsert(remoteTaskBucketKey(connectionId), key, value);
+  }
+
+  /** The remote task connection's own bucket, and nothing else. */
+  async removeRemoteTaskTokens(connectionId: string): Promise<void> {
+    await this.#store.removeServer(remoteTaskBucketKey(connectionId));
   }
 
   /** Every credential and secret held for a connection that was removed. */

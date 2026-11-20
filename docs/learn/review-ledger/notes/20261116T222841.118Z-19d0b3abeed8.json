@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated bundle only: the module map's pull request agent feedback paragraph gained the Task-branch line; station-docs reference behaviour unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -9,10 +9,10 @@ plain-language names.
   **Cancel** to leave both unchanged.
 - **Clear** removes a shortcut. **Restore default** returns the command to its
   current registered default binding, which may come from a plugin or command skill.
-- Each row has a context hint, with a technical hint under **Advanced**. These
-  currently come from the command's ID, not its actual availability rule; they
-  are not a live explanation of why a command can or cannot run.
-  [#2767](https://github.com/kontourai/station/issues/2767) tracks that correction.
+- Each row explains the registered condition. **Advanced** shows its exact
+  rule and explains how modal and input ownership can take priority. Commands
+  are listed when registered in the current view. A listed command with a
+  cleared binding shows **Not set**.
 - Some known browser-reserved combinations carry a warning. They may work more reliably
   in the desktop app because a browser can intercept them first.
 
@@ -85,7 +85,8 @@ After dismissing an inbox conversation, choose **Undo** in the toast or press
 **⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
 be rebound in Keyboard shortcuts. The command declines inside text fields,
 contenteditable editors, CodeMirror and terminals, preserving their own Undo.
-Dismissal does not stop work or delete conversation history.
+Dismissal does not stop work or delete conversation history. The same Undo
+reverses **Hide** on a third-party session with Open and Settled inbox on.
 
 ## Undo the last action
 
@@ -116,10 +117,10 @@ including when restoring a default. It does not analyze all conditional overlaps
 or guarantee that every chord is conflict-free. The catalog also depends on which
 components have registered their commands in the current view.
 
-Custom bindings containing Space currently store a key name that does not match
-the standard keyboard event. [#2771](https://github.com/kontourai/station/issues/2771)
-tracks the capture-to-dispatch correction; the defect was reproduced through
-the mounted editor and registry with DOM events.
+Space works as a shortcut key, including in existing saved bindings. A bare
+Space binding lets a focused text field or control use the key. A chord with
+Control, Command, or Alt still follows the command's normal focus and modal
+rules.
 
 The [keyboard shortcut module](https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#keyboard-shortcuts)
 connects these rules to the editor, registry, device store, import/export owner

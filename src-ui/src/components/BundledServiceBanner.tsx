@@ -61,11 +61,15 @@ export function BundledServiceBanner({
     // message that literally reads "Restarting cannot fix this" — the fix's
     // own principle, one condition short of where it applies.
     const canRestart = status.ownership === 'sidecar' && !status.failClosed;
+    const stoppedMessage =
+      status.message ||
+      (canRestart
+        ? 'Local Station stopped. Restart it to use local server actions.'
+        : 'Local Station is unavailable.');
     const message =
       phase === 'failed'
         ? [
-            status.message ||
-              "Station's local Station stopped. Restart it or connect to a remote Station.",
+            stoppedMessage,
             // ONLY for a non-sidecar owner. There `detail` is a curated
             // sentence naming why ownership could not be established, and
             // dropping it was the same narration-discarding defect this
@@ -75,15 +79,12 @@ export function BundledServiceBanner({
             // has no clamp, so appending it there would paste a crash dump
             // into chrome. Two producers, one field, different kinds of
             // thing.
-            canRestart ? null : status.detail,
+            status.ownership === 'sidecar' ? null : status.detail,
           ]
             .filter(Boolean)
             .join(' ')
         : phase === 'stopped'
-          ? // No service arm: a service-owned home never reaches here (the
-            // early return above takes every non-`failed` phase), and a
-            // branch that cannot run is a branch the next reader trusts.
-            "Station's local Station is stopped. Restart it to use local server actions."
+          ? stoppedMessage
           : phase === 'starting'
             ? 'Starting Station on this device. Settings and saved Stations remain available.'
             : 'Restarting Station on this device. Settings and saved Stations remain available.';

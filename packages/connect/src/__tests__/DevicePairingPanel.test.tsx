@@ -2905,7 +2905,7 @@ describe('device pairing panels', () => {
         .value,
     ).toBe('stable');
     fireEvent.change(screen.getByLabelText('Pairing client channel'), {
-      target: { value: 'beta' },
+      target: { value: 'nightly' },
     });
     expect(
       (screen.getByLabelText('Pairing QR destination') as HTMLSelectElement)
@@ -2914,14 +2914,14 @@ describe('device pairing panels', () => {
     expect(
       (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
         .value,
-    ).toBe('beta');
+    ).toBe('nightly');
     await waitFor(() =>
       expect(
         screen.getByTestId('pairing-qr').getAttribute('data-payload'),
-      ).toMatch(/^station-beta:\/\/pair\?/),
+      ).toMatch(/^station-nightly:\/\/pair\?/),
     );
     expect(
-      screen.queryByRole('link', { name: /App Store|Google Play|beta/ }),
+      screen.queryByRole('link', { name: /App Store|Google Play|nightly/ }),
     ).toBeNull();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -2929,7 +2929,7 @@ describe('device pairing panels', () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^station-beta:\/\/pair\?linkVersion=1&clientChannel=beta&payload=/,
+          /^station-nightly:\/\/pair\?linkVersion=1&clientChannel=nightly&payload=/,
         ),
       ),
     );

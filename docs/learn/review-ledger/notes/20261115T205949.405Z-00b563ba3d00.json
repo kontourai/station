@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delivery-status route claims re-read for #4994: added the optional lastFailure.detail (sanitized receiver reason, <=200 chars, identifiers masked); presence-flag/counter, auth and connection-check claims unchanged.","inputs":["docs/reference/api.md","packages/contracts/src/telemetry-delivery.ts","packages/sdk/src/query-domains/telemetryDelivery.ts","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "6ba7d2563eb634b289aab9c418ca0786b2e2613e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Test-only change for #4992: the call now passes the required telemetry purpose; assertions and behavior covered are unchanged, so this page's claims stand.","inputs":["src-server/services/orchestration/__tests__/ownership-cascade.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Test-only change for #4992: the call now passes the required telemetry purpose; assertions and behavior covered are unchanged, so this page's claims stand.","inputs":["src-server/services/orchestration/__tests__/ownership-cascade.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Test-only change for #4992: the call now passes the required telemetry purpose; assertions and behavior covered are unchanged, so this page's claims stand.","inputs":["src-server/services/orchestration/__tests__/ownership-cascade.test.ts"]}
+  ]
+}

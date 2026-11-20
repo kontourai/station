@@ -108,6 +108,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 import {
   DiffPanel,
   LARGE_DIFF_COLLAPSE_THRESHOLD,
+  ObservedDiffPanel,
 } from '../components/coding-layout/DiffPanel';
 import { subscribeInteractiveWorkspacePerformanceMarks } from '../performance/interactive-workspace-performance-hooks';
 import { PaneHeadSlotsContext } from '../workspace-panes/PaneHeadSlots';
@@ -624,6 +625,66 @@ describe('DiffPanel collapse/expand (station#3104)', () => {
 // prove each comment path actually re-renders, rather than reasoning
 // from the library source.
 describe('DiffPanel inline comments after first render (station#3159)', () => {
+  test('local and provider threads show relative time with the original stamp in a tooltip', async () => {
+    const createdAt = '2026-06-28T12:00:00.000Z';
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-06-28T12:02:00.000Z'));
+    diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
+    commentsQueryData = [
+      {
+        id: 'local',
+        filePath: 'foo.ts',
+        side: 'additions',
+        lineNumber: 2,
+        body: 'The local note',
+        createdAt,
+      },
+    ];
+    const expectStamp = (thread: Element) => {
+      const stamp = thread.querySelector('time');
+      expect(stamp?.textContent).toBe('2m');
+      expect(stamp?.getAttribute('datetime')).toBe(createdAt);
+      expect(stamp?.getAttribute('title')).toContain('2026');
+    };
+    try {
+      const local = render(<DiffPanel workingDir="/repo" projectSlug="proj" />);
+      expectStamp(
+        (await screen.findByText('The local note')).closest('.diff-comment')!,
+      );
+      local.unmount();
+
+      render(
+        <ObservedDiffPanel
+          diff={SAMPLE_PATCH}
+          observationKey="pull-review"
+          providerComments={[
+            {
+              id: 'provider',
+              author: 'Reviewer',
+              body: 'The provider note',
+              createdAt,
+              path: 'foo.ts',
+              side: 'additions',
+              subject: 'line',
+              line: 2,
+            },
+          ]}
+        />,
+      );
+      const provider = (
+        await screen.findByText('The provider note')
+      ).closest<HTMLElement>('.diff-comment')!;
+      expectStamp(provider);
+      expect(within(provider).getByText('Reviewer')).toBeTruthy();
+      expect(
+        within(provider).queryByRole('button', { name: 'Delete comment' }),
+      ).toBeNull();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test('a comment that arrives from a refetch after first render is rendered', async () => {
     diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
     commentsQueryData = [];

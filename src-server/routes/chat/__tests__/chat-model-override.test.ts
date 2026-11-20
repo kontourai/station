@@ -188,7 +188,7 @@ describe('chat-model-override helpers', () => {
     const result = await resolveChatAgentModelOverride({
       ctx: {
         activeAgents,
-        agentSpecs: new Map([['writer', { region: 'us-west-2' }]]),
+        agentSpecs: new Map([['writer', { region: 'us-west-2', maxSteps: 3 }]]),
         agentTools: new Map([['writer', [{ name: 'tool-a' }]]]),
         appConfig: { region: 'us-east-1' },
         getAgentConfigurationRevision: () => 0,
@@ -220,6 +220,7 @@ describe('chat-model-override helpers', () => {
     expect(createModel).toHaveBeenCalledWith(
       {
         region: 'us-west-2',
+        maxSteps: 3,
         model: 'resolved-model-id',
         execution: {
           modelId: 'resolved-model-id',
@@ -239,6 +240,7 @@ describe('chat-model-override helpers', () => {
       instructions: 'Be helpful',
       model: { id: 'resolved-model' },
       tools: [{ name: 'tool-a' }],
+      maxSteps: 3,
       memoryAdapter: overrideMemoryAdapter,
       hooks: undefined,
     });

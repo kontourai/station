@@ -1,0 +1,11 @@
+{
+  "revision": "f7c9c029aba2dd337e6d99336b42a2ae5db601ea",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked each page citing tests/screenshots.spec.ts after three Station switcher screens were added (the menu stays open after a forget, by keyboard and pointer from five Stations and from six): the pages describe motion, telemetry screens and the Gallery's capture and judging in general and name none of the switcher screens or a screen count that changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked each page citing tests/screenshots.spec.ts after three Station switcher screens were added (the menu stays open after a forget, by keyboard and pointer from five Stations and from six): the pages describe motion, telemetry screens and the Gallery's capture and judging in general and name none of the switcher screens or a screen count that changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked each page citing tests/screenshots.spec.ts after three Station switcher screens were added (the menu stays open after a forget, by keyboard and pointer from five Stations and from six): the pages describe motion, telemetry screens and the Gallery's capture and judging in general and name none of the switcher screens or a screen count that changed.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

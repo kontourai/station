@@ -6,6 +6,8 @@ const MODE_VALUE = 'interactive-workspace-v3';
 const WORKSPACE_PANE_HOST_RESTORED_EVENT = 'station:perf:host-restored';
 const WORKSPACE_PANE_HOST_RESTORED_MARK = 'station:perf:host-restored';
 const PRODUCT_MARK_TIMEOUT_MS = import.meta.env.MODE === 'test' ? 50 : 30_000;
+const AUTOSAVE_OBSERVATION_TIMEOUT_MS =
+  import.meta.env.MODE === 'test' ? 1_000 : 30_000;
 const REFERENCE_SAMPLE_SETTLE_MS = import.meta.env.MODE === 'test' ? 0 : 4_000;
 const COLLABORATION_SAMPLE_SETTLE_MS =
   import.meta.env.MODE === 'test' ? 0 : 4_000;
@@ -39,10 +41,16 @@ interface BatchTiming {
   readonly taskId: string;
   readonly ingressAt: number;
   readonly acceptedAt: number;
+  readonly workingRevision: string;
+  readonly requestStartedEpochMs: number;
 }
 
 interface BatchObserver {
-  next(): Promise<BatchTiming>;
+  next(input: {
+    taskId: string;
+    workingRevision: string;
+    text: string;
+  }): Promise<BatchTiming>;
   latest(): BatchTiming | undefined;
   close(): void;
 }
@@ -119,6 +127,12 @@ type PerformanceReferenceDriverCommand =
       phase: 'warm' | 'cold';
       iteration: number;
     }
+  | {
+      kind: 'brief-input';
+      iteration: number;
+      workingRevision: string;
+      text: string;
+    }
   | { kind: 'collaboration-presence'; iteration: number }
   | { kind: 'collaboration-cursor'; iteration: number }
   | { kind: 'reconnect-cycle'; iteration: number }
@@ -138,6 +152,7 @@ type PerformanceReferenceDriverReceipt =
       lineCount: number;
       rebuilt: boolean;
     }
+  | { kind: 'brief-input-completed' }
   | { kind: 'unavailable'; reason?: string }
   | {
       kind: 'presence-published';
@@ -1302,37 +1317,45 @@ async function measureRemoteApply(
   marks: ProductMarkObserver,
   observer: BatchObserver,
 ) {
-  await publishCurrentViewer();
-  const save = button('Save shared document');
+  const driver = window.__stationInteractiveWorkspacePerformanceDriver;
+  if (!driver) throw new Error('Brief input driver is unavailable');
   const measurements = [];
+  const autosave = [];
   const total = sampling.warmups + sampling.samples;
   for (let iteration = 0; iteration < total; iteration += 1) {
+    assertRemoteApplyEditor(editor, taskId);
     const workingRevision = exactEditorRevision(editor, taskId);
     const desired = `${editor.value}${String(iteration % 10)}`;
+    // Arm before browser input: debounce or blur can submit before the driver returns.
+    const timing = observer
+      .next({ taskId, workingRevision, text: desired })
+      .then(
+        (value) => ({ kind: 'accepted' as const, value }),
+        (error: unknown) => ({ kind: 'failed' as const, error }),
+      );
     const inputMark = marks.taskInput({
       taskId,
       workingRevision,
       text: desired,
     });
-    setTextAreaValue(editor, desired);
-    editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    // Observe early timeouts even when a browser action is still pending.
+    void inputMark.catch(() => {});
+    const driven = await driver({
+      kind: 'brief-input',
+      iteration,
+      workingRevision,
+      text: desired,
+    });
+    if (driven.kind !== 'brief-input-completed')
+      throw new Error('Brief input driver did not complete');
     const input = await inputMark;
-    try {
-      await waitFor(() => !save.disabled, 5_000, 'save readiness');
-    } catch (error) {
-      const state = settledAdoptionFailure(statusText());
-      if (state !== 'settled-text adoption timed out') throw new Error(state);
-      throw error;
-    }
-    const timing = observer.next();
-    save.click();
-    const accepted = await timing;
-    if (accepted.taskId !== taskId)
-      throw new Error('Batch timing Task identity changed');
+    const outcome = await timing;
+    if (outcome.kind === 'failed') throw outcome.error;
+    const accepted = outcome.value;
     const commit = await marks.taskCommit({
       taskId,
       text: desired,
-      notWorkingRevision: workingRevision,
+      workingRevision: accepted.workingRevision,
       afterEpochMs: input.exitedEpochMs,
     });
     // Select the observed operation by revision and the browser's own clock.
@@ -1348,7 +1371,7 @@ async function measureRemoteApply(
     if (applied.workingRevision !== commit.workingRevision)
       throw new Error('Authoritative document and layout revisions diverged');
     const ingressStartedAt = timeline(input.enteredEpochMs);
-    const sentAt = timeline(input.exitedEpochMs);
+    const sentAt = timeline(accepted.requestStartedEpochMs);
     const transportStartedAt = sentAt;
     const arrivedAt = timeline(accepted.ingressAt);
     const acceptanceStartedAt = arrivedAt;
@@ -1392,36 +1415,81 @@ async function measureRemoteApply(
           },
         },
       });
-    // The authoritative SSE/layout commit may precede the mutation hook's
-    // settled-text adoption. Fence the next sample on the shipped terminal UI
-    // state so a late adoption cannot overwrite its draft. This wait is not a
-    // performance mark and contributes to no measured phase.
     try {
       await waitFor(
-        () => statusText().includes('Shared document saved.'),
-        10_000,
+        () => {
+          assertRemoteApplyEditor(editor, taskId);
+          const status = remoteApplyStatus(editor);
+          if (status === 'Not saved.' || status.startsWith('Save refused'))
+            throw new Error('settled state refused');
+          return (
+            status === 'Saved' &&
+            editor.value === desired &&
+            exactEditorRevision(editor, taskId) === accepted.workingRevision
+          );
+        },
+        AUTOSAVE_OBSERVATION_TIMEOUT_MS,
         'settled-text adoption',
       );
     } catch {
-      throw new Error(settledAdoptionFailure(statusText()));
+      throw new Error(settledAdoptionFailure(remoteApplyStatus(editor)));
     }
+    if (iteration >= sampling.warmups)
+      autosave.push({
+        iteration: iteration - sampling.warmups,
+        inputToBatchRequestMs:
+          accepted.requestStartedEpochMs - input.exitedEpochMs,
+        inputToSavedMs: browserEpochMs() - input.enteredEpochMs,
+      });
     // Reference samples are independent interactions, not one burst. Leave
     // this fixed interval outside every action mark so the shared SSE stream
     // can drain its bounded pending queue without inventing evidence.
     await settleReferenceSample();
   }
-  return verifiedFixture(fixture, sampling, measurements);
+  return {
+    ...verifiedFixture(fixture, sampling, measurements),
+    autosave: { debounceMs: 450, samples: autosave },
+  };
+}
+
+function assertRemoteApplyEditor(editor: HTMLTextAreaElement, taskId: string) {
+  exactEditorRevision(editor, taskId);
+  const style = getComputedStyle(editor);
+  if (
+    !editor.isConnected ||
+    editor.readOnly ||
+    editor.disabled ||
+    editor.closest('[hidden], [aria-hidden="true"], [inert]') ||
+    style.display === 'none' ||
+    style.visibility === 'hidden' ||
+    editor.getClientRects().length === 0
+  )
+    throw new Error('Brief Task editor identity or writability is unavailable');
+}
+
+function remoteApplyStatus(editor: HTMLTextAreaElement) {
+  const statusId = editor.getAttribute('aria-describedby');
+  const status = statusId ? document.getElementById(statusId) : null;
+  if (
+    status?.getAttribute('role') !== 'status' ||
+    status.closest('[hidden], [aria-hidden="true"], [inert]')
+  )
+    throw new Error('settled-text adoption status is unavailable');
+  return status.textContent?.trim() ?? '';
 }
 
 function observeBatchFetches(): BatchObserver {
   const original = window.fetch;
   let latestTiming: BatchTiming | undefined;
-  const waiters: Array<{
+  type ArmedBatch = {
+    taskId: string;
+    workingRevision: string;
+    text: string;
+    intent?: { intentId: string; digest: string };
     resolve(timing: BatchTiming): void;
     reject(error: Error): void;
-  }> = [];
-  const queued: BatchTiming[] = [];
-  const errors: Error[] = [];
+  };
+  let armed: ArmedBatch | undefined;
   window.fetch = async (input, init) => {
     const url =
       typeof input === 'string'
@@ -1440,50 +1508,135 @@ function observeBatchFetches(): BatchObserver {
       INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
       INTERACTIVE_WORKSPACE_TIMING_MODE,
     );
+    const current = armed;
+    const requestStartedEpochMs = browserEpochMs();
+    // Capture eligibility at request start; an earlier response cannot adopt a later arm.
+    let body:
+      | { desiredText?: string; intentId?: string; intentDigest?: string }
+      | undefined;
+    if (current && (editPlan || batch)) {
+      try {
+        const method =
+          init?.method ?? (input instanceof Request ? input.method : 'GET');
+        if (
+          method !== 'POST' ||
+          new URL(url, location.href).pathname !==
+            `/api/tasks/${encodeURIComponent(current.taskId)}/room/${batch ? 'batches' : 'edit-plan'}`
+        )
+          throw new Error('Brief autosave request identity changed');
+        body = JSON.parse(
+          typeof init?.body === 'string'
+            ? init.body
+            : input instanceof Request
+              ? await input.clone().text()
+              : '',
+        );
+        if (editPlan && body?.desiredText !== current.text)
+          throw new Error('Brief autosave planned text changed');
+        if (
+          batch &&
+          (!current.intent ||
+            body?.intentId !== current.intent.intentId ||
+            body?.intentDigest !== current.intent.digest)
+        )
+          throw new Error('Brief autosave batch identity changed');
+      } catch (error) {
+        current.reject(
+          error instanceof Error
+            ? error
+            : new Error('Brief autosave request invalid'),
+        );
+      }
+    }
+    let response: Response;
     try {
-      const response = await original(input, { ...init, headers });
-      if (editPlan || live) return response;
+      response = await original(input, { ...init, headers });
+    } catch (error) {
+      current?.reject(
+        error instanceof Error ? error : new Error('Brief autosave failed'),
+      );
+      throw error;
+    }
+    try {
+      if (!current || (!editPlan && !batch)) return response;
+      const envelope = await response.clone().json();
+      const result = envelope?.data;
+      if (!response.ok || envelope?.success !== true)
+        throw new Error('Brief autosave refused');
+      if (editPlan) {
+        if (
+          result?.kind !== 'planned' ||
+          typeof result.intentId !== 'string' ||
+          result.intentId.length === 0 ||
+          typeof result.digest !== 'string' ||
+          !/^[0-9a-f]{64}$/.test(result.digest)
+        )
+          throw new Error('Brief autosave plan refused');
+        current.intent = { intentId: result.intentId, digest: result.digest };
+        return response;
+      }
       const receipt = parseInteractiveWorkspaceBatchTiming(
         response.headers.get(INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER),
       );
       if (!receipt)
         throw new Error('Authenticated server timing receipt is unavailable');
+      if (
+        receipt.taskId !== current.taskId ||
+        result?.kind !== 'committed' ||
+        typeof result.revision !== 'string' ||
+        !/^swsr-v[12]:[0-9a-f]{64}$/.test(result.revision) ||
+        result.revision === current.workingRevision ||
+        result.text !== current.text
+      )
+        throw new Error('Brief autosave accepted revision or text changed');
       const timing = {
         taskId: receipt.taskId,
         ingressAt: receipt.ingressEpochMs,
         acceptedAt: receipt.acceptedEpochMs,
+        workingRevision: result.revision,
+        requestStartedEpochMs,
       };
       latestTiming = timing;
-      const waiter = waiters.shift();
-      if (waiter) waiter.resolve(timing);
-      else queued.push(timing);
+      current.resolve(timing);
       return response;
     } catch (error) {
-      const failure =
-        error instanceof Error ? error : new Error('Batch timing failed');
-      const waiter = waiters.shift();
-      if (waiter) waiter.reject(failure);
-      else errors.push(failure);
-      throw failure;
+      current?.reject(
+        error instanceof Error ? error : new Error('Brief autosave failed'),
+      );
+      // Observation failure must not change the product's response or retry behavior.
+      return response;
     }
   };
   return {
     latest: () => latestTiming,
-    next: () => {
-      const error = errors.shift();
-      if (error) return Promise.reject(error);
-      const timing = queued.shift();
-      return timing
-        ? Promise.resolve(timing)
-        : new Promise<BatchTiming>((resolve, reject) =>
-            waiters.push({ resolve, reject }),
-          );
-    },
+    next: (expected) =>
+      new Promise<BatchTiming>((resolve, reject) => {
+        if (armed) {
+          reject(new Error('Brief autosave observation already armed'));
+          return;
+        }
+        const timer = setTimeout(
+          () => current.reject(new Error('Brief autosave batch timed out')),
+          AUTOSAVE_OBSERVATION_TIMEOUT_MS,
+        );
+        const current: ArmedBatch = {
+          ...expected,
+          resolve: (value) => {
+            clearTimeout(timer);
+            if (armed === current) armed = undefined;
+            resolve(value);
+          },
+          reject: (error) => {
+            clearTimeout(timer);
+            if (armed === current) armed = undefined;
+            reject(error);
+          },
+        };
+        armed = current;
+      }),
     close: () => {
       window.fetch = original;
-      for (const waiter of waiters.splice(0))
-        waiter.reject(new Error('Batch observer closed'));
-      errors.splice(0);
+      armed?.reject(new Error('Batch observer closed'));
     },
   };
 }
@@ -1982,7 +2135,7 @@ function validEditorIdentity(
     editor.dataset.stationPerformanceSurface === 'task-editor' &&
     editor.dataset.stationTaskId === taskId &&
     typeof revision === 'string' &&
-    /^swsr-v1:[0-9a-f]{64}$/.test(revision)
+    /^swsr-v[12]:[0-9a-f]{64}$/.test(revision)
   );
 }
 
@@ -2210,10 +2363,14 @@ export function productMarkFailureCode(error: unknown): string {
     return 'PRODUCT_RECONNECT_LAST_EVENT_ID_MISMATCH';
   if (message.includes('diff content'))
     return 'PRODUCT_DIFF_CONTENT_UNAVAILABLE';
-  if (message.includes('Task editor identity'))
+  if (message.includes('editor identity'))
     return 'PRODUCT_TASK_IDENTITY_UNAVAILABLE';
   if (message.includes('Authoritative document and layout revisions'))
     return 'PRODUCT_REMOTE_APPLY_REVISION_DIVERGED';
+  if (message.includes('Brief autosave'))
+    return 'PRODUCT_AUTOSAVE_RECEIPT_INVALID';
+  if (message.includes('Brief input driver'))
+    return 'PRODUCT_BRIEF_INPUT_DRIVER_UNAVAILABLE';
   if (message.includes('server timing receipt'))
     return 'PRODUCT_SERVER_RECEIPT_UNAVAILABLE';
   if (message.includes('corpus driver'))
@@ -2290,16 +2447,16 @@ function setTextAreaValue(editor: HTMLTextAreaElement, value: string): void {
   setter.call(editor, value);
 }
 
-function statusText(): string {
-  return [...document.querySelectorAll<HTMLElement>('[role="status"]')]
-    .map((node) => node.textContent ?? '')
-    .join('\n');
-}
-
 function settledAdoptionFailure(status: string): string {
-  if (status.includes('may have taken effect'))
+  if (
+    status.includes('may have taken effect') ||
+    status.includes('may already be saved')
+  )
     return 'settled state indeterminate';
-  if (status.includes('authorization ended'))
+  if (
+    status.includes('authorization ended') ||
+    status.includes('no longer have access')
+  )
     return 'settled state authorization-ended';
   if (status.includes('stale')) return 'settled state document-stale';
   if (

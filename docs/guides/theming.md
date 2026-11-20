@@ -36,7 +36,7 @@ installed package defines the roles (equal to the shipped brand), so the
 `--k-brand` fallback written beside them does not apply. The focus-visible
 outline reads `--k-focus` only where something chose a focus colour: a
 white-label theme that sets it for the current mode (the root then carries
-`data-brand-focus`) or a Dev, Beta or Nightly build. Everywhere else it reads
+`data-brand-focus`) or a Dev or Nightly build. Everywhere else it reads
 `--accent-primary`, so a device accent recolours buttons, links and the focus
 ring. The package always defines `--k-focus`, which is why the choice is keyed
 on that marker instead of on the property being defined.
@@ -81,7 +81,10 @@ app. A failed app import, or a first render deferred behind a color-theme
 stylesheet whose React root cannot be created or rendered, releases animation
 and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
 bundle budget still counts the immediately loaded app's static JS/CSS closure
-through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
+through its Vite manifest, in addition to the visible boot assets. The Models
+connection view and Project Settings load their own styles with their route
+modules, while shared form controls remain available to the shell.
+The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The
 selected wordmark uses the Original spacing from the reviewed motion study.
 Water falls into a track and spreads across it, then remains an indeterminate
@@ -213,6 +216,41 @@ measures the applied sizes and the startup stamp in Chromium;
 [AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx)
 and [appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)
 cover the controls, keyboard use, 44px hit areas and a reload.
+
+## Custom appearance
+
+A signed-in person can add their own palette and CSS on top of everything
+above, and an agent can propose one for them to preview and keep
+([decision](../decisions/custom-appearance.md), [user guide](../user/appearance.md)).
+The palette sets `APPEARANCE_ROLE_PROPERTIES` (the same list the color-theme
+catalog reads, now owned by the contracts) and an accent per mode, as one
+adopted sheet of `!important` values, so it wins over Station's tokens, a
+named theme, white-label branding and a device accent for what it sets. The
+CSS is an adopted sheet, parsed and walked by
+[sanitize-css.ts](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
+before it is adopted, and switched off while any approval or consent surface
+is mounted. `main.tsx` applies the last applied copy before the first render,
+after the color theme is bound. Custom CSS should select only the stable hooks
+in `APPEARANCE_HOOKS`; a component that owns one of them keeps its attribute,
+and its suite renders it. A component that shows a decision (a person granting
+authority) calls `useDecisionSurface` with an id added to `DECISION_SURFACES`. Contrast is rated
+on the palette over the theme with the CSS out of the cascade, so CSS that
+sets a background without its text colour is not caught (a restyled button's
+disabled label can vanish); the agent guide asks for both.
+[custom-appearance.browser.test.ts](../../src-ui/src/__tests__/custom-appearance.browser.test.ts)
+measures the guard, the palette over a named theme, suspension, the keep bar
+against hostile CSS and the countdown in Chromium.
+
+Appearance studio adds typed visual settings through a separate generated sheet
+([visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts)). Its
+background is validated raster data, never an arbitrary URL. That sheet pauses
+with CSS during decisions and is omitted from palette contrast measurements.
+The existing free-form CSS sandbox keeps its no-fetch policy and 50,000-character
+limit. The studio editor and saved library reuse the protected preview bar;
+inline chat actions additionally bind the exact proposal, Session, Station and
+current request authority. Proposal references survive event spill and history
+excerpts so a restored conversation can still show the exact pending card.
+
 
 ## White-label branding theme
 

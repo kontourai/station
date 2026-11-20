@@ -1,0 +1,7 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked tool-group sentence against stationToolFamily and the loading paragraph and mcpLoading bullet against claudeToolSearchEnv/stationEnablesClaudeToolSearch and their adapter and resolution callers.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}

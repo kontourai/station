@@ -180,7 +180,13 @@ describe('StrandsFramework.createTempAgent tool gate (station#1834)', () => {
       ),
     });
     try {
-      await scheduler.addJob({ name: 'strands-job', prompt: 'scheduled work' });
+      // #2377 slice D: a job records the owner its runs act as (the create
+      // route resolves it from the request).
+      await scheduler.addJob({
+        name: 'strands-job',
+        prompt: 'scheduled work',
+        createdBy: { userId: 'human:local:operator' },
+      });
       const identity = (await scheduler.listJobs())[0]!.unattendedPrincipal;
 
       await expect(scheduler.runJob('strands-job')).resolves.toMatchObject({

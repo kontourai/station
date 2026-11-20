@@ -82,19 +82,24 @@ function envFor(remoteAddress: string | undefined): TestBindings {
   return { incoming: { socket: { remoteAddress } } } as TestBindings;
 }
 
-/** Extract the first JSON-RPC payload from an SSE (`text/event-stream`) or
- * plain-JSON streamable-HTTP response body. */
-async function readJsonRpcResult(response: Response): Promise<any> {
+/** Every JSON-RPC message a response carries, in stream order. */
+async function readJsonRpcMessages(response: Response): Promise<any[]> {
   const text = await response.text();
   const contentType = response.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
-    return JSON.parse(text);
-  }
-  const dataLine = text.split('\n').find((line) => line.startsWith('data: '));
-  if (!dataLine) {
+  if (contentType.includes('application/json')) return [JSON.parse(text)];
+  const messages = text
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => JSON.parse(line.slice('data: '.length)));
+  if (messages.length === 0)
     throw new Error(`No SSE data line in response body: ${text}`);
-  }
-  return JSON.parse(dataLine.slice('data: '.length));
+  return messages;
+}
+
+/** The response message; a stream may carry related notifications first. */
+async function readJsonRpcResult(response: Response): Promise<any> {
+  const messages = await readJsonRpcMessages(response);
+  return messages.find((message) => 'id' in message) ?? messages[0];
 }
 
 async function initializeMcpSession(
@@ -709,10 +714,9 @@ describe('station-control-mcp-route', () => {
     expect(tenantHeaders.sort()).toEqual(['alpha', 'bravo']);
   });
 
-  test('stateless HTTP family loading is credential-local, rechecked on each request and reset by rotation', async () => {
-    let enabled = true;
+  test("stateless HTTP family loading is credential-local, kept for the credential's life and reset by rotation", async () => {
     let issuerCurrent = true;
-    const mint = (session: string) =>
+    const mint = (session: string, toolFamilies = true) =>
       mintStationControlMcpToken(
         session,
         'http-header-token',
@@ -722,13 +726,12 @@ describe('station-control-mcp-route', () => {
         'station-control',
         undefined,
         () => issuerCurrent,
-        true,
+        toolFamilies,
       ).token;
     const first = mint('dynamic-one');
     const other = mint('dynamic-two');
     const app = createStationControlMcpRoutes({
       port: TEST_PORT,
-      progressiveToolsEnabled: () => enabled,
       resolveCallerRecord: () => ({
         principal: { id: 'person:reader', source: 'session-owner' },
         localProjectId: 'project-one',
@@ -781,12 +784,14 @@ describe('station-control-mcp-route', () => {
     });
     expect(await list(first)).toContain('list_agents');
     expect(await list(other)).not.toContain('list_agents');
-    enabled = false;
-    expect(await list(first)).toEqual(
+    // A credential minted without families lists the whole selection; no
+    // route-level switch changes either kind afterwards.
+    const plain = mint('plain-one', false);
+    expect(await list(plain)).toEqual(
       expect.arrayContaining(['list_agents', 'get_agent']),
     );
-    expect(await list(first)).not.toContain('load_tool_family');
-    enabled = true;
+    expect(await list(plain)).not.toContain('load_tool_family');
+    revokeStationControlMcpToken('plain-one');
     revokeStationControlMcpToken('dynamic-one');
     const rotated = mint('dynamic-one');
     expect(await list(rotated)).not.toContain('list_agents');
@@ -806,5 +811,63 @@ describe('station-control-mcp-route', () => {
     expect((await denied(first)).status).toBe(401);
     issuerCurrent = false;
     expect((await denied(rotated)).status).toBe(401);
+  });
+
+  test('stateless HTTP load_tool_family announces the changed listing on its own response stream', async () => {
+    // A stateless route keeps no standalone stream, so a client learns of
+    // the newly enabled family only from the load call's own response.
+    const token = mintStationControlMcpToken(
+      'dynamic-announce',
+      'http-header-token',
+      undefined,
+      undefined,
+      ['list_agents', 'get_agent'],
+      'station-control',
+      undefined,
+      () => true,
+      true,
+    ).token;
+    const app = createStationControlMcpRoutes({
+      port: TEST_PORT,
+      resolveCallerRecord: () => ({
+        principal: { id: 'person:reader', source: 'session-owner' },
+        localProjectId: 'project-one',
+        projectSlug: 'project-one',
+        projectIdSource: 'session-record',
+      }),
+    });
+    const load = async (family: string) => {
+      const response = await app.request(
+        STATION_CONTROL_MCP_PATH,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 7,
+            method: 'tools/call',
+            params: { name: 'load_tool_family', arguments: { family } },
+          }),
+        },
+        envFor(LOOPBACK),
+      );
+      expect(response.status).toBe(200);
+      return readJsonRpcMessages(response);
+    };
+    const unknown = await load('No such family');
+    expect(unknown.map((message) => message.method ?? message.id)).toEqual([7]);
+    const loaded = await load('Agents');
+    expect(loaded.map((message) => message.method ?? message.id)).toEqual([
+      'notifications/tools/list_changed',
+      7,
+    ]);
+    expect(JSON.parse(loaded[1].result.content[0].text)).toMatchObject({
+      family: 'Agents',
+      loaded: true,
+    });
   });
 });

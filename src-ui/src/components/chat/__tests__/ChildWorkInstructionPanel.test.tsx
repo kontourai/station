@@ -136,8 +136,8 @@ beforeEach(async () => {
   mocks.authority.observation.grant = { kind: 'operator' };
 });
 afterEach(cleanup);
-function view(turnId = 'turn', allowed = true, name = 'Worker') {
-  return render(
+function panel(turnId = 'turn', allowed = true, name = 'Worker') {
+  return (
     <UIBlockActionsContext.Provider
       value={{ submitForm: () => {}, canSendChildInstruction: allowed }}
     >
@@ -149,8 +149,12 @@ function view(turnId = 'turn', allowed = true, name = 'Worker') {
         running
         name={name}
       />
-    </UIBlockActionsContext.Provider>,
+    </UIBlockActionsContext.Provider>
   );
+}
+
+function view(turnId = 'turn', allowed = true, name = 'Worker') {
+  return render(panel(turnId, allowed, name));
 }
 
 test('sends only to the named child and keeps the same request after an uncertain response', async () => {
@@ -224,30 +228,46 @@ test('an older response cannot clear a later uncertain instruction', async () =>
   fireEvent.click(within(a.container).getByRole('button', { name: 'Send' }));
   await waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
   const first = mocks.send.mock.calls[0][0];
+  const key = `child-steer:${JSON.stringify(['owner', 'parent', 'child'])}`;
+  expect(await get(key)).toMatchObject({ clientInputId: first.clientInputId });
   mocks.history.data = {
     pages: [
       { entries: [{ ...first, text: first.input, delivery: 'delivered' }] },
     ],
   };
+  // History can settle the existing panel before another panel loads its outbox.
+  a.rerender(panel('turn', true, 'A'));
+  await waitFor(async () => expect(await get(key)).toBeNull());
   const checking = view('turn', true, 'Checking');
-  fireEvent.click(
-    await within(checking.container).findByRole('button', {
-      name: 'Check',
-    }),
-  );
-  await waitFor(() =>
-    expect(
-      within(checking.container).queryByText(
-        'Saved instruction: First instruction',
-      ),
-    ).toBeNull(),
-  );
+  await within(checking.container).findByLabelText('Send to Checking');
+  expect(
+    within(checking.container).getByText('First instruction'),
+  ).toBeTruthy();
+  expect(
+    within(checking.container).queryByText(
+      'Saved instruction: First instruction',
+    ),
+  ).toBeNull();
+  expect(
+    await get(`child-steer:${JSON.stringify(['owner', 'parent', 'child'])}`),
+  ).toBeNull();
   fireEvent.change(inputB, { target: { value: 'Second instruction' } });
   fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
   await within(b.container).findAllByText('May have reached the agent');
   const second = mocks.send.mock.calls[1][0];
+  expect(
+    (within(a.container).getByLabelText('Send to A') as HTMLTextAreaElement)
+      .disabled,
+  ).toBe(true);
   finishFirst({ outcome: 'steered' });
-  await within(a.container).findByText('Sent to the subagent.');
+  await waitFor(() =>
+    expect(
+      (within(a.container).getByLabelText('Send to A') as HTMLTextAreaElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(within(a.container).getByText('Sent to the subagent.')).toBeTruthy();
+  expect(await get(key)).toMatchObject({ clientInputId: second.clientInputId });
   a.unmount();
   b.unmount();
   checking.unmount();

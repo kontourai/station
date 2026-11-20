@@ -234,10 +234,9 @@ export function CompanionManaged({
       <details>
         <summary>Prepare a person's private storage</summary>
         <p>
-          Ask the receiving person to request storage preparation after
-          confirming their source address. Review their request here. This
-          prepares an empty private vault; the person retains source and sync
-          authority.
+          Ask the person to confirm their source address and request storage
+          preparation, then review their request here. This creates an empty
+          private vault that only they control.
         </p>
         <label>
           Storage preparation request ID
@@ -326,42 +325,41 @@ export function CompanionManaged({
       </details>
       <h3>Install and run</h3>
       <p>
-        Operations affect the selected Station host. Installing or starting does
-        not enable sending or approve disclosure.
+        These actions run on the selected Station. Installing or starting
+        doesn't turn on sending or share any data.
       </p>
       {pendingText}
       {!current.supported ? (
-        <p>
-          This Station host does not support managed companion installation.
-        </p>
+        <p>This Station doesn't support installing the companion.</p>
       ) : null}
       {installed ? (
         <>
           <p>
             Companion {installed.version}:{' '}
             {installed.phase === 'installed'
-              ? 'installation recorded'
+              ? 'installed'
               : installed.phase === 'preparing'
-                ? 'installation intent recorded'
-                : 'installation needs reconciliation'}
+                ? 'installation started'
+                : 'installation state unclear, check status'}
             .
           </p>
           <p role="status">
             {current.runtime === 'running'
               ? current.storage === 'ready'
-                ? 'Running. Receiver storage is ready.'
-                : 'Running. Receiver storage readiness is unavailable.'
+                ? 'Running. Storage is ready.'
+                : 'Running. Storage status is unavailable.'
               : current.runtime === 'stopped'
                 ? 'Stopped. Stored data is retained.'
                 : current.runtime === 'partial'
                   ? 'Some services are running. Storage is not verified.'
-                  : 'Current runtime state is unavailable; recorded installation is not proof of liveness.'}
+                  : "Can't tell whether the companion is running. Check status."}
           </p>
           {uncertainAction ? (
             <p role="alert">
-              The last {current.latestAction?.action} outcome needs
-              reconciliation. Check status; an explicit stop can confirm owned
-              services are stopped when custody is available.
+              Station didn't confirm the last {current.latestAction?.action}.{' '}
+              {canStop
+                ? 'Check status, or stop the companion to make sure its services are stopped.'
+                : 'Check status before trying again.'}
             </p>
           ) : null}
         </>
@@ -375,14 +373,13 @@ export function CompanionManaged({
             Install on the selected Station using managed Docker volumes
           </Checkbox>
           <p>
-            Database and diagnostic data stay in that host's managed volumes.
-            Stopping services preserves them.
+            Data stays in that Station's managed volumes and is kept when the
+            companion stops.
           </p>
           {!hasProfile ? (
             <p>
-              A prepared archive with a qualified profile declaration for this
-              host is required. Diagnostic success alone does not qualify an
-              artifact.
+              Prepare an archive that supports this Station's architecture
+              before installing.
             </p>
           ) : null}
           {preparation.isError ? (
@@ -394,26 +391,25 @@ export function CompanionManaged({
       )}
       {current.hasOperationLock ? (
         <p>
-          An operation lock is recorded. It does not prove a live operation;
-          check its retained outcome.
+          Another operation may still be running. Check status before
+          continuing.
         </p>
       ) : null}
       {unknown ? (
         <p role="alert">
-          The request outcome is unconfirmed. Check its receipt before another
-          mutation; no request will be repeated automatically.
+          Station didn't confirm the result. Check status before retrying.
+          Nothing is retried automatically.
         </p>
       ) : null}
       {install.isError && !unknown ? (
         <p role="alert">
-          The install request was not confirmed. Current state and any retained
-          receipt are shown above; no automatic retry was made.
+          The install wasn't confirmed. Current status is shown above; nothing
+          was retried.
         </p>
       ) : null}
       {control.isError && !unknown ? (
         <p role="alert">
-          The control request was not confirmed. Review current state and its
-          retained outcome before another action.
+          The request wasn't confirmed. Check status before trying again.
         </p>
       ) : null}
       {!cryptoAvailable ? (
@@ -462,8 +458,8 @@ export function CompanionManaged({
         <CompanionProductTrends authority={authority} />
       ) : null}
       <p>
-        Observed {new Date(current.observedAt).toLocaleString()}. Service and
-        storage observations do not prove all telemetry was delivered.
+        Checked {new Date(current.observedAt).toLocaleString()}. Healthy
+        services don't guarantee every event was delivered.
       </p>
     </section>
   );

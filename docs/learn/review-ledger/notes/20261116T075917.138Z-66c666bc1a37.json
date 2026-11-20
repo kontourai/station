@@ -1,0 +1,7 @@
+{
+  "revision": "e0f1a16c1979f66c04cf09f714ab5f53883e2cd8",
+
+  "notes": [
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Correction to note 20261116T075248.208Z-4551b1148157: the frame's drift is broader than the dash sentence. Its explainer reads 'Provider-reported usage and estimates remain separate. Missing data is not zero.' and a status line reads 'Current workflow state; result quality is not…', while source now says 'Reported usage and estimates are shown separately. A dash (—) means not reported.' and 'Current workflow state. Result quality is not independently…'. The named controls still exist. No earlier note marked it pending recapture; this records the drift for a future recapture.","inputs":["docs/learn/media/agent-efficiency-usage.png"]}
+  ]
+}

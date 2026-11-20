@@ -151,6 +151,21 @@ export function ChatDockMobileOverflowSheet({
             onSelect={() => run(overflow.conversationStats!.onOpen)}
           />
         )}
+        {(overflow.panelActions ?? []).map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={Boolean(action.checked)}
+            className="composer-actions-menu__item"
+            onClick={(event) => {
+              const trigger = event.currentTarget;
+              run(() => action.onSelect(trigger));
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
         {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:
             identities are occasionally needed for paste, never read

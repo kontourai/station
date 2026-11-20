@@ -135,7 +135,11 @@ export function suppressMirroredNotifications<T extends { id: string }>(
   for (const item of items) {
     if (item.kind === 'approval') {
       mirrored.add(item.source.notificationId);
-    } else if (item.kind === 'device-pairing' && item.source.notificationId) {
+    } else if (
+      (item.kind === 'device-pairing' ||
+        item.kind === 'pull-request-feedback') &&
+      item.source.notificationId
+    ) {
       mirrored.add(item.source.notificationId);
     }
   }

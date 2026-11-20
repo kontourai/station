@@ -1,0 +1,9 @@
+{
+  "revision": "475c0877c08a9ceb1b2c200b1a4c10efd1ad7d0e",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the one exact historical-capture README classification in exclude, consistent with the existing dated review evidence entries. Public document sources, order, topics, Pages publication and Corpus pin remain unchanged; pinned Corpus check with base and the manifest suite pass.","inputs":["corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed the one exact historical-capture README classification in exclude, consistent with the existing dated review evidence entries. Public document sources, order, topics, Pages publication and Corpus pin remain unchanged; pinned Corpus check with base and the manifest suite pass.","inputs":["corpus.json"]}
+  ]
+}

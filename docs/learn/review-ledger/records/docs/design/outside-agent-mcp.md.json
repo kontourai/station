@@ -18,9 +18,7 @@
 
     "src-server/security/outside-agent-release-guard.ts",
 
-    "docs/design/outside-agent-mcp-r2b-evidence.md",
-
-    "src-server/server-main.ts"
+    "docs/design/outside-agent-mcp-r2b-evidence.md"
   ],
 
   "checks": [

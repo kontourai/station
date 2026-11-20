@@ -320,8 +320,6 @@
 
     "src-ui/src/components/inbox-row/inbox-row-actions.ts",
 
-    "src-ui/src/hooks/useInboxSwipe.ts",
-
     "src-ui/src/utils/activity-snooze-store.ts",
 
     "src-ui/src/components/drafts/DiscardDraftButton.tsx",
@@ -332,7 +330,25 @@
 
     "src-server/services/orchestration/post-tool-inbox.ts",
 
-    "src-server/services/orchestration/attachment-blob-store.ts"
+    "src-server/services/orchestration/attachment-blob-store.ts",
+
+    "src-server/services/peers/peer-readiness-service.ts",
+
+    "src-ui/src/components/chat/IndexedTranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/useTranscriptTurnDirectory.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css",
+
+    "src-ui/src/components/chat/__tests__/BackgroundTaskNoticeCard.test.tsx",
+
+    "tests/chat-settings-and-task-notices.spec.ts",
+
+    "src-ui/src/hooks/useConversationInboxSnapshot.ts",
+
+    "src-ui/src/lib/composerForegroundDispatch.ts",
+
+    "src-ui/src/hooks/useSwipeActions.ts"
   ],
 
   "checks": [

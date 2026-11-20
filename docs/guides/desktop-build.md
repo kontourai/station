@@ -18,13 +18,18 @@ waking); there is no OS job. A machine's
 [managed policy](managed-policy.md#update-control), read when the app starts,
 can turn these checks off or send them to an approved mirror.
 
+Stable RCs use the final product version and Stable update endpoint. Moving
+between RCs at the same `X.Y.Z` requires a manual reinstall; the updater does
+not treat another candidate at that version as newer. See
+[RC acceptance](release-rings.md#publish-a-release-candidate).
+
 Updating has three separate steps:
 
 1. **Download.** Open **Updates** in the sidebar, including its collapsed
    rail or mobile drawer, to review app and connected-server updates in one
    panel. Its **Desktop app** section offers **Download update**; the same
    controls remain in Settings → System → **Desktop app updates**. The
-   **Automatic download** setting (Never, After 24 hours, Immediately; default
+   **Automatic desktop app download** setting (Never, After 24 hours, Immediately; default
    After 24 hours) decides when it downloads without a click; the 24-hour clock
    starts when that version is first seen and survives restarts. A manual
    download always works. Downloading shows byte progress and never restarts
@@ -34,7 +39,8 @@ Updating has three separate steps:
    package in memory.
 2. **Confirm.** A downloaded update offers **Restart to update**, which only
    opens a confirmation. When the app's built-in server serves this window,
-   the confirmation lists the running agent turns the restart interrupts; an
+   the confirmation gives the number of running agent turns a restart interrupts.
+   It lists titles you can read and shows only a count for private turns. An
    installed service or another server keeps running.
 
    A downloaded update survives quitting. Shortly after the next start (off
@@ -55,7 +61,7 @@ Updating has three separate steps:
    install error; the next check offers the update again.
 3. **Install and restart.** Only **Restart now** installs the download, after
    its digest and signature check, and restarts the app. **Restart now** waits
-   until the running agent turns are listed. A failed install leaves the update
+   for the built-in server’s running-turn check to finish. A failed install leaves the update
    downloaded and the app running, with the failure shown.
 
 The Updates panel and Settings show check failures with the updater's own
@@ -81,8 +87,9 @@ upgrades can each open a changelog once; server presentation is remembered per
 endpoint and instance, and the app prompt takes precedence when both are pending.
 The first observation of each server records its version without a popup.
 
-**Update policies and details** opens Settings, where automatic-download
-policies remain. Source-installation and manual host guidance remain reachable
+**Update policies and details** opens Settings. **Automatic server download**
+appears within the connected server’s card when that server supports staging
+updates from a release archive. Source-installation and manual host guidance remain reachable
 from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
 
 Updating a separately running server remains a separate operation. Its source
@@ -285,60 +292,94 @@ claims still use the registry's current atomic ownership check. The running
 sidecar supervisor checks child exit every two seconds; restart and shutdown
 messages wake it immediately, and startup retains its 150 ms exit check.
 
-The desktop sidecar enables Node 24's compile cache before loading the server,
-under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch. Child-process environments scrub `NODE_COMPILE_CACHE`, including
-terminal PTYs and engine children, so user Node programs do not write into this
-server cache. The server does not enable a cache after loading its bundle:
-that is too late to cache compilation of the entry point. Node's
-`NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
-not prevent startup.
+Neither the desktop sidecar nor `station start` gives the server a compile
+cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
+the supervised server, a warm cache left it larger at rest and did not make
+startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
+(three alternating rounds, medians after a 45-second settle), the cache added
+about 120 MiB to the idle server. Without the flag below, it started the
+server sooner in every round (0.5 to 1.9 s); with the flag, it was faster in one
+round of three. Memory at rest wins that trade. The server does not enable a cache after
+loading its bundle either: that is too late to cache compilation of the entry
+point.
+
+The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
+cap the process supervisor gives each core it forks
+([server memory at rest](../reference/station-weight.md#server-memory-at-rest)).
+On the same measurement, the sidecar's idle process tree dropped from 663 MiB
+to 425 MiB with both changes.
+
+The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
+child-process environments still scrub it. User and third-party Node
+programs, terminal PTYs and engine children never write into this cache.
+[`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
+gives the home's cache directory only to the built-in `station-control` and
+`station-knowledge` bundles, through the same exact-binary check
+(`withStationControlRuntimeEnv`), which no longer hands them any API
+credential. That covers the copies an engine or the tool catalogue starts
+from its MCP configuration. Measured, a warm cache starts those
+bundles faster and leaves them smaller. Each removes the setting from its own
+environment at startup and writes its cache straight away, because an engine
+may end it with a signal, after which Node writes nothing. A cold cache, the
+first start of a bundle in a home, holds its new entries in memory until that
+child exits. Every server build stamps its bundles with a build time, so a
+rebuild starts cold. `station-docs`, worker threads and the occasional helper
+children get no cache: the docs server's delivered definition carries no
+environment by design, and the rest were not measured as worth it.
+
+Node never prunes the cache. One minute after boot, the server removes any
+Node-version subdirectory that nothing has written to for 30 days, except the
+one its own process uses when an operator started it with `NODE_COMPILE_CACHE`. It then removes the whole cache if that is still over
+256 MiB. A subdirectory that is only read ages too, and costs one cold start
+once it is removed. The prune never follows a link inside the cache: it ages
+only real directories, counts only regular files, and removing a link removes
+the link, not its target. These checks run before the prune, not atomically
+with it: something that can write inside the home could swap `cache` or
+`node-compile` for a link in between. The home is private to its user, so that
+needs access the user already has over the target.
+
+`cache` and `cache/node-compile` under the home must each be a real directory
+or not exist yet, and the cache must resolve inside the home's real path. The
+home itself may be a link. If either component is a symbolic link or anything
+other than a directory, the server neither hands the cache to the built-in
+children nor prunes it, and logs that once for the home. Otherwise Node and
+the prune would write into, or delete from, the link's target, such as an
+operator's shared directory.
+
+No pre-generated cache ships with the desktop build. Node names each cache
+subdirectory after the Node version, architecture, V8 flags and user id, and
+keys each entry by the bundle's absolute path. A cache generated on the build
+machine would miss for other users, and Node's portable mode removes only the
+path dependency. Node's `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains
+supported, and the server then gives the built-in children no cache either.
+Cache failure must not prevent startup.
+
+Every static import in `dist-server/command-station.js` is loaded when the
+server boots, whether or not its code runs. The Claude Agent SDK,
+`@kontourai/console-server` and `@kontourai/veritas/engine` are loaded on first
+use instead, because an idle server needs none of them and each costs memory
+once loaded. The server build fails if the bundle statically imports any of
+those packages, or any subpath of one, again
+([deny list](../../scripts/lib/server-static-imports.mjs)).
+The build also fails on a static import of the `@kontourai/flow-agents` root,
+which re-exports the whole package. Its narrow subpaths may still be imported
+statically; the ones only async callers need are loaded on first use
+([loaders](../../src-server/services/evidence/load-flow-agents.ts)).
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an
 external map and a `sourceMappingURL` comment. Normal server launches do not
 enable Node's automatic source-map stack rewriting. For a diagnostic launch,
 `node --enable-source-maps dist-server/command-station.js` rewrites stack frames
-when the exact matching maps are beside the bundle; mapping repeated error
+when the exact matching map is beside the bundle; mapping repeated error
 stacks can add cost, so this is opt-in.
 
-The main server bundle is code-split ([`esbuild.config.mjs`](../../esbuild.config.mjs)).
-`command-station.js` is a small entry; the server's code is in
-`station-chunk-<hash>.js` files beside it, named by content hash. A boot loads
-only the chunks its imports reach. Subsystems a boot does not use load their
-chunk at first use through `await import()`: the OTel SDK (only with an
-endpoint configured), local-account authentication, the Project S3 client
-and the Strands durable model wrapper. The other server bundles
-(`station-control.js`, the workers and helpers) stay single files. Chunks sit
-in the server directory itself, not a subdirectory, because bundled code
-finds its workers, helpers and schemas relative to its own `import.meta.url`.
-Every consumer of the server directory (desktop staging, the portable archive,
-the container image, CLI build promotion) copies or renames it whole, so the
-chunks travel with the entry.
-
-Each build first removes the `station-chunk-*` files an earlier build left in
-its output directory. A server already running from that directory then fails
-on its next first-use import, because the chunk it would load is gone. The CLI
-builds into a fresh candidate directory and promotes it whole, but a server
-still running from the replaced directory has the same exposure until it
-restarts. The build's ASCII check (`scripts/lib/server-bundle-ascii.mjs`)
-covers the chunks as well as the entry.
-
-The entry orders boot with awaited imports. It loads `.env` first, then
-registers telemetry providers, then evaluates the server (`server-main.ts`).
-Static imports cannot keep that order once the bundle is split: esbuild
-evaluates the shared chunks an entry imports before the entry's own modules.
-The [portability test](../../scripts/__tests__/server-build-portability.test.ts)
-checks the emitted chunk graph for this order. It also checks that each
-subsystem above sits outside the boot chunks and loads from a staged tree.
-
-For offline diagnosis, preserve the exact bundle and maps from the same build.
-Do not use a fresh checkout's map for a different released bundle. A raw stack
-frame names the chunk it ran in: use that file's map. To map one frame, pass
-its map, 1-based line and column to Node's built-in mapper:
+For offline diagnosis, preserve the exact bundle and map from the same build.
+Do not use a fresh checkout's map for a different released bundle. To map one
+raw stack frame, pass its 1-based line and column to Node's built-in mapper:
 
 ```sh
-node --input-type=module - dist-server/station-chunk-<hash>.js.map <line> <column> <<'JS'
+node --input-type=module - dist-server/command-station.js.map <line> <column> <<'JS'
 import { readFileSync } from 'node:fs';
 import { SourceMap } from 'node:module';
 const [mapPath, line, column] = process.argv.slice(2);

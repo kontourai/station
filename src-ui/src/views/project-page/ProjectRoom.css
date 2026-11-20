@@ -307,3 +307,29 @@
 .project-room--screen > .project-room__title {
   padding: var(--k-space-1) var(--k-space-2);
 }
+
+/* #5064: Tasks Waiting on you in this Project. */
+.project-room__waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+
+.project-room__waiting-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--k-brand);
+}
+
+.project-room__header--screen .project-room__waiting-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

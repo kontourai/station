@@ -1,0 +1,7 @@
+{
+  "revision": "6ce6e82dee3c219f870589b9fba4e08518d2b725",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reused the existing required AppConfig model fixture values in legacy Agent guidance export. The route, format and normalization claims remain the same. The Shared type lane and all eight portability tests passed.","inputs":["packages/shared/src/__tests__/portability.test.ts"]}
+  ]
+}

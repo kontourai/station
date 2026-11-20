@@ -28,7 +28,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
@@ -37,6 +37,13 @@ import {
   createWindowsReleaseSigningReceipt,
   windowsSigningReceiptAsset,
 } from '../lib/windows-release-signing.mjs';
+import { runReleaseAvailability } from '../release-availability-driver.mjs';
+import {
+  copyCandidateToFinal,
+  createPromotionPlan,
+  PROMOTION_RECEIPT_ASSET,
+  verifyPromotionReceipt,
+} from '../release-promotion.mjs';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const TAG = 'v0.1.11-rc.1';
@@ -206,6 +213,100 @@ function portableProducer(artifacts: string) {
   );
   return sha;
 }
+
+it('stages same-source RCs independently and refuses an existing candidate image', () => {
+  const cwd = workDir('station-rc-image-custody-');
+  const output = join(cwd, 'github-output');
+  const names = ['v0.1.11-rc.1', 'v0.1.11-rc.2'].map((tag) => {
+    const result = bash(
+      stepRun('container', (step) => step.id === 'metadata'),
+      cwd,
+      {
+        RELEASE_TAG: tag,
+        RELEASE_SHA: 'a'.repeat(40),
+        RELEASE_CREATED_AT: CREATED_AT,
+        GITHUB_REPOSITORY: REPOSITORY,
+        GITHUB_OUTPUT: output,
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const name = readFileSync(output, 'utf8').match(/^staging_tag=(.+)$/m)?.[1];
+    writeFileSync(output, '');
+    if (!name) throw new Error('metadata did not emit a staging image');
+    return name;
+  });
+  expect(names[0]).not.toBe(names[1]);
+  const bin = join(cwd, 'bin');
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, 'docker'),
+    '#!/bin/sh\n[ "$1 $2 $3" = "buildx imagetools inspect" ] || exit 2\n[ "$4" = "$EXISTING_IMAGE" ]\n',
+    { mode: 0o755 },
+  );
+  const guard = stepRun(
+    'container',
+    named('Refuse to overwrite immutable source image staging'),
+  );
+  for (const [index, name] of names.entries()) {
+    const result = bash(
+      resolveExpressions(guard, { 'steps.metadata.outputs.staging_tag': name }),
+      cwd,
+      {
+        PATH: `${bin}:${process.env.PATH}`,
+        EXISTING_IMAGE: names[0],
+      },
+    );
+    if (index === 0) {
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('Immutable image already exists');
+    } else expect(result.status, result.stderr).toBe(0);
+  }
+  // The publication consumer must find the exact candidate staging image too.
+  mkdirSync(join(cwd, 'release-assets'));
+  writeFileSync(
+    join(cwd, 'release-assets/station-container-release.json'),
+    JSON.stringify({
+      image: 'ghcr.io/kontourai/station',
+      digest: DIGEST,
+    }),
+  );
+  const published = load(
+    readFileSync(
+      join(repoRoot, '.github/workflows/publish-release.yml'),
+      'utf8',
+    ),
+  ) as { jobs: Record<string, Job> };
+  const promote = published.jobs.publish.steps?.find(
+    (step) => step.name === 'Promote only the recorded immutable GHCR digest',
+  )?.run;
+  if (!promote) throw new Error('publication consumer is missing');
+  writeFileSync(
+    join(bin, 'docker'),
+    `#!/bin/sh
+[ "$1 $2" = "buildx imagetools" ] || exit 2
+case "$3" in
+  inspect)
+    case "$4" in *:staging-*) [ "$4" = "$EXISTING_IMAGE" ] || exit 1;; *:sha-*) [ -e "$DOCKER_CREATED" ] || exit 1;; esac
+    printf '%s\n' "$IMAGE_DIGEST";;
+  create) touch "$DOCKER_CREATED"; exit 0;;
+  *) exit 2;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  const result = bash(promote, cwd, {
+    PATH: `${bin}:${process.env.PATH}`,
+    EXISTING_IMAGE: names[1],
+    IMAGE_DIGEST: DIGEST,
+    DOCKER_CREATED: join(cwd, 'created'),
+    RELEASE_TAG: 'v0.1.11-rc.2',
+    RELEASE_SHA: 'a'.repeat(40),
+    RELEASE_MODE: 'promote',
+    PUBLICATION_TAG: 'v0.1.11',
+    RELEASE_VERSION: BASE_VERSION,
+  });
+  expect(result.status, result.stderr).toBe(0);
+});
 
 /** The release.yml container job's descriptor step. */
 function containerProducer(artifacts: string, sha: string) {
@@ -404,6 +505,61 @@ function nativeProducers(
   const staged = `station-stable-ios-staged-${iosBundleVersion}`;
   write(staged, `release-assets/station-${TAG}-ios-device.ipa`);
   write(staged, 'provider-receipts/testflight-build.json');
+  const hash = (artifact: string, file: string) =>
+    createHash('sha256')
+      .update(readFileSync(join(artifacts, artifact, file)))
+      .digest('hex');
+  const aabSha256 = hash(
+    'station-android',
+    `station-${TAG}-android-universal.aab`,
+  );
+  const ipaSha256 = hash(
+    staged,
+    `release-assets/station-${TAG}-ios-device.ipa`,
+  );
+  const androidDirectory = join(
+    artifacts,
+    `station-android-store-authority-${iosBundleVersion}`,
+  );
+  mkdirSync(androidDirectory, { recursive: true });
+  writeFileSync(
+    join(androidDirectory, 'android-store-authority.json'),
+    JSON.stringify({
+      kind: 'station.release-store-authority/v1',
+      producerTag: TAG,
+      sourceSha: sha,
+      version: BASE_VERSION,
+      android: {
+        packageName: 'io.kontourai.station',
+        versionCode: Number(iosBundleVersion),
+        aabSha256,
+        providerBundleSha256: aabSha256,
+        sourceTrack: 'internal',
+      },
+    }),
+  );
+  const delivery = join(
+    artifacts,
+    `station-stable-ios-testflight-${iosBundleVersion}/provider-receipts`,
+  );
+  mkdirSync(delivery, { recursive: true });
+  writeFileSync(
+    join(delivery, 'testflight-build-receipt.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: 'testflight-build-receipt',
+      provider: 'app-store-connect',
+      appId: '123456789',
+      buildId: '987654321',
+      bundleId: 'io.kontourai.station',
+      bundleVersion: iosBundleVersion,
+      sourceSha: sha,
+      providerSourceSha: sha,
+      processingState: 'VALID',
+      deliveryMode: 'uploaded',
+      ipaSha256,
+    }),
+  );
   // Download-root neighbours that must never be admitted.
   write(
     'station-release-client-build-provenance-4242',
@@ -500,6 +656,15 @@ function stageCandidate() {
   );
   expect(admitted.status, admitted.stderr).toBe(0);
   const assets = join(work, 'release-assets');
+  const storeAuthority = bash(
+    stepRun(
+      'assemble-draft',
+      named('Bind definitive store upload lineage to the candidate bytes'),
+    ),
+    work,
+    env,
+  );
+  expect(storeAuthority.status, storeAuthority.stderr).toBe(0);
   // assemble-draft's SBOM step needs cargo and the pnpm generator; its two
   // tag-bound CLIs run for real against the admitted assets.
   const fragments = join(runnerTemp, 'station-release-sbom-fragments');
@@ -723,4 +888,323 @@ if (args[1] === 'create') {
     expect(admitted.status).toBe(1);
     expect(admitted.stderr).toContain('unknown release channel "preview"');
   }, 240_000);
+});
+
+async function promotionFixture() {
+  const staged = stageCandidate();
+  const assembled = assembleInventory(
+    staged.work,
+    staged.env,
+    staged.updaterPublicKey,
+  );
+  expect(assembled.status, assembled.stderr).toBe(0);
+  const plan = await createPromotionPlan({
+    producerTag: TAG,
+    sourceSha: staged.env.RELEASE_SHA,
+    policySha: 'c'.repeat(40),
+    workflowSha: 'd'.repeat(40),
+    assetsDir: staged.assets,
+  });
+  const refs = new Map([[TAG, staged.env.RELEASE_SHA]]);
+  const files = new Map<string, Map<string, Buffer>>([
+    [
+      TAG,
+      new Map(
+        readdirSync(staged.assets).map((name) => [
+          name,
+          readFileSync(join(staged.assets, name)),
+        ]),
+      ),
+    ],
+  ]);
+  const states = new Map([
+    [
+      TAG,
+      {
+        id: 1,
+        tag_name: TAG,
+        draft: false,
+        prerelease: true,
+        body: 'Candidate changelog',
+      },
+    ],
+  ]);
+  const writes: string[] = [];
+  const github = {
+    source: async (tag: string) => refs.get(tag) ?? null,
+    release: async (tag: string) => {
+      const state = states.get(tag);
+      if (!state) return null;
+      return {
+        ...state,
+        assets: [...(files.get(tag) ?? [])].map(([name, bytes]) => ({
+          name,
+          size: bytes.length,
+          digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+        })),
+      };
+    },
+    createRef: async (tag: string, sha: string) => {
+      writes.push(`ref:${tag}`);
+      refs.set(tag, sha);
+      return { ref: `refs/tags/${tag}` };
+    },
+    createDraft: async (tag: string, _sha: string, body: string) => {
+      writes.push(`draft:${tag}`);
+      const value = {
+        id: 2,
+        tag_name: tag,
+        draft: true,
+        prerelease: false,
+        body,
+      };
+      states.set(tag, value);
+      files.set(tag, new Map());
+      return value;
+    },
+    upload: async (_id: number, asset: { name: string }, directory: string) => {
+      writes.push(`asset:${asset.name}`);
+      const bytes = readFileSync(join(directory, asset.name));
+      files.get(plan.publicationTag)!.set(asset.name, Buffer.from(bytes));
+      return {
+        name: asset.name,
+        size: bytes.length,
+        digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+      };
+    },
+  };
+  const journalPath = join(staged.runnerTemp, 'promotion-journal.json');
+  const receiptPath = join(staged.runnerTemp, PROMOTION_RECEIPT_ASSET);
+  return {
+    ...staged,
+    plan,
+    refs,
+    files,
+    states,
+    writes,
+    github,
+    journalPath,
+    receiptPath,
+  };
+}
+
+describe('candidate-to-final artifact transfer through the real promotion owner', () => {
+  it('copies every original byte/name to an immutable final draft and binds its lineage', {
+    timeout: 240_000,
+  }, async () => {
+    const f = await promotionFixture();
+    const result = await copyCandidateToFinal({
+      plan: f.plan,
+      assetsDir: f.assets,
+      github: f.github,
+      journalPath: f.journalPath,
+      receiptPath: f.receiptPath,
+    });
+    expect(result).toEqual({ publicationTag: 'v0.1.11', repairOnly: false });
+    expect(f.refs.get('v0.1.11')).toBe(f.env.RELEASE_SHA);
+    expect(f.states.get('v0.1.11')).toMatchObject({
+      draft: true,
+      prerelease: false,
+      body: expect.stringContaining('is not Authenticode-signed yet'),
+    });
+    const transferred = f.files.get('v0.1.11')!;
+    expect([...transferred.keys()].sort()).toEqual(
+      readdirSync(f.assets).sort(),
+    );
+    for (const [name, bytes] of transferred)
+      expect(bytes).toEqual(readFileSync(join(f.assets, name)));
+    const receipt = JSON.parse(readFileSync(f.receiptPath, 'utf8'));
+    await expect(
+      verifyPromotionReceipt(receipt, {
+        publicationTag: 'v0.1.11',
+        sourceSha: f.env.RELEASE_SHA,
+        assetsDir: f.assets,
+      }),
+    ).resolves.toMatchObject({ producerTag: TAG, state: 'assets-verified' });
+    expect(receipt).toMatchObject({
+      policySha: 'c'.repeat(40),
+      workflowSha: 'd'.repeat(40),
+    });
+    expect(
+      receipt.assets.find((asset: { name: string }) =>
+        asset.name.endsWith('-ios-device.ipa'),
+      ).name,
+    ).toBe(`station-${TAG}-ios-device.ipa`);
+    const published = new Map(transferred);
+    published.set(PROMOTION_RECEIPT_ASSET, readFileSync(f.receiptPath));
+    const entries = [...published].map(([name, bytes], index) => ({
+      id: index + 1,
+      name,
+      digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+      size: bytes.length,
+    }));
+    const finalRelease = {
+      tag_name: 'v0.1.11',
+      draft: false,
+      prerelease: false,
+      published_at: '2026-11-15T00:00:00.000Z',
+      assets: entries,
+    };
+    const addLabel = vi.fn(),
+      removeLabel = vi.fn();
+    const verifyAttestation = vi.fn(
+      async (
+        path: string,
+        authority: {
+          tag?: string;
+          sourceRef?: string;
+          sourceSha: string;
+          workflow: string;
+        },
+      ) => {
+        if (path.endsWith(PROMOTION_RECEIPT_ASSET))
+          expect(authority).toEqual({
+            sourceRef: 'refs/heads/main',
+            sourceSha: 'd'.repeat(40),
+            workflow: '.github/workflows/publish-release.yml',
+          });
+        else
+          expect(authority).toEqual({
+            tag: TAG,
+            sourceSha: f.env.RELEASE_SHA,
+            workflow: '.github/workflows/release.yml',
+          });
+      },
+    );
+    const api = {
+      repository: async () => ({ private: false, default_branch: 'main' }),
+      releaseForTag: async () => finalRelease,
+      tagSha: async () => f.env.RELEASE_SHA,
+      listReleases: async () => [finalRelease],
+      downloadAsset: async (id: number) =>
+        published.get(entries.find((entry) => entry.id === id)!.name)!,
+      verifyPolicyCommit: async (sha: string, branch: string) =>
+        branch === 'main' && ['c'.repeat(40), 'd'.repeat(40)].includes(sha),
+      verifyAttestation,
+      addLabel,
+      removeLabel,
+    };
+    await expect(
+      runReleaseAvailability(
+        {
+          repository: { full_name: REPOSITORY },
+          workflow: 'publish-release',
+          success: true,
+          tag: 'v0.1.11',
+          sourceSha: f.env.RELEASE_SHA,
+          channel: 'stable',
+          allowEmptyBaseline: true,
+        },
+        { api, updaterPublicKey: f.updaterPublicKey },
+      ),
+    ).resolves.toMatchObject({
+      kind: 'bootstrap-without-labels',
+      projected: 0,
+    });
+    expect(verifyAttestation).toHaveBeenCalledTimes(entries.length);
+    expect(addLabel).not.toHaveBeenCalled();
+    expect(removeLabel).not.toHaveBeenCalled();
+    // The caller authenticates the completed receipt before repair admission.
+    f.files.set('v0.1.11', published);
+    f.states.set('v0.1.11', {
+      ...f.states.get('v0.1.11')!,
+      draft: false,
+      prerelease: false,
+    });
+    const writesBeforeRepair = [...f.writes];
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: join(f.runnerTemp, 'repair-journal.json'),
+        receiptPath: f.receiptPath,
+        repairReceipt: f.receiptPath,
+      }),
+    ).resolves.toEqual({ publicationTag: 'v0.1.11', repairOnly: true });
+    expect(f.writes).toEqual(writesBeforeRepair);
+    f.refs.delete('v0.1.11');
+    f.states.delete('v0.1.11');
+    f.files.delete('v0.1.11');
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: join(f.runnerTemp, 'missing-repair-journal.json'),
+        receiptPath: f.receiptPath,
+        repairReceipt: f.receiptPath,
+      }),
+    ).rejects.toThrow('repair destination is missing');
+    expect(f.writes).toEqual(writesBeforeRepair);
+  });
+
+  it('refuses a same-SHA destination ref without completed attested recovery lineage', {
+    timeout: 240_000,
+  }, async () => {
+    const f = await promotionFixture();
+    f.refs.set('v0.1.11', f.env.RELEASE_SHA);
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: f.journalPath,
+        receiptPath: f.receiptPath,
+      }),
+    ).rejects.toThrow('same-SHA ref is not recovery authority');
+    expect(f.writes).toEqual([]);
+  });
+
+  it('refuses a mismatched remote producer asset before any write', {
+    timeout: 240_000,
+  }, async () => {
+    const f = await promotionFixture();
+    const name = [...f.files.get(TAG)!.keys()][0];
+    f.files.get(TAG)!.set(name, Buffer.from('substituted producer bytes'));
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: f.journalPath,
+        receiptPath: f.receiptPath,
+      }),
+    ).rejects.toThrow('remote asset bytes differ');
+    expect(f.writes).toEqual([]);
+  });
+
+  it('retains UNKNOWN after a committed ref loses its response and refuses automatic reapplication', {
+    timeout: 240_000,
+  }, async () => {
+    const f = await promotionFixture();
+    const write = f.github.createRef;
+    f.github.createRef = async (tag, sha) => {
+      await write(tag, sha);
+      throw new Error('lost response');
+    };
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: f.journalPath,
+        receiptPath: f.receiptPath,
+      }),
+    ).rejects.toThrow('UNKNOWN');
+    expect(JSON.parse(readFileSync(f.journalPath, 'utf8'))).toMatchObject({
+      state: 'unknown',
+      effects: [{ name: 'create-final-ref', state: 'unknown' }],
+    });
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: join(f.runnerTemp, 'retry.json'),
+        receiptPath: f.receiptPath,
+      }),
+    ).rejects.toThrow('same-SHA ref is not recovery authority');
+    expect(f.writes).toEqual(['ref:v0.1.11']);
+  });
 });

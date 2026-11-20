@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/decisions/telemetry-tiers.md","note":"Re-read for #4994: retry batches keep their identity period and event IDs; the 'rejected' outbox reason is a new dropped reason, consistent with the decision's ledger of reasons.","inputs":["docs/decisions/telemetry-tiers.md","packages/contracts/src/product-telemetry.ts"]}
+  ]
+}

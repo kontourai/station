@@ -418,6 +418,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
+    'tests/guided-engine-setup.spec.ts',
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
@@ -445,6 +446,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
     'tests/chat-settings-and-task-notices.spec.ts',
+    'tests/notification-deep-link-opening.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -461,13 +463,18 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   ],
   sharedInstanceExclusive: [
     'tests/station-connection-chat.spec.ts',
+    'tests/station-conversation-handoff.spec.ts',
     // Creates real Projects, channels and read markers on the instance.
     'tests/project-channel-navigation.spec.ts',
     // Starts its own Station with local accounts and sharing, pairs browsers
     // and approves an account-bound device, as device-pairing-mobile does.
     'tests/project-room-message-actions.spec.ts',
+    // The same isolated Station shape for the live stream (#4798).
+    'tests/project-room-live.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
+    // Copies opt-in UI review captures to a shared output directory.
+    'tests/engine-app-home-override.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
@@ -539,6 +546,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/station-conversation-handoff.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Station connections',
+    tierTarget: 'partial',
+    primary: false,
+    rationale:
+      'Two disposable real Stations and real delegation pairing: a host conversation continues on the paired Station with its history carried, the first turn goes through the relay, and a same-key retry reuses the receiver conversation. Deterministic local HTTP model; no conversation route mocks.',
+    exceptions: [],
+  },
   {
     path: 'tests/station-connection-chat.spec.ts',
     bucket: 'product',
@@ -1093,6 +1110,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/enterprise-pane-lifecycle.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'On an isolated clean Station, previews and installs Enterprise and its real provider dependency, opens Dashboard and Notes from server-issued Project Pane occurrences, checks filesystem-backed Notes and unscoped retrieval with deterministic embeddings, and proves dependency ownership on uninstall.',
+    exceptions: [],
+  },
+  {
     path: 'tests/layout-stack-parity.spec.ts',
     bucket: 'extended',
     surface: 'Plugins',
@@ -1201,6 +1228,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-room-live.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#4798/#4799/#4800 on a real isolated Station: ten channels ride one live connection with no per-room stream, and a message in the tenth marks its sidebar row; a frame dropped by a proxy is backfilled from history; a contributor's typing shows, clears on stop and when their own stream closes; a contributor's mention reaches only the operator, opens the exact message from For you, and a non-member mention is refused; an Agent request's row comes from its record and leaves once the conversation moves on. The contributor acts through their account-bound session API; their room UI is not exercised.",
     exceptions: [],
   },
   {
@@ -1370,6 +1407,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/guided-engine-setup.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Guided engine setup at phone and desktop widths in both themes: installer review/cancel, detection refresh, connect and explicit Station tools. Fixture-backed UI; no vendor installation or account qualification.',
+    exceptions: [],
+  },
+  {
     path: 'tests/connections-crud.spec.ts',
     bucket: 'product',
     surface: 'Connections',
@@ -1377,6 +1424,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Connections CRUD plus Agent app discovery hit, miss, Add-catalog placement, and Model-only first-run honesty.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/engine-app-home-override.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Engine connection details show the effective App home and available actions on phone and desktop in both themes. Fixture-backed configuration and profile status.',
     exceptions: [],
   },
   {
@@ -1698,7 +1755,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
+      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All chats scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; seeded running subagents and tool calls laid out at 380px and 600px in dark theme with actions clear of the text and All chats grouped by chat; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
     exceptions: [],
   },
   {
@@ -1841,7 +1898,17 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam render as compact, distinct status lines that name their title once.',
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam use shared child-work disclosures with distinct outcomes and expandable results, a non-repeating successful command title, and no separate finished-task banners.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/notification-deep-link-opening.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At 390 and 1440 in light and dark, through the notification panel and the real dock: a held deep-linked conversation shows its opening identity and covers the previous transcript, a refused one says why with a keyboard-dismissable notice, and an imported conversation opened from the Inbox keeps its header and Continue over the pending open, with Continue reachable by Tab and sending the real continue-session launch.',
     exceptions: [],
   },
   {
@@ -2020,7 +2087,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, immutable account-bound Device approval, restricted Project/shared Task reads, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, account-bound Device approval and promotion through the operator API, landing on the exact shared brief, two-way Task discussion, draft preservation, return after reload, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
     exceptions: [],
   },
   {
@@ -2279,7 +2346,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#3027 + UX audit RT-02/SHELL-12: the 'Which agents do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
+      "station#3027 + UX audit RT-02/SHELL-12: the 'Which engines do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
     exceptions: [],
   },
   {
@@ -2389,7 +2456,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — the section navigation's rows measured against the 44px touch floor at 390x844 with no horizontal document scroll, a nav-only row really leaving /settings for its destination's route, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
+      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — Customize links measured against the 44px CSS floor, rendered size, and hit area at 390x844 after entering Settings through the account menu, Settings section navigation with no horizontal document scroll, a Customize link opening its actual destination, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
     exceptions: [],
   },
   {

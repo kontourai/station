@@ -181,6 +181,8 @@ describe('session conflict chip matches local branch and push target (#2941)', (
       data: {
         available: true,
         provider: 'github',
+        providerLabel: 'GitHub',
+        automation: { feedback: true, taskBranchDiscovery: true },
         host: 'github.com',
         repository: { owner: 'o', name: 'r' },
         branch: 'feat',

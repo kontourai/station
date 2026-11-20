@@ -1,17 +1,39 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { turnCompletionNotificationOps } from '../../../telemetry/metrics.js';
 import { agentActivityPhaseFor } from '../../notifications/agent-activity-card.js';
 import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
+import {
+  createSqliteCoordinatorStore,
+  wireCoordinatorWakes,
+} from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
+import {
+  createFileFinishedAlertEpisodeStore,
+  FINISHED_ALERT_EPISODES_MAX,
+  FinishedAlertEpisodes,
+  type PersistedFinishedAlertEpisode,
+} from '../finished-alert-episodes.js';
+import {
+  type FinishedAlertHoldFacts,
+  finishedAlertHoldReasons,
+} from '../finished-alert-hold.js';
 import {
   type OrchestrationStreamPresenceSubject,
   orchestrationStreamPresenceSubjectForSession,
 } from '../orchestration-stream-presence.js';
 import { projectSessionLifecycle } from '../session-lifecycle-service.js';
 import {
+  FINISHED_ALERT_CONFIRM_MS,
+  FINISHED_ALERT_RECHECK_MS,
+  FINISHED_ALERT_RETRY_BASE_MS,
+  FINISHED_ALERT_RETRY_MAX_MS,
   resolveTurnCompletionOutcome,
   turnTerminalOnActivityCard,
   wireInternalStopRedispatchFailureNotifications,
@@ -20,6 +42,7 @@ import {
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
   orchestrationEventPersistDuration: { record: vi.fn() },
   orchestrationEventsPersisted: { add: vi.fn() },
   orchestrationStreamPresenceOps: { add: vi.fn() },
@@ -38,6 +61,40 @@ function baseEvent(overrides: Record<string, unknown> = {}) {
     threadId: 'thread-1',
     turnId: 'turn-1',
     ...overrides,
+  };
+}
+
+/**
+ * A timer the test runs by hand. The listener holds a finish for its
+ * confirmation window before pushing it; the per-turn suites below run
+ * every armed window at the end of each emit, so one completion with nothing
+ * holding it still yields its push within that emit.
+ */
+function manualTimers() {
+  let queue: Array<{ callback: () => void; delayMs: number; live: boolean }> =
+    [];
+  return {
+    setTimer(callback: () => void, delayMs: number) {
+      const entry = { callback, delayMs, live: true };
+      queue.push(entry);
+      return () => {
+        entry.live = false;
+      };
+    },
+    /** Runs every live timer armed so far (not ones they arm). */
+    runAll() {
+      const due = queue.filter((entry) => entry.live);
+      queue = [];
+      for (const entry of due) {
+        entry.live = false;
+        entry.callback();
+      }
+      return due.length;
+    },
+    /** Delays of the live timers, oldest first. */
+    pending() {
+      return queue.filter((entry) => entry.live).map((entry) => entry.delayMs);
+    },
   };
 }
 
@@ -174,6 +231,7 @@ describe('resolveTurnCompletionOutcome', () => {
 });
 
 describe('wireTurnCompletionNotifications (station#1225)', () => {
+  let timers: ReturnType<typeof manualTimers>;
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
@@ -184,10 +242,13 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
   ): Promise<void> {
     bus.emit(event, data);
     await notificationService.drainAsyncDispatch();
+    if (timers.runAll() > 0) await notificationService.drainAsyncDispatch();
   }
   let resolveSessionPresenceSubject: (
     threadId: string,
   ) => OrchestrationStreamPresenceSubject | undefined;
+  /** #5072: the Project a session recorded at its start. */
+  let projectOf: (threadId: string) => string | undefined;
   let logger: {
     warn: ReturnType<
       typeof vi.fn<(message: string, meta?: Record<string, unknown>) => void>
@@ -196,10 +257,12 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-'));
+    timers = manualTimers();
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
     resolveSessionPresenceSubject = () =>
       orchestrationStreamPresenceSubjectForSession('owner-1');
+    projectOf = () => undefined;
     logger = {
       warn: vi.fn<(message: string, meta?: Record<string, unknown>) => void>(),
     };
@@ -219,6 +282,10 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       },
       notificationService,
       logger,
+      {
+        setTimer: timers.setTimer,
+        resolveProjectId: (threadId) => projectOf(threadId),
+      },
     );
     await notificationService.start();
   });
@@ -355,6 +422,24 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     );
   });
 
+  test('an ACP request-limit stop delivers attention instead of a finished notice', async () => {
+    await emit('orchestration:event', {
+      event: baseEvent({
+        provider: 'acp',
+        method: 'turn.completed',
+        finishReason: 'other',
+        stopReason: 'max_turn_requests',
+      }),
+    });
+    expect(await notificationService.list()).toEqual([
+      expect.objectContaining({
+        category: 'turn-failed',
+        title: 'Your agent needs attention',
+        priority: 'high',
+      }),
+    ]);
+  });
+
   test('schedules a "failed" notification for turn.aborted', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ method: 'turn.aborted', reason: 'crashed' }),
@@ -400,6 +485,35 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         body: 'Agent stopped in session thread-1',
         priority: 'normal',
       }),
+      expect.anything(),
+    );
+  });
+
+  test('a Codex abort followed by its interrupted terminal only notifies Stop', async () => {
+    const schedule = vi
+      .spyOn(notificationService, 'scheduleEnveloped')
+      .mockResolvedValue({} as never);
+    const event = (overrides: Record<string, unknown>) =>
+      baseEvent({ provider: 'codex', ...overrides });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.started' }),
+    });
+    await emit('orchestration:event', {
+      event: event({
+        method: 'session.stop-settled',
+        outcome: 'cooperative',
+        initiatedBy: 'user',
+      }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.aborted', reason: 'interrupted' }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.completed', finishReason: 'cancelled' }),
+    });
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(
+      'turn-completion',
+      expect.objectContaining({ category: 'turn-stopped' }),
       expect.anything(),
     );
   });
@@ -769,6 +883,31 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     },
   );
 
+  test('names the session’s Project on the record, so its settings apply (#5072)', async () => {
+    projectOf = (threadId) =>
+      threadId === 'thread-1' ? 'project-alpha' : undefined;
+    await emit('orchestration:event', { event: baseEvent() });
+    const [notification] = await notificationService.list();
+    expect(
+      (notification.metadata!.envelope as { source: unknown }).source,
+    ).toEqual({
+      kind: 'system',
+      subsystem: 'turn-completion',
+      projectId: 'project-alpha',
+    });
+  });
+
+  test('a Project lookup that throws still delivers the record, without a Project', async () => {
+    projectOf = () => {
+      throw new Error('project store unavailable');
+    };
+    await emit('orchestration:event', { event: baseEvent() });
+    const [notification] = await notificationService.list();
+    expect(
+      (notification.metadata!.envelope as { source: unknown }).source,
+    ).toEqual({ kind: 'system', subsystem: 'turn-completion' });
+  });
+
   test('never leaks response text into the push body', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ outputText: 'THE SECRET ANSWER IS 42' }),
@@ -840,6 +979,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
 });
 
 describe('wireTurnCompletionNotifications station#3525 internal-stop suppression', () => {
+  let timers: ReturnType<typeof manualTimers>;
   let bus: EventBus;
   let dir: string;
   let notificationService: NotificationService;
@@ -856,10 +996,12 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
   ): Promise<void> {
     bus.emit(event, data);
     await notificationService.drainAsyncDispatch();
+    if (timers.runAll() > 0) await notificationService.drainAsyncDispatch();
   }
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'turn-completion-notifications-stop-'));
+    timers = manualTimers();
     bus = new EventBus();
     notificationService = new NotificationService(bus, dir, 999_999);
     logger = {
@@ -879,6 +1021,7 @@ describe('wireTurnCompletionNotifications station#3525 internal-stop suppression
       },
       notificationService,
       logger,
+      { setTimer: timers.setTimer },
     );
     await notificationService.start();
   });
@@ -1299,5 +1442,1074 @@ describe('wireTurnCompletionNotifications turn-identity-anchor eviction timer (s
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+const makeTempDir = trackTempDirs();
+
+describe('wireTurnCompletionNotifications: one finished alert per completion episode', () => {
+  let timers: ReturnType<typeof manualTimers>;
+  let bus: EventBus;
+  let dir: string;
+  let notificationService: NotificationService;
+  let schedule: ReturnType<typeof vi.spyOn>;
+  /** The facts the real `OrchestrationService.readFinishedAlertHold` folds. */
+  let facts: Map<string, FinishedAlertHoldFacts>;
+  let delegatedChildren: Set<string>;
+  let holdThrows: boolean;
+  const subagent = {
+    producer: 'engine-subagent' as const,
+    reporterThreadId: 'thread-1',
+  };
+
+  async function emit(event: Record<string, unknown>): Promise<void> {
+    bus.emit('orchestration:event', { event: baseEvent(event) });
+    await notificationService.drainAsyncDispatch();
+  }
+  /** Lets every armed confirmation window and recheck run out. */
+  async function elapse(): Promise<void> {
+    timers.runAll();
+    await notificationService.drainAsyncDispatch();
+  }
+  const titles = () =>
+    schedule.mock.calls.map(
+      (call: unknown[]) => (call[1] as { title: string }).title,
+    );
+
+  beforeEach(async () => {
+    dir = makeTempDir('turn-completion-held-');
+    timers = manualTimers();
+    bus = new EventBus();
+    notificationService = new NotificationService(bus, dir, 999_999);
+    facts = new Map();
+    delegatedChildren = new Set();
+    holdThrows = false;
+    wireTurnCompletionNotifications(
+      bus,
+      {
+        isReadOnlyAttachedSession: () => false,
+        isEphemeralSession: () => false,
+        resolveSessionPresenceSubject: () =>
+          orchestrationStreamPresenceSubjectForSession('owner-1'),
+        readFinishedAlertHold: (threadId) => {
+          if (holdThrows) throw new Error('hold unreadable');
+          return finishedAlertHoldReasons(facts.get(threadId) ?? {});
+        },
+        isDelegatedChildSession: (threadId) => delegatedChildren.has(threadId),
+      },
+      notificationService,
+      { warn: vi.fn() },
+      { setTimer: timers.setTimer },
+    );
+    await notificationService.start();
+    schedule = vi
+      .spyOn(notificationService, 'scheduleEnveloped')
+      .mockResolvedValue({} as never);
+  });
+
+  afterEach(async () => {
+    await notificationService.shutdown();
+  });
+
+  test('a finish waits out its confirmation window before it is pushed', async () => {
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    expect(schedule).not.toHaveBeenCalled();
+    expect(timers.pending()).toEqual([FINISHED_ALERT_CONFIRM_MS]);
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+  });
+
+  test('a running subagent holds "finished" until it settles, then one alert goes out', async () => {
+    facts.set('thread-1', {
+      childWork: {
+        observability: 'reported',
+        observedAt: '2026-11-15T00:00:00.000Z',
+        running: [
+          {
+            ...subagent,
+            childId: 'agent-1',
+            status: 'running',
+            workKind: 'agent',
+          },
+        ],
+      },
+    });
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    // Held: only the recheck is armed, no confirmation window.
+    expect(timers.pending()).toEqual([FINISHED_ALERT_RECHECK_MS]);
+    await elapse();
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+
+    // The child settles: the next child-work frame opens the window.
+    facts.set('thread-1', {
+      childWork: {
+        observability: 'reported',
+        observedAt: '2026-11-15T00:00:00.000Z',
+        running: [],
+      },
+    });
+    await emit({ method: 'child-work.updated', turnId: undefined });
+    expect(schedule).not.toHaveBeenCalled();
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+    expect(schedule.mock.calls[0]?.[1]).toMatchObject({
+      dedupeTag: 'turn-completion:thread-1:turn-1',
+    });
+  });
+
+  test('a delegated session or queued follow-up holds; a backgrounded command does not', async () => {
+    facts.set('thread-1', {
+      ownedWork: { runningChildCount: 1, pendingStopCount: 0 },
+    });
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+
+    facts.set('thread-1', { queuedFollowUp: true });
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+
+    // A dev server left running: backgrounded, and the engine's open-work
+    // flag is explained by it. Not held.
+    facts.set('thread-1', {
+      openEngineWork: true,
+      childWork: {
+        observability: 'reported',
+        observedAt: '2026-11-15T00:00:00.000Z',
+        running: [
+          {
+            ...subagent,
+            childId: 'bash-1',
+            status: 'running',
+            workKind: 'command',
+            backgrounded: true,
+          },
+        ],
+      },
+    });
+    await elapse(); // the recheck sees the release and opens the window
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+  });
+
+  test('a user finish followed by the engine\'s own reply is one "finished", not "finished" then "replied"', async () => {
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    // Claude opens its own turn after a background child settles.
+    await emit({
+      method: 'turn.started',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    await elapse(); // the cancelled window does not fire
+    expect(schedule).not.toHaveBeenCalled();
+    await emit({
+      finishReason: 'stop',
+      turnId: 'provider:p',
+      metadata: { trigger: 'provider' },
+    });
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+    expect(schedule.mock.calls[0]?.[1]).toMatchObject({
+      dedupeTag: 'turn-completion:thread-1:provider:p',
+    });
+  });
+
+  test('a failure ends the episode at once and the held finish is never sent', async () => {
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await emit({ method: 'turn.started', turnId: 'turn-2' });
+    await emit({
+      method: 'runtime.error',
+      turnId: 'turn-2',
+      severity: 'error',
+      message: 'boom',
+    });
+    expect(titles()).toEqual(['Your agent needs attention']);
+    await elapse();
+    expect(titles()).toEqual(['Your agent needs attention']);
+  });
+
+  test('a delegated child announces no finish of its own, but its failure still notifies', async () => {
+    delegatedChildren.add('thread-1');
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await elapse();
+    expect(schedule).not.toHaveBeenCalled();
+    await emit({ method: 'turn.started', turnId: 'turn-2' });
+    await emit({
+      method: 'runtime.error',
+      turnId: 'turn-2',
+      severity: 'error',
+      message: 'boom',
+    });
+    expect(titles()).toEqual(['Your agent needs attention']);
+  });
+
+  test('a hold that ends with no runtime event is read again on the session projection update', async () => {
+    facts.set('thread-1', { followUpPending: true });
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    expect(timers.pending()).toEqual([FINISHED_ALERT_RECHECK_MS]);
+    // Claude's pending follow-up expires: only the projection says so.
+    facts.delete('thread-1');
+    bus.emit(SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED, {
+      threadId: 'thread-1',
+    });
+    await notificationService.drainAsyncDispatch();
+    // The window opens now, not at the next recheck.
+    expect(timers.pending()).toEqual([
+      FINISHED_ALERT_RECHECK_MS,
+      FINISHED_ALERT_CONFIRM_MS,
+    ]);
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+  });
+
+  test('an unreadable hold fails open: the finish is still announced', async () => {
+    holdThrows = true;
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
+  });
+});
+
+/**
+ * The episode record the phone card reads, and its persistence across a
+ * restart. Real NotificationService records and a real file store in a
+ * temporary Station home: a restart is a second wiring over the same home.
+ */
+describe('wireTurnCompletionNotifications: episode record and restart', () => {
+  const owner = orchestrationStreamPresenceSubjectForSession('owner-1');
+  let home: string;
+  let holding: Set<string>;
+  const services: NotificationService[] = [];
+  const unwires: Array<() => void> = [];
+
+  beforeEach(() => {
+    home = makeTempDir('turn-completion-episodes-');
+    holding = new Set();
+  });
+  afterEach(async () => {
+    for (const unwire of unwires.splice(0)) unwire();
+    for (const service of services.splice(0)) await service.shutdown();
+  });
+
+  /** One Station process: its bus, records, listener and episode record. */
+  async function boot(clock = { now: Date.parse('2026-11-15T16:00:00Z') }) {
+    const bus = new EventBus();
+    const notifications = new NotificationService(bus, home, 999_999);
+    services.push(notifications);
+    await notifications.start();
+    const timers = manualTimers();
+    const episodes = new FinishedAlertEpisodes();
+    const warn = vi.fn();
+    unwires.push(
+      wireTurnCompletionNotifications(
+        bus,
+        {
+          isReadOnlyAttachedSession: () => false,
+          isEphemeralSession: () => false,
+          resolveSessionPresenceSubject: () => owner,
+          readFinishedAlertHold: (threadId) =>
+            holding.has(threadId) ? ['child-agent'] : [],
+        },
+        notifications,
+        { warn },
+        {
+          setTimer: timers.setTimer,
+          episodes,
+          episodeStore: createFileFinishedAlertEpisodeStore(home),
+          now: () => clock.now,
+        },
+      ),
+    );
+    const emit = (event: Record<string, unknown>) =>
+      bus.emit('orchestration:event', { event: baseEvent(event) });
+    const elapse = async () => {
+      await notifications.drainAsyncDispatch();
+      timers.runAll();
+      await notifications.drainAsyncDispatch();
+    };
+    const finished = async () =>
+      (await notifications.list()).filter(
+        (record) => record.category === 'turn-completed',
+      );
+    return { notifications, episodes, emit, elapse, finished, warn, clock };
+  }
+
+  test('a completed turn is pending from the moment it is published, and its release names its terminal and time', async () => {
+    const station = await boot();
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    // Synchronously, before the producer's queued task runs: the card
+    // cannot read Done in that moment.
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    await station.notifications.drainAsyncDispatch();
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+
+    station.clock.now += FINISHED_ALERT_CONFIRM_MS;
+    await station.elapse();
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(station.episodes.releaseFor('thread-1')).toEqual({
+      key: 'event:terminal-1',
+      at: station.clock.now,
+    });
+    expect(await station.finished()).toHaveLength(1);
+  });
+
+  test('a finish still in its confirmation window when Station stops is sent once after the next start', async () => {
+    const first = await boot();
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.notifications.drainAsyncDispatch();
+    expect(await first.finished()).toEqual([]);
+    // Stopped inside the window: its timer never runs.
+    for (const unwire of unwires.splice(0)) unwire();
+    await first.notifications.shutdown();
+
+    const second = await boot();
+    // Replayed: the card reads it pending until it is sent.
+    expect(second.episodes.isPending('thread-1')).toBe(true);
+    await second.elapse();
+    expect(await second.finished()).toEqual([
+      expect.objectContaining({
+        title: 'Your agent finished',
+        metadata: expect.objectContaining({ turnId: 'turn-1' }),
+      }),
+    ]);
+    expect(second.episodes.releaseFor('thread-1')?.key).toBe(
+      'event:terminal-1',
+    );
+    expect(second.warn).not.toHaveBeenCalled();
+
+    // Sent, so a third start has nothing to replay.
+    for (const unwire of unwires.splice(0)) unwire();
+    await second.notifications.shutdown();
+    const third = await boot();
+    expect(third.episodes.isPending('thread-1')).toBe(false);
+    await third.elapse();
+    expect(await third.finished()).toHaveLength(1);
+  });
+
+  test('a finish held across a restart is read again and sent once nothing holds it', async () => {
+    holding.add('thread-1');
+    const first = await boot();
+    first.emit({ method: 'turn.started' });
+    first.emit({ finishReason: 'stop' });
+    await first.elapse();
+    expect(await first.finished()).toEqual([]);
+    for (const unwire of unwires.splice(0)) unwire();
+    await first.notifications.shutdown();
+
+    const second = await boot();
+    await second.elapse();
+    // Still held after the restart: not sent.
+    expect(await second.finished()).toEqual([]);
+    expect(second.episodes.isPending('thread-1')).toBe(true);
+
+    holding.delete('thread-1');
+    // The recheck opens the window; the window sends it.
+    await second.elapse();
+    await second.elapse();
+    expect(await second.finished()).toHaveLength(1);
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+  });
+
+  test('an unreadable saved record replays nothing and says so, and the next finish still goes out', async () => {
+    writeFileSync(join(home, 'finished-alert-episodes.json'), '{not json');
+    const station = await boot();
+    expect(station.warn).toHaveBeenCalledWith(
+      'turn-completion: pending finished alerts are unreadable; none were replayed',
+      expect.anything(),
+    );
+    station.emit({ method: 'turn.started' });
+    station.emit({ finishReason: 'stop' });
+    await station.elapse();
+    expect(await station.finished()).toHaveLength(1);
+  });
+});
+
+/**
+ * Each finish's durable steps (held -> writing -> released) across failures
+ * and restarts, over a real NotificationService, the real file store and,
+ * for the replay of an already-written finish, the real coordinator wake
+ * (`wireCoordinatorWakes` over a SQLite coordinator store that outlives each
+ * Station process, as the home's database does).
+ */
+describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
+  const PERSON = 'person-1';
+  const owner = orchestrationStreamPresenceSubjectForSession('owner-1');
+  const tag = 'turn-completion:thread-1:turn-1';
+  let home: string;
+  let coordinatorDb: DatabaseSync;
+  let coordinatorStore: ReturnType<typeof createSqliteCoordinatorStore>;
+  let holding: (threadId: string) => boolean;
+  /** The session's reader and attachment, as the write reads them. */
+  let recipient: typeof owner | undefined;
+  let external: boolean;
+  const clock = { now: 0 };
+  const services: NotificationService[] = [];
+  const unwires: Array<() => void> = [];
+
+  beforeEach(() => {
+    home = makeTempDir('turn-completion-durable-');
+    coordinatorDb = new DatabaseSync(':memory:');
+    coordinatorStore = createSqliteCoordinatorStore(coordinatorDb as never);
+    coordinatorStore.designate({
+      conversationId: 'coordinator-chat',
+      actor: { userId: PERSON },
+      replace: false,
+      now: Date.parse('2026-11-15T15:00:00Z'),
+    });
+    holding = () => false;
+    recipient = owner;
+    external = false;
+    clock.now = Date.parse('2026-11-15T16:00:00Z');
+  });
+  afterEach(async () => {
+    await stop();
+    coordinatorDb.close();
+  });
+
+  /** Station stops: its listeners go, and its records are flushed. */
+  async function stop() {
+    for (const unwire of unwires.splice(0)) unwire();
+    for (const service of services.splice(0)) await service.shutdown();
+  }
+
+  const rows = (): PersistedFinishedAlertEpisode[] =>
+    JSON.parse(
+      readFileSync(join(home, 'finished-alert-episodes.json'), 'utf8'),
+    );
+
+  /** Coordinator items waiting for the person, by item key. */
+  const coordinatorItems = () =>
+    coordinatorStore.waitingItems(PERSON).map((item) => item.itemKey);
+
+  async function boot(
+    opts: {
+      /** This process's coordinator wake is not listening (it never saw DELIVERED). */
+      coordinator?: false;
+      /** The process stops before a save that matches this lands. */
+      crashBeforeSave?: (
+        rows: readonly PersistedFinishedAlertEpisode[],
+      ) => boolean;
+    } = {},
+  ) {
+    const bus = new EventBus();
+    const notifications = new NotificationService(bus, home, 999_999);
+    services.push(notifications);
+    await notifications.start();
+    const frames: string[] = [];
+    unwires.push(bus.subscribe((frame) => void frames.push(frame.event)));
+    const timers = manualTimers();
+    const episodes = new FinishedAlertEpisodes();
+    const warn = vi.fn();
+    const file = createFileFinishedAlertEpisodeStore(home);
+    const wakes =
+      opts.coordinator === false
+        ? undefined
+        : wireCoordinatorWakes({
+            eventBus: bus,
+            eventStore: {
+              conversationForSession: () => undefined,
+              delegationResultStore: () => ({ owner: () => undefined }),
+            } as never,
+            store: coordinatorStore,
+            enabled: () => true,
+            threadInbox: {
+              submit: vi.fn(),
+              list: () => [],
+              cancelQueued: () => [],
+            } as never,
+            mayRead: () => true,
+            logger: { warn: vi.fn() } as never,
+            setTimer: (() => () => {}) as never,
+          });
+    if (wakes) unwires.push(() => wakes.unsubscribe());
+    unwires.push(
+      wireTurnCompletionNotifications(
+        bus,
+        {
+          isReadOnlyAttachedSession: () => external,
+          isEphemeralSession: () => false,
+          resolveSessionPresenceSubject: () => recipient,
+          readFinishedAlertHold: (threadId) =>
+            holding(threadId) ? ['child-agent'] : [],
+        },
+        notifications,
+        { warn },
+        {
+          setTimer: timers.setTimer,
+          episodes,
+          episodeStore: {
+            load: () => file.load(),
+            save: (next) => {
+              if (opts.crashBeforeSave?.(next))
+                throw new Error('simulated stop before the save');
+              file.save(next);
+            },
+          },
+          now: () => clock.now,
+          // As runtime-route-support.ts wires it.
+          onReplayedDelivery: (notification) =>
+            wakes?.observeNotification(notification),
+        },
+      ),
+    );
+    const emit = (event: Record<string, unknown>) =>
+      bus.emit('orchestration:event', { event: baseEvent(event) });
+    const elapse = async () => {
+      await notifications.drainAsyncDispatch();
+      timers.runAll();
+      await notifications.drainAsyncDispatch();
+    };
+    const finished = async () =>
+      (await notifications.list()).filter(
+        (record) => record.category === 'turn-completed',
+      );
+    return {
+      notifications,
+      episodes,
+      emit,
+      elapse,
+      finished,
+      warn,
+      timers,
+      frames,
+    };
+  }
+
+  test.each(['unread', 'read', 'dismissed'] as const)(
+    'a finish written just before Station stopped reaches the coordinator once after the restart, and its record is untouched (%s)',
+    async (variant) => {
+      // The record is written, then Station stops before the release is saved
+      // and before the coordinator saw its NOTIFICATION_DELIVERED.
+      const first = await boot({
+        coordinator: false,
+        crashBeforeSave: (next) => next.some((row) => row.state === 'released'),
+      });
+      first.emit({ method: 'turn.started' });
+      first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+      await first.elapse();
+      const [record] = await first.finished();
+      expect(record?.metadata).toMatchObject({ dedupeTag: tag });
+      expect(rows()).toEqual([
+        expect.objectContaining({ state: 'writing', turnId: 'turn-1' }),
+      ]);
+      if (variant === 'read')
+        await first.notifications.markRead(record!.id, 'device:laptop');
+      if (variant === 'dismissed')
+        await first.notifications.dismiss(record!.id);
+      const before = await first.notifications.get(record!.id);
+      expect(coordinatorItems()).toEqual([]);
+      await stop();
+
+      const second = await boot();
+      await second.elapse();
+      // A person reading it is not the coordinator seeing it; a dismissal is
+      // the person's decision and stands.
+      expect(coordinatorItems()).toEqual(
+        variant === 'dismissed' ? [] : [`finished:${tag}`],
+      );
+      // Not rewritten (read state kept), not delivered again (no phone push).
+      expect(await second.notifications.get(record!.id)).toEqual(before);
+      expect(
+        second.frames.filter(
+          (event) =>
+            event === SERVER_EVENTS.NOTIFICATION_DELIVERED ||
+            event === SERVER_EVENTS.NOTIFICATION_UPDATED,
+        ),
+      ).toEqual([]);
+      expect(await second.finished()).toHaveLength(1);
+      if (variant === 'dismissed') {
+        // Nothing is replayed, and the card gets no fresh release: it reads
+        // Done without an "Agent finished".
+        expect(second.episodes.releaseFor('thread-1')).toBeUndefined();
+        expect(second.episodes.isPending('thread-1')).toBe(false);
+        expect(rows()).toEqual([]);
+      } else {
+        expect(second.episodes.releaseFor('thread-1')?.key).toBe(
+          'event:terminal-1',
+        );
+        expect(rows()).toEqual([
+          expect.objectContaining({ state: 'released', turnId: 'turn-1' }),
+        ]);
+      }
+      expect(second.warn).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a saved finish whose tag is held by another producer's record is not handed to the coordinator", async () => {
+    const seed = await boot({ coordinator: false });
+    await seed.notifications.schedule('scheduler', {
+      category: 'turn-completed',
+      title: 'Not this producer',
+      body: 'A colliding record',
+      dedupeTag: tag,
+      metadata: {
+        sessionId: 'thread-1',
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+      },
+    } as never);
+    const [foreign] = await seed.finished();
+    await stop();
+    writeFileSync(
+      join(home, 'finished-alert-episodes.json'),
+      JSON.stringify([
+        {
+          state: 'writing',
+          threadId: 'thread-1',
+          turnId: 'turn-1',
+          outcome: 'done',
+          onActivityCard: false,
+          attempts: 0,
+        },
+      ]),
+    );
+
+    const station = await boot();
+    await station.elapse();
+    expect(coordinatorItems()).toEqual([]);
+    expect(await station.notifications.get(foreign!.id)).toEqual(foreign);
+    expect(station.warn).toHaveBeenCalledWith(
+      'turn-completion: a saved finish names a record this producer did not write; not replayed',
+      expect.anything(),
+    );
+    // Another producer's record is no reason to announce this finish.
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([]);
+  });
+
+  test('a restart that finds no record for a writing finish drops it as ambiguous: nothing is written, pushed or announced', async () => {
+    // The producer's own bytes: the write failed, so the row is `writing`
+    // and no record exists. A restart cannot tell this from a record the
+    // person cleared, so it must not recreate one.
+    const first = await boot({ coordinator: false });
+    vi.spyOn(first.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    expect(await first.finished()).toEqual([]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'writing', attempts: 1 }),
+    ]);
+    await stop();
+
+    const second = await boot();
+    await second.elapse();
+    await second.elapse();
+    expect(await second.finished()).toEqual([]);
+    expect(
+      second.frames.filter(
+        (event) =>
+          event === SERVER_EVENTS.NOTIFICATION_DELIVERED ||
+          event === SERVER_EVENTS.NOTIFICATION_UPDATED,
+      ),
+    ).toEqual([]);
+    expect(coordinatorItems()).toEqual([]);
+    expect(second.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([]);
+    expect(second.warn).toHaveBeenCalledWith(
+      'turn-completion: replay_ambiguous: a saved finish has no record, and a cleared one looks the same; not replayed',
+      expect.objectContaining({ threadId: 'thread-1', turnId: 'turn-1' }),
+    );
+  });
+
+  test.each(['skipped_no_recipient', 'skipped_external'] as const)(
+    'a finish whose session loses its reader before the write ends quietly (%s)',
+    async (result) => {
+      const station = await boot();
+      const write = vi.spyOn(station.notifications, 'scheduleEnveloped');
+      station.emit({ method: 'turn.started' });
+      station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+      await station.notifications.drainAsyncDispatch();
+      // Accepted and held: the confirmation window is open.
+      expect(station.episodes.isPending('thread-1')).toBe(true);
+      expect(rows()).toEqual([expect.objectContaining({ state: 'held' })]);
+      if (result === 'skipped_no_recipient') recipient = undefined;
+      else external = true;
+      vi.mocked(turnCompletionNotificationOps.add).mockClear();
+      await station.elapse();
+      expect(write).not.toHaveBeenCalled();
+      expect(await station.finished()).toEqual([]);
+      expect(
+        vi
+          .mocked(turnCompletionNotificationOps.add)
+          .mock.calls.filter(([, labels]) => labels?.result === result),
+      ).toEqual([[1, { outcome: 'done', result }]]);
+      // No record, so no fresh release: the card is neither Running nor alerting.
+      expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+      expect(station.episodes.isPending('thread-1')).toBe(false);
+      expect(rows()).toEqual([]);
+    },
+  );
+
+  test('a failed write keeps the finish pending on the card, is saved as writing, and is retried with backoff until written', async () => {
+    const station = await boot();
+    const write = vi
+      .spyOn(station.notifications, 'scheduleEnveloped')
+      .mockRejectedValueOnce(new Error('ENOSPC'))
+      .mockRejectedValueOnce(new Error('ENOSPC'));
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+    // No release on a failed write: the card does not read Done or alert.
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        state: 'writing',
+        attempts: 1,
+        nextAttemptAt: clock.now + FINISHED_ALERT_RETRY_BASE_MS,
+      }),
+    ]);
+    expect(station.timers.pending()).toEqual([FINISHED_ALERT_RETRY_BASE_MS]);
+
+    await station.elapse();
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'writing', attempts: 2 }),
+    ]);
+    expect(station.timers.pending()).toEqual([
+      FINISHED_ALERT_RETRY_BASE_MS * 2,
+    ]);
+
+    await station.elapse();
+    expect(write).toHaveBeenCalledTimes(3);
+    expect(await station.finished()).toHaveLength(1);
+    expect(station.episodes.releaseFor('thread-1')).toEqual({
+      key: 'event:terminal-1',
+      at: clock.now,
+    });
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'released', releasedAt: clock.now }),
+    ]);
+    // Backoff is capped (pinned beside the constant it derives from).
+    expect(FINISHED_ALERT_RETRY_BASE_MS).toBe(10_000);
+    expect(FINISHED_ALERT_RETRY_MAX_MS).toBe(600_000);
+  });
+
+  test('a newer finish on the thread replaces an older one whose write failed: one record, for the newer turn, across a restart', async () => {
+    const first = await boot();
+    vi.spyOn(first.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    first.emit({ method: 'turn.started', turnId: 'turn-2' });
+    first.emit({
+      eventId: 'terminal-2',
+      turnId: 'turn-2',
+      finishReason: 'stop',
+    });
+    await first.notifications.drainAsyncDispatch();
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'held', turnId: 'turn-2' }),
+    ]);
+    await stop();
+
+    const second = await boot();
+    await second.elapse();
+    expect(await second.finished()).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({ turnId: 'turn-2' }),
+      }),
+    ]);
+    expect(second.episodes.releaseFor('thread-1')?.key).toBe(
+      'event:terminal-2',
+    );
+  });
+
+  test('a finish waiting on a write retry never follows a later failure, and a new turn takes it back as held', async () => {
+    const station = await boot();
+    vi.spyOn(station.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(rows()).toEqual([expect.objectContaining({ state: 'writing' })]);
+    // A new turn starts while the retry waits: the finish is held again
+    // with that turn open, so its alert cannot go out while it runs.
+    station.emit({ method: 'turn.started', turnId: 'turn-2' });
+    await station.notifications.drainAsyncDispatch();
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'held', turnId: 'turn-1' }),
+    ]);
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+    // The turn fails: the failure is reported and the episode ends.
+    station.emit({
+      method: 'runtime.error',
+      turnId: 'turn-2',
+      message: 'boom',
+    });
+    await station.elapse();
+    await station.elapse();
+    expect(
+      (await station.notifications.list()).map((record) => record.title),
+    ).toEqual(['Your agent needs attention']);
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([]);
+  });
+
+  test('when the writing step cannot be saved, nothing is written or announced and the finish stays held', async () => {
+    let refuse = true;
+    const station = await boot({
+      crashBeforeSave: (next) =>
+        refuse && next.some((row) => row.state === 'writing'),
+    });
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'held', turnId: 'turn-1' }),
+    ]);
+    expect(station.timers.pending()).toEqual([FINISHED_ALERT_RECHECK_MS]);
+    // The store recovers: the recheck opens the window, and it is sent.
+    refuse = false;
+    await station.elapse();
+    await station.elapse();
+    expect(await station.finished()).toHaveLength(1);
+  });
+
+  test('a failure accepted while a finish waits on its write retry ends that finish', async () => {
+    const station = await boot();
+    vi.spyOn(station.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(rows()).toEqual([expect.objectContaining({ state: 'writing' })]);
+    // No turn.started first: the failure reaches the waiting row directly.
+    station.emit({ method: 'turn.aborted', reason: 'error' });
+    await station.notifications.drainAsyncDispatch();
+    expect(station.timers.pending()).toEqual([]);
+    expect(rows()).toEqual([]);
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+  });
+
+  test("a new turn leaves a restart's not-yet-looked-up finish to its lookup, so its record is never rewritten", async () => {
+    const first = await boot({
+      coordinator: false,
+      crashBeforeSave: (next) => next.some((row) => row.state === 'released'),
+    });
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    const [record] = await first.finished();
+    await first.notifications.markRead(record!.id, 'device:laptop');
+    const before = await first.notifications.get(record!.id);
+    await stop();
+
+    const lookup = vi
+      .spyOn(NotificationService.prototype, 'findByDedupeTag')
+      .mockRejectedValueOnce(new Error('store locked'));
+    const second = await boot();
+    await second.notifications.drainAsyncDispatch();
+    // A provider turn opens and closes without a result while the lookup
+    // waits on its retry.
+    const provider = { trigger: 'provider' };
+    second.emit({
+      method: 'turn.started',
+      turnId: 'turn-2',
+      metadata: provider,
+    });
+    second.emit({
+      eventId: 'terminal-2',
+      turnId: 'turn-2',
+      finishReason: 'other',
+      metadata: { ...provider, closedWithoutResult: 'session-ended' },
+    });
+    await second.elapse();
+    await second.elapse();
+    expect(await second.notifications.get(record!.id)).toEqual(before);
+    expect(coordinatorItems()).toEqual([`finished:${tag}`]);
+    lookup.mockRestore();
+  });
+
+  test('a restart whose record lookup fails retries it with backoff instead of leaving the card in Running', async () => {
+    const first = await boot({
+      coordinator: false,
+      crashBeforeSave: (next) => next.some((row) => row.state === 'released'),
+    });
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    await stop();
+
+    const lookup = vi
+      .spyOn(NotificationService.prototype, 'findByDedupeTag')
+      .mockRejectedValueOnce(new Error('store locked'));
+    const second = await boot();
+    await second.notifications.drainAsyncDispatch();
+    expect(second.episodes.isPending('thread-1')).toBe(true);
+    expect(coordinatorItems()).toEqual([]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'writing', attempts: 1 }),
+    ]);
+    expect(second.timers.pending()).toEqual([FINISHED_ALERT_RETRY_BASE_MS]);
+    await second.elapse();
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(coordinatorItems()).toEqual([`finished:${tag}`]);
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+    expect(await second.finished()).toHaveLength(1);
+    lookup.mockRestore();
+  });
+
+  test('a finish whose tag another producer owns ends without a record instead of retrying forever', async () => {
+    const station = await boot();
+    await station.notifications.schedule('scheduler', {
+      category: 'turn-completed',
+      title: 'Not this producer',
+      body: 'A colliding record',
+      dedupeTag: tag,
+    } as never);
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(station.warn).toHaveBeenCalledWith(
+      'turn-completion: a finished alert cannot be written; its tag belongs to another producer',
+      expect.anything(),
+    );
+    expect(station.timers.pending()).toEqual([]);
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    // Not this producer's record: no fresh release for the card either.
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(rows()).toEqual([]);
+  });
+
+  test('a release is restored by a restart inside the card window and forgotten after it', async () => {
+    const first = await boot();
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    const releasedAt = clock.now;
+    expect(first.episodes.releaseFor('thread-1')?.at).toBe(releasedAt);
+    await stop();
+
+    clock.now = releasedAt + 60_000;
+    const second = await boot();
+    expect(second.episodes.releaseFor('thread-1')).toEqual({
+      key: 'event:terminal-1',
+      at: releasedAt,
+    });
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+    await second.elapse();
+    expect(await second.finished()).toHaveLength(1);
+    await stop();
+
+    clock.now = releasedAt + 2 * 60_000 + 1;
+    const third = await boot();
+    expect(third.episodes.releaseFor('thread-1')).toBeUndefined();
+  });
+
+  describe(`the ${FINISHED_ALERT_EPISODES_MAX}-row bound`, () => {
+    const heldRow = (index: number) => ({
+      state: 'held',
+      threadId: `held-${index}`,
+      turnId: 'turn-1',
+      outcome: 'done',
+      onActivityCard: false,
+    });
+    function seed(rowsToSeed: unknown[]) {
+      writeFileSync(
+        join(home, 'finished-alert-episodes.json'),
+        JSON.stringify(rowsToSeed),
+      );
+    }
+    const finishNewThread = async (
+      station: Awaited<ReturnType<typeof boot>>,
+    ) => {
+      station.emit({ method: 'turn.started', threadId: 'thread-new' });
+      station.emit({ threadId: 'thread-new', finishReason: 'stop' });
+      await station.notifications.drainAsyncDispatch();
+    };
+
+    beforeEach(() => {
+      holding = (threadId) => threadId.startsWith('held-');
+    });
+
+    test('below it, a new finish is held: the store reaches exactly the bound', async () => {
+      expect(FINISHED_ALERT_EPISODES_MAX).toBe(2_000);
+      seed(
+        Array.from({ length: FINISHED_ALERT_EPISODES_MAX - 1 }, (_, i) =>
+          heldRow(i),
+        ),
+      );
+      const station = await boot();
+      await finishNewThread(station);
+      expect(rows()).toHaveLength(FINISHED_ALERT_EPISODES_MAX);
+      expect(rows().at(-1)).toMatchObject({
+        state: 'held',
+        threadId: 'thread-new',
+      });
+      expect(station.warn).not.toHaveBeenCalled();
+    });
+
+    test('at it, a released row gives way to the new finish', async () => {
+      seed([
+        {
+          state: 'released',
+          threadId: 'released-1',
+          turnId: 'turn-1',
+          releaseKey: 'event:old',
+          releasedAt: clock.now,
+        },
+        ...Array.from({ length: FINISHED_ALERT_EPISODES_MAX - 1 }, (_, i) =>
+          heldRow(i),
+        ),
+      ]);
+      const station = await boot();
+      await finishNewThread(station);
+      const saved = rows();
+      expect(saved).toHaveLength(FINISHED_ALERT_EPISODES_MAX);
+      expect(saved.some((row) => row.threadId === 'released-1')).toBe(false);
+      expect(saved.some((row) => row.threadId === 'thread-new')).toBe(true);
+      expect(station.warn).not.toHaveBeenCalled();
+    });
+
+    test('full of held finishes, the new one is refused and said so; every accepted finish is kept', async () => {
+      seed(
+        Array.from({ length: FINISHED_ALERT_EPISODES_MAX }, (_, i) =>
+          heldRow(i),
+        ),
+      );
+      const station = await boot();
+      await finishNewThread(station);
+      await station.elapse();
+      expect(station.warn).toHaveBeenCalledWith(
+        `finished-alert episodes full (${FINISHED_ALERT_EPISODES_MAX}); finish for thread-new not held`,
+        { threadId: 'thread-new' },
+      );
+      expect(turnCompletionNotificationOps.add).toHaveBeenCalledWith(1, {
+        outcome: 'done',
+        result: 'overflow',
+      });
+      expect(station.episodes.isPending('thread-new')).toBe(false);
+      expect(await station.finished()).toEqual([]);
+      const saved = rows();
+      expect(saved).toHaveLength(FINISHED_ALERT_EPISODES_MAX);
+      expect(saved.some((row) => row.threadId === 'thread-new')).toBe(false);
+    });
   });
 });

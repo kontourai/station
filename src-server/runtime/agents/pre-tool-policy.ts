@@ -4,12 +4,14 @@ import {
   mcpToolApprovalKey,
   resolveAuthoredToolApproval,
 } from '@kontourai/station-shared/mcp-tool-selection';
+import { toolRequestChangesAuthority } from '@kontourai/station-shared/tool-request-preview';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import {
   type GuardianDenialLedger,
   sharedGuardianDenialLedger,
 } from '../../services/approvals/guardian-conversation.js';
+import { recordPersonApprovedExternalTool } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   isPersistenceRelevantTool,
   untrustedPersistenceTarget,
@@ -24,7 +26,11 @@ import type {
   UnattendedGrantResolution,
 } from '../types.js';
 import { isDelegatedToolAllowed } from './delegation.js';
-import { type QuotedDenialText, stationDenial } from './denial-message.js';
+import {
+  approvalGuardianReason,
+  type QuotedDenialText,
+  stationDenial,
+} from './denial-message.js';
 
 type ToolDenialReason =
   | 'stale_generation'
@@ -38,7 +44,8 @@ type ToolDenialReason =
   | 'policy_evaluation_failed'
   | 'project_tool_policy'
   | 'untrusted_content_denied'
-  | 'untrusted_persistence_protection';
+  | 'untrusted_persistence_protection'
+  | 'pull_request_watch_refusal';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -68,8 +75,8 @@ export type PreToolPolicyDecision =
        */
       toolGrant?: true;
     }
-  | { behavior: 'deny'; denial: ToolCallDenial }
-  | { behavior: 'ask'; required?: true }
+  | { behavior: 'deny'; denial: ToolCallDenial; staleGeneration?: true }
+  | { behavior: 'ask'; required?: true; guardianReason?: string }
   | { behavior: 'defer' };
 
 /**
@@ -90,10 +97,30 @@ export type StagedPreToolPolicyEvaluator = (
     /** True only when managed hooks can actually ask a current requester. */
     hasInteractiveApproval?: boolean;
     identity?: PreToolPolicyToolIdentity;
+    /**
+     * The engine is running at full access (Claude `bypassPermissions`):
+     * an untrusted-content ask is not raised. Refusals still apply.
+     */
+    fullAccess?: boolean;
   },
 ) => Promise<PreToolPolicyDecision>;
 
+/**
+ * #5066: what a watching Task's agent may not do. `deny` refuses the call;
+ * `ask` puts it to a person as a required question. Undefined: no opinion.
+ */
+export type PullRequestWatchPolicy = (input: {
+  /** The engine's conversation for the call (a Session id on an external engine). */
+  conversationId: string | undefined;
+  toolName: string;
+  /** The operation's own name, as the persistence check reads it. */
+  operationName: string;
+  toolArgs: unknown;
+}) => { decision: 'deny' | 'ask'; predicate: string } | undefined;
+
 interface StagedPreToolPolicyDeps {
+  /** #5066: refusals for a watching Task's agent; see {@link PullRequestWatchPolicy}. */
+  pullRequestWatchPolicy?: PullRequestWatchPolicy;
   projectToolPolicy?: (
     invocation: InvocationContext,
     tool: ToolCallContext,
@@ -338,6 +365,15 @@ function nobodyPresent(
   );
 }
 
+function guardianDeferralDenial(toolName: string, reason: string) {
+  return deny(
+    'guardian_deferred_unattended',
+    toolName,
+    'was not run: the approval guardian did not approve it, and nobody is present to decide.',
+    { source: 'approval guardian', text: reason },
+  );
+}
+
 type GuardianOutcome =
   | { kind: 'decided'; decision: PreToolPolicyDecision }
   | { kind: 'undecided'; enforceDeferral?: string };
@@ -433,9 +469,14 @@ async function reviewWithGuardian(
           reason: review.reason,
         },
       );
+      const guardianReason = approvalGuardianReason(review.reason);
       return {
         kind: 'decided',
-        decision: { behavior: 'ask', required: true },
+        decision: {
+          behavior: 'ask',
+          required: true,
+          ...(guardianReason ? { guardianReason } : {}),
+        },
       };
     }
     deps.logger.warn('Approval guardian denied tool execution', {
@@ -455,6 +496,15 @@ async function reviewWithGuardian(
         'was denied by the approval guardian.',
         { source: 'approval guardian', text: review.reason ?? '' },
       ),
+    };
+  }
+  if (
+    options.interaction === 'external' &&
+    !personCanDecide(invocation, options, conversation.currentTurnInteractive)
+  ) {
+    return {
+      kind: 'decided',
+      decision: guardianDeferralDenial(tool.toolName, review.reason ?? ''),
     };
   }
   return { kind: 'undecided', enforceDeferral: review.reason ?? '' };
@@ -483,11 +533,14 @@ export function createStagedPreToolPolicyEvaluator(
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
       });
-      return deny(
-        'stale_generation',
-        tool.toolName,
-        "was blocked because the agent's runtime configuration changed mid-run. Retry the request.",
-      );
+      return {
+        ...deny(
+          'stale_generation',
+          tool.toolName,
+          "was blocked because the agent's runtime configuration changed mid-run. Start a new chat.",
+        ),
+        staleGeneration: true,
+      };
     }
 
     if (
@@ -558,18 +611,22 @@ export function createStagedPreToolPolicyEvaluator(
     // A required question. An enforce-mode guardian may still refuse it, but
     // nothing below (a tool grant, a guardian allow, an unattended opt-in)
     // can answer it instead of a person.
-    const requiredAsk = async (): Promise<PreToolPolicyDecision> => {
-      const review = await reviewWithGuardian(deps, tool, invocation, options);
-      if (review.kind === 'decided' && review.decision.behavior === 'deny')
+    const requiredAsk = async (
+      reviewed?: GuardianOutcome,
+      noChannelPredicate = 'requires a person to approve this call.',
+    ): Promise<PreToolPolicyDecision> => {
+      const review =
+        reviewed ?? (await reviewWithGuardian(deps, tool, invocation, options));
+      if (
+        review.kind === 'decided' &&
+        (review.decision.behavior === 'deny' ||
+          review.decision.behavior === 'ask')
+      )
         return review.decision;
       if (invocation.delegation?.denyApprovals)
         return delegatedApprovalDenial(tool.toolName, options.interaction);
       if (options.interaction === 'managed' && !options.hasInteractiveApproval)
-        return deny(
-          'no_approval_channel',
-          tool.toolName,
-          'requires a person to approve this call.',
-        );
+        return deny('no_approval_channel', tool.toolName, noChannelPredicate);
       return { behavior: 'ask', required: true };
     };
 
@@ -589,6 +646,34 @@ export function createStagedPreToolPolicyEvaluator(
             ?.originalToolName ??
           deps.toolNameMapping.get(tool.toolName)?.tool ??
           tool.toolName);
+    // #5066: a watching Task's agent never merges, arms auto-merge or
+    // force-pushes, and changes CI configuration only when a person
+    // approves. Before every grant below, so no pattern, session grant or
+    // full access answers it.
+    let watchVerdict: ReturnType<PullRequestWatchPolicy>;
+    try {
+      watchVerdict = deps.pullRequestWatchPolicy?.({
+        conversationId: invocation.conversationId ?? invocation.sessionId,
+        toolName: tool.toolName,
+        operationName,
+        toolArgs: tool.toolArgs,
+      });
+    } catch (error) {
+      deps.logger.warn('Pull request watch policy failed', {
+        toolName: tool.toolName,
+        conversationId: invocation.conversationId,
+        error: errorMessage(error),
+      });
+    }
+    if (watchVerdict?.decision === 'deny')
+      return deny(
+        'pull_request_watch_refusal',
+        tool.toolName,
+        watchVerdict.predicate,
+      );
+    if (watchVerdict?.decision === 'ask')
+      return requiredAsk(undefined, watchVerdict.predicate);
+
     const persistence =
       deps.untrustedContentRead &&
       isPersistenceRelevantTool(operationName) &&
@@ -610,6 +695,39 @@ export function createStagedPreToolPolicyEvaluator(
       );
     }
 
+    // Owner decision (2026-11-16): a built-in tool that changes who or what
+    // holds authority asks a person on every call, full access included.
+    // Matched on the name the engine called and, on the Station engine, on
+    // the loader's provenance, so neither naming form slips past.
+    const provenance =
+      tool.mcp?.provenance ??
+      deps.toolNameMapping.get(tool.toolName)?.provenance;
+    if (
+      toolRequestChangesAuthority(tool.toolName) ||
+      (provenance !== undefined &&
+        toolRequestChangesAuthority(
+          `${provenance.integrationId}_${provenance.originalToolName}`,
+        ))
+    ) {
+      // No pattern, session grant or full access answers it. On Station's
+      // own engine (voice and other unattended runs included) an approval
+      // guardian the operator enabled still may, as it may any mutation
+      // there (archive#2016: one approval mechanism on every surface). An
+      // external engine at full access would run a guardian-allowed call
+      // unasked, so there a person is always asked.
+      const review = await reviewWithGuardian(deps, tool, invocation, options);
+      if (
+        options.interaction === 'managed' &&
+        review.kind === 'decided' &&
+        review.decision.behavior === 'allow'
+      )
+        return review.decision;
+      return requiredAsk(
+        review,
+        'changes who or what holds authority in Station, so a person must approve it, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent).',
+      );
+    }
+
     const untrusted = await deps.untrustedContentPermission?.(tool, invocation);
     if (untrusted === 'deny') {
       deps.logger.warn('Untrusted-content permission refused tool execution', {
@@ -623,7 +741,23 @@ export function createStagedPreToolPolicyEvaluator(
         "was refused: this turn read content written by others, and this tool is set to refuse after that. Change it in the tool's untrusted-content permission.",
       );
     }
-    if (untrusted === 'ask') return requiredAsk();
+    // Owner decision (2026-11-16): under full access the person has already
+    // said not to be asked, so the untrusted-content ASK is not raised (a
+    // browser snapshot otherwise made every later browser call prompt). A
+    // configured refusal above and the persistence protection still apply.
+    if (untrusted === 'ask') {
+      if (!options.fullAccess) return requiredAsk();
+      // The Station seam that carries this call (station-control, the OAuth
+      // proxy) passes an untrusted `ask` only on a person's recorded
+      // approval. Full access is that person's standing answer, recorded only
+      // by them or a device holding `approval:full-access`, so it is recorded
+      // here as the prompt's answer would have been.
+      if (options.interaction === 'external' && invocation.conversationId)
+        recordPersonApprovedExternalTool(
+          invocation.conversationId,
+          tool.toolName,
+        );
+    }
 
     const approvalName = options.identity?.delegationToolName ?? tool.toolName;
     const mapping = deps.toolNameMapping.get(approvalName);
@@ -668,12 +802,7 @@ export function createStagedPreToolPolicyEvaluator(
           agentSlug: invocation.agentSlug,
           conversationId: invocation.conversationId,
         });
-        return deny(
-          'guardian_deferred_unattended',
-          tool.toolName,
-          'was not run: the approval guardian did not approve it, and nobody is present to decide.',
-          { source: 'approval guardian', text: guardian.enforceDeferral },
-        );
+        return guardianDeferralDenial(tool.toolName, guardian.enforceDeferral);
       }
       if (deps.isUnattendedGranted?.(tool) === true) {
         deps.logger.info('Unattended auto-approval allowed tool execution', {
@@ -699,9 +828,8 @@ export function createStagedPreToolPolicyEvaluator(
     // `defer` is Station declining to decide — see `PreToolPolicyDecision`: it
     // is never Claude's `permissionDecision: 'defer'`.
     //
-    // KNOWN GAP (#1536 follow-up): this returns before the unattended stages
-    // below, so an external session with nobody to ask waits on an approval
-    // request instead of taking their fail-fast denial.
+    // Enforce-mode guardian deferrals with no person were denied above.
+    // General external unattended grants remain a separate gap (#1536).
     //
     // What blocks a straight reorder is not that the signal is unavailable —
     // it exists and has three writers (`strands-adapter.ts`,

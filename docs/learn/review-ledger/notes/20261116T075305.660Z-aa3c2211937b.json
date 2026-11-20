@@ -1,0 +1,11 @@
+{
+  "revision": "a67ca01f8bc06a4dd81ffa8aac82bf61f3635db1",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked both citing pages: they link the contracts reference for its tables and vocabulary; the only change is one added failure-kind row, so no citing claim changes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked both citing pages: they link the contracts reference for its tables and vocabulary; the only change is one added failure-kind row, so no citing claim changes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked both citing pages: they link the contracts reference for its tables and vocabulary; the only change is one added failure-kind row, so no citing claim changes.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

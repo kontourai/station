@@ -19,6 +19,10 @@ const BELOW_FLOOR_EXCEPTIONS: Readonly<Record<string, string>> = {
     'scales with the icon it is drawn in',
   'components/coding-layout/DiffPanel.css .diff-file-collapse-toggle__icon':
     'a disclosure glyph inside a labelled button, not text',
+  'components/coding-layout/CodingWorkbench.css .coding-workbench__rail-ordinal':
+    'an aria-hidden position number in the count badge’s corner and size; the rail item names the pane',
+  'components/coding-layout/CodingWorkbench.css .coding-workbench__rail-add-mark':
+    'an aria-hidden "+" glyph on a labelled button, not text',
   'components/status/StatusGlyph.css .status-glyph':
     'a status glyph beside its label, not text',
   'views/task-workspace/review/TaskReviewLayout.css .review-avatar .task-room-avatar':

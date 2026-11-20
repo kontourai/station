@@ -293,6 +293,7 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
   readStateUnavailable:
     'Whether the read state of each conversation could not be read',
   terminalAt: 'When each conversation finished',
+  nextWakeUpAt: 'When each conversation’s next armed check-back is due',
   executionProviders: 'Which engines each conversation ran on',
   cwdLabel: 'Working-directory hints for sessions',
   turnProgress:

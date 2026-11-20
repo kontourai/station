@@ -186,10 +186,6 @@ html[data-color-theme]:where([data-color-theme="catppuccin"][data-color-theme-fl
   --k-brand: #955306;
   --k-brand-contrast: #ffffff;
 }
-:root[data-app-channel="beta"][data-color-theme="catppuccin"][data-color-theme-flavor][data-theme="light"] {
-  --k-brand: #4b55cf;
-  --k-brand-contrast: #ffffff;
-}
 :root[data-app-channel="nightly"][data-color-theme="catppuccin"][data-color-theme-flavor][data-theme="light"] {
   --k-brand: #7936e9;
   --k-brand-contrast: #ffffff;
@@ -377,10 +373,6 @@ html[data-color-theme]:where([data-color-theme="catppuccin"][data-color-theme-fl
 :root.is-dev-build[data-color-theme="catppuccin"][data-color-theme-flavor="frappe"]:not([data-theme="light"]) {
   --k-brand: #f6a048;
   --k-brand-contrast: #1b1205;
-}
-:root[data-app-channel="beta"][data-color-theme="catppuccin"][data-color-theme-flavor="frappe"]:not([data-theme="light"]) {
-  --k-brand: #a2aeff;
-  --k-brand-contrast: #06080b;
 }
 :root[data-app-channel="nightly"][data-color-theme="catppuccin"][data-color-theme-flavor="frappe"]:not([data-theme="light"]) {
   --k-brand: #bba7ff;
@@ -570,10 +562,6 @@ html[data-color-theme]:where([data-color-theme="catppuccin"][data-color-theme-fl
   --k-brand: #e79137;
   --k-brand-contrast: #1b1205;
 }
-:root[data-app-channel="beta"][data-color-theme="catppuccin"][data-color-theme-flavor="macchiato"]:not([data-theme="light"]) {
-  --k-brand: #919dff;
-  --k-brand-contrast: #06080b;
-}
 :root[data-app-channel="nightly"][data-color-theme="catppuccin"][data-color-theme-flavor="macchiato"]:not([data-theme="light"]) {
   --k-brand: #ae94ff;
   --k-brand-contrast: #06080b;
@@ -761,10 +749,6 @@ html[data-color-theme]:where([data-color-theme="catppuccin"][data-color-theme-fl
 :root.is-dev-build[data-color-theme="catppuccin"][data-color-theme-flavor="mocha"]:not([data-theme="light"]) {
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
-}
-:root[data-app-channel="beta"][data-color-theme="catppuccin"][data-color-theme-flavor="mocha"]:not([data-theme="light"]) {
-  --k-brand: #8792ff;
-  --k-brand-contrast: #06080b;
 }
 :root[data-app-channel="nightly"][data-color-theme="catppuccin"][data-color-theme-flavor="mocha"]:not([data-theme="light"]) {
   --k-brand: #a687ff;

@@ -15,12 +15,38 @@ export function globalAgentsOnly<T extends { project?: string }>(
   return agents.filter((agent) => agent.project === undefined);
 }
 
+/**
+ * #5062/#5068: the brief and model fields, sent only while the host offers
+ * the `project-coordination` preview. An older host stores unknown fields
+ * verbatim, and its strict Project file schema would then refuse to load the
+ * Project, so they never reach a host that does not know them.
+ */
+function projectCoordinationPayload(form: ProjectForm) {
+  return {
+    goal: form.goal.trim() ? form.goal.trim() : null,
+    instructions: form.instructions.trim() ? form.instructions : null,
+    coordinatorEffort:
+      form.coordinatorEffort === 'inherit' ? null : form.coordinatorEffort,
+    taskEffort: form.taskEffort === 'inherit' ? null : form.taskEffort,
+    taskModel: form.taskModel.trim() ? form.taskModel.trim() : null,
+    taskProviderId:
+      form.taskModel.trim() && form.taskProviderId ? form.taskProviderId : null,
+  };
+}
+
 export function buildProjectSavePayload(
   form: ProjectForm,
   workingDirectory?: string,
   savedForm?: ProjectForm | null,
+  options: { projectCoordination?: boolean } = {},
 ) {
   const {
+    goal: _goal,
+    instructions: _instructions,
+    coordinatorEffort: _coordinatorEffort,
+    taskEffort: _taskEffort,
+    taskModel: _taskModel,
+    taskProviderId: _taskProviderId,
     defaultEnvironment,
     defaultWorkspaceIsolation,
     defaultModelSelection,
@@ -63,6 +89,7 @@ export function buildProjectSavePayload(
     workingDirectory: workingDirectory ?? form.workingDirectory ?? '',
     agents: form.agents ?? null,
     defaultAgent: form.defaultAgent ?? null,
+    ...(options.projectCoordination ? projectCoordinationPayload(form) : {}),
   };
 }
 
@@ -99,6 +126,12 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
     workingDirectory: project.workingDirectory ?? '',
     agents: project.agents,
     toolDefaults: project.toolDefaults,
+    goal: project.goal ?? '',
+    instructions: project.instructions ?? '',
+    coordinatorEffort: project.coordinatorEffort ?? 'inherit',
+    taskEffort: project.taskEffort ?? 'inherit',
+    taskModel: project.taskModel ?? '',
+    taskProviderId: project.taskProviderId ?? '',
   };
 }
 

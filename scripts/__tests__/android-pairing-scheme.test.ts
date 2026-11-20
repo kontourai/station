@@ -93,7 +93,7 @@ function releaseFixture(source = manifest) {
     copyFileSync(join(repository, path), join(root, path));
   }
   // Distinct byte fixtures detect wrong-channel copying; no image rendering is claimed.
-  for (const channel of ['stable', 'dev', 'beta', 'nightly']) {
+  for (const channel of ['stable', 'dev', 'nightly']) {
     write(
       `src-desktop/icons/${channel}/android/mipmap-mdpi/ic_launcher.png`,
       `${channel} launcher`,
@@ -202,7 +202,6 @@ test.each([
 test.each([
   ['dev', 'station-dev-instance'],
   ['stable', 'station-stable'],
-  ['beta', 'station-beta'],
   ['nightly', 'station-nightly'],
 ])(
   'regenerated %s projects receive exactly their pairing association',
@@ -225,6 +224,7 @@ test('a stale plugin-generated stable association is replaced for Nightly', () =
 
 test('unknown channels, ambiguous activities, and unmanaged associations are rejected', () => {
   expect(() => manifestWithAndroidPairingScheme(manifest, 'unknown')).toThrow();
+  expect(() => manifestWithAndroidPairingScheme(manifest, 'beta')).toThrow();
   expect(() =>
     manifestWithAndroidPairingScheme(manifest + manifest, 'dev'),
   ).toThrow();

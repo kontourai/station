@@ -16,7 +16,8 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  * Pure and `now`-injected. Two inputs, with different jobs:
  *
  * - THE ITEM decides the rung's family and therefore the lane. That is a
- *   switch on `lifecycleLabel` (plus `controlMode`), and nothing else: the
+ *   switch on `lifecycleLabel` and `controlMode`, plus the item's armed
+ *   `nextWakeUpAt` when a settled turn is waiting to resume: the
  *   label is already the product's one answer to "what state is this in".
  *   In particular "an owed decision outranks running" is decided where the
  *   label is: the shared attention fold (`sessionAttentionDisposition`)
@@ -25,8 +26,8 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *   state. This function does not re-decide it.
  * - THE FACTS (`WorkFacts`, derived beside the item) only choose the words
  *   inside that family: which thing is owed, which tool is running. They
- *   are optional, and the lane is the same with or without them, which is
- *   why the partition can call this with the item alone.
+ *   also identify a resumable delegation whose completed result has been read.
+ *   Its Done status stays intact when it returns to open work.
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
@@ -34,9 +35,9 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
  *  elsewhere                                     (Idle)
- *  N sub-agents, owned cleanup, no progress, running (Running)
+ *  N sub-agents, owned cleanup, no progress, running, scheduled (Running)
  *  draft                                         (Drafts)
- *  done                                          (finished)
+ *  done                       (finished, or idle after a resumable result is read)
  *  idle                                          (Idle)
  *
  * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
@@ -67,6 +68,7 @@ export type WorkStatusRung =
   | 'stopped'
   | 'unanswerable'
   | 'childWork'
+  | 'scheduled'
   | 'quiet'
   | 'running'
   | 'draft'
@@ -155,6 +157,17 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
+  if (
+    item.nextWakeUpAt &&
+    parseEpochMs(item.nextWakeUpAt) !== undefined &&
+    (item.lifecycleLabel === 'Completed' || item.lifecycleLabel === 'Recent')
+  )
+    return {
+      rung: 'scheduled',
+      lane: 'running',
+      tone: 'neutral',
+      word: SESSION_STATUS_WORDS.scheduled,
+    };
   switch (item.lifecycleLabel) {
     case 'Needs attention': {
       // With no recorded kind (no facts, an older server)
@@ -266,7 +279,10 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     case 'Completed':
       return {
         rung: 'done',
-        lane: 'finished',
+        lane:
+          facts?.resumableDelegationResult && item.unread === false
+            ? 'idle'
+            : 'finished',
         tone: 'neutral',
         word: SESSION_STATUS_WORDS.done,
       };
@@ -280,9 +296,21 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   }
 }
 
+export function hasUnseenDelegationResult(
+  item: HomeWorkItem,
+  facts?: WorkFacts,
+): boolean {
+  return (
+    facts?.resumableDelegationResult === true &&
+    item.unread === true &&
+    item.lifecycleLabel === 'Completed' &&
+    rungFor(item, facts).lane === 'finished'
+  );
+}
+
 /**
  * `facts` are the item's `WorkFacts`, derived beside it; without them the
- * line says only what the lifecycle label says, and the lane is the same.
+ * line and lane follow the recorded lifecycle.
  */
 export function workStatus(
   item: HomeWorkItem,

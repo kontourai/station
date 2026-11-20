@@ -1,0 +1,7 @@
+{
+  "revision": "572666760da6daef16a0af319c75c969e10b25e3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote §3 item 2 for the grouped composer + menu (Add to message / Work in this project / This conversation), Open terminal (bottom region, requestProjectShell, desktop region host, project-binding refusal) and Open in Coding moving from the dock More menu; panel toggles moved to the More menu and phone Actions sheet. Checked against ComposerActionsMenu.tsx, ChatDock.tsx secondaryActions/panelActions, ChatDockMobileOverflowSheet.tsx, CodingTerminalPane.tsx; ComposerActionsMenu, ChatWorkspacePaneComposerDraft, ChatDockMobileHeader and CodingTerminalPane tests ran.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "957549bdf3d640929b2910a5d0b680c637085c06",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Delta after the earlier code-split server review: server-build-config.mjs stops exporting SERVER_CHUNK_PREFIX (still the chunk name prefix the build removes), and the portability test's chunk-import child now passes windowsHide. Neither changes the chunk layout, cleanup, boot order or laziness this guide describes.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/server-build-portability.test.ts","scripts/lib/server-build-config.mjs"]}
-  ]
-}

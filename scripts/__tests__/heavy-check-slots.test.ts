@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -42,6 +43,7 @@ const [log, name, release, code] = process.argv.slice(2);
 appendFileSync(log, name + ' start\\n');
 const until = Date.now() + 20_000;
 while (release && !existsSync(release) && Date.now() < until)
+  // real-time: the child polls for the parent's release file, bounded by the 20 s deadline above.
   await new Promise((done) => setTimeout(done, 25));
 appendFileSync(log, name + ' end\\n');
 process.exit(Number(code || 0));
@@ -448,5 +450,228 @@ describe('heavy-check slot runner (child processes)', () => {
     expect(badCount.status).toBe(1);
     expect(badCount.stderr).toContain('STATION_HEAVY_CHECK_SLOTS="0"');
     expect(w.lines()).toEqual([]);
+  });
+});
+
+/**
+ * A heavy check that takes its own slot, as `code-health-gate.mjs` and the
+ * fallow runners do (#5080): it is started directly, not through the runner.
+ */
+const SELF_SLOTTED_CHECK = `import { appendFileSync, existsSync } from 'node:fs';
+import { holdHeavyCheckSlotForProcess } from ${JSON.stringify(
+  pathToFileURL(resolve('scripts/lib/heavy-check-slots.mjs')).href,
+)};
+const [log, name, release] = process.argv.slice(2);
+if (!(await holdHeavyCheckSlotForProcess(name))) process.exit(1);
+appendFileSync(log, name + ' start\\n');
+const until = Date.now() + 20_000;
+while (release && !existsSync(release) && Date.now() < until)
+  // real-time: the child polls for the parent's release file, bounded by the 20 s deadline above.
+  await new Promise((done) => setTimeout(done, 25));
+appendFileSync(log, name + ' end\\n');
+`;
+
+/** Every entry point that runs a fallow analysis, with the label it queues under. */
+const PACKAGE_SCRIPTS: Record<string, string> = JSON.parse(
+  readFileSync('package.json', 'utf8'),
+).scripts;
+const FALLOW_PACKAGE_SCRIPTS = ['fallow', 'fallow:dead-code', 'fallow:audit'];
+const FALLOW_ENTRY_POINTS: ReadonlyArray<{
+  label: string;
+  args: string[];
+}> = [
+  { label: 'code-health-gate', args: ['scripts/code-health-gate.mjs'] },
+  {
+    label: 'code-health-gate',
+    args: ['scripts/code-health-gate.mjs', '--base=HEAD'],
+  },
+  { label: 'fallow audit', args: ['scripts/run-fallow-audit.mjs'] },
+  {
+    label: 'fallow audit --whole-tree',
+    args: ['scripts/run-fallow-audit.mjs', '--whole-tree'],
+  },
+  { label: 'fallow:baseline', args: ['scripts/fallow-baseline.mjs'] },
+  { label: 'fallow:ceiling', args: ['scripts/fallow-ceiling.mjs'] },
+  {
+    label: 'fallow:ceiling',
+    args: ['scripts/fallow-ceiling.mjs', '--write'],
+  },
+  // Package scripts that run the fallow launcher go through the runner.
+  ...FALLOW_PACKAGE_SCRIPTS.map((name) => ({
+    label: name,
+    args: PACKAGE_SCRIPTS[name].split(' ').slice(1),
+  })),
+];
+
+describe('heavy checks that take their own slot (#5080)', () => {
+  test('two concurrent self-slotted checks run one after the other', async () => {
+    const w = workspace();
+    const check = join(w.root, 'self-slotted.mjs');
+    writeFileSync(check, SELF_SLOTTED_CHECK);
+    const env = poolEnv(w.slotDir);
+    const launch = (name: string, release = '') => {
+      const child = spawn(process.execPath, [check, w.log, name, release], {
+        env,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      });
+      children.push(child);
+      let stderr = '';
+      child.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+      const exited = new Promise<number | null>((done) =>
+        child.once('close', (code) => done(code)),
+      );
+      return { child, exited, stderr: () => stderr };
+    };
+    const first = launch('first-gate', w.release);
+    await until(
+      () => w.lines().includes('first-gate start'),
+      'the first check',
+    );
+    const second = launch('second-gate');
+    await until(
+      () => second.stderr().includes('waiting for a heavy-check slot'),
+      'the second check to queue',
+    );
+    expect(second.stderr()).toContain(
+      `waiting for a heavy-check slot for second-gate: 1/1 held by pid ${first.child.pid} (first-gate)`,
+    );
+    expect(w.lines()).toEqual(['first-gate start']);
+    writeFileSync(w.release, '');
+    expect(await first.exited).toBe(0);
+    expect(await second.exited).toBe(0);
+    expect(w.lines()).toEqual([
+      'first-gate start',
+      'first-gate end',
+      'second-gate start',
+      'second-gate end',
+    ]);
+  }, 60_000);
+
+  test('package scripts that launch fallow directly go through the slot runner', () => {
+    for (const name of FALLOW_PACKAGE_SCRIPTS)
+      expect(PACKAGE_SCRIPTS[name], name).toMatch(
+        new RegExp(
+          `^node scripts/heavy-check-slot\\.mjs ${name} node_modules/fallow/bin/fallow `,
+        ),
+      );
+  });
+
+  test.each(
+    FALLOW_ENTRY_POINTS.map((entry) => [entry.args.join(' '), entry] as const),
+  )('%s queues for the slot before any analysis', (_name, { label, args }) => {
+    const w = workspace();
+    // Run from an empty directory: anything that slipped past the slot
+    // would analyse it, never this repository.
+    const project = join(w.root, 'project');
+    mkdirSync(project);
+    holdSlot(w.slotDir, 'another worktree');
+    const result = spawnSync(
+      process.execPath,
+      args.map((arg) =>
+        /^(scripts|node_modules)\//.test(arg) ? resolve(arg) : arg,
+      ),
+      {
+        cwd: project,
+        env: {
+          ...poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0' }),
+          GIT_CEILING_DIRECTORIES: w.root,
+        },
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+      },
+    );
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(result.stderr).toContain(
+      `FAIL: waited 0s for a heavy-check slot for ${label}; all 1 are held: pid ${process.pid} (another worktree)`,
+    );
+    expect(result.stdout).toBe('');
+    expect(readdirSync(project)).toEqual([]);
+  });
+
+  test('a code-health gate runs once the holder releases its slot', async () => {
+    const w = workspace();
+    const project = join(w.root, 'not-a-repository');
+    mkdirSync(project);
+    holdSlot(w.slotDir, 'another worktree');
+    const gate = spawn(
+      process.execPath,
+      [resolve('scripts/code-health-gate.mjs'), '--base=HEAD'],
+      {
+        cwd: project,
+        env: {
+          ...poolEnv(w.slotDir),
+          GIT_CEILING_DIRECTORIES: w.root,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    );
+    children.push(gate);
+    let stderr = '';
+    gate.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    gate.stdout?.resume();
+    const exited = new Promise<number | null>((done) =>
+      gate.once('close', (code) => done(code)),
+    );
+    await until(
+      () =>
+        stderr.includes('waiting for a heavy-check slot for code-health-gate'),
+      'the gate to queue',
+    );
+    // Queued: it has not started its analysis.
+    expect(readdirSync(project)).toEqual([]);
+    rmSync(slotPath(w.slotDir, 0));
+    // Admitted, it runs, and reaches the git step it cannot pass here.
+    expect(await exited).toBe(2);
+    expect(stderr).toMatch(/git|repository/i);
+  }, 60_000);
+
+  test('a code-health gate under a live slot holder, or in hosted CI, takes no slot', () => {
+    const w = workspace();
+    holdSlot(w.slotDir, 'ci:fast');
+    const project = join(w.root, 'not-a-repository');
+    mkdirSync(project);
+    const run = (extra: Record<string, string>) =>
+      spawnSync(
+        process.execPath,
+        [resolve('scripts/code-health-gate.mjs'), '--base=HEAD'],
+        {
+          cwd: project,
+          env: {
+            ...poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0' }),
+            GIT_CEILING_DIRECTORIES: w.root,
+            ...extra,
+          },
+          encoding: 'utf8',
+          windowsHide: true,
+          timeout: 30_000,
+        },
+      );
+    const nested = run({
+      [HEAVY_CHECK_HELD_ENV]: JSON.stringify({
+        dir: w.slotDir,
+        index: 0,
+        nonce: 'held-by-the-test',
+      }),
+    });
+    expect(nested.stderr).toContain(
+      `[heavy-check-slots] code-health-gate runs under the heavy-check slot held by pid ${process.pid}.`,
+    );
+    expect(nested.stderr).not.toContain('waiting for a heavy-check slot');
+    const hosted = run({ GITHUB_ACTIONS: 'true' });
+    expect(hosted.stderr).toContain(
+      '[heavy-check-slots] hosted CI (GITHUB_ACTIONS=true): code-health-gate runs without a host slot.',
+    );
+    // Both were admitted and ran the gate, which stops at git here.
+    for (const result of [nested, hosted]) {
+      expect(result.status, result.stderr).toBe(2);
+      expect(result.stderr).not.toContain('FAIL: waited');
+    }
   });
 });

@@ -31,7 +31,8 @@ transparent in-app mark; the monochrome Android status-bar mark
 (`src-ui/src/components/icons/station-mark.ts`, the mark on Station's own tool
 calls); and per-channel sets. Each channel has an
 explicit water palette in `station-icon.mjs` while parchment and gold stay
-fixed: stable blue, green for Beta, rose for Nightly and amber for Dev.
+fixed: Stable blue, Nightly rose and Dev amber. The retired Beta palette and
+asset sets are absent.
 `scripts/__tests__/station-icon.test.ts` keeps the icon palettes and the
 Android accents and tints at least 30° of hue from the Station brand purple;
 the in-app channel theme tokens in `src-ui/src/index.css` are not covered.
@@ -54,7 +55,7 @@ workflow (`testflight-delivery.yml`) deletes `gen/apple` and runs
 `tauri ios init`, which renders `Assets.xcassets/AppIcon.appiconset` from
 Tauri's template with Tauri's own default PNGs, so it calls
 `node scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
-committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly and
+committed `icons/<channel>/ios/AppIcon-*.png` set (Stable, Nightly and
 the local Dev simulator; from
 the square master, because iOS rejects alpha and the generator refuses any
 translucent pixel) over it. `ios-channel-icons.mjs verify` compares every PNG
@@ -119,7 +120,8 @@ check `CFBundleIconFile` in the installed app's `Contents/Info.plist` and compar
 the corresponding file under `Contents/Resources` with the channel's `.icns`.
 Quit and reopen the app. If the shortcut still shows the old artwork, remove
 that shortcut and drag the updated app from Applications back into the Dock.
-Stable, Beta and Nightly are separate installations and update separately.
+Stable and Nightly are separate installations and update separately. An RC uses
+Stable identity and icon assets; promotion retains those same bytes.
 
 Generated-file hashes and packaged-icon comparisons do not prove that Finder,
 Dock, Windows taskbar or a Linux desktop refreshed its cached icon. Verify

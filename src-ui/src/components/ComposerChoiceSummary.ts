@@ -10,3 +10,9 @@ export const ComposerChoiceSummary = createContext<
     ) => void)
   | null
 >(null);
+
+/**
+ * Closes the Run setup panel a choice sits in, for a choice that opens its
+ * own dialog where two stacked overlays would not fit (a phone).
+ */
+export const ComposerRunSetupClose = createContext<(() => void) | null>(null);

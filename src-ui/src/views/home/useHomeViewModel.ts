@@ -9,11 +9,20 @@ import {
   useRemoteSessionsQuery,
   useTasksQuery,
 } from '@kontourai/station-sdk';
-import { listProjectLayouts } from '@kontourai/station-sdk/client';
+import {
+  listProjectLayouts,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useReducer } from 'react';
+import {
+  type ListRefresh,
+  refreshListQueries,
+  useListRefresh,
+} from '../../components/refresh/ListRefresh';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import {
   openChatsStore,
   useOpenWorkChats,
@@ -27,6 +36,12 @@ import {
   dockFoldsToOneRegion,
   useDockSlotDevice,
 } from '../../hooks/useIsMobile';
+import {
+  isRemoteInventoryUnavailable,
+  isStationReadAccessRefusal,
+  optionalRemoteInventoryRefetch,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import type { NavigationView } from '../../types';
 import { withConversationInventory } from './conversation-inventory-facts';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
@@ -34,8 +49,10 @@ import { useWorkFacts } from './useWorkFacts';
 import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
+  openRemoteSessionReader,
   resolveWorkItemOpenAction,
 } from './work-item-open-policy';
+import { hasUnseenDelegationResult } from './work-status';
 
 export type HomeViewNavigation = Extract<
   NavigationView,
@@ -64,6 +81,9 @@ interface HomeWorkData {
   workDegraded: boolean;
   workError: boolean;
   retryWork: () => void;
+  refreshWork: ListRefresh;
+  workUpdating: boolean;
+  remoteReadError?: { description?: string; retry?: () => void };
   remoteUnavailable: NonNullable<
     ReturnType<typeof useRemoteSessionsQuery>['data']
   >['unavailable'];
@@ -73,12 +93,33 @@ interface HomeWorkData {
 }
 
 function useHomeWorkData(): HomeWorkData {
+  const { apiBase } = useApiBase();
+  const { namespace } = useAuthorityPersistence();
   const projectsQuery = useScopedProjectsQuery();
   const projects = projectsQuery.data ?? [];
   const sessions = useOrchestrationSessionsQuery();
   const inventory = useConversationInventoryQuery();
   const tasks = useTasksQuery();
-  const { data: remoteSessionsResult } = useRemoteSessionsQuery();
+  const remoteSessions = useRemoteSessionsQuery(stationViewReadQueryOptions);
+  const remoteError = remoteSessions.error;
+  const remoteAccessRefused = isStationReadAccessRefusal(remoteError);
+  const remoteSessionsResult = remoteAccessRefused
+    ? undefined
+    : remoteSessions.data;
+  const remoteReadError =
+    remoteSessions.isError &&
+    !(remoteError instanceof StationHttpError && remoteError.status === 404)
+      ? {
+          description: remoteAccessRefused
+            ? remoteError.status === 401
+              ? 'Sign in to this Station to see remote work.'
+              : 'Ask the Station operator for access to remote work.'
+            : undefined,
+          retry: remoteAccessRefused
+            ? undefined
+            : () => void remoteSessions.refetch(),
+        }
+      : undefined;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
   // archive#3391: Home's rows name a model the way the New Chat surfaces
@@ -142,6 +183,20 @@ function useHomeWorkData(): HomeWorkData {
     isPending: workLoading,
     resetKey: workRetrySeq,
   });
+  const refreshWork = useListRefresh({
+    scope: JSON.stringify([apiBase, namespace]),
+    refresh: (recover) => {
+      if (recover) bumpWorkRetry();
+      return refreshListQueries(
+        sessions.refetch,
+        tasks.refetch,
+        inventory.refetch,
+        ...(isRemoteInventoryUnavailable(remoteError)
+          ? []
+          : [optionalRemoteInventoryRefetch(remoteSessions.refetch)]),
+      );
+    },
+  });
   return {
     projects,
     agents,
@@ -151,9 +206,7 @@ function useHomeWorkData(): HomeWorkData {
       projects.length === 0 &&
       workItems.length === 0 &&
       !workLoading &&
-      !workError &&
-      (remoteSessionsResult?.unavailable.length ?? 0) === 0 &&
-      (remoteSessionsResult?.authenticationRequired?.length ?? 0) === 0,
+      !workError,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
@@ -161,12 +214,14 @@ function useHomeWorkData(): HomeWorkData {
     workLoading,
     workDegraded: workQueryState === 'degraded',
     workError,
-    retryWork: () => {
-      bumpWorkRetry();
-      void sessions.refetch();
-      void tasks.refetch();
-      void inventory.refetch();
-    },
+    retryWork: () => void refreshWork.run(true),
+    refreshWork,
+    workUpdating:
+      sessions.isFetching ||
+      tasks.isFetching ||
+      inventory.isFetching ||
+      remoteSessions.isFetching,
+    remoteReadError,
     remoteUnavailable: remoteSessionsResult?.unavailable ?? [],
     remoteAuthenticationRequired:
       remoteSessionsResult?.authenticationRequired ?? [],
@@ -209,8 +264,12 @@ function createContinueWork(
       onNavigate({ type: 'task', taskId: task.id });
       return;
     }
-    if (task.kind === 'remote-session') return;
     const action = resolveWorkItemOpenAction(task);
+    if (action.kind === 'remote') {
+      openRemoteSessionReader(action);
+      return;
+    }
+    if (task.kind === 'remote-session') return;
     if (action.kind === 'navigate') {
       showActivitySession(action.threadId);
       return;
@@ -269,6 +328,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       (task) =>
         task.kind !== 'remote-session' &&
         task.lifecycleLabel !== 'Draft' &&
+        !hasUnseenDelegationResult(task, data.workFacts?.get(task.id)) &&
         !data.workFacts?.get(task.id)?.runRootId,
     ),
     continueWork: createContinueWork(

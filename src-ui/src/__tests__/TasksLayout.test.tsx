@@ -27,6 +27,13 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../views/project-page/ProjectTaskSharingControl', () => ({
   ProjectTaskSharingControl: () => null,
 }));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => vi.fn(),
+}));
+vi.mock('../contexts/useOpenInRegion', () => ({
+  useOpenPullRequestInRegion: () => null,
+}));
+vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({
     data: {
@@ -36,7 +43,14 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
   }),
   useGitStatusQuery: gitStatusQuery,
-  useTasksQuery: () => ({ data: [], refetch: vi.fn() }),
+  useTasksQuery: () => ({ data: [], refetch: vi.fn(), isSuccess: true }),
+  // The board's run and pull request reads: none here.
+  useOrchestrationSessionsQuery: () => ({ data: [], refetch: vi.fn() }),
+  useTaskPullRequestFactsQuery: () => ({
+    data: { observedAt: '2026-11-15T00:00:00.000Z', tasks: {} },
+    refetch: vi.fn(),
+  }),
+  useUpdateTaskStatusMutation: () => ({}),
   useTaskGraphQuery: () => ({}),
   useTaskClaimQuery: () => ({}),
   useWorkItemClaimQuery: () => ({}),

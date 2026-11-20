@@ -241,9 +241,18 @@ test('waits for the registered unsaved-work decision before switching', async ()
     }),
   );
   const { select, close } = openMenu();
-  fireEvent.click(row(/^Laptop/));
+  const laptopRow = row(/^Laptop/);
+  laptopRow.focus();
+  fireEvent.click(laptopRow);
   expect(proceed).toBeTypeOf('function');
   expect(select).not.toHaveBeenCalled();
+  await act(async () => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+  });
+  expect(close).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(laptopRow);
   await act(async () => proceed?.());
   expect(select).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(close).toHaveBeenCalledOnce();
@@ -313,6 +322,39 @@ test('removes a Station after an inline confirmation, never the active one', asy
   await act(async () => {});
   expect(forget).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(screen.queryByRole('menuitemradio', { name: /^Laptop/ })).toBeNull();
+});
+
+test('forgetting moves focus to the next row, else the previous, never the filter', async () => {
+  openMenu([station, laptop, ...extras]);
+  const names = () =>
+    screen
+      .getAllByRole('menuitemradio')
+      .map((item) => (item.getAttribute('aria-label') ?? '').split(' — ')[0]);
+  const before = names();
+  const index = before.indexOf('Media server');
+  expect(index).toBeGreaterThan(0);
+  expect(index).toBeLessThan(before.length - 1);
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Forget Media server' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Forget Media server' }),
+  );
+  await act(async () => {});
+  // jsdom cannot show the menu closing on focus loss; the real-browser
+  // Gallery screens own that. This pins where focus is sent.
+  expect(document.activeElement).toBe(
+    screen.getAllByRole('menuitemradio')[index],
+  );
+  expect(names()).not.toContain('Media server');
+  // From the last row, the previous one.
+  const last = screen.getAllByRole('menuitemradio').at(-1) as HTMLElement;
+  const previous = screen.getAllByRole('menuitemradio').at(-2);
+  const lastName = (last.getAttribute('aria-label') ?? '').split(' — ')[0];
+  fireEvent.click(screen.getByRole('menuitem', { name: `Forget ${lastName}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: `Forget ${lastName}` }));
+  await act(async () => {});
+  expect(document.activeElement).toBe(previous);
 });
 
 test('Delete on a row arms its removal, and a refused removal keeps the row', async () => {
@@ -698,6 +740,39 @@ test('a Station this page cannot probe shows its saved failure with its age', ()
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+test.each([
+  ['authentication-rate-limited', 'sign-in checks temporarily limited'],
+  ['access-scope-refused', 'current access does not cover this check'],
+  ['access-check-unavailable', 'access check could not start'],
+  ['relay-authority-unavailable', 'Station access could not be verified'],
+] as const)(
+  'explains %s and keeps Stations management available',
+  (reason, phrase) => {
+    const { manage, select, forget } = openMenu(
+      [station],
+      undefined,
+      undefined,
+      undefined,
+      {
+        active: {
+          activeStatus: 'error',
+          activeStatusLabel: "Can't connect",
+          activeReason: reason,
+        },
+      },
+    );
+
+    const current = row(`Workstation — Can't connect · ${phrase}`);
+    expect(current.getAttribute('aria-checked')).toBe('true');
+    expect(current.querySelector('[aria-label="needs pairing"]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Stations' }));
+    expect(manage).toHaveBeenCalledOnce();
+    expect(select).not.toHaveBeenCalled();
+    expect(forget).not.toHaveBeenCalled();
+  },
+);
+
 test('a refused Station says since when it has needed access', async () => {
   const refused = {
     ...laptop,
@@ -742,7 +817,7 @@ test('a Station whose host is down behind its UI proxy reads Recovering, greyed 
   const recovering = await screen.findByRole('menuitemradio', {
     name: 'Laptop — Recovering · server down or restarting · checked just now',
   });
-  expect((recovering as HTMLButtonElement).disabled).toBe(true);
+  expect(recovering.getAttribute('aria-disabled')).toBe('true');
   expect(recovering.querySelector('[aria-label="error"]')).not.toBeNull();
   fireEvent.click(recovering);
   expect(select).not.toHaveBeenCalled();
@@ -754,7 +829,7 @@ test('an unreachable Station is greyed out but can still be forgotten', async ()
   const down = await screen.findByRole('menuitemradio', {
     name: /^Laptop — Unreachable/,
   });
-  expect((down as HTMLButtonElement).disabled).toBe(true);
+  expect(down.getAttribute('aria-disabled')).toBe('true');
   fireEvent.click(down);
   expect(select).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Laptop' }));
@@ -762,6 +837,35 @@ test('an unreachable Station is greyed out but can still be forgotten', async ()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Laptop' }));
   });
   expect(forget).toHaveBeenCalledWith(laptop);
+});
+
+test('Delete on a focused greyed-out Station arms its removal', async () => {
+  openMenu([station, laptop]);
+  const down = await screen.findByRole('menuitemradio', {
+    name: /^Laptop — Unreachable/,
+  });
+  // A keyboard reaches a row only by focusing it, and a browser refuses to
+  // focus a `disabled` button, so the key would land elsewhere and arm
+  // nothing. jsdom focuses a disabled button anyway, so the attribute is
+  // what this can assert; the gallery's `station-switcher-forget` screen
+  // presses Delete in a real browser.
+  expect((down as HTMLButtonElement).disabled).toBe(false);
+  down.focus();
+  expect(document.activeElement).toBe(down);
+  fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Delete' });
+  expect(screen.getByText('Forget on this device?')).toBeTruthy();
+  expect(down.getAttribute('aria-keyshortcuts')).toBe('Delete');
+});
+
+test('a greyed-out Station that cannot be forgotten stays a disabled row', async () => {
+  openMenu([station, laptop], undefined, () => false);
+  const down = await screen.findByRole('menuitemradio', {
+    name: /^Laptop — Unreachable/,
+  });
+  // Nothing to do on it from the keyboard, so arrow keys pass over it.
+  expect((down as HTMLButtonElement).disabled).toBe(true);
+  expect(down.hasAttribute('aria-disabled')).toBe(false);
+  expect(down.hasAttribute('aria-keyshortcuts')).toBe(false);
 });
 
 test('an answer this page cannot read is not shown as Online', async () => {
@@ -776,6 +880,7 @@ test('an answer this page cannot read is not shown as Online', async () => {
   });
   // Still selectable: switching verifies access itself and says what failed.
   expect((unconfirmed as HTMLButtonElement).disabled).toBe(false);
+  expect(unconfirmed.hasAttribute('aria-disabled')).toBe(false);
   expect(unconfirmed.querySelector('[aria-label="connected"]')).toBeNull();
   expect(
     await screen.findByRole('menuitemradio', {

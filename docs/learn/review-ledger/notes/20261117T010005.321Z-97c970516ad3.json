@@ -1,0 +1,7 @@
+{
+  "revision": "c23a7f8b610166c080ff3d1fe579c9bc8df3fc2a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The coverage matrix lists mobile-chat-composer under Home / continuity rail for composer reachability with many mocked responses; the change only declares a mocked turn-directory 404 in the upload-wait test, so the row stays accurate.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "81fca05fb00375b2193d7c39f0097cebdba7a257",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated the attached-session continuation and engine handoff picker descriptions to the message-free flows; checked ChatInputArea chip, ConversationHandoffDialog and AttachedSessionDetail.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

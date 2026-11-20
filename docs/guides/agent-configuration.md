@@ -17,7 +17,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | Field | Description |
 |-------|-------------|
 | `name` | Display name |
-| `prompt` | Agent instructions (supports `{{key}}` template variables); delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
+| `prompt` | Agent instructions. Station expands `{{key}}` when it builds the prompt. External engines receive authored text. Delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
 | `model` | Station-engine model preference; see resolution order below |
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
@@ -25,7 +25,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.sharedTurns` | Optional operator declaration for separately negotiated shared model-only turns; shared execution is not yet available |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | (Station guidance) | With the `station-orchestration-instructions` Feature Preview on, Agents offered `station-control` also get Station-written guidance on using it, kept separate from `prompt`. See [orchestration instructions](self-configuring-agent.md#orchestration-instructions) |
-| `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| Step cap | Top-level `maxSteps` for VoltAgent, 1–100 |
+| `guardrails` | `maxTokens`, `temperature` |
 | `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
@@ -52,7 +53,8 @@ proposal in the Board. **Build with chat** offers context in a new projectless
 chat without sending it; see [Personal Boards](../user/personal-boards.md).
 
 Station Control publishes native MCP titles, behavioral annotations and
-`ai.kontour/tool-group` hints. These catalog hints do not grant access or change
+`ai.kontour/tool-group` hints. Each tool's group is stated, not inferred from
+its name; device and browser tools are grouped as Devices and Browser. These catalog hints do not grant access or change
 approval rules. MCP has no standard category field; grouping does not require
 separate servers.
 
@@ -133,7 +135,8 @@ engine startup; the conversation stays recoverable after the cause is fixed.
 Project's Station browser in process, except in a session whose network
 Station restricts ([`confinedNetwork`](../reference/config.md#optional-fields)):
 the browser runs outside that session's sandbox, so it is not offered there. Codex can use the same browser through
-the default-off **Codex browser and device tools** Feature Preview; ACP remains
+the default-off **Codex browser and device tools** Feature Preview, which also
+moves a new Codex Session's Station Control onto that bound channel; ACP remains
 unavailable. The editor's engine status may not reflect that preview. **Workflow
 files** holds the workflow editor. Browser access is independent of attaching
 MCP sources. See the [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
@@ -146,8 +149,10 @@ the harness configuration; existing Agents keep their previous behavior until
 you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
 also offers **Harness default**, **On demand**, and **Always available** loading.
 On demand uses Claude's native tool search and requires a compatible model and
-endpoint; it is not a Station search proxy. Other engines keep their own loading
-behavior.
+endpoint; it is not a Station search proxy. Only On demand also adds Station's
+line telling Claude to load the Station tools it names with ToolSearch; under
+Harness default, Claude Code decides whether to defer tools. Other engines keep
+their own loading behavior.
 
 `tools` selects MCP connections and exposed tools. Station applies its runtime
 filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives
@@ -223,7 +228,7 @@ Station guardrail declaration does not establish external enforcement:
 }
 ```
 
-- `maxSteps` — top-level Agent step cap applied by VoltAgent; the Agent file schema rejects it inside `guardrails`. Strands does not apply this configured cap.
+- `maxSteps` — top-level model-step cap per VoltAgent turn. Set 1–100 or leave it unset to inherit the Station fallback. Strands and external engines use their own limits.
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
 - `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.
@@ -405,6 +410,26 @@ approvals is denied an escalation at once, guardian allow or not. With the
 guardian enabled, a headless run on these engines that reaches an escalation
 waits on an approval request where it used to run on the guardian's allow.
 
+### A person's session answer, full access, and authority tools
+
+A person's own **Allow … for this session** is offered on every tool
+approval, including the escalations listed above (owner decision,
+2026-11-16). It covers what it was given on: an answer to a plain call
+covers later plain calls of that tool, and only an answer to an escalation
+also covers the tool's later escalations. A pattern and a guardian allow keep
+the limits above.
+
+Full access means no prompts: the untrusted-content ask is not raised at full
+access on Claude Code, Codex, OpenCode or a Station-governed ACP session; a
+tool set to refuse after untrusted content still refuses.
+
+The station-control tools that change who or what holds authority (Station
+configuration, creating or updating Agents, plugins, deleting integrations,
+skills and SSH hosts) ask a person on every call on every engine, at full
+access too, and offer no session option. On Station's own engine an approval
+guardian you enabled may still allow one, as it may any mutation there
+([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job without a target,
@@ -435,6 +460,12 @@ legacy `autoApprove` against the runtime name only, so the usual
 `mcp/station-control/list_agents` keys also apply unattended. Existing patterns
 that match the runtime name, including `*`, keep working as before. Effective
 Ask rules still require a person.
+
+The Agent editor's Tools tab shows the configured patterns under **Unattended
+approvals**. Removing an integration clears its integration-specific patterns.
+Disabling tools narrows those patterns to the remaining selected tools.
+Agent-wide patterns such as `*` remain in effect. Copies start without
+unattended approval patterns.
 
 To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
 a scheduled job, an operator can instead record an unattended tool grant for
@@ -536,10 +567,9 @@ grant approvals. Otherwise the denial stands, as before. The counts are kept
 per conversation, so a successor Session continues them. They live in server
 memory, so a restart starts them again.
 
-An escalated request does not show the guardian's reason yet (#4849). It
-reads like any other approval for the call, with nothing saying the guardian
-refused it. The reason is only in the server log ("Approval guardian kept
-refusing; asking the person instead").
+An escalated request quotes the guardian’s reason under **Approval guardian**
+in the Inbox and request inspector. The quote is separate from the tool’s
+description. It carries the rule the guardian named in its explanation.
 
 Structured generation now reaches the configured model on both VoltAgent and
 Strands. Previously, their schema adapter errors made guardian reviews fall back
@@ -552,10 +582,12 @@ Tool names, descriptions and arguments remain untrusted model input. Fencing
 keeps them separate from the guardian's instructions, but a prompt-injected tool
 argument can still persuade the model to return `allow`.
 
-Attended chat ignores `unattendedAutoApprove`; when the guardian defers, it asks
-the person as before. External engines (Claude Code, ACP) do not deliver Station's
-unattended checks ([delivery boundary](../conformance/tool-policy-delivery.md)),
-so the opt-in has no effect on them.
+Attended chat ignores `unattendedAutoApprove`. An enforce-mode defer in
+attended chat leaves the ordinary approval path in charge. When the configured
+external policy hook observes an unattended turn, an enforce-mode defer denies
+the call before it reaches the engine’s approval flow. The managed unattended
+opt-in still applies only to Station’s own engine. See the
+[tool policy delivery boundary](../conformance/tool-policy-delivery.md).
 
 ### Tool purpose display support
 

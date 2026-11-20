@@ -48,11 +48,8 @@
  * `More actions` — the only mobile route to Connections, so a disconnected
  * phone user could not reach the surface that would reconnect them.
  *
- * The cluster is the toolbar's last-resort chrome and holds its size; the
- * logo/wordmark lockup beside it (`index.css`'s `.app-toolbar__lockup`) is what
- * absorbs the overflow, by dropping the wordmark out whole. `overflow: hidden` is gone with the shrink it
- * existed to clip — it also clipped nothing useful, since the overflow menu
- * renders in a portal (see `components/header/OverflowMenu.tsx`).
+ * On narrow screens the Station name absorbs cluster shrink. The cluster
+ * stays unclipped so its controls and their focus rings remain reachable.
  */
 .app-toolbar__actions {
   display: flex;
@@ -1311,6 +1308,23 @@
   border-radius: 4px;
 }
 
+.composer-attachments__thumb-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+
+.composer-attachments__thumb-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .composer-attachments__glyph {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1443,8 +1457,9 @@
   .composer-attachments__chip {
     min-height: 44px;
   }
-  .composer-attachments__remove {
-    width: 44px;
+  .composer-attachments__remove,
+  .composer-attachments__thumb-button {
+    min-width: 44px;
     height: 44px;
   }
   .composer-attachments__action {
@@ -1479,6 +1494,14 @@
      and bundle order let it win — measured 36px on a 390px phone. */
   .choice-trigger.choice-trigger {
     min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The Agent/engine handoff picker's agent rows, the attached-session
+     "Continue in Station" action and its still-running caution's choices. */
+  .conversation-handoff-dialog__agent.conversation-handoff-dialog__agent,
+  .sessions-detail__continue-action.sessions-detail__continue-action,
+  .sessions-detail__source-active-actions .button.button {
     min-height: 44px;
   }
 
@@ -1678,14 +1701,16 @@
 
 /* The fix sits at the end of its reason, wrapping as one unit, without its
    touch target inflating the text's line height. */
-.chat-input__attachment-error:has(.chat-input__blocked-action) {
+.chat-input__attachment-error:has(.chat-input__blocked-action),
+.chat-input__upload-wait:has(.chat-input__blocked-action) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   column-gap: var(--space-2);
 }
 
-.chat-input__attachment-error .chat-input__blocked-action {
+.chat-input__attachment-error .chat-input__blocked-action,
+.chat-input__upload-wait .chat-input__blocked-action {
   padding: 0 var(--space-1);
   border: 0;
   background: transparent;
@@ -1789,9 +1814,9 @@
   color: white;
 }
 
-/* The caption's parts in priority order: the engine name (and an override
-   marker) shrink to an ellipsis first; the move hint keeps its width, since a
-   flex item's default `min-width: auto` will not go below its unwrapped text. */
+/* The caption's parts: the engine name (and an override marker) shrink to an
+   ellipsis on the first line; the move hint always takes the next line, where
+   it wraps rather than being cut. */
 .chat-input__chip-caption-engine {
   flex: 0 1 auto;
   min-width: 0;
@@ -1800,19 +1825,20 @@
   white-space: pre;
 }
 
-.chat-input__engine-moved--full,
-.chat-input__engine-moved--short {
-  white-space: pre;
+.chat-input__chip-caption:has(.chat-input__engine-moved) {
+  flex-wrap: wrap;
 }
 
-/* A narrow composer states only that the Agent moved; the chip's tooltip and
-   accessible name keep the full sentence (see the container query below). */
-.chat-input__engine-moved--short {
-  display: none;
+.chat-input__engine-moved {
+  order: 1;
+  flex-basis: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* The next-send destination stays visible while Run setup is closed. */
-.chat-input__next-turn-notice {
+.chat-input__next-turn-notice,
+.chat-input__composer-notice {
   display: block;
   flex-basis: 100%;
   margin: 0;
@@ -2020,6 +2046,11 @@
   box-shadow: none;
   overflow: visible;
 }
+/* The approval picker is a short list; at the shared 380px it covered more of
+   the transcript than its rows need. */
+.composer-popover-panel.composer-mode-sheet {
+  --composer-popover-width: 340px;
+}
 .chat-input__model-popover-panel .session-model-picker {
   position: relative;
   right: auto;
@@ -2053,17 +2084,35 @@
   .session-model-picker {
   max-height: calc(100dvh - var(--responsive-anchor-bottom) - 20px);
 }
+/* Inside the composer's column where it has one (`data-popover-boundary`),
+   so a panel opened from the composer's trailing edge does not cover the
+   panes beside it; the viewport clamp still wins for a column too narrow. */
 .composer-popover-overlay--start[data-anchored] .composer-popover-panel {
   left: clamp(
     12px,
-    var(--responsive-anchor-left, 12px),
+    clamp(
+      var(--responsive-boundary-left, 12px),
+      var(--responsive-anchor-left, 12px),
+      calc(
+        var(--responsive-boundary-right, calc(100vw - 12px)) -
+        var(--composer-popover-width)
+      )
+    ),
     calc(100vw - var(--composer-popover-width) - 12px)
   );
 }
 .composer-popover-overlay--end[data-anchored] .composer-popover-panel {
   right: clamp(
     12px,
-    var(--responsive-anchor-right, 12px),
+    clamp(
+      calc(100vw - var(--responsive-boundary-right, calc(100vw - 12px))),
+      var(--responsive-anchor-right, 12px),
+      calc(
+        100vw -
+        var(--responsive-boundary-left, 12px) -
+        var(--composer-popover-width)
+      )
+    ),
     calc(100vw - var(--composer-popover-width) - 12px)
   );
 }
@@ -2115,6 +2164,30 @@
 .composer-actions-menu__item-hint {
   font-size: var(--k-text-sm);
   color: var(--text-muted);
+}
+.composer-actions-menu__group {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.composer-actions-menu__separator {
+  width: 100%;
+  height: 0;
+  margin: var(--k-space-1) 0;
+  border: 0;
+  border-top: 1px solid var(--border-primary);
+}
+/* Reset discards what the agent remembers; it reads as the one row that costs. */
+.composer-actions-menu__item[data-tone="danger"] {
+  color: var(--error-text);
+}
+.composer-actions-menu__item[data-tone="danger"]:hover:not(:disabled),
+.composer-actions-menu__item[data-tone="danger"]:focus-visible {
+  background: color-mix(in srgb, var(--error-text) 12%, transparent);
 }
 
 .chat-controls {
@@ -2362,10 +2435,12 @@
   display: flex;
   align-items: center;
   align-self: flex-end;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   gap: 4px 6px;
   min-width: 0;
+  max-width: 100%;
 }
 
 /* Footer controls participate in the flow; no absolute hit target may cover
@@ -2385,16 +2460,19 @@
   min-height: 44px;
 }
 
-/* The settled answer's footer bar: the Basis chip, always visible (#926
-   amendment, owner 2026-10), then the hover-revealed action row. */
+/* The settled answer's footer bar: the hover-revealed action row, then the
+   Basis chip, always visible (#926 amendment, owner 2026-10), at the bubble's
+   edge. The chip comes first in the DOM, so focus reaches it before the
+   hidden row; `order` places it last. */
 .turn-footer__bar {
   display: flex;
   align-items: center;
   align-self: flex-end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px 6px;
   min-width: 0;
-  /* Never wider than the bubble: in a narrow dock the Basis chip shrinks
-     (its standing ellipsizes) instead of the bar overflowing to the left. */
+  /* Wrap the chip away from the action row when they cannot share a line. */
   max-width: 100%;
 }
 
@@ -2445,6 +2523,11 @@
 .turn-footer__bar .answer-basis-chip,
 .message-meta .answer-basis-chip {
   min-height: 44px;
+}
+
+.turn-footer__bar > .answer-basis-chip {
+  order: 1;
+  max-width: 100%;
 }
 
 @media (hover: hover) {
@@ -2506,83 +2589,8 @@
    inventory-wide direct-child 44px floor cannot reach them — apply it
    explicitly on touch viewports. */
 
-/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
-   and the connection chip's label is what it can give up.
-
-   MEASURED, on a running app in the `error` state ("Can't connect"), which is
-   the state in which reaching Settings matters most. `.app-toolbar__actions` is
-   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
-   side ends at x=126 and the cluster's own width is viewport-independent: with
-   this chip labelled it measures 259px, putting `Open settings` at x=340..384
-   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
-   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
-   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
-   left behind is the arithmetic below.
-
-   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
-   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
-   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
-   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
-   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
-   the budget is ~1px conservative rather than exact. These figures are macOS
-   measurements and glyph metrics differ by platform — the same capped badge is
-   25.34px on a Linux runner, where "+" is wider than a digit rather than
-   narrower — so treat them as this platform's arithmetic. What holds
-   everywhere is that the badge stops growing at the cap (pinned in
-   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
-   pixels). Its pixel size against this 23.91 allowance is enforced by
-   nothing: the e2e never renders a badge, and at its 360px case the label is
-   suppressed anyway, so the row there sits nowhere near this bound. That gap
-   is station#1721. The two-character worst
-   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
-   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
-   settings) = 396px, of which the last control's own CENTRE sits at 374. At
-   374px and below that centre is outside the viewport and
-   `document.elementFromPoint` returns null — unreachable rather than merely
-   clipped, which is the defect.
-
-   station#1401: this bound was 404/382 until the mobile touch block trimmed
-   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
-   trim changes nothing for the glyph-only controls; the two content-sized
-   members each give back 4px, measured in this fixture as chip 105 -> 101 and
-   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
-   survives eight more pixels of viewport, and 375-382 keeps a state the row
-   used to hide. It does not close #1401's own band — that still needs a
-   control to leave the row — it moves where it starts.
-
-   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
-   the worst case is a label at the 85px ceiling beside a two-character badge.
-   What was swept live, in the `error` state whose label is 79px and whose
-   badge was one digit, is narrower: that sweep read the `Open settings` centre
-   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
-   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
-   rather than computed is the 375px case in
-   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
-   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
-   alone would need it, which is what a bound is for.
-
-   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
-   puts Open settings at x=282..326 — inside every viewport down to 326px. The
-   dot still carries the state by SHAPE (archive#3297, which is the channel
-   transient reachability was deliberately given when it stopped bannering), and
-   the accessible name is untouched: `connAccessibleName` is the BUTTON's
-   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
-   still reads the full "Manage Stations — Can't connect · Dev Server".
-   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
-   while staying in the accessibility tree is not coming back.
-
-   Between 375 and 395px the row is still clipped at its right edge while every
-   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
-   a control to leave the row rather than a width tweak. Two classes, not one:
-   this block cascades after the breakpoint above and would win a tie on order
-   alone, and a tie decided by order is how the last owner of this cluster's
-   flex behaviour was lost (archive#3766). */
 @media (max-width: 374px) {
-  .app-toolbar__conn .app-toolbar__conn-state {
-    display: none;
-  }
-  /* "Answer details and actions" wraps to two lines on the narrowest phones
-     in the phone panel's large title size; one step down it keeps one line. */
+  /* "Answer details and actions" fits on one line at the smaller title size. */
   .message-details__panel .responsive-dialog-header strong {
     font-size: var(--k-text-md);
   }
@@ -2802,6 +2810,9 @@
   opacity: 1;
 }
 .message-details__actions .message__rating {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
   gap: var(--k-space-1);
 }
 /* Items keep their size so a line that cannot hold them breaks, rather than
@@ -3195,7 +3206,6 @@
     box-sizing: border-box;
     width: auto;
     min-width: 44px;
-    flex: 0 0 auto;
     gap: var(--space-2);
     justify-content: center;
     padding-inline: var(--k-space-2);
@@ -3203,7 +3213,7 @@
   .app-toolbar__conn .app-toolbar__conn-label,
   .app-toolbar__conn:not(.app-toolbar__conn--compact) .app-toolbar__conn-label {
     display: inline-block;
-    width: auto;
+    min-width: 0;
     max-width: min(28vw, 120px);
     text-align: start;
   }
@@ -3262,6 +3272,12 @@
      later in the same file. */
   .app-toolbar__actions {
     gap: var(--space-2);
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .app-toolbar__actions > :not(.app-toolbar__conn) {
+    flex-shrink: 0;
   }
 
   .message__rating-btn {
@@ -3447,6 +3463,22 @@
   margin-inline-start: auto;
 }
 
+.chat-input__activity:has(.agent-schedule-notes) {
+  flex: 1 1 100%;
+  align-items: flex-end;
+}
+
+.chat-input__activity > .agent-schedule-notes {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.chat-input__activity .agent-schedule-notes__note,
+.chat-input__activity .agent-schedule-card {
+  margin-bottom: 0;
+}
+
 .chat-input__activity .chat-scroll-to-bottom {
   position: static;
   flex: 0 0 auto;
@@ -3469,14 +3501,16 @@
     flex-basis: 100%;
   }
 
-  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+  .chat-input__activity:not(
+    :has(.chat-status-pill, .chat-scroll-to-bottom, .agent-schedule-notes)
+  ) {
     display: none;
   }
 
   /* In a dock too short for the transcript the Scroll to bottom button is not
      shown (see data-composer-priority), so it cannot hold this row open. */
   .chat-dock__body[data-composer-priority]
-    .chat-input__activity:not(:has(.chat-status-pill)) {
+    .chat-input__activity:not(:has(.chat-status-pill, .agent-schedule-notes)) {
     display: none;
   }
 
@@ -3486,15 +3520,8 @@
     display: none;
   }
 
-  .chat-input__engine-moved--full {
-    display: none;
-  }
-
-  .chat-input__engine-moved--short {
-    display: inline;
-  }
-
-  .chat-input__next-turn-notice {
+  .chat-input__next-turn-notice,
+  .chat-input__composer-notice {
     display: block;
   }
 
@@ -3596,25 +3623,40 @@
   text-align: start;
   cursor: pointer;
 }
-/* The answer sheet's Add to Task (#4404 A40) is TaskPicker's own trigger,
-   one wrapper deep; it reads as a row like its siblings. */
-.message-details__menu > .task-picker,
-.message-details__menu > .task-picker > .task-picker__trigger {
+/* Keep the answer sheet's header in place when its optional action loads.
+   Both texts size the same grid cell, so a wrapped label also fits. */
+.message-details__task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.message-details__task-row > * {
+  grid-area: 1 / 1;
+}
+.message-details__task-row > .task-picker,
+.message-details__task-row > .task-picker > .task-picker__trigger {
   display: flex;
   width: 100%;
 }
-.message-details__menu > .task-picker > .task-picker__trigger {
-  /* Centred like its sibling rows: the Button's label is a flex item, and
-     the default stretch pinned it to the row's top edge. */
+.message-details__task-row > .task-picker > .task-picker__trigger,
+.message-details__task-row
+  > :is(.message-details__task-measure, .turn-footer__unavailable-note) {
+  display: flex;
   align-items: center;
   justify-content: flex-start;
   min-height: 44px;
   padding: 0 var(--k-space-3);
-  border: var(--k-border-thin) solid var(--k-line);
+  border: var(--k-border-thin) solid transparent;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.message-details__task-row > .task-picker > .task-picker__trigger {
+  border-color: var(--k-line);
   border-radius: var(--k-radius-control);
   background: var(--k-panel-raised);
   color: var(--k-text);
-  font: inherit;
+}
+.message-details__task-measure {
+  visibility: hidden;
 }
 .message-details__menu > .turn-footer__overflow-item--danger {
   color: var(--error-text, var(--k-negative));
@@ -3631,7 +3673,9 @@
 .chat-input .chat-controls-row {
   flex-wrap: nowrap;
 }
-/* Beat the global toolbar's fixed-child reset while keeping setup shrinkable. */
+/* Beat the global toolbar's fixed-child reset while keeping setup shrinkable.
+   No share cap: the row does not wrap, so setup shrinks when Send appears and
+   otherwise uses room the row has free instead of truncating beside it. */
 div.chat-input
   .chat-controls-row
   > .composer-choices.chat-input__settings:has(
@@ -3639,18 +3683,30 @@ div.chat-input
   ) {
   flex: 0 1 auto;
   min-width: 44px;
-  max-width: 45%;
+  max-width: 100%;
   overflow: visible;
 }
 .chat-controls-row > .chat-input__send-group {
   margin-inline-start: 0;
 }
 .chat-input__meta:not(
-  :has(.chat-input__next-turn-notice, .chat-status-pill, .chat-scroll-to-bottom)
+  :has(
+    .chat-input__next-turn-notice,
+    .chat-input__composer-notice,
+    .chat-status-pill,
+    .chat-scroll-to-bottom
+  )
 ) {
   display: none;
 }
 
 .chat-input .chat-controls-row {
   gap: clamp(0px, calc((100cqw - 450px) * 1000), var(--k-space-2));
+}
+
+/* A record's own note inside a turn: muted, never read as the agent's words. */
+.message-notice {
+  margin: var(--k-space-1) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }

@@ -157,6 +157,13 @@ export {
   useRevokeAnswerShareMutation,
 } from './query-domains/answerShares';
 export {
+  useAutomationDeliveries,
+  useAutomationEpisodes,
+  useAutomationRules,
+  useAutomationSources,
+  useRetryAutomationEpisode,
+} from './query-domains/automations';
+export {
   canMaterializeKitProjectLayout,
   type IntegrationLifecycleResult,
   type IntegrationViewModel,
@@ -257,6 +264,7 @@ export {
   fetchTerminalProcesses,
   fetchVapidPublicKey,
   fetchVoicePort,
+  fetchWebPushRegistration,
   forkConversation,
   type InterruptOrchestrationDelegatedTaskInput,
   inspectOrchestrationSteerInput,
@@ -307,6 +315,7 @@ export {
   useAcknowledgeConversationMutation,
   useChildWorkInstructionsQuery,
   useChildWorkTranscriptQuery,
+  useChildWorkTranscriptTailQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,
@@ -348,6 +357,14 @@ export {
   useTerminalProcessesQuery,
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
+export {
+  customAppearanceKey,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
+  type CustomAppearanceAction,
+  useCustomAppearanceMutation,
+} from './query-domains/customAppearanceMutation';
 export {
   fetchPairedDevices,
   pairedDeviceQueries,
@@ -515,6 +532,7 @@ export {
   usePluginSettingsMutation,
   usePluginSettingsQuery,
   usePluginsQuery,
+  usePluginUpdateCheckQuery,
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
   useRegistryPluginsQuery,
@@ -616,6 +634,12 @@ export {
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
 export {
+  usePullRequestFeedbackCapability,
+  useSetProjectPullRequestWatchMutation,
+  useSetTaskPullRequestWatchMutation,
+  useTaskPullRequestWatchQuery,
+} from './query-domains/pullRequestWatch';
+export {
   fetchReadMarkerSummary,
   markRead,
   readMarkerQueries,
@@ -636,6 +660,7 @@ export {
   useFetchRunOutputRef,
   useJobLogs,
   usePreviewSchedule,
+  useProjectSchedulesCapability,
   useResolveIndeterminateJobMonitor,
   useRestartJobMonitor,
   useRunJob,
@@ -682,14 +707,17 @@ export {
 export {
   type CreateSshEnvironmentInput,
   fetchOpenSshHosts,
+  fetchRemoteSessionHistory,
   fetchRemoteSessions,
   fetchSshEnvironments,
   type OpenSshDiscoveryResult,
   type RemoteEnvironmentAuthenticationRequired,
   type RemoteEnvironmentSessions,
   type RemoteEnvironmentUnavailable,
+  type RemoteSessionHistoryPage,
   type RemoteSessionsResult,
   type ResolvedOpenSshHost,
+  readRemoteSessionHistoryCapability,
   type SshEnvironmentLaunchMode,
   type SshEnvironmentProfile,
   type SshEnvironmentState,
@@ -813,10 +841,12 @@ export {
   fetchTask,
   fetchTaskClaim,
   fetchTaskGraph,
+  fetchTaskPullRequestFacts,
   fetchTasks,
   fetchTaskTurnReferences,
   fetchTaskUserInputReferences,
   type RelationGraphLink,
+  reopenTaskOnOverview,
   type SessionRelations,
   type TaskClaimStatus,
   type TaskCreateInput,
@@ -826,6 +856,7 @@ export {
   type TaskDispatchResult,
   type TaskGraph,
   type TaskListRecord,
+  TaskOverviewReopenUnsupportedError,
   type TaskRecord,
   type TaskReferenceInput,
   type TaskReferenceKind,
@@ -841,9 +872,11 @@ export {
   useCreateTaskMutation,
   useCreateTaskReferenceMutation,
   useDispatchTaskMutation,
+  useReopenTaskOnOverviewMutation,
   useSessionRelationsQuery,
   useTaskClaimQuery,
   useTaskGraphQuery,
+  useTaskPullRequestFactsQuery,
   useTaskQuery,
   useTasksQuery,
   useTaskTurnReferencesQuery,
@@ -1066,10 +1099,12 @@ export {
   useModelPickerCatalogQuery,
   useProjectChatDefaultsQuery,
   useProjectCheckoutFreshnessQuery,
+  useProjectDeletionPreviewQuery,
   useProjectIconCandidatesQuery,
   useProjectIdentityQuery,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
+  useProjectLifecycleMutation,
   useProjectQuery,
   useProjectResolutionQuery,
   useProjectRunLocationsQuery,

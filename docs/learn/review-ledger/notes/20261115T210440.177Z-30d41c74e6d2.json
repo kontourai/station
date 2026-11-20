@@ -1,0 +1,7 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"#4995: checked new log repeat-limit and stdout log file rotation claims against src-server/utils/log-repeat-limiter.ts, logger.ts, services/infra/server-stdout-log-file.ts and their tests.","inputs":["docs/reference/metrics.md"]}
+  ]
+}

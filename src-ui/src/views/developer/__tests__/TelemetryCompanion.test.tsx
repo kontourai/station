@@ -265,7 +265,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
       ).toBeTruthy();
     } else {
       expect(
-        await screen.findByText(/preparation outcome is unconfirmed/),
+        await screen.findByText(/Station didn.t confirm the result/),
       ).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Prepare signed archive' }),
@@ -286,7 +286,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
       ).toBeTruthy();
     } else {
       expect(
-        await screen.findByText(/recorded operation has no readable receipt/),
+        await screen.findByText(/last operation's result can't be read/),
       ).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Prepare signed archive' }),
@@ -436,15 +436,18 @@ test.each(['recovered', 'unconfirmed'] as const)(
     fireEvent.click(start);
     await waitFor(() => expect(control).toHaveBeenCalledTimes(1));
     if (recovery === 'recovered')
-      expect(
-        await screen.findByText(/Running. Receiver storage is ready/),
-      ).toBeTruthy();
+      expect(await screen.findByText(/Running. Storage is ready/)).toBeTruthy();
     else
       expect(
-        await screen.findByText(/last start outcome needs reconciliation/),
+        await screen.findByText(/Station didn.t confirm the last start/),
       ).toBeTruthy();
     const stop = await screen.findByRole('button', { name: 'Stop companion' });
     await waitFor(() => expect(stop).toHaveProperty('disabled', false));
+    if (recovery !== 'recovered')
+      // Stopping is offered only because it is possible here.
+      expect(
+        screen.getByText(/or stop the companion to make sure/),
+      ).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Check companion status' }),
     );
@@ -454,12 +457,10 @@ test.each(['recovered', 'unconfirmed'] as const)(
     h.unmount();
     mount(options);
     if (recovery === 'recovered')
-      expect(
-        await screen.findByText(/Running. Receiver storage is ready/),
-      ).toBeTruthy();
+      expect(await screen.findByText(/Running. Storage is ready/)).toBeTruthy();
     else
       expect(
-        await screen.findByText(/last start outcome needs reconciliation/),
+        await screen.findByText(/Station didn.t confirm the last start/),
       ).toBeTruthy();
     expect(control).toHaveBeenCalledTimes(1);
     expect(install).toHaveBeenCalledTimes(1);
@@ -470,12 +471,10 @@ test('renders the host observation from the real SDK/route without claiming inst
   const h = mount();
   expect(
     await screen.findByText(
-      /Host prerequisites passed: Linux arm64, Docker 29.4.0, Compose 5.1.2/,
+      /Prerequisites passed: Linux arm64, Docker 29.4.0, Compose 5.1.2/,
     ),
   ).toBeTruthy();
-  expect(
-    screen.getByText(/Host capability alone does not establish/),
-  ).toBeTruthy();
+  expect(screen.queryByText(/installed/i)).toBeNull();
   expect(h.probe).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
 });
@@ -496,10 +495,12 @@ test('renders verified parent evidence through the SDK while refusing installati
   });
   expect(
     await screen.findByText(
-      /Parent release 0.7.0-nightly.12 has a verified signed envelope/,
+      /Release 0.7.0-nightly.12 is signed and its companion files match/,
     ),
   ).toBeTruthy();
-  expect(screen.getByText(/archive must be authenticated/)).toBeTruthy();
+  expect(
+    screen.getByText(/Prepare the archive below before installing/),
+  ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
 });
 
@@ -507,29 +508,31 @@ test('a refused operator read shows the required authority and launches no probe
   const h = mount({ operator: false });
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining('operator session'),
+    expect.stringContaining('Sign in as the Station operator'),
   );
   expect(h.probe).not.toHaveBeenCalled();
-  expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+  expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
 });
 
 test('a malformed refresh replaces prior success with an error', async () => {
   mount();
-  await screen.findByText(/Host prerequisites passed/);
+  await screen.findByText(/Prerequisites passed/);
   vi.mocked(fetch).mockResolvedValueOnce(
     Response.json({ data: { kind: 'available' } }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Check host again' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check prerequisites again' }),
+  );
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining('host check is unavailable'),
+    expect.stringContaining("Couldn't check the computer running Station"),
   );
-  expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+  expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
 });
 
 test('the SDK refuses a response that promotes build evidence to installation authority', async () => {
   mount();
-  await screen.findByText(/Host prerequisites passed/);
+  await screen.findByText(/Prerequisites passed/);
   vi.mocked(fetch).mockResolvedValueOnce(
     Response.json({
       data: {
@@ -545,12 +548,14 @@ test('the SDK refuses a response that promotes build evidence to installation au
       },
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Check host again' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check prerequisites again' }),
+  );
   expect(await screen.findByRole('alert')).toHaveProperty(
     'textContent',
-    expect.stringContaining('host check is unavailable'),
+    expect.stringContaining("Couldn't check the computer running Station"),
   );
-  expect(screen.queryByText(/Parent release/)).toBeNull();
+  expect(screen.queryByText(/Release 0.7.0/)).toBeNull();
 });
 
 test('a delayed prior-authority result cannot replace the newly selected authority', async () => {
@@ -575,12 +580,14 @@ test('a delayed prior-authority result cannot replace the newly selected authori
   await waitFor(() => expect(h.probe).toHaveBeenCalledTimes(1));
   host.authorityKey = 'operator-two';
   h.rerender();
-  await screen.findByText(/Install Docker and Compose on the Station host/);
+  await screen.findByText(
+    /Install Docker and Compose on the computer running Station/,
+  );
   await act(async () => {
     release?.(available);
     await old;
   });
-  expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+  expect(screen.queryByText(/Prerequisites passed/)).toBeNull();
   expect(
     JSON.stringify(
       h.client
@@ -674,4 +681,50 @@ test('running companion renders received product groups with release/window filt
   ).toBeTruthy();
   expect(screen.queryByText(/3 received\. Release 0.1.11/)).toBeNull();
   expect(screen.queryByText(/private receiver failure/)).toBeNull();
+});
+
+// While another operation holds the lock, Stop is not possible, so the
+// uncertain-action alert must not offer it.
+test('an unconfirmed action under an operation lock offers no stop', async () => {
+  const createdAt = '2026-10-24T00:00:00.000Z';
+  mount({
+    managedState: async () => ({
+      supported: true,
+      hasOperationLock: true,
+      installation: {
+        protocol: 'station-companion-installation/v1',
+        installationId: '21234567-89ab-4cde-8fab-0123456789ab',
+        preparationId: '11234567-89ab-4cde-8fab-0123456789ab',
+        source: 'a'.repeat(40),
+        version: '0.7.0-nightly.12',
+        architecture: 'arm64',
+        phase: 'installed',
+        createdAt,
+        host: 'selected-station',
+        storage: 'managed-docker-volumes',
+        configuresSending: false,
+      },
+      latestAction: {
+        protocol: 'station-companion-action/v1',
+        installationId: '21234567-89ab-4cde-8fab-0123456789ab',
+        operationId: '31234567-89ab-4cde-8fab-0123456789ab',
+        action: 'start',
+        phase: 'unconfirmed',
+        createdAt,
+        configuresSending: false,
+      },
+      runtime: 'partial',
+      storage: 'not-checked',
+      observedAt: createdAt,
+    }),
+  });
+  const alert = await screen.findByText(
+    /Station didn.t confirm the last start/,
+  );
+  expect(alert.textContent).toContain('Check status before trying again.');
+  expect(alert.textContent).not.toContain('stop the companion');
+  expect(screen.getByRole('button', { name: 'Stop companion' })).toHaveProperty(
+    'disabled',
+    true,
+  );
 });

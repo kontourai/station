@@ -418,6 +418,23 @@ test.each([
     },
     '2 background tasks running',
   ],
+  // The chat knows its children's kinds and its running tools: the pill
+  // names them as the chat's background strip does.
+  [
+    {
+      activity: {
+        conversationId: 'c',
+        asOfSequence: 2,
+        runningChildWork: {
+          count: 9,
+          producers: [],
+          oldestStartedAt: '2026-09-29T00:00:00Z',
+        },
+      },
+      backgroundWork: { agent: 9, command: 0, monitor: 0, tool: 3 },
+    },
+    '9 agents and 3 tools running',
+  ],
   [
     {
       activity: {

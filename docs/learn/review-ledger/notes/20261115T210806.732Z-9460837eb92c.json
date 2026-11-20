@@ -1,0 +1,7 @@
+{
+  "revision": "7bc72d2ff1be39f04465b7cd261589a1c1e93ee6",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"The only api.md change (#4994) is one sentence on the usage-telemetry delivery-status lastFailure.detail field; this page cites api.md for unrelated routes and makes no telemetry delivery-status claim, so it remains accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

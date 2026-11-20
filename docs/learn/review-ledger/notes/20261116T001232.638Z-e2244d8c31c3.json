@@ -1,0 +1,7 @@
+{
+  "revision": "c2d157194d0a5e07c43bf6ee4e19427a1b742d3f",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Review-fix round: the attached-session continue description is unchanged in behavior; the guarded start now applies to handed-over drafts too, consistent with the guide.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

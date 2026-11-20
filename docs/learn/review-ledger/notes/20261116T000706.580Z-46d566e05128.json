@@ -1,0 +1,83 @@
+{
+  "revision": "10ac73f75073ed686ea518785de1b13e5ce30e20",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Cross-station reads now also covers the read-only history relay (GET /api/environments/ssh/sessions/:environmentId/:threadId/history): same tunnel, outbound peer bearer and orchestration:operate leaf, never dials, refuses mismatched or over-2,000-event pages, caps at the remote's 20-turn and 512-char cursor bounds, labels from this Station's profile, and maps a remote 401 to a 409 authentication_required. Checked against ssh-environments.ts, remote-session-reader.ts and its route/reader tests.","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/environment-security.ts","src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Added that the remote list includes external sessions the remote Station found on its own computer, that opening one shows history read-only with continuation disabled, and the remoteSessionHistory flag fallback. Checked against RemoteSessionReaderHost.tsx, work-item-open-policy.ts and station-capability-flags.ts.","inputs":["docs/guides/machine-relationships.md","src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Documented fetchRemoteSessionHistory and readRemoteSessionHistoryCapability, both exported from packages/sdk/src/query-domains/sshEnvironments.ts through queries.ts and index.ts; failure behavior matches the route's error sentences.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture.md","note":"Attached external session follow now says each Station reads only its own computer's provider files and remote sessions arrive through that computer's Station over a connected SSH environment (remote-session-reader.ts); no daemon, no source handle crossing. Other claims unchanged.","inputs":["docs/architecture.md","packages/sdk/src/index.ts","src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Only change: an optional remoteSessionHistory key on StationCapabilityFlags. Scanned each citing page for capability-flag enumerations and handshake claims; none lists every flag or is contradicted by one new optional flag.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Only change: exports fetchRemoteSessionHistory, RemoteSessionHistoryPage and readRemoteSessionHistoryCapability. Scanned each citing page for SDK export enumerations; none claims a closed export list this contradicts.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Only change: the same three remote-session-history exports re-exported from the SSH environments query domain; citing pages make no claim about that domain's export set.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Only change: the same three remote-session-history exports re-exported from the SSH environments query domain; citing pages make no claim about that domain's export set.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Only change: the same three remote-session-history exports re-exported from the SSH environments query domain; citing pages make no claim about that domain's export set.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Only change: the same three remote-session-history exports re-exported from the SSH environments query domain; citing pages make no claim about that domain's export set.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only change: the same three remote-session-history exports re-exported from the SSH environments query domain; citing pages make no claim about that domain's export set.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Only change: static remoteSessionHistory: true, not withdrawn in any deployment mode (as sshEnvironments). Citing pages' capability-flag descriptions remain accurate.","inputs":["src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only change: the remote work-item id builder moved to work-item-open-policy.ts (same remote:<environmentId>:<threadId> shape); no HomeWorkItem field added, so the Home role projection is unchanged. Citing pages' claims hold.","inputs":["src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only change: the remote work-item id builder moved to work-item-open-policy.ts (same remote:<environmentId>:<threadId> shape); no HomeWorkItem field added, so the Home role projection is unchanged. Citing pages' claims hold.","inputs":["src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Only change: a remote-session row now opens the read-only remote reader instead of doing nothing; local rows' open behavior is unchanged. Citing pages make no claim about remote rows.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only change: a remote-session row now opens the read-only remote reader instead of doing nothing; local rows' open behavior is unchanged. Citing pages make no claim about remote rows.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/architecture.md","note":"Added readConnectedRemoteSessionHistory beside the existing list/search readers; existing list and search behavior is unchanged. Citing pages updated where they describe remote visibility.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Added readConnectedRemoteSessionHistory beside the existing list/search readers; existing list and search behavior is unchanged. Citing pages updated where they describe remote visibility.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added readConnectedRemoteSessionHistory beside the existing list/search readers; existing list and search behavior is unchanged. Citing pages updated where they describe remote visibility.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only an added Remote session history subsection; citing pages route to sdk.md generally and make no claim it changes.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only an added Remote session history subsection; citing pages route to sdk.md generally and make no claim it changes.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/design/automations.md","note":"Only the Cross-station reads section gained a paragraph on the history relay; citing pages' references to the threat model remain accurate.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

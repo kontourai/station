@@ -183,7 +183,13 @@ export function BrowserTabs({
                 ? 'New tab'
                 : session?.title || url || 'Browser page';
             return (
-              <div className="browser-tabs__item" key={id}>
+              <div
+                className="browser-tabs__item"
+                key={id}
+                // A closed session's tab stays (it can be reopened) but no
+                // longer looks like a live page.
+                data-closed={session?.state === 'closed' || undefined}
+              >
                 <button
                   type="button"
                   className="browser-tabs__tab"

@@ -9,7 +9,6 @@ describe('createRuntimeInitializationDeps', () => {
       .fn()
       .mockImplementation(async (slug: string) => ({ slug }));
     const configureRoutes = vi.fn();
-    const reloadAgents = vi.fn(async () => {});
     const onACPConnectionsReady = vi.fn(async () => {});
     const getReviewedTariffConfiguration = vi.fn(() => undefined);
     const replaceTemplateVariables = vi.fn(
@@ -33,6 +32,9 @@ describe('createRuntimeInitializationDeps', () => {
       approvalRegistry: { has: vi.fn(), resolve: vi.fn() } as any,
       environmentSecurityService: {
         verifyCredential: vi.fn(() => true),
+        verifyOperatorCredential: vi.fn(() => true),
+        credentialLocality: vi.fn(() => undefined),
+        credentialHasOwnerStanding: vi.fn(() => false),
         authorizeCredential: vi.fn(() => true),
         identifyDevice: vi.fn(() => null),
         canSharePersonalConversation: vi.fn(() => false),
@@ -96,7 +98,6 @@ describe('createRuntimeInitializationDeps', () => {
       ollamaAdapter: { kind: 'ollama' } as any,
       createVoltAgentInstance,
       configureRoutes,
-      reloadAgents,
       replaceTemplateVariables,
       checkBedrockCredentials,
       createDefaultSkillRegistryProvider,
@@ -115,7 +116,6 @@ describe('createRuntimeInitializationDeps', () => {
     expect(deps.approvalRegistry).toBeDefined();
     expect(deps.createVoltAgentInstance).toBe(createVoltAgentInstance);
     expect(deps.configureRoutes).toBe(configureRoutes);
-    expect(deps.reloadAgents).toBe(reloadAgents);
     expect(deps.onACPConnectionsReady).toBe(onACPConnectionsReady);
     expect(deps.getReviewedTariffConfiguration).toBe(
       getReviewedTariffConfiguration,

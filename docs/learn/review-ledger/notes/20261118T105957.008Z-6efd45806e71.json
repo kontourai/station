@@ -1,0 +1,7 @@
+{
+  "revision": "82b39ea113dce293aa011bebe8e083e0757fc83a",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the fixed reload launcher and existing maximized Chat dock clearance. The shell reserves space above the dock header only while the browser offers Reload to update. The other launcher keeps its separate position, and the worker update and reload handlers retain their existing behavior.","inputs":["docs/design/offline-outbound-queue.md"]}
+  ]
+}

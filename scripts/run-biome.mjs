@@ -2,6 +2,7 @@
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execAsSlotHolder } from './lib/slot-holder-exec.mjs';
 import {
   acquireTypecheckSlot,
   SLOT_HELD_ENV,
@@ -45,7 +46,7 @@ const binary =
 const args = process.argv.slice(2);
 if (process.platform !== 'win32') {
   // Preserve the slot holder PID, so killing a queued/running check cannot orphan Biome.
-  process.execve(binary, [binary, ...args], env);
+  await execAsSlotHolder({ file: binary, args, label: 'Biome', env });
 } else {
   const {
     executeOwnedCommand,

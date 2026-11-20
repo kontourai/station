@@ -504,6 +504,7 @@ describe('bounds on what the paired Station reports', () => {
     const summary = (
       await service.listSessionReadModel(
         sessionReadAuthorityFromRequest('default', undefined, undefined),
+        { purpose: 'session-list' },
       )
     ).find((session) => session.threadId === threadId);
     const title = summary?.delegation?.peerPendingRequest?.title ?? '';
@@ -634,6 +635,7 @@ describe('the paired Station question text bound', () => {
     const summary = (
       await service.listSessionReadModel(
         sessionReadAuthorityFromRequest('default', undefined, undefined),
+        { purpose: 'session-list' },
       )
     ).find((session) => session.threadId === threadId);
     return summary?.delegation?.peerPendingRequest?.body ?? '';

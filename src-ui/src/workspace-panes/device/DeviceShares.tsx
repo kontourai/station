@@ -4,6 +4,7 @@ import { useMobileDeviceInventoryQuery } from '@kontourai/station-sdk/mobile-dev
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import {
   useDeviceShareAction,
   useDeviceShares,
@@ -25,6 +26,7 @@ export function DeviceShares({
   /** Which device host's devices (#1973); shares are per host. */
   hostId?: string;
 }) {
+  useDecisionSurface('device-shares');
   const inventory = useMobileDeviceInventoryQuery(
     requestScope,
     undefined,

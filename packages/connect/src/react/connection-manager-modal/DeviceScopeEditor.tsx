@@ -87,9 +87,9 @@ export type ScopeBaseChoice =
   | typeof COLLABORATOR_MANAGEMENT_CHOICE;
 const COLLABORATOR_MANAGEMENT_OPTION = {
   choice: COLLABORATOR_MANAGEMENT_CHOICE,
-  label: 'Collaborator management',
+  label: 'Participate in shared Projects',
   detail:
-    'Exactly read and operate for an account-bound collaborator’s browser. Selecting this clears any capabilities ticked below — they take no effect with this choice. To combine read and operate with a capability, choose Delegation instead. Project people and invitation management become available only on Projects shared with that person as an admin. No terminal, no device management.',
+    'Lets this browser send replies and take actions allowed by the person’s Project role. Project admins can manage members. Selecting this clears the extra capabilities below.',
 } as const;
 
 /**

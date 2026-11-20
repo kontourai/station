@@ -3,7 +3,7 @@ import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { getIntegrationRegistryProvider } from '../../providers/registries/registry.js';
 import { registrySourceManager } from '../../providers/registries/registry-source-manager.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
-import { stationDocsToolCatalog } from '../../tools/station-docs-tool-catalog.js';
+import { stationDocsToolCatalog } from '../../tools/station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { toolOriginLocation } from './integration-origin.js';
 import type { MCPService } from './mcp-service.js';

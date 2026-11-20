@@ -2,7 +2,10 @@ import { authenticatedFetch } from '@kontourai/station-sdk';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useOpenBrowserSessionInRegion } from '../../contexts/useOpenInRegion';
-import { BrowserSessionSurface } from '../../float-over-chat/BrowserSessionSurface';
+import {
+  BrowserSessionSurface,
+  browserSessionHost,
+} from '../../float-over-chat/BrowserSessionSurface';
 import { browserShownSourceKey } from '../../float-over-chat/floatSource';
 import {
   closeFloat,
@@ -20,6 +23,13 @@ import {
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import type { BrowserActivityScope } from '../chat/BrowserActivityContext';
+import {
+  callLabel,
+  classifyToolCall,
+  toolCallPhase,
+} from '../chat/tool-call-labels';
+import type { ToolCallLike } from '../chat/tool-call-runs';
+import { toolDisplayView } from '../chat/tool-display-view';
 import { ErrorState, SkeletonBlock } from '../state';
 import './InlineBrowserActivity.css';
 
@@ -29,6 +39,7 @@ export function InlineBrowserActivity({
   active,
   toolCount,
   status,
+  steps,
   children,
 }: {
   scope: BrowserActivityScope;
@@ -36,6 +47,7 @@ export function InlineBrowserActivity({
   active: boolean;
   toolCount: number;
   status: string;
+  steps?: ToolCallLike[];
   children?: ReactNode;
 }) {
   const [showCurrent, setShowCurrent] = useState(false);
@@ -120,6 +132,7 @@ export function InlineBrowserActivity({
     floating ? (
       <Button
         variant="secondary"
+        className="inline-browser-activity__control"
         onClick={() => {
           closeFloat(scope.conversationKey);
         }}
@@ -129,6 +142,7 @@ export function InlineBrowserActivity({
     ) : (
       <Button
         variant="secondary"
+        className="inline-browser-activity__control"
         onClick={() => {
           openFloat(
             scope.conversationKey,
@@ -145,18 +159,44 @@ export function InlineBrowserActivity({
       </Button>
     )
   ) : null;
-  return (
-    <section className="inline-browser-activity">
-      <div className="inline-browser-activity__heading">
-        <strong>Browser activity</strong>
+  const host = session ? browserSessionHost(session.url) : '';
+  const heading = (
+    <div className="inline-browser-activity__heading">
+      <strong>
+        {active ? session?.title || host || 'Browser' : 'Browsed'}
+      </strong>
+      {active && host && session?.title && session.title !== host && (
+        <span>{host}</span>
+      )}
+      {!active && (
         <span>
-          {status} · {toolCount} {toolCount === 1 ? 'tool call' : 'tool calls'}
+          {toolCount} {toolCount === 1 ? 'action' : 'actions'}
         </span>
-      </div>
+      )}
+      {status && <span>{status}</span>}
+    </div>
+  );
+  const paneAction = openInPanel ? (
+    <Button
+      variant="secondary"
+      className="inline-browser-activity__control"
+      onClick={() => void openInPanel()}
+    >
+      Open in pane
+    </Button>
+  ) : null;
+  return (
+    <section className="inline-browser-activity" data-active={active}>
+      {!(session && !floating && visible && control) && heading}
       {!active && !showCurrent && browserSessionId && (
-        <Button variant="secondary" onClick={() => setShowCurrent(true)}>
-          Open current session
-        </Button>
+        <details>
+          <summary className="inline-browser-activity__control">
+            Current session
+          </summary>
+          <Button variant="secondary" onClick={() => setShowCurrent(true)}>
+            Open current session
+          </Button>
+        </details>
       )}
       {(active || showCurrent) && (
         <div ref={ref}>
@@ -191,6 +231,38 @@ export function InlineBrowserActivity({
             !session && (
               <p>Browser session is unavailable for this conversation.</p>
             )}
+          {session && !floating && visible && control && (
+            <LiveSurfaceViewerControls
+              label="Browser activity controls"
+              className="inline-browser-activity__toolbar"
+              actionClassName="inline-browser-activity__control"
+              status={DRIVER_TEXT[control.tone]}
+              tone={control.tone}
+              onClaim={
+                control.status === 'live' && control.tone !== 'you'
+                  ? () => changeControl(control.claimControl)
+                  : null
+              }
+              onRelease={
+                control.tone === 'you'
+                  ? () => changeControl(control.releaseControl)
+                  : null
+              }
+              onToggleImmersive={
+                control.immersive
+                  ? control.exitImmersive
+                  : control.enterImmersive
+              }
+              leading={heading}
+              menu={
+                <>
+                  {paneAction}
+                  {placementAction}
+                </>
+              }
+              immersive={control.immersive}
+            />
+          )}
           {session && !floating && visible && (
             <div
               className="inline-browser-activity__viewport"
@@ -212,30 +284,6 @@ export function InlineBrowserActivity({
               />
             </div>
           )}
-          {session && !floating && visible && control && (
-            <LiveSurfaceViewerControls
-              label="Browser activity controls"
-              actionClassName="inline-browser-activity__control"
-              status={DRIVER_TEXT[control.tone]}
-              tone={control.tone}
-              onClaim={
-                control.status === 'live' && control.tone !== 'you'
-                  ? () => changeControl(control.claimControl)
-                  : null
-              }
-              onRelease={
-                control.tone === 'you'
-                  ? () => changeControl(control.releaseControl)
-                  : null
-              }
-              onToggleImmersive={
-                control.immersive
-                  ? control.exitImmersive
-                  : control.enterImmersive
-              }
-              immersive={control.immersive}
-            />
-          )}
           {controlError && (
             <ErrorState variant="compact" title={controlError} />
           )}
@@ -250,27 +298,62 @@ export function InlineBrowserActivity({
                     : 'Browser is shown in another activity.'}
             </p>
           )}
-          {session && (
+          {session && (floating || !visible || !control) && (
             <ActionRow
               overflowLabel="More browser activity actions"
-              primary={
-                openInPanel ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => void openInPanel()}
-                  >
-                    Open in pane
-                  </Button>
-                ) : (
-                  placementAction
-                )
-              }
-              secondary={openInPanel ? placementAction : undefined}
+              primary={paneAction ?? placementAction}
+              secondary={paneAction ? placementAction : undefined}
             />
           )}
         </div>
       )}
-      <div className="inline-browser-activity__steps">{children}</div>
+      {active && steps && (
+        <ol
+          className="inline-browser-activity__chips"
+          aria-label="Browser actions"
+        >
+          {steps.map((part, index) => {
+            const phase = toolCallPhase(part);
+            const view = toolDisplayView(part);
+            const label = callLabel(
+              classifyToolCall({
+                ...part,
+                args: view.args,
+                toolName: view.toolName,
+              }),
+              view.toolName,
+              view.args,
+              phase,
+            );
+            return (
+              <li
+                key={JSON.stringify([
+                  part.toolCallId,
+                  part.sourceEventId,
+                  index,
+                ])}
+                className="inline-browser-activity__chip"
+                aria-current={
+                  index === steps.length - 1 &&
+                  (phase === 'running' || phase === 'proposed')
+                    ? 'step'
+                    : undefined
+                }
+              >
+                {label}
+                {phase === 'failed'
+                  ? ' · Failed'
+                  : phase === 'proposed'
+                    ? ' · Approval needed'
+                    : ''}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {children && (
+        <div className="inline-browser-activity__steps">{children}</div>
+      )}
     </section>
   );
 }

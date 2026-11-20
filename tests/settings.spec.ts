@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   openHeaderSettings,
@@ -13,7 +13,13 @@ async function goToSettings(page: import('@playwright/test').Page) {
   // left in the header or the sidebar footer — so the route, not the control,
   // is what this asks for.
   await openHeaderSettings(page);
-  await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
+  await expect(page).toHaveURL(/\/settings(?:\?|$)/);
+  await expect(
+    page.getByRole('heading', { name: 'Settings', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('searchbox', { name: 'Filter settings' }),
+  ).toBeVisible();
 }
 
 /**
@@ -121,26 +127,67 @@ test.describe('Settings', () => {
     await goToSettings(page);
   });
 
-  test('Customize offers management links at a thumb-sized target', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('button', { name: 'Toggle menu' }).click();
-    await page.getByRole('button', { name: 'Customize', exact: true }).click();
-    const chooser = page.getByRole('dialog', { name: 'Customize' });
-    for (const label of ['Agents', 'Skills', 'Engines & Models', 'Plugins']) {
-      const entry = chooser.getByRole('link', { name: label, exact: true });
-      await expect(entry).toBeVisible();
-      await expect
-        .poll(async () => (await entry.boundingBox())?.height ?? 0)
-        .toBeGreaterThanOrEqual(44);
-    }
-    await expect(
-      chooser.getByRole('link', { name: 'Registry', exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      chooser.getByRole('link', { name: 'Developer', exact: true }),
-    ).toHaveCount(0);
+  test.describe('mobile Customize', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('Customize offers management links at a thumb-sized target', async ({
+      page,
+    }) => {
+      // Chromium can report 43.99998 for a 44px CSS border box.
+      const cssSubpixelEpsilon = 0.001;
+      const touchFloor = 44;
+      await page.getByRole('button', { name: 'Toggle menu' }).click();
+      await page
+        .getByRole('button', { name: 'Customize', exact: true })
+        .click();
+      const chooser = page.getByRole('dialog', { name: 'Customize' });
+      for (const label of [
+        'Agents',
+        'Skills',
+        'Connections',
+        'Plugins',
+        'Appearance',
+        'Settings',
+      ]) {
+        const entry = chooser.getByRole('link', { name: label, exact: true });
+        await expect(entry).toBeVisible();
+        await entry.scrollIntoViewIfNeeded();
+        expect(
+          await entry.evaluate((element) =>
+            Number.parseFloat(getComputedStyle(element).minHeight),
+          ),
+          `${label} CSS touch floor`,
+        ).toBeGreaterThanOrEqual(touchFloor);
+        await expect
+          .poll(
+            async () => {
+              const box = await entry.boundingBox();
+              return box ? Math.min(box.width, box.height) : 0;
+            },
+            { message: `${label} rendered touch target` },
+          )
+          .toBeGreaterThanOrEqual(touchFloor - cssSubpixelEpsilon);
+        await expect
+          .poll(
+            () =>
+              entry.evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                return [rect.top + 1, rect.bottom - 1].every((y) =>
+                  element.contains(document.elementFromPoint(x, y)),
+                );
+              }),
+            { message: `${label} hit area` },
+          )
+          .toBe(true);
+      }
+      await expect(
+        chooser.getByRole('link', { name: 'Registry', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        chooser.getByRole('link', { name: 'Developer', exact: true }),
+      ).toHaveCount(0);
+    });
   });
 
   test('desktop Settings has one rail of topics that stay within Settings', async ({
@@ -157,7 +204,7 @@ test.describe('Settings', () => {
         (element) => element.scrollWidth <= element.clientWidth,
       ),
     ).toBe(true);
-    await expect(nav.getByRole('link')).toHaveCount(9);
+    await expect(nav.getByRole('link')).toHaveCount(10);
     for (const link of await nav.getByRole('link').all()) {
       await expect(link).toHaveAttribute('href', /\/settings\?view=/);
       const box = (await link.boundingBox())!;
@@ -236,7 +283,9 @@ test.describe('Settings', () => {
     page,
   }) => {
     await page.goto('/settings?keep=1&view=unknown');
-    await page.waitForSelector('.settings__section-nav');
+    await page
+      .getByRole('navigation', { name: 'Settings sections', exact: true })
+      .waitFor();
     await expect(page).toHaveURL('/settings?keep=1');
     await expect(
       page.getByRole('link', { name: 'General', exact: true }),
@@ -286,7 +335,9 @@ test.describe('Settings', () => {
 
   test('legacy section deep links remain supported', async ({ page }) => {
     await page.goto('/settings?section=knowledge');
-    await page.waitForSelector('.settings__section-nav');
+    await page
+      .getByRole('navigation', { name: 'Settings sections', exact: true })
+      .waitFor();
     await expect(page.locator('#section-knowledge')).toBeInViewport();
   });
 
@@ -321,9 +372,11 @@ test.describe('Settings', () => {
       await page.fill('#systemPrompt', SENTINEL);
       await saveSettingsAndVerifyPersistence(page, SENTINEL);
       await page.reload();
-      await page.waitForSelector('.settings__section-nav', {
-        timeout: 10_000,
-      });
+      await page
+        .getByRole('navigation', { name: 'Settings sections', exact: true })
+        .waitFor({
+          timeout: 10_000,
+        });
       await openAgentDefaults(page);
       await expect(page.locator('#systemPrompt')).toHaveValue(SENTINEL);
     } finally {
@@ -466,6 +519,16 @@ test.describe('Settings', () => {
     await expect(page.locator('.settings__var-row')).toHaveCount(
       initialCount + 1,
     );
+    const type = page.getByRole('combobox', {
+      name: `Template variable ${initialCount + 1} type`,
+    });
+    await type.selectOption('date');
+    await expect(
+      page
+        .locator('.settings__var-row')
+        .last()
+        .getByPlaceholder('Format (optional)'),
+    ).toBeVisible();
     // Remove the last one
     await page.locator('.settings__var-remove').last().click();
     await expect(page.locator('.settings__var-row')).toHaveCount(initialCount);
@@ -545,12 +608,18 @@ test.describe('Settings', () => {
     await filter.blur();
     await expect(filter).toHaveCSS('font-size', '16px');
     await filter.fill('');
-    await expect(page.locator('.settings__section-nav')).toBeHidden();
+    await expect(
+      page.getByRole('navigation', { name: 'Settings sections', exact: true }),
+    ).toBeHidden();
     const picker = page.getByRole('combobox', { name: 'Settings section' });
     await expect(picker).toBeVisible();
     expect((await picker.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await picker.selectOption({ label: 'Notifications & voice' });
     await expect(page).toHaveURL(/view=alerts/);
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Notification sounds$/ })
+      .click();
     for (const name of ['Agent notifications', 'Approval requests sound']) {
       expect(
         (await page.getByRole('combobox', { name }).boundingBox())!.height,
@@ -630,7 +699,9 @@ test.describe('Settings', () => {
 
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
-    await expect(page.locator('.settings__section-nav')).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Settings sections', exact: true }),
+    ).toBeVisible();
     await expect(page.locator('#systemPrompt')).toHaveValue(
       'Dirty edit for close-guard test',
     );
@@ -641,7 +712,9 @@ test.describe('Settings', () => {
       .getByRole('dialog')
       .getByRole('button', { name: 'Discard' })
       .click();
-    await expect(page.locator('.settings__section-nav')).not.toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Settings sections', exact: true }),
+    ).not.toBeVisible();
   });
 
   test('notifications switch announces its description', async ({ page }) => {
@@ -708,4 +781,374 @@ test('Save remains clickable above an open resized dock', async ({ page }) => {
   await save.click();
   expect((await saved).ok()).toBe(true);
   await expect(page.locator('.settings__save-pill')).toBeHidden();
+});
+
+test.describe('Settings scope and provenance', () => {
+  for (const [width, theme] of [
+    [390, 'light'],
+    [390, 'dark'],
+    [1440, 'light'],
+    [1440, 'dark'],
+  ] as const) {
+    test(`shows personal store scope and only meaningful provenance at ${width}px in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ colorScheme: theme });
+      await page.route(/\/config\/app(?:\?|$)/, async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        const response = await route.fetch();
+        expect(response.ok()).toBe(true);
+        const envelope = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...envelope,
+            provenance: {
+              ...envelope.provenance,
+              region: { source: 'env', envVar: 'AWS_REGION' },
+              defaultWorkspaceIsolation: { source: 'default' },
+            },
+          },
+        });
+      });
+
+      await page.goto('/settings?view=agent-runs');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const region = page.locator('#default-region');
+      await expect(
+        region.getByText('Set by operator: AWS_REGION', { exact: true }),
+      ).toBeVisible();
+      await region.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath('operator-environment.png'),
+        animations: 'disabled',
+      });
+
+      const workspace = page.locator('#default-workspace-isolation');
+      await expect(workspace).toBeVisible();
+      await workspace.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath('built-in-default.png'),
+        animations: 'disabled',
+      });
+      await expect.soft(workspace.locator('.provenance-badge')).toHaveCount(0);
+      await workspace
+        .getByRole('button', { name: /Where .* comes from/ })
+        .click();
+      await expect(
+        page.getByText('Built-in default', { exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+
+      await page.getByRole('button', { name: /Search or jump to/ }).click();
+      const palette = page.getByRole('dialog', { name: 'Command palette' });
+      await palette.getByRole('combobox').fill('my knowledge store');
+      const target = palette.getByRole('option', {
+        name: /Settings: My knowledge store/,
+      });
+      await expect(target).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath('personal-store-scope.png'),
+        animations: 'disabled',
+      });
+      await expect
+        .soft(target)
+        .toContainText('Managed by the Station operator.');
+      const scopeDetail = target.getByText('Managed by the Station operator.', {
+        exact: true,
+      });
+      await expect(scopeDetail).toBeVisible();
+      expect(
+        await scopeDetail.evaluate(
+          (detail) => detail.scrollWidth - detail.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(1);
+      await target.click();
+      await expect(page.locator('#personal-knowledge-store')).toBeInViewport();
+    });
+  }
+});
+
+test.describe('Settings discovery and preferences', () => {
+  const destinations = [
+    {
+      query: 'local accounts',
+      title: 'Accounts and sign-in',
+      id: 'local-accounts',
+    },
+    {
+      query: 'usage disclosure',
+      title: 'What usage sharing includes',
+      id: 'usage-disclosure',
+    },
+    {
+      query: 'skill shortcuts',
+      title: 'Skill shortcuts',
+      id: 'skill-shortcuts',
+    },
+    {
+      query: 'model picker preferences',
+      title: 'Model picker preferences',
+      id: 'model-picker-preferences',
+    },
+  ];
+
+  test('discovers the four rows through Settings search and the palette', async ({
+    page,
+  }, testInfo) => {
+    await goToSettings(page);
+    for (const destination of destinations) {
+      const target = page.locator(`[data-catalog-id="${destination.id}"]`);
+      const search = page.getByRole('searchbox', { name: 'Filter settings' });
+      await search.fill(destination.query);
+      await expect(target).toBeVisible();
+      await search.clear();
+
+      await page.getByRole('button', { name: /Search or jump to/ }).click();
+      const palette = page.getByRole('dialog', { name: 'Command palette' });
+      await palette.getByRole('combobox').fill(destination.title);
+      await palette
+        .getByRole('option', {
+          name: new RegExp(`Settings: ${destination.title}`),
+        })
+        .click();
+      await expect(
+        page.getByText(`${destination.title} revealed in Settings.`, {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(target).toBeInViewport();
+
+      if (destination.id === 'usage-disclosure') {
+        const original = page.viewportSize();
+        if (!original)
+          throw new Error('Settings discovery requires a viewport.');
+        const summary = target.getByText('View included fields', {
+          exact: true,
+        });
+        for (const width of [320, 390, 1440]) {
+          await page.setViewportSize({ width, height: 844 });
+          await summary.scrollIntoViewIfNeeded();
+          if (width <= 390) {
+            await expect
+              .poll(async () => (await summary.boundingBox())?.height ?? 0)
+              .toBeGreaterThanOrEqual(44);
+          }
+          await summary.click();
+          await expect(
+            target.getByRole('region', { name: 'Anonymous usage counts' }),
+          ).toBeVisible();
+          await expect(target.getByRole('radio')).toHaveCount(0);
+          await summary.click();
+          await expect(
+            target.getByRole('region', { name: 'Anonymous usage counts' }),
+          ).toBeHidden();
+        }
+        await page.setViewportSize(original);
+      }
+    }
+
+    const picker = page.locator('[data-catalog-id="model-picker-preferences"]');
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await picker.scrollIntoViewIfNeeded();
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(`settings-catalog-${width}-${theme}.png`),
+          animations: 'disabled',
+        });
+      }
+    }
+  });
+
+  test('edits a prior skill binding and only clears model recents', async ({
+    page,
+  }) => {
+    const modelKey = (model: string) => `settings-models\u001f${model}`;
+    const priorModels = {
+      favorites: [modelKey('alpha')],
+      hidden: [modelKey('beta')],
+      order: [modelKey('beta'), modelKey('alpha')],
+      recents: [modelKey('alpha')],
+    };
+    let accountModels: typeof priorModels | undefined;
+    let revision = 'before-import';
+    await page.route('**/api/me/preferences*', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PATCH') {
+        const onlyMissing = new URL(request.url()).searchParams.get(
+          'onlyMissing',
+        );
+        if (onlyMissing === 'true') {
+          expect(accountModels).toBeUndefined();
+          expect(request.postDataJSON()).toEqual({
+            modelPickerPreferences: priorModels,
+          });
+          accountModels = priorModels;
+          revision = 'imported';
+        } else {
+          expect(request.headers()['if-match']).toBe('imported');
+          expect(request.postDataJSON()).toEqual({
+            modelPickerPreferences: { ...priorModels, recents: [] },
+          });
+          accountModels = { ...priorModels, recents: [] };
+          revision = 'cleared';
+        }
+      } else if (request.method() !== 'GET') {
+        return rejectUnexpectedFixtureRequest(route);
+      }
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            schemaVersion: 1,
+            revision,
+            values: accountModels
+              ? { modelPickerPreferences: accountModels }
+              : {},
+          },
+        },
+      });
+    });
+    await page.addInitScript((preferences) => {
+      if (localStorage.getItem('settings-discovery-seeded')) return;
+      localStorage.setItem('settings-discovery-seeded', '1');
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: {
+            skillShortcuts: {
+              'settings-probe': { key: 'F7', modifiers: ['alt'] },
+              'unavailable-skill': { key: 'F6', modifiers: ['alt'] },
+            },
+            modelPickerPreferences: preferences,
+          },
+        }),
+      );
+    }, priorModels);
+    await page.route('**/api/system/skills', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              name: 'settings-probe',
+              description: 'Command skill for Settings verification',
+              command: { enabled: true, name: 'settings-probe' },
+            },
+          ],
+        },
+      }),
+    );
+    await page.route('**/api/connections/models', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              kind: 'model',
+              id: 'settings-models',
+              type: 'openai-compat',
+              name: 'Settings test models',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['llm'],
+              config: {
+                baseUrl: 'https://settings-models.example.test/v1',
+                modelOptions: [
+                  { id: 'alpha', name: 'Alpha' },
+                  { id: 'beta', name: 'Beta' },
+                ],
+              },
+              prerequisites: [],
+              lastCheckedAt: null,
+            },
+          ],
+        },
+      }),
+    );
+    await goToSettings(page);
+    await page
+      .getByRole('link', { name: 'Keyboard shortcuts', exact: true })
+      .click();
+    const skills = page.locator('[data-catalog-id="skill-shortcuts"]');
+    const shortcut = skills.getByRole('button', {
+      name: 'Shortcut for Run /settings-probe',
+    });
+    await expect(shortcut).toContainText('F7');
+    await expect(
+      skills.getByRole('list', {
+        name: 'Saved shortcuts for unavailable skills',
+      }),
+    ).toContainText('unavailable-skill');
+    await shortcut.click();
+    await page.keyboard.press('Alt+F8');
+    await expect(shortcut).toContainText('F8');
+
+    const readValues = () =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('station-device-settings-v1') ?? '{}')
+            .values,
+      );
+    await expect.poll(readValues).toMatchObject({
+      skillShortcuts: {
+        'settings-probe': { key: 'F8', modifiers: ['alt'] },
+        'unavailable-skill': { key: 'F6', modifiers: ['alt'] },
+      },
+      modelPickerPreferences: priorModels,
+    });
+    await page.reload();
+    await expect(shortcut).toContainText('F8');
+
+    const search = page.getByRole('searchbox', { name: 'Filter settings' });
+    await search.fill('model picker preferences');
+    const models = page.locator('[data-catalog-id="model-picker-preferences"]');
+    await expect(models).toContainText(
+      'Previous model picker choices are saved on this device.',
+    );
+    await models
+      .getByRole('button', { name: 'Review preference import' })
+      .click();
+    const importButton = page.getByRole('button', {
+      name: 'Import previous preferences',
+    });
+    await expect(importButton).toBeInViewport();
+    await importButton.click();
+    await expect.poll(() => accountModels).toEqual(priorModels);
+    await search.fill('model picker preferences');
+    await expect(models).toContainText('Favorites: 1');
+    await expect(models).toContainText('Hidden: 1');
+    await expect(models).toContainText('Ordered: 2');
+    await expect(models).toContainText('Recent: 1');
+    await models.getByRole('button', { name: 'Clear recent models' }).click();
+    await expect
+      .poll(() => accountModels)
+      .toEqual({ ...priorModels, recents: [] });
+    await expect
+      .poll(readValues)
+      .toMatchObject({ modelPickerPreferences: priorModels });
+    await page.reload();
+    await search.fill('model picker preferences');
+    await expect(
+      models.getByRole('button', { name: 'Clear recent models' }),
+    ).toBeDisabled();
+    await models
+      .getByRole('button', { name: 'Open model connections' })
+      .click();
+    await expect(page).toHaveURL(/\/connections\/models$/);
+    await page
+      .getByRole('button', { name: 'Settings test models', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Remove Alpha from favorites' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Show Beta' })).toBeVisible();
+  });
 });

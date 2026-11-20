@@ -37,6 +37,12 @@ export interface AttachedSessionReadResult {
   events: CanonicalRuntimeEvent[];
   /** Opaque, bounded continuation position within the source transcript. */
   cursor: AttachedSessionCursor;
+  /**
+   * The newest write to this session the source can see, including writes
+   * that produce no event (a step still streaming, a subagent's own
+   * transcript). Absent when the source cannot tell or nothing changed.
+   */
+  sourceWriteAt?: string;
 }
 
 export type AttachedSessionCursor =

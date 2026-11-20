@@ -1,38 +1,31 @@
 # Station sessions MCP-UI server
 
-A standalone MCP server and HTML renderer for a session snapshot.
-**The current data reader needs repair before use with Station:**
-[#2785](https://github.com/kontourai/station/issues/2785) tracks its route,
-authentication and false-empty response behavior. A rendered empty panel is
-not evidence that Station has no sessions.
+A standalone MCP server that exposes the read-only tool `sessions_panel` and
+the self-contained resource `ui://station-sessions/panel`.
 
-It exposes one tool, `sessions_panel`, whose `_meta.ui.resourceUri` points at a
-`ui://station-sessions/panel` HTML resource, built with the official
-[`@modelcontextprotocol/ext-apps/server`](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps)
-helpers on the MCP TypeScript SDK (same pattern as `examples/mcp-ui-demo`).
-
-At resource-read time the server attempts `GET /orchestration/sessions` beneath
-`STATION_API_BASE`, without an authentication header. The canonical Station
-route is `/api/orchestration/sessions` and requires the request's authority.
-The reader turns non-OK responses, invalid data and exceptions into an empty
-array. Adding `/api` to the base only addresses the prefix; it does not supply
-authentication or distinguish a failed read from a verified empty result.
-
-The renderer produces self-contained HTML with inline styles and escaped text,
-without scripts or external assets. This is the rendering contract exercised
-by its tests; it is not a qualified live Station or external-host journey.
+Both read `GET /api/orchestration/sessions/read-model?limit=200` when called.
+The snapshot contains up to 200 of the latest Sessions visible to the
+configured credential. The tool returns a count only after validating the
+success envelope and rows. Failed tool reads report an MCP error and failed
+resource reads render an unavailable panel. The panel shows an empty snapshot
+only after a valid empty Station response.
 
 ## Run
 
-From the Station repo root (deps already installed there):
+Use the Station checkout's managed dependencies. Configure
+`STATION_API_BASE` with the Station origin, such as
+`http://127.0.0.1:3242`, with no path. HTTPS is required away from loopback.
+Supply `STATION_API_CREDENTIAL` to the child process through the operator's
+secret-injection mechanism. Use a credential with orchestration read access for
+the intended Station. Keep it out of command arguments, registry files and
+shared examples.
 
 ```bash
-node examples/station-sessions-mcp/server.mjs            # speaks MCP over stdio
-# point at a non-default Station port:
-STATION_API_BASE=http://localhost:3242 node examples/station-sessions-mcp/server.mjs
+node examples/station-sessions-mcp/server.mjs
 ```
 
-`STATION_API_BASE` defaults to `http://localhost:3141`.
+The reader sends the credential only to the configured origin and refuses
+redirects. A response deadline and size limit also apply to the response body.
 
 ## Wire it into Station
 
@@ -50,7 +43,10 @@ STATION_API_BASE=http://localhost:3242 node examples/station-sessions-mcp/server
    }
    ```
 
-   Attach it to an agent so its tools are discovered.
+   For a Station-managed child, bind an instance-owned secret to
+   `STATION_API_CREDENTIAL` using the integration's secret environment
+   bindings. The integration uses this credential's read scope for all its
+   tool and resource calls. Attach it where that scope is intended.
 
 2. **Reference it from a layout** as an `mcp-tool-ui` component:
 
@@ -74,7 +70,7 @@ STATION_API_BASE=http://localhost:3242 node examples/station-sessions-mcp/server
 
 The panel is a **read-only snapshot**, rendered at resource-read time — there is no
 `tools/call` from the panel, so it has no dependency on the host's approval/audit
-path. Live updates (SSE/poll) are a deliberate follow-up: they require declaring
+path. Scheduled or interactive refresh is a separate integration: they require declaring
 `connect-src` under the dedicated-frame origin, or a bridge-driven refresh, and
 any future action buttons would route their `tools/call` through Station's
 host-side approval + audit machinery.
@@ -82,5 +78,11 @@ host-side approval + audit machinery.
 ## Verify
 
 ```bash
-npm run test:focused -- examples/station-sessions-mcp/__tests__/render.test.mjs
+npm run test:focused -- examples/station-sessions-mcp/__tests__/render.test.mjs examples/station-sessions-mcp/__tests__/server.process.test.mjs
 ```
+
+The stdio test uses a loopback fixture with synthetic credentials. An
+independent run against an isolated Station also verified a paired Device's
+empty snapshot and then verified refusal from the same connected stdio
+client after Device revocation. External-host rendering remains unverified.
+[Real Station receipt](https://github.com/kontourai/station/issues/2785#issuecomment-6995173513)

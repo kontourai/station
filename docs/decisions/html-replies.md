@@ -73,8 +73,10 @@ still exists and atomically enforces the conversation's 32-page/32-MiB quota.
 A delayed publish cannot recreate pages after the Session was deleted.
 
 The small `{version, pageId, sessionId}` reference travels in the ordinary MCP
-tool result and therefore in canonical tool-completed history. Both live and
-replayed transcript paths recognize it at the tool position. The display
+tool result. During an active ACP turn, Station commits the visual reply's
+transcript entry with the page and suppresses any later engine echo of the same
+reference. Repeating an identical render within that turn reuses the page. The preview stays visible if ACP truncates or omits the tool output.
+Both live and replayed transcript paths recognize the publication. The display
 reference is not authority: the read route checks the same `canUserReadSession`
 predicate used by other history reads, then looks up that Session/page pair.
 Incoming `htmlReply` and `mcpAppResourceUri` metadata claims are discarded at
@@ -225,6 +227,20 @@ source is constant; the only preceding evaluation obtains the page global
 object. Agent-authored bytes never become part of that function source. The
 real preview regression reads script delimiters, Unicode separators and template
 syntax back from inside the opaque frame without changing their UTF-8 bytes.
+
+Preview's bootstrap page is a constant document the host serves at
+`http://station-document.invalid/`, answered through CDP `Fetch` once, for that
+target's main frame only; the request never reaches the network. It is not
+`about:blank` because Chrome for Testing 158 aborts the whole browser
+(`site_instance_impl.cc` CHECK `has_site_`) when an `about:blank` page adds a
+sandboxed `srcdoc` frame while sandboxed frames get their own process; Chrome
+157 does not (#4917). With a served page the opaque frame keeps its own renderer
+process and opaque origin. Turning `IsolateSandboxedIframes` off also avoids the
+abort but would put authored HTML in its bootstrap page's process, so preview
+does not do that, and a test refuses it. The served page sets `no-referrer` and
+an inert `data:` icon, so the frame still sees an empty `document.referrer` and
+the browser requests nothing else from that address. A real-browser probe logs
+whether the installed Chromium still aborts on the `about:blank` shape.
 
 
 The shared sandbox UDP regression requires Chromium. WebKit runs only when its

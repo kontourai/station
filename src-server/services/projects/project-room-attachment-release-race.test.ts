@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
@@ -17,7 +18,11 @@ import {
   ProjectRoomService,
 } from './project-room-service.js';
 import { createProjectRoomRuntime } from './project-room-store.js';
-import { ProjectRoomAttachments } from './task-room-attachments.js';
+import {
+  ProjectRoomAttachments,
+  TaskRoomAttachmentCapacityError,
+  TaskRoomAttachments,
+} from './task-room-attachments.js';
 
 /**
  * #4852 review: Project-room files share one deduplicated byte store across
@@ -448,6 +453,78 @@ it('an upload waiting on the store lock is refused if access is revoked meanwhil
     : [];
   expect(files).toEqual([]);
 });
+
+it('Task-room uploads cannot bypass another process’s store lock or its committed byte budget', async () => {
+  const root = makeTempDir('task-room-lock-contention-');
+  const first = png('first.png');
+  const other = {
+    ...png('other.png'),
+    size: PNG.length + 1,
+    dataUrl: `data:image/png;base64,${Buffer.concat([PNG, Buffer.from([1])]).toString('base64')}`,
+  };
+  vi.stubEnv('STATION_ATTACHMENT_MAX_BYTES', String(other.size));
+  const child = spawn(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      `
+        import { once } from 'node:events';
+        import { TaskRoomAttachments } from './src-server/services/projects/task-room-attachments.ts';
+        const files = new TaskRoomAttachments(process.env.TASK_ROOM_LOCK_ROOT);
+        const input = JSON.parse(process.env.TASK_ROOM_LOCK_INPUT);
+        const uploaded = await files.store(async () => {
+          const release = once(process, 'message');
+          process.send('locked');
+          await release;
+          return { projectId: 'project', taskId: 'first', taskCreatedAt: '2026-10-01T00:00:00.000Z' };
+        }, [input]);
+        if (uploaded?.length !== 1) throw new Error('First upload did not publish');
+        process.disconnect();
+      `,
+    ],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        TASK_ROOM_LOCK_ROOT: root,
+        TASK_ROOM_LOCK_INPUT: JSON.stringify(first),
+      },
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+    },
+  );
+  const finished = once(child, 'exit');
+  try {
+    const [message] = await once(child, 'message', {
+      signal: AbortSignal.timeout(8_000),
+    });
+    expect(message).toBe('locked');
+    const store = new TaskRoomAttachments(root);
+    const scope = async () => ({
+      projectId: 'project',
+      taskId: 'other',
+      taskCreatedAt: '2026-10-01T00:00:00.000Z',
+    });
+    await expect(store.store(scope, [other])).rejects.toThrow(
+      'lifecycle journal lock is held by a live process',
+    );
+    expect(existsSync(join(root, 'blobs'))).toBe(false);
+    child.send('release');
+    expect(await finished).toEqual([0, null]);
+    await expect(store.store(scope, [other])).rejects.toBeInstanceOf(
+      TaskRoomAttachmentCapacityError,
+    );
+    await expect(store.store(scope, [first])).resolves.toHaveLength(1);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill('SIGKILL');
+    await finished;
+    vi.unstubAllEnvs();
+  }
+}, 30_000);
 
 it('exact notice-journey helper fails when its limit note never appears, then passes restored', async () => {
   const { chromium, expect: browserExpect } = await import('@playwright/test');

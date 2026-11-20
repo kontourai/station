@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   NIGHTLY_BUILDS_PER_DAY,
@@ -706,6 +707,41 @@ function ghTagArgs(tag) {
     'GET',
   ];
 }
+/**
+ * Reads the rolling desktop release and its tag from GitHub and binds them to
+ * the cohort. `gh api` prints the whole response, and the rolling release
+ * lists every versioned asset it was ever given (about 1.7 KiB of JSON each),
+ * so the response grows with every Nightly and passed `spawnSync`'s 1 MiB
+ * default at 614 assets.
+ */
+export function observeGithubDesktopRelease(
+  identity,
+  records,
+  { run = defaultSpawnSync, now = () => new Date() } = {},
+) {
+  const query = (args, label) =>
+    jsonOutput(
+      spawnSyncBounded(
+        'gh',
+        args,
+        { encoding: 'utf8', shell: false, windowsHide: true, timeout: 30_000 },
+        { run },
+      ),
+      label,
+    );
+  const githubTag = parseGithubTagReference(
+    query(ghTagArgs(identity.releaseTag), 'gh api tag query'),
+    identity.releaseTag,
+    identity.sourceSha,
+  );
+  return parseGithubReleaseObservation(
+    query(ghReleaseArgs(identity.releaseTag), 'gh api release query'),
+    identity,
+    records,
+    githubTag,
+    now(),
+  );
+}
 function validatePlayObservation(identity, value, aab, before, after) {
   if (
     !plain(value) ||
@@ -937,38 +973,7 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
       { ...candidate.versionIdentities.desktop, windows: hasWindows },
       readFileSync(signaturePath),
     );
-    const githubTag = parseGithubTagReference(
-      jsonOutput(
-        runner(
-          'gh',
-          ghTagArgs(candidate.versionIdentities.desktop.releaseTag),
-          {
-            encoding: 'utf8',
-            shell: false,
-            windowsHide: true,
-            timeout: 30_000,
-          },
-        ),
-        'gh api tag query',
-      ),
-      candidate.versionIdentities.desktop.releaseTag,
-      candidate.sourceSha,
-    );
-    const githubReleasePayload = jsonOutput(
-      runner(
-        'gh',
-        ghReleaseArgs(candidate.versionIdentities.desktop.releaseTag),
-        {
-          encoding: 'utf8',
-          shell: false,
-          windowsHide: true,
-          timeout: 30_000,
-        },
-      ),
-      'gh api release query',
-    );
-    return parseGithubReleaseObservation(
-      githubReleasePayload,
+    return observeGithubDesktopRelease(
       {
         ...candidate.versionIdentities.desktop,
         sourceSha: candidate.sourceSha,
@@ -984,8 +989,6 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
               )
           : []),
       ],
-      githubTag,
-      new Date(),
     );
   }
   const providers = [];

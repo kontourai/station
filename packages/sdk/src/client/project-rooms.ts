@@ -618,6 +618,7 @@ export function parseProjectRoomMessageIntent(
         text: bounded(LIMITS.textBytes),
         replyTo: uuid.optional(),
         attachments: z.array(z.unknown()).optional(),
+        mentions: z.array(z.unknown()).optional(),
       }),
       value,
     );

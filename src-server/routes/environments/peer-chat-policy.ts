@@ -57,6 +57,11 @@ const rules: readonly Rule[] = [
   { method: 'GET', path: /^\/api\/orchestration\/sessions$/ },
   {
     method: 'GET',
+    path: /^\/api\/orchestration\/session-reads\/[^/]+\/turn-directory$/,
+    query: ['cursor', 'turnLimit', 'includeCount'],
+  },
+  {
+    method: 'GET',
     path: /^\/api\/orchestration\/sessions\/[^/]+$/,
     query: ['view', 'cursor', 'turnLimit'],
   },
@@ -239,6 +244,23 @@ export function isPeerChatMutation(method: string, pathname: string): boolean {
     );
   return (
     !!match && classifyPeerChatOperation(method, match[2]!)?.mutation === true
+  );
+}
+
+/**
+ * The owner's own device may continue one of its conversations on a paired
+ * Station, as it may chat there (D14). Exact leaf only: every other peer
+ * mutation stays operator-only.
+ */
+export function isPeerConversationHandoff(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    method.toUpperCase() === 'POST' &&
+    /^\/api\/environments\/peers\/[A-Za-z0-9_-]+\/conversation-handoffs$/.test(
+      pathname,
+    )
   );
 }
 

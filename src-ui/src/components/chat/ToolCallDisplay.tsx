@@ -55,6 +55,10 @@ import { useApprovalSheet } from './ApprovalSheetContext';
 import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
+  appearanceProposalResult,
+  isAppearanceProposalCall,
+} from './appearance-proposal-result';
+import {
   boundedToolResultText,
   fullToolResultText,
 } from './bounded-tool-result';
@@ -79,13 +83,19 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
+import type { ToolCallLike } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 import {
   type ApprovalContentGate,
   useApprovalContent,
 } from './useApprovalContent';
+import { useCallWithObservedRunning } from './useObservedRunningToolCalls';
 
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+const loadAppearanceProposalCard = () =>
+  import('./AppearanceProposalCard').then((module) => ({
+    default: module.AppearanceProposalCard,
+  }));
 
 import './ToolCallDetails.css';
 import './StationToolGlyph.css';
@@ -117,6 +127,7 @@ export interface ToolCallData {
   stationControlRefusal?: StationControlRefusalView;
   /** A Claude Code Artifact publish's page; see `claude-artifact-link.ts`. */
   claudeArtifact?: unknown;
+  appearanceProposal?: unknown;
   state?: string;
   progressMessage?: string;
   /** When the call started (ISO), for a running row's elapsed time. */
@@ -166,6 +177,7 @@ interface ToolCallDisplayProps {
    */
   onApprove?: ToolApprovalHandler;
   showDetails?: boolean;
+  sessionId?: string;
 }
 
 const KIND_GLYPH: Record<
@@ -799,23 +811,21 @@ function ApprovalDecisionStatus({
   check?: () => Promise<void>;
   checking?: boolean;
 }) {
+  // The chosen button already reads "Allowing…" / "Denying…" while a
+  // decision is in flight, so no sentence repeats it. A sent decision whose
+  // settlement has not arrived keeps only the way to check on it.
   return (
     <>
-      {(phase === 'sending' || phase === 'sent') && (
-        <p className="tool-call__approve-status" role="status">
-          {phase === 'sending'
-            ? 'Sending your decision…'
-            : 'Decision sent. Waiting for the tool to continue.'}
-          {phase === 'sent' && check && (
-            <Button pending={checking} onClick={() => void check()}>
-              Check status
-            </Button>
-          )}
+      {phase === 'sent' && check && (
+        <p className="tool-call__approve-status">
+          <Button pending={checking} onClick={() => void check()}>
+            Check status
+          </Button>
         </p>
       )}
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
-          This request is no longer open.
+          Already answered.
         </p>
       )}
       {failure && (
@@ -1004,11 +1014,8 @@ function ToolApprovalButtons({
   ruleGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
-    onApprove,
-    onCheck,
-    reference,
-  );
+  const { phase, failure, decide, chosen, check, checking, busy } =
+    useApprovalDecision(onApprove, onCheck, reference);
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   // #3390: the options come from the approval's decision body. #2316: the
@@ -1026,6 +1033,8 @@ function ToolApprovalButtons({
           ruleGrant,
         )}
         busy={busy}
+        inFlight={phase === 'sending' || phase === 'sent'}
+        chosen={chosen}
         onChoose={decide}
       />
       <ApprovalDecisionStatus
@@ -1320,6 +1329,40 @@ function ToolCallDisplayComponent(
   // A Claude Code Artifact publish reads as the page it published. Any other
   // Artifact action, a failure, or a link that does not check out keeps the
   // ordinary row with its raw result.
+  if (isAppearanceProposalCall(props.toolCall)) {
+    return (
+      <LoadFullContent
+        threadId={props.toolCall.contentThreadId}
+        value={{ output: props.toolCall.output ?? props.toolCall.result }}
+      >
+        {(full) => {
+          const proposal = appearanceProposalResult(
+            full
+              ? { ...props.toolCall, result: undefined, output: full.output }
+              : props.toolCall,
+          );
+          return (
+            <>
+              <ToolCallRow {...props} />
+              {proposal && (
+                <LazyBoundary
+                  key={proposal.id}
+                  load={loadAppearanceProposalCard}
+                  pending={
+                    <SkeletonBlock
+                      label="Loading appearance proposal"
+                      count={1}
+                    />
+                  }
+                  componentProps={{ proposal, sessionId: props.sessionId }}
+                />
+              )}
+            </>
+          );
+        }}
+      </LoadFullContent>
+    );
+  }
   const artifact = claudeArtifactLinkOf(props.toolCall);
   if (artifact) return <ClaudeArtifactCard link={artifact} />;
   return hasStationControlCallRow(props.toolCall) &&
@@ -1404,10 +1447,20 @@ function rememberToggle(key: string, expanded: boolean): void {
 export const ToolCallDisplay = memo(function ToolCallDisplay(
   props: ToolCallDisplayProps,
 ) {
+  // A call still running in the background reads as running, as its tool
+  // batch and the Agents pane read it, not as "No result recorded".
+  // ToolCallData is the narrower view of the same transcript part.
+  const toolCall = useCallWithObservedRunning(
+    props.toolCall as ToolCallLike,
+  ) as ToolCallData;
   return (
-    <TranscriptAppTools calls={[props.toolCall]}>
+    <TranscriptAppTools calls={[toolCall]}>
       {(appTools) => (
-        <ToolCallDisplayComponent {...props} appTools={appTools} />
+        <ToolCallDisplayComponent
+          {...props}
+          toolCall={toolCall}
+          appTools={appTools}
+        />
       )}
     </TranscriptAppTools>
   );

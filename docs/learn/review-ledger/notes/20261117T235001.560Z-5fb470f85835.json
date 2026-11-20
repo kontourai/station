@@ -1,0 +1,13 @@
+{
+  "revision": "7d3e99d0c087886105ea0502789d79c02e41480c",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed added section-value alias normalization: only Project settings supplies agent-feedback to pull-requests. Existing Settings view/section-key aliases, unrelated query parameters, highlight deferral, modal focus guard and navigation ownership remain unchanged; Project alias and stable-focus tests pass.","inputs":["src-ui/src/hooks/useSectionNavigation.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed added section-value alias normalization: only Project settings supplies agent-feedback to pull-requests. Existing Settings view/section-key aliases, unrelated query parameters, highlight deferral, modal focus guard and navigation ownership remain unchanged; Project alias and stable-focus tests pass.","inputs":["src-ui/src/hooks/useSectionNavigation.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed added section-value alias normalization: only Project settings supplies agent-feedback to pull-requests. Existing Settings view/section-key aliases, unrelated query parameters, highlight deferral, modal focus guard and navigation ownership remain unchanged; Project alias and stable-focus tests pass.","inputs":["src-ui/src/hooks/useSectionNavigation.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed added section-value alias normalization: only Project settings supplies agent-feedback to pull-requests. Existing Settings view/section-key aliases, unrelated query parameters, highlight deferral, modal focus guard and navigation ownership remain unchanged; Project alias and stable-focus tests pass.","inputs":["src-ui/src/hooks/useSectionNavigation.ts"]}
+  ]
+}

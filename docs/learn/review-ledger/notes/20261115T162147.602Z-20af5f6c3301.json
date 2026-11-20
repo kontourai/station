@@ -1,0 +1,17 @@
+{
+  "revision": "fe6375669e8b97a07ba46c370c317f1a575d0d3d",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"The cited reference/guide only gained a Custom appearance section (or table row) for the new /api/me/appearance family, contract subpath, SDK functions or theming layer; nothing this document states from it changed. Checked its claims that reference the cited document.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/design/terminal.md","note":"The cited reference/guide only gained a Custom appearance section (or table row) for the new /api/me/appearance family, contract subpath, SDK functions or theming layer; nothing this document states from it changed. Checked its claims that reference the cited document.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"The cited reference/guide only gained a Custom appearance section (or table row) for the new /api/me/appearance family, contract subpath, SDK functions or theming layer; nothing this document states from it changed. Checked its claims that reference the cited document.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The cited reference/guide only gained a Custom appearance section (or table row) for the new /api/me/appearance family, contract subpath, SDK functions or theming layer; nothing this document states from it changed. Checked its claims that reference the cited document.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The cited reference/guide only gained a Custom appearance section (or table row) for the new /api/me/appearance family, contract subpath, SDK functions or theming layer; nothing this document states from it changed. Checked its claims that reference the cited document.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The cited reference/guide only gained a Custom appearance section (or table row) for the new /api/me/appearance family, contract subpath, SDK functions or theming layer; nothing this document states from it changed. Checked its claims that reference the cited document.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

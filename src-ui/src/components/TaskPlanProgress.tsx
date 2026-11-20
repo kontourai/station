@@ -1,4 +1,3 @@
-import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { useOrchestrationSessionActivityQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
 import {
@@ -9,17 +8,6 @@ import {
 } from '../utils/taskPlanProgress';
 import type { WorkStatus } from '../views/home/work-status';
 import './TaskPlanProgress.css';
-
-/** Tasks whose Session may still be revising its plan. */
-const LIVE_TASK_STATUSES: ReadonlySet<TaskRecord['status']> = new Set([
-  'in_progress',
-  'blocked',
-]);
-/** Closed Tasks keep their record; their cards skip the per-Session read. */
-const CLOSED_TASK_STATUSES: ReadonlySet<TaskRecord['status']> = new Set([
-  'done',
-  'canceled',
-]);
 
 /**
  * #4695: the agent-reported plan progress of one Session, read from its
@@ -54,13 +42,19 @@ function usePlanProgress(
   );
 }
 
-/** A Task's dispatched Session; closed Tasks skip the read. */
+/**
+ * The plan progress of a Task's run while it is running: `sessionId` is the
+ * run the Task's derivation read (its conversation's current execution),
+ * and `running` is its derived lane. Any other Task makes no read at all, so
+ * a board of idle and finished Tasks costs no activity reads.
+ */
 export function useTaskPlanProgress(
-  task: Pick<TaskRecord, 'sessionId' | 'status'>,
+  sessionId: string | undefined,
+  { running }: { running: boolean },
 ): TaskPlanProgress | null {
-  return usePlanProgress(task.sessionId?.trim() ?? '', {
-    enabled: !CLOSED_TASK_STATUSES.has(task.status),
-    live: LIVE_TASK_STATUSES.has(task.status),
+  return usePlanProgress(sessionId?.trim() ?? '', {
+    enabled: running,
+    live: running,
   });
 }
 
@@ -122,11 +116,13 @@ export function TaskPlanProgressLine({
 
 /** For a surface whose accessible name comes from its content (a link). */
 export function TaskPlanProgressForTask({
-  task,
+  sessionId,
+  running,
 }: {
-  task: Pick<TaskRecord, 'sessionId' | 'status'>;
+  sessionId: string | undefined;
+  running: boolean;
 }) {
-  const progress = useTaskPlanProgress(task);
+  const progress = useTaskPlanProgress(sessionId, { running });
   return progress ? <TaskPlanProgressLine progress={progress} /> : null;
 }
 

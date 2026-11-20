@@ -37,10 +37,7 @@ import {
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
 } from '../lib/desktop-server-runtime.mjs';
-import {
-  isServerChunkFile,
-  STATION_SERVER_EXTERNALS,
-} from '../lib/server-build-config.mjs';
+import { STATION_SERVER_EXTERNALS } from '../lib/server-build-config.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const temporaryRoots: string[] = [];
@@ -165,12 +162,6 @@ async function buildDesktopResourceFixture(root: string) {
   ).toBeGreaterThan(0);
   expect(staged.some((path) => /LICEN[CS]E/i.test(path))).toBe(true);
   assertRealRuntimePrune(release);
-  // Chunk names are content hashes: a build into a directory that already
-  // holds one must remove the earlier build's chunks, and nothing else.
-  mkdirSync(serverOutput, { recursive: true });
-  writeFileSync(join(serverOutput, 'station-chunk-STALE000.js'), '// stale');
-  writeFileSync(join(serverOutput, 'station-chunk-STALE000.js.map'), '{}');
-  writeFileSync(join(serverOutput, 'operator-note.js'), '// kept');
   await execFileAsync(process.execPath, ['esbuild.config.mjs'], {
     cwd: repoRoot,
     env: { ...process.env, STATION_BUILD_SERVER_DIR: serverOutput },
@@ -182,14 +173,6 @@ async function buildDesktopResourceFixture(root: string) {
   expect(
     existsSync(join(serverOutput, 'project-task-room-working-state-worker.js')),
   ).toBe(true);
-  expect(existsSync(join(serverOutput, 'station-chunk-STALE000.js'))).toBe(
-    false,
-  );
-  expect(existsSync(join(serverOutput, 'station-chunk-STALE000.js.map'))).toBe(
-    false,
-  );
-  expect(existsSync(join(serverOutput, 'operator-note.js'))).toBe(true);
-  rmSync(join(serverOutput, 'operator-note.js'));
   // Epic #2323 S3: plugin draft builds fork this entry, resolved beside the
   // server bundle by import.meta.url like the workers above.
   expect(existsSync(join(serverOutput, 'plugin-draft-build-child.js'))).toBe(
@@ -346,21 +329,16 @@ async function buildDesktopResourceFixture(root: string) {
     ],
   });
   // jsonc-parser's CommonJS UMD `main` entry loads these files with dynamic
-  // relative requires. dist-server does not carry those sibling modules, so
-  // rejecting the emitted shape here makes this packaging failure fail before
-  // the real staged-runtime listener smoke below. The server is code-split,
-  // so its code is in the chunks beside the entry: read every one.
-  const serverFiles = readdirSync(serverOutput).filter(
-    (name) => name === 'command-station.js' || isServerChunkFile(name),
+  // relative requires. A single-file dist-server cannot carry those sibling
+  // modules, so rejecting the emitted shape here makes this packaging failure
+  // fail before the real staged-runtime listener smoke below.
+  const serverBundle = readFileSync(
+    join(serverOutput, 'command-station.js'),
+    'utf8',
   );
-  expect(
-    serverFiles.filter((name) => name.endsWith('.js')).length,
-  ).toBeGreaterThan(1);
-  for (const name of serverFiles.filter((file) => file.endsWith('.js')))
-    expect(readFileSync(join(serverOutput, name), 'utf8'), name).not.toMatch(
-      /require\d*\("\.\/impl\/(?:format|edit|scanner|parser)"\)/,
-    );
-  assertColdSubsystemsLoadLazily(release, serverOutput);
+  expect(serverBundle).not.toMatch(
+    /require\d*\("\.\/impl\/(?:format|edit|scanner|parser)"\)/,
+  );
   // seed/ was removed in #1586: the desktop bundle no longer ships it and
   // the server bootstraps fresh homes itself, so the staged release must
   // prove portability without it.
@@ -368,110 +346,6 @@ async function buildDesktopResourceFixture(root: string) {
     recursive: true,
   });
   return release;
-}
-
-/**
- * Names (kept by `keepNames`) of code a boot never runs. Each must sit outside
- * the chunks the server loads at boot, in a chunk only an `import()` reaches,
- * and that chunk must load from the staged tree. A static import of any of
- * them would put its subsystem back into every server's resident source.
- */
-const LAZY_SERVER_SUBSYSTEMS = {
-  'OTel SDK (an endpoint is configured)': 'NodeSDK',
-  'local accounts (STATION_LOCAL_ACCOUNTS=1)': 'loadLocalAccounts',
-  'Project S3 client (first object request)': 'createProjectS3Client',
-  'Strands durable model (a Strands run)': 'durableStrandsModel',
-};
-
-/** The code-split server's chunk graph, read from the emitted files. */
-function serverChunkGraph(serverOutput: string) {
-  const files = readdirSync(serverOutput).filter(
-    (name) =>
-      name === 'command-station.js' ||
-      (isServerChunkFile(name) && name.endsWith('.js')),
-  );
-  const source = new Map(
-    files.map((name) => [name, readFileSync(join(serverOutput, name), 'utf8')]),
-  );
-  const imports = (name: string, pattern: RegExp) =>
-    [...(source.get(name) ?? '').matchAll(pattern)].map((match) => match[1]!);
-  const staticImport =
-    /(?:^|[;}\s])import(?:[^"'();]*?from)?\s*["']\.\/(station-chunk-[A-Z0-9]+\.js)["']/g;
-  const dynamicImport = /import\(["']\.\/(station-chunk-[A-Z0-9]+\.js)["']\)/g;
-  /** Every file evaluated when `roots` are imported. */
-  const closure = (roots: string[]) => {
-    const reached = new Set(roots);
-    const pending = [...roots];
-    while (pending.length > 0)
-      for (const next of imports(pending.pop()!, staticImport))
-        if (!reached.has(next)) {
-          reached.add(next);
-          pending.push(next);
-        }
-    return reached;
-  };
-  const holder = (name: string) =>
-    [...source]
-      .filter(([, text]) => text.includes(`"${name}"`))
-      .map(([file]) => file);
-  // The entry's awaited imports, in source order, are its boot sequence.
-  const bootSteps = imports('command-station.js', dynamicImport);
-  return {
-    source,
-    closure,
-    holder,
-    bootSteps,
-    boot: closure(['command-station.js', ...bootSteps]),
-  };
-}
-
-/**
- * Splitting must not reorder the boot. Metric instruments made before the
- * OTel providers register are no-ops for the life of the process, so the
- * module that makes them (telemetry/metrics.ts, holding the
- * `station.chat.requests` counter) must be evaluated only by the entry's
- * second step, after the step that registers the providers has finished.
- */
-function assertServerBootOrder(serverOutput: string) {
-  const graph = serverChunkGraph(serverOutput);
-  expect(graph.bootSteps).toHaveLength(2);
-  const [telemetryStep, serverStep] = graph.bootSteps as [string, string];
-  const beforeServer = graph.closure(['command-station.js', telemetryStep]);
-  const [instruments] = graph.holder('station.chat.requests');
-  expect(instruments).toBeDefined();
-  expect(beforeServer.has(instruments!)).toBe(false);
-  expect(graph.closure([serverStep]).has(instruments!)).toBe(true);
-  const [registration] = graph.holder('initializeTelemetry');
-  expect(beforeServer.has(registration!)).toBe(true);
-}
-
-function assertColdSubsystemsLoadLazily(release: string, serverOutput: string) {
-  assertServerBootOrder(serverOutput);
-  const { boot, source } = serverChunkGraph(serverOutput);
-  // A parser that found nothing would make every check below vacuous.
-  expect(boot.size).toBeGreaterThan(10);
-  for (const [subsystem, name] of Object.entries(LAZY_SERVER_SUBSYSTEMS)) {
-    const holders = [...source].filter(([, text]) =>
-      text.includes(`"${name}"`),
-    );
-    expect(holders.length, `${subsystem} is in the server bundle`).toBe(1);
-    const [chunk] = holders[0]!;
-    expect(boot.has(chunk), `${subsystem} loads at boot`).toBe(false);
-    execFileSync(
-      process.execPath,
-      [
-        '--input-type=module',
-        '-e',
-        `await import(${JSON.stringify(`./dist-server/${chunk}`)});`,
-      ],
-      {
-        cwd: release,
-        stdio: ['ignore', 'ignore', 'pipe'],
-        timeout: 20_000,
-        windowsHide: true,
-      },
-    );
-  }
 }
 
 /**

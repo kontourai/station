@@ -1,0 +1,31 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/architecture.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"#4995 adds only startStdoutLogFileRotation after root logger creation when STATION_LOG_FILE is set; boot order, ports, supervisor, desktop, deployment and recovery claims in citing pages are unaffected.","inputs":["src-server/index.ts"]}
+  ]
+}

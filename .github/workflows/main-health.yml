@@ -22,13 +22,10 @@ on:
       # build-ios.yml). PR and merge-group runs fail the head_branch guard below;
       # a push run that skipped its build never closes the tracker.
       - "PR: iOS build"
-      # Scheduled housekeeping on main. Their scheduled runs skip no job, so
+      # Scheduled housekeeping on main. Its scheduled runs skip no job, so
       # a green run closes the tracker; a dry-run dispatch skips the issue
-      # jobs and never does. CI throughput health exits 0 for a window that
-      # is incomplete only because work was still running, so it reports
-      # collection failures, not measurement gaps.
+      # jobs and never does.
       - "Repo: Docs freshness sweep"
-      - "Repo: CI throughput health"
     types: [completed]
     # Both jobs act only on runs whose head branch is main; this filter stops
     # pull-request and merge-group runs from starting a run that only skips.

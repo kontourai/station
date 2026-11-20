@@ -93,6 +93,49 @@ test('real SDK serialization enforces owner/prefix and If-Match without permitti
   expect(handle).toHaveBeenCalledTimes(2);
 });
 
+test('disabling S3 during lazy client setup prevents SDK dispatch', async () => {
+  const source = await service.attach(
+    input(),
+    'human:local:operator',
+    authority,
+  );
+  const send = vi
+    .spyOn(S3Client.prototype, 'send')
+    .mockRejectedValue(new Error('SDK dispatch reached unexpectedly'));
+  const read = service.objects(source, undefined, authority);
+  enabled = false;
+  await expect(read).rejects.toMatchObject({ status: 404 });
+  expect(send).not.toHaveBeenCalled();
+});
+
+test('no scheduler turn separates the final setup check from SDK dispatch', async () => {
+  const source = await service.attach(
+    input(),
+    'human:local:operator',
+    authority,
+  );
+  let checks = 0;
+  let enabledAtDispatch: boolean | undefined;
+  const send = vi
+    .spyOn(S3Client.prototype, 'send')
+    .mockImplementation(async () => {
+      enabledAtDispatch = enabled;
+      throw new Error('fixture stops at SDK dispatch');
+    });
+  await expect(
+    service.objects(source, undefined, {
+      assertCurrent: () => {
+        if (++checks === 2)
+          queueMicrotask(() => {
+            enabled = false;
+          });
+      },
+    }),
+  ).rejects.toMatchObject({ status: 503 });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(enabledAtDispatch).toBe(true);
+});
+
 test('authority revoked during actual SDK credential resolution prevents the HTTP dispatch', async () => {
   const source = await service.attach(
     input(),

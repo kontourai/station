@@ -1,9 +1,9 @@
 /**
- * Register configured providers before this module finishes evaluating;
- * exporters wait for the persisted installation identity without holding up
- * Station startup.
+ * Register configured providers synchronously; exporters wait for the persisted
+ * installation identity without holding up Station startup.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { platform } from 'node:os';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
@@ -11,6 +11,19 @@ import {
   managedPolicyDenial,
   managedTelemetryAllowed,
 } from '@kontourai/station-contracts/managed-policy';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { AwsInstrumentation } from '@opentelemetry/instrumentation-aws-sdk';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import {
+  defaultResource,
+  resourceFromAttributes,
+} from '@opentelemetry/resources';
+import {
+  AggregationTemporality,
+  PeriodicExportingMetricReader,
+} from '@opentelemetry/sdk-metrics';
+import { core, NodeSDK } from '@opentelemetry/sdk-node';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { observeOtelBootstrapConfig } from './domain/telemetry-bootstrap-config.js';
 import { resolveOtelTelemetryConfiguration } from './domain/telemetry-configuration.js';
@@ -23,16 +36,16 @@ import {
 import { persistedRandomIdentifierHash } from './services/persisted-random-identifier.js';
 import { TelemetryRequestError } from './services/telemetry-response.js';
 import {
+  beginOtelExport,
   beginOtelTelemetryDelivery,
   failOtelTelemetryBootstrap,
   markOtelTelemetryManagedOff,
 } from './telemetry-delivery-state.js';
-import { OTEL_INSTALLATION_ID_ATTRIBUTE } from './telemetry-resource.js';
-import type { TelemetrySdk } from './telemetry-sdk.js';
 import { resolveHomeDir } from './utils/paths.js';
 
-export { OTEL_INSTALLATION_ID_ATTRIBUTE };
+export const OTEL_INSTALLATION_ID_ATTRIBUTE = 'service.installation.id';
 
+type TelemetrySdk = Pick<NodeSDK, 'start' | 'shutdown'>;
 type TelemetryResourceAttributes = Record<string, string | Promise<string>>;
 const activeTelemetrySdks = new Set<{
   shutdown: () => Promise<void>;
@@ -57,20 +70,153 @@ export interface InitializeTelemetryOptions {
   managedPolicy?: () => { summary: ManagedPolicySummary } | null;
   /**
    * Holds the home writes (schema gate, installation identity) until this
-   * settles; providers do not wait for it. A supervised generation
+   * settles; providers still register synchronously. A supervised generation
    * passes its promotion, since it loads while another generation owns the
    * home.
    */
   homeWritesAllowed?: Promise<void>;
-  /** Called once the SDK has started, before the identity is awaited. */
-  onProvidersRegistered?: () => void;
 }
 
-/**
- * Providers register once the SDK module has loaded, before any home I/O is
- * awaited; export waits for identity I/O. An injected `createSdk` registers
- * before the first await.
- */
+function createSdk(
+  resourceAttributes: TelemetryResourceAttributes,
+  endpoint: string,
+  delivery: ReturnType<typeof beginOtelTelemetryDelivery>,
+): NodeSDK {
+  const exportAuthority = new AsyncLocalStorage<{
+    key?: string;
+    assertCurrent: () => void;
+  }>();
+  const headers = async (): Promise<Record<string, string>> => {
+    const credential = exportAuthority.getStore();
+    if (!credential) throw new TelemetryRequestError('credential_unavailable');
+    credential.assertCurrent();
+    return credential.key ? { 'x-api-key': credential.key } : {};
+  };
+  const identity = Promise.resolve(
+    resourceAttributes[OTEL_INSTALLATION_ID_ATTRIBUTE],
+  );
+  const traceExporter = new OTLPTraceExporter({
+    url: `${endpoint}/v1/traces`,
+    headers,
+  });
+  const metricExporter = new OTLPMetricExporter({
+    url: `${endpoint}/v1/metrics`,
+    headers,
+    temporalityPreference: AggregationTemporality.DELTA,
+  });
+  // Resource rejection omits an attribute in OTel. Never export an unidentified
+  // payload when Station could not persist its installation identity.
+  const exportTraces = traceExporter.export.bind(traceExporter);
+  traceExporter.export = (spans, callback) => {
+    const completed = beginOtelExport(delivery, 'traces');
+    void identity
+      .then(async () => {
+        const credential = await delivery.credential!();
+        credential.assertCurrent();
+        exportAuthority.run(credential, () =>
+          exportTraces(spans, (result) => {
+            try {
+              credential.assertCurrent();
+            } catch {
+              result = {
+                code: core.ExportResultCode.FAILED,
+                error: new TelemetryRequestError('credential_unavailable'),
+              };
+            }
+            completed(result.code === core.ExportResultCode.SUCCESS);
+            callback(result);
+          }),
+        );
+      })
+      .catch((error: unknown) => {
+        completed(false);
+        callback({
+          code: core.ExportResultCode.FAILED,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
+  };
+  const exportMetrics = metricExporter.export.bind(metricExporter);
+  metricExporter.export = (data, callback) => {
+    const completed = beginOtelExport(delivery, 'metrics');
+    void identity
+      .then(async () => {
+        const credential = await delivery.credential!();
+        credential.assertCurrent();
+        exportAuthority.run(credential, () =>
+          exportMetrics(data, (result) => {
+            try {
+              credential.assertCurrent();
+            } catch {
+              result = {
+                code: core.ExportResultCode.FAILED,
+                error: new TelemetryRequestError('credential_unavailable'),
+              };
+            }
+            completed(result.code === core.ExportResultCode.SUCCESS);
+            callback(result);
+          }),
+        );
+      })
+      .catch((error: unknown) => {
+        completed(false);
+        callback({
+          code: core.ExportResultCode.FAILED,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
+  };
+  return new NodeSDK({
+    serviceName: process.env.OTEL_SERVICE_NAME || 'station',
+    resource: defaultResource().merge(
+      resourceFromAttributes({
+        ...resourceAttributes,
+      }),
+    ),
+    traceExporter,
+    // Station's durable logger is separate; NodeSDK otherwise enables OTLP logs.
+    logRecordProcessors: [],
+    metricReader: new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: 30_000,
+    }),
+    instrumentations: [
+      new HttpInstrumentation({
+        requestHook: (span, request) => {
+          const method = ('method' in request ? request.method : '') || 'GET';
+          const url =
+            ('url' in request ? request.url : undefined) ||
+            ('path' in request ? request.path : undefined) ||
+            '/';
+          const pathname = new URL(url, 'http://station.invalid').pathname;
+          if (pathname.startsWith('/scheduler/jobs/')) {
+            const suffix = pathname.match(
+              /\/(logs|run|enable|disable)\/?$/,
+            )?.[1];
+            const route = `/scheduler/jobs/:target${suffix ? `/${suffix}` : ''}`;
+            span.updateName(`${method} ${route}`);
+            span.setAttributes({
+              'http.route': route,
+              'http.target': route,
+              'http.url': route,
+              'url.path': route,
+              'url.query': '',
+              'url.full': route,
+            });
+            return;
+          }
+          const route = (('url' in request ? request.url : undefined) || '/')
+            .split('?')[0]
+            .replace(/\/[0-9a-f]{8,}|\/[^/]*:[^/]+|\/[^/]+%3A[^/]*/gi, '/:id');
+          span.updateName(`${method} ${route}`);
+        },
+      }),
+      new AwsInstrumentation({ suppressInternalInstrumentation: true }),
+    ],
+  });
+}
+
+/** Providers register before the first await; export waits for identity I/O. */
 export async function initializeTelemetry(
   options: InitializeTelemetryOptions = {},
 ): Promise<void> {
@@ -206,18 +352,11 @@ export async function initializeTelemetry(
   };
   let sdk: TelemetrySdk;
   try {
-    // The SDK is the largest part of the server's telemetry, and only an
-    // install with an endpoint reaches this line.
     sdk = options.createSdk
       ? options.createSdk(resourceAttributes, endpoint)
-      : (await import('./telemetry-sdk.js')).createSdk(
-          resourceAttributes,
-          endpoint,
-          delivery,
-        );
+      : createSdk(resourceAttributes, endpoint, delivery);
     sdk.start();
     delivery.status.phase = 'initialized';
-    options.onProvidersRegistered?.();
   } catch (error) {
     delivery.status.phase = 'failed';
     throw error;
@@ -288,7 +427,7 @@ export function configuredTelemetryShutdownTask():
   };
 }
 
-// Do not make process boot await telemetry delivery. Failures are intentionally
+// Do not make process boot await optional telemetry. Failures are intentionally
 // contained: OTel cannot prevent Station from starting. They are NOT silent —
 // a swallowed failure makes a broken exporter configuration indistinguishable
 // from an unconfigured one, and an operator who set OTEL_EXPORTER_OTLP_ENDPOINT
@@ -296,28 +435,16 @@ export function configuredTelemetryShutdownTask():
 //
 // A supervised generation is loaded while the previous one still owns the
 // home, so its home writes wait for promotion. Registration does not: it
-// completes within this module's evaluation in every mode, so the providers
-// exist before the modules `index.ts` imports after this one create
+// stays synchronous with this module's evaluation in every mode, so the
+// providers exist before the modules imported after this one create
 // instruments.
-let providersRegistered!: () => void;
-const registration = new Promise<void>((resolve) => {
-  providersRegistered = resolve;
-});
-void initializeTelemetry({
-  ...(isSupervisedEnvironment()
+void initializeTelemetry(
+  isSupervisedEnvironment()
     ? { homeWritesAllowed: whenHomeAccessAllowed() }
-    : {}),
-  onProvidersRegistered: providersRegistered,
-})
-  .catch((error) => {
-    console.warn(
-      '[telemetry] OTel did not start; Station continues without it:',
-      error instanceof Error ? error.message : String(error),
-    );
-  })
-  .finally(providersRegistered);
-// The SDK loads asynchronously, so this module's evaluation waits for the
-// providers (never for the installation identity, which a supervised
-// generation holds until promotion). An install without an endpoint settles
-// at once.
-await registration;
+    : {},
+).catch((error) => {
+  console.warn(
+    '[telemetry] OTel did not start; Station continues without it:',
+    error instanceof Error ? error.message : String(error),
+  );
+});

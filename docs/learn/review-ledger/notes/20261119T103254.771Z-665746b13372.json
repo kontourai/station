@@ -1,0 +1,17 @@
+{
+  "revision": "93b7363547dd5b21ea4aa7b718f94ba5f2273437",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the shared source-update hook after both Settings callers passed a boolean currentness guard. Verified explicit false before dispatch and after delayed success, true success, preserved throwing failures, scope-key cache isolation, and cancellation in the mounted SDK tests.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/systemRuntime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed how the source update check and installer bind the selected Station. The shared guard rejects the earlier result after a connection or credential change. Existing update and changelog behavior are unchanged.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the Settings guide links for Agent efficiency and Feature Previews. The added update-check note does not change either linked journey.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the Settings guide links for Agent efficiency and Feature Previews. The added update-check note does not change either linked journey.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the SDK reference links in integration and SDK contributor guidance. The updated currentness result documents the existing query key and abort contract while preserving legacy throwing callers.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the SDK reference links in integration and SDK contributor guidance. The updated currentness result documents the existing query key and abort contract while preserving legacy throwing callers.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

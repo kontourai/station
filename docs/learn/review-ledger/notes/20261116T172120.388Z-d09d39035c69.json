@@ -1,0 +1,7 @@
+{
+  "revision": "c04d1ea3e5009e462d243bc7a1f7394a03737458",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Agents pane amendment (2026-11-16) checked against AgentsWorkspacePane.tsx, childWorkSelectors.ts (selectAllChatsWork, isListedTaskCard, delegate-only finished trim, workCountLabel), backgroundTaskRows.tsx (WorkStatusPill) and the work-list container rules in BackgroundTasksSheet.css / ChildWorkRow.css; scope labels, superset, grouping, pill, counts and narrow/wide action placement verified by AgentsWorkspacePane.childWork tests and tests/agents-pane.spec.ts at 380px and 600px. Earlier dated slices left as recorded; the 2026-10-14 'actions beside each row' wording is qualified by the new paragraph.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/BackgroundTasksSheet.css","src-ui/src/components/chat-dock/backgroundTaskRows.tsx","src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","src-ui/src/workspace-panes/agents/ChildWorkRow.css","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","src-ui/src/workspace-panes/agents/childWorkSelectors.ts","src-ui/src/workspace-panes/agents/AgentsWorkspacePane.css"]}
+  ]
+}

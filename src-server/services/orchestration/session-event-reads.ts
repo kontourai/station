@@ -213,6 +213,7 @@ export class SessionEventReads {
       events: [],
       hasMore: false,
       nextSequence: options.afterSequence,
+      highWaterSequence: 0,
     };
     return {
       session: eventWindowSessionSummary(
@@ -240,6 +241,7 @@ export class SessionEventReads {
       })),
       hasMore: page.hasMore,
       nextSequence: page.nextSequence,
+      highWaterSequence: page.highWaterSequence,
     };
   }
 

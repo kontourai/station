@@ -12,6 +12,7 @@ import {
   updateModelPickerPreferences,
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
+import { modelOptionLabel } from '../../utils/modelCapabilities';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { PROVIDER_TYPES, resolveProviderPresentation } from './providerCatalog';
 import type { ProviderConnection } from './types';
@@ -74,7 +75,7 @@ export function DefaultModelField({
           <option value="">Choose a model…</option>
           {options.map((model) => (
             <option key={model.id} value={model.id}>
-              {model.name}
+              {modelOptionLabel(model, true)}
             </option>
           ))}
         </select>
@@ -464,14 +465,14 @@ export function ProviderConnectionForm({
               return (
                 <div className="provider-detail__model-row" key={model.id}>
                   <span>
-                    <strong>{model.name}</strong>
+                    <strong>{modelOptionLabel(model, true)}</strong>
                     <small>{model.id}</small>
                   </span>
                   <span className="provider-detail__model-actions">
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`${favorite ? 'Remove' : 'Add'} ${model.name} ${favorite ? 'from' : 'to'} favorites`}
+                      aria-label={`${favorite ? 'Remove' : 'Add'} ${modelOptionLabel(model, true)} ${favorite ? 'from' : 'to'} favorites`}
                       aria-pressed={favorite}
                       onClick={() => updateList('favorites', !favorite)}
                     >
@@ -480,7 +481,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`Move ${model.name} up`}
+                      aria-label={`Move ${modelOptionLabel(model, true)} up`}
                       disabled={index === 0}
                       onClick={() => move(-1)}
                     >
@@ -489,7 +490,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`Move ${model.name} down`}
+                      aria-label={`Move ${modelOptionLabel(model, true)} down`}
                       disabled={index === orderedModels.length - 1}
                       onClick={() => move(1)}
                     >
@@ -498,7 +499,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`${hidden ? 'Show' : 'Hide'} ${model.name}`}
+                      aria-label={`${hidden ? 'Show' : 'Hide'} ${modelOptionLabel(model, true)}`}
                       aria-pressed={hidden}
                       onClick={() => updateList('hidden', !hidden)}
                     >
@@ -545,7 +546,7 @@ export function ProviderConnectionForm({
                 <option value="">Choose an installed model…</option>
                 {modelOptions.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name}
+                    {modelOptionLabel(model, true)}
                   </option>
                 ))}
               </select>
@@ -682,7 +683,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id to use when an agent names none"
-            hint="Used when an agent names no model, and by Test Connection if no model list is returned."
+            hint="Used when an agent doesn't name a model. Test connection also uses it if the model list is unavailable."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </div>
@@ -815,7 +816,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="A model or inference-profile id this account can invoke"
-            hint="Used when an agent names no model, and by Test Connection if Bedrock models can't be listed."
+            hint="Used when an agent doesn't name a model. Test connection also uses it if the model list is unavailable."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </>
@@ -848,8 +849,7 @@ export function ProviderConnectionForm({
         >
           Create saves this connection and checks its model list. If the service
           cannot list models, Station may send a small test prompt using the
-          default model. Your provider may charge for that request. A saved
-          connection is ready only after its check succeeds.
+          default model. Your provider may charge for that request.
         </p>
       ) : null}
 
@@ -867,7 +867,7 @@ export function ProviderConnectionForm({
             disabled={isTesting}
             aria-describedby="provider-test-disclosure"
           >
-            {isTesting ? 'Testing…' : 'Test Connection'}
+            {isTesting ? 'Testing…' : 'Test connection'}
           </button>
           {/* The contract used to call this non-billable,
               and the button said nothing at all. It asks the provider for its

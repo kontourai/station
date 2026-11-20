@@ -5,6 +5,7 @@ import React, { lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { buildInfo } from './build-info';
 import { BrandingThemeBridge } from './components/BrandingThemeBridge';
+import { CustomAppearanceBridge } from './components/CustomAppearanceBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
 import { AccountPreferencesProvider } from './contexts/AccountPreferencesProvider';
@@ -37,7 +38,7 @@ installVisualViewportInset();
 installFoldGeometry();
 
 import App from './App';
-import { MobileWelcomeBoundary } from './components/MobileWelcomeBoundary';
+import { NativeConnectionStartup } from './components/NativeConnectionStartup';
 import { OfflineReadingBoundary } from './components/OfflineReadingBoundary';
 import { WebOfflineShell } from './components/WebOfflineShell';
 import './components/editor-controls.css';
@@ -63,7 +64,10 @@ import { AuthorityQueryProvider } from './contexts/AuthorityQueryContext';
 import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
-import { NavigationProvider } from './contexts/NavigationContext';
+import {
+  NavigationProvider,
+  navigationStore,
+} from './contexts/NavigationContext';
 import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
@@ -87,11 +91,16 @@ import {
   bindColorThemeToSettings,
   renderWhenColorThemeSettled,
 } from './lib/color-theme-apply';
+import { applyCachedCustomAppearance } from './lib/custom-appearance/controller';
 import {
   deviceSettingsStore,
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
+import {
+  holdColdNotificationLink,
+  installNavigationPosition,
+} from './lib/notificationStationOpen';
 import {
   stationMutationDefaults,
   stationQueryDefaults,
@@ -106,10 +115,28 @@ import './providers/context/index';
 // Connection onboarding is mounted after the provider shell has booted. Keep
 // its recovery/pairing machinery out of the first-paint graph; the gate itself
 // preserves the shell once it resolves.
+const loadConnectionOwner = () => import('./components/OnboardingGate');
 const loadOnboardingGate = () =>
-  import('./components/OnboardingGate').then((module) => ({
+  loadConnectionOwner().then((module) => ({
     default: () => <module.OnboardingGate>{null}</module.OnboardingGate>,
   }));
+
+const loadMobileConnectionStartup = async () => {
+  const [{ OnboardingGate }, { MobileWelcomeBoundary }] = await Promise.all([
+    loadConnectionOwner(),
+    import('./components/MobileWelcomeBoundary'),
+  ]);
+  return {
+    default: ({ children }: { children: React.ReactNode }) => (
+      <>
+        <RecoveryQueryBoundary>
+          <OnboardingGate>{null}</OnboardingGate>
+        </RecoveryQueryBoundary>
+        <MobileWelcomeBoundary>{children}</MobileWelcomeBoundary>
+      </>
+    ),
+  };
+};
 
 // Voice providers subscribe through VoiceProviderContext, so they can load off
 // the startup bundle and notify the mounted tree when registration completes.
@@ -273,8 +300,22 @@ if (_bootBrandingTheme)
 // device settings now (startup-theme.js already stamped them before first
 // paint), account preferences once they bind. See lib/color-theme-apply.ts.
 bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
+// The person's custom appearance (palette and sanitized CSS), from the copy
+// this browser last applied, so a reload does not flash Station's look first.
+// CustomAppearanceBridge replaces it with the server's answer. Skipped in a
+// tab opened with ?appearance=safe. See lib/custom-appearance/controller.ts.
+applyCachedCustomAppearance();
 
 function renderApp(): void {
+  // A notification link loaded cold names its Station: hold its conversation
+  // back from the URL until the opener knows which Station that is. A
+  // navigation before then supersedes it.
+  if (!isAccountPath && !isSharedAnswerPath) {
+    installNavigationPosition(() => navigationStore.getHistoryIndex());
+    holdColdNotificationLink(window.location, (params) =>
+      navigationStore.updateParams(params),
+    );
+  }
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
@@ -324,22 +365,26 @@ function renderApp(): void {
                   the selected Station changes. */}
                       <NavigationProvider>
                         <ScopedToastProvider>
-                          <RecoveryQueryBoundary>
-                            <DeferredCapabilityBoundary
-                              id="connection-recovery"
-                              load={loadOnboardingGate}
-                              copy={{
-                                // The title renders as the banner's badge, which
-                                // is uppercased and sits beside two-word badges —
-                                // a sentence here reads as shouting. The full
-                                // statement is the message below.
-                                failureTitle: 'Recovery unavailable',
-                                failure:
-                                  'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
-                              }}
-                            />
-                          </RecoveryQueryBoundary>
-                          <MobileWelcomeBoundary>
+                          <NativeConnectionStartup
+                            load={loadMobileConnectionStartup}
+                            nonMobileRecovery={
+                              <RecoveryQueryBoundary>
+                                <DeferredCapabilityBoundary
+                                  id="connection-recovery"
+                                  load={loadOnboardingGate}
+                                  copy={{
+                                    // The title renders as the banner's badge, which
+                                    // is uppercased and sits beside two-word badges —
+                                    // a sentence here reads as shouting. The full
+                                    // statement is the message below.
+                                    failureTitle: 'Recovery unavailable',
+                                    failure:
+                                      'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
+                                  }}
+                                />
+                              </RecoveryQueryBoundary>
+                            }
+                          >
                             <AuthorityQueryProvider
                               localUiApiBase={localUiApiBase}
                             >
@@ -370,6 +415,7 @@ function renderApp(): void {
                                                           <RegionModelProvider>
                                                             <PaneRelationsProvider>
                                                               <BrandingThemeBridge />
+                                                              <CustomAppearanceBridge />
                                                               <WorkClaimsProvider>
                                                                 <ConversationWorkStateProvider>
                                                                   <InboxDismissUndo>
@@ -408,7 +454,7 @@ function renderApp(): void {
                                 </AccountPreferencesProvider>
                               </TranscriptAppWorkspaceProvider>
                             </AuthorityQueryProvider>
-                          </MobileWelcomeBoundary>
+                          </NativeConnectionStartup>
                         </ScopedToastProvider>
                       </NavigationProvider>
                     </QueryClientProvider>

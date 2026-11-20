@@ -168,7 +168,7 @@ test.describe('UI CRUD Smoke', () => {
     // system prompt is required for a Station-engine agent — Create stays
     // disabled until it is authored (archive#3741).
     await page.locator('#ae-prompt').fill('You are a helpful smoke test.');
-    const createButton = page.getByRole('button', { name: 'Create Agent' });
+    const createButton = page.getByRole('button', { name: 'Create agent' });
     await expect(createButton).toBeEnabled({ timeout: 15_000 });
     await createButton.click();
 
@@ -177,7 +177,7 @@ test.describe('UI CRUD Smoke', () => {
     await page.waitForURL(new RegExp(`/agents/${agentSlug}(\\?|$)`), {
       timeout: 10_000,
     });
-    const saveButton = page.getByRole('button', { name: 'Save Changes' });
+    const saveButton = page.getByRole('button', { name: 'Save changes' });
     await expect(saveButton).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: /^Saving/ })).toHaveCount(0);
 
@@ -199,7 +199,7 @@ test.describe('UI CRUD Smoke', () => {
     });
 
     await page.reload();
-    await page.getByRole('button', { name: 'Save Changes' }).waitFor({
+    await page.getByRole('button', { name: 'Save changes' }).waitFor({
       timeout: 15_000,
     });
     await expect(page.locator('#ae-description')).toHaveValue(
@@ -211,10 +211,10 @@ test.describe('UI CRUD Smoke', () => {
     await page.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Delete' }).click();
     const deleteDialog = page.getByRole('alertdialog', {
-      name: 'Delete Agent',
+      name: 'Delete agent',
     });
     await expect(deleteDialog).toBeVisible();
-    // `exact` matters: the dialog's own close button is "Close Delete Agent".
+    // `exact` matters: the dialog's own close button is "Close Delete agent".
     await deleteDialog
       .getByRole('button', { name: 'Delete', exact: true })
       .click();

@@ -1,0 +1,7 @@
+{
+  "revision": "518b5b57b4dd33615fa0a1cc13f02b5062ec1041",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the link to the current ACP guide after its OpenCode configuration inspection update. This historical proposal makes no current OpenCode launch or approval claim.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

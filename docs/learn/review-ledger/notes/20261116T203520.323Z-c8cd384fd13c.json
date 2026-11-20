@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"The rule that new child-process tests are classified in vitest-resource-manifest.mjs holds; nightly-finalize-runner-loss.test.ts is classified.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

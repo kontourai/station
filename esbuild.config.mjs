@@ -8,12 +8,9 @@ import {
 import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
-import {
-  removeServerChunks,
-  SERVER_CHUNK_NAMES,
-  STATION_SERVER_EXTERNALS,
-} from './scripts/lib/server-build-config.mjs';
+import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
 import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
+import { assertNoBootDeniedStaticImports } from './scripts/lib/server-static-imports.mjs';
 
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
 // statically-importable implementation as `module`. esbuild's Node defaults
@@ -78,10 +75,6 @@ cpSync(
   `${serverDir}/third-party/media-tools/NOTICE`,
 );
 
-// Chunk names are content hashes, so a rebuild into the same directory would
-// otherwise keep every earlier build's chunks beside the new ones.
-removeServerChunks(serverDir);
-
 // Bundles this build writes are checked; older files in serverDir are not.
 const buildStartedMs = Date.now();
 await Promise.all([
@@ -97,17 +90,10 @@ await Promise.all([
     ],
     outfile: `${serverDir}/telemetry-key-materialization-child.js`,
   }),
-  // The server is code-split: subsystems a boot does not reach sit behind
-  // `await import()` and load from their own chunk on first use, so Node
-  // neither reads, parses nor keeps their source at rest. Chunks are written
-  // beside the entry, not in a subdirectory, because bundled code resolves
-  // workers, schemas and helpers relative to its own import.meta.url.
   esbuild.build({
     ...shared,
-    entryPoints: [{ in: './src-server/index.ts', out: 'command-station' }],
-    outdir: serverDir,
-    splitting: true,
-    chunkNames: SERVER_CHUNK_NAMES,
+    entryPoints: ['./src-server/index.ts'],
+    outfile: `${serverDir}/command-station.js`,
   }),
   // The process supervisor holds listeners and hands them between core
   // generations. It is self-contained (Node built-ins only) and does not share
@@ -235,3 +221,4 @@ await Promise.all([
 ]);
 
 assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });
+await assertNoBootDeniedStaticImports(`${serverDir}/command-station.js`);

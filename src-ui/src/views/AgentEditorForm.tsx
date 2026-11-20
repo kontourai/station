@@ -167,6 +167,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
               isPlugin={props.isPlugin}
               isLocked={props.isLocked}
               modelChoices={runtimeCatalogVisibleModels(boundConnection)}
+              maxStepsError={props.validationErrors.maxSteps}
             />
           ) : modelSelectable ? (
             <AgentEditorModelOptionsSection

@@ -13,6 +13,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ACPConnectionSetupPanel } from '../components/acp-connections/ACPConnectionSetupPanel';
 import { FIRST_CONTACT_WAIT_MS } from '../components/acp-connections/useACPConnectionSetup';
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));

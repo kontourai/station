@@ -1,0 +1,15 @@
+{
+  "revision": "7f90664aee74ed645a5eb5b0b87d9ae4462f8d1f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Formatting-only follow-up to the added opencode model-resolution case (one call joined onto a line). No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Formatting-only follow-up to the added opencode model-resolution case (one call joined onto a line). No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Formatting-only follow-up to the added opencode model-resolution case (one call joined onto a line). No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Formatting-only follow-up to the added opencode model-resolution case (one call joined onto a line). No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Formatting-only follow-up to the added opencode model-resolution case (one call joined onto a line). No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]}
+  ]
+}

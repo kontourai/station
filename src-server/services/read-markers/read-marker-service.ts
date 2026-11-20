@@ -107,6 +107,15 @@ export interface RoomVersion {
 export interface RoomVersionSource<T> {
   /** `undefined` for a room the caller cannot read, or that does not exist. */
   latest(target: T, request: Request): Promise<RoomVersion | undefined>;
+  /**
+   * Whether a message after `seenVersion` names the caller (#4799), under
+   * the room's own read admission. Absent for rooms without mentions.
+   */
+  mentionedAfter?(
+    target: T,
+    seenVersion: number,
+    request: Request,
+  ): Promise<boolean>;
 }
 
 /**
@@ -150,6 +159,8 @@ interface Resolved {
   /** Agent conversations: see {@link AgentConversationVersion}. */
   space?: AgentConversationVersion['space'];
   acknowledgeableUntil?: number;
+  /** Whether an unread message names the caller (#4799). */
+  mentionedAfter?(seenVersion: number): Promise<boolean>;
 }
 
 export interface ReadMarkerServiceDeps {
@@ -231,8 +242,21 @@ export class ReadMarkerService {
                 };
           }
           case 'project-room': {
-            const room = await this.deps.projectRooms?.latest(target, request);
-            return room && { ...room, countable: true };
+            const source = this.deps.projectRooms;
+            const room = await source?.latest(target, request);
+            const mentioned = source?.mentionedAfter;
+            return (
+              room && {
+                ...room,
+                countable: true,
+                ...(mentioned
+                  ? {
+                      mentionedAfter: (seen: number) =>
+                        mentioned.call(source, target, seen, request),
+                    }
+                  : {}),
+              }
+            );
           }
           case 'task-room': {
             const room = await this.deps.taskRooms?.latest(target, request);
@@ -284,11 +308,25 @@ export class ReadMarkerService {
     const resolved = await this.resolve(targets, c.req.raw);
     const seen = this.seen(person, resolved);
     const baseline = this.baselineFor(person);
-    return targets.map((target, index) => {
-      const item = resolved[index];
-      if (!item) return { target, unavailable: true as const };
-      return this.state(target, item, seen.get(item.key) ?? 0, baseline);
-    });
+    return Promise.all(
+      targets.map(async (target, index): Promise<ReadMarkerSummaryItem> => {
+        const item = resolved[index];
+        if (!item) return { target, unavailable: true as const };
+        const state = this.state(
+          target,
+          item,
+          seen.get(item.key) ?? 0,
+          baseline,
+        );
+        if (!item.mentionedAfter) return state;
+        // Only unread messages can mention anyone unread.
+        return {
+          ...state,
+          mentioned:
+            state.unread && (await item.mentionedAfter(state.seenVersion)),
+        };
+      }),
+    );
   }
 
   /**

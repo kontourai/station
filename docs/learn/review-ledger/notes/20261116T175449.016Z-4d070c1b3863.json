@@ -1,0 +1,9 @@
+{
+  "revision": "b723ed81529944af9b790bfbd456ffdea9b8bfa9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Adds one PROCESS_HEAVY classification for the new log-repeat-shutdown-flush process test; classification policy is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Adds one PROCESS_HEAVY classification for the new log-repeat-shutdown-flush process test; classification policy is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -14,12 +14,14 @@ describe('portable release-ring workflow', () => {
 
     expect(workflow).toContain('id-token: write');
     expect(workflow).toContain('attestations: write');
-    const attestationAction =
-      'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8';
     const portableStart = workflow.indexOf('\n  portable:');
     const androidStart = workflow.indexOf('\n  android:', portableStart);
     const portable = workflow.slice(portableStart, androidStart);
-    expect(portable.match(new RegExp(attestationAction, 'g'))).toHaveLength(1);
+    const attestations = [
+      ...portable.matchAll(/uses: actions\/attest-build-provenance@([^\s]+)/g),
+    ];
+    expect(attestations).toHaveLength(1);
+    expect(attestations[0]?.[1]).toMatch(/^[0-9a-f]{40}$/);
     expect(portable).toContain('subject-path: release-assets/*');
     const packager = readFileSync(
       resolve(repoRoot, 'scripts/package-portable-release.sh'),
@@ -31,11 +33,11 @@ describe('portable release-ring workflow', () => {
     const packageIndex = portable.indexOf(
       'scripts/package-portable-release.sh',
     );
-    const attestationIndex = portable.indexOf(attestationAction);
+    const attestationIndex = attestations[0].index;
     const uploadIndex = workflow.indexOf('gh release upload');
     expect(packageIndex).toBeGreaterThan(-1);
     expect(attestationIndex).toBeGreaterThan(packageIndex);
-    expect(uploadIndex).toBeGreaterThan(attestationIndex);
+    expect(uploadIndex).toBeGreaterThan(portableStart + attestationIndex);
     expect(workflow).not.toContain('gh release edit');
 
     const smoke = readFileSync(

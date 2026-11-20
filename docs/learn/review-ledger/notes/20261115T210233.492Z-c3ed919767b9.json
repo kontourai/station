@@ -1,0 +1,7 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#4995 sets STATION_LOG_REPEAT_LIMIT=0 in workers; testing.md now states this beside the agent-registry default.","inputs":["vitest.setup.ts"]}
+  ]
+}

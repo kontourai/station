@@ -1,0 +1,7 @@
+{
+  "revision": "1e06f3885ee72949eb3078f4c471825944d9d51c",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Maps the new owner claude-instruction-files.ts to the Claude project-instructions paragraph it describes: flag-tier instructionFiles=claude-md-and-agents-md, deferral to an explicit user settings.json choice or an unreadable/over-1MiB/non-JSON file. Checked each sentence against the module and the adapter's buildOptions merge into Options.settings.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/claude-instruction-files.ts"]}
+  ]
+}

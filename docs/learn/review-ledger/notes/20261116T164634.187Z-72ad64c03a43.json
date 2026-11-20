@@ -1,0 +1,7 @@
+{
+  "revision": "7e7e51117b960cae861a45545c9e7d1aeaefd641",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Hover inbox rows are now two lines (title/time; agent mark, status, project — project yields first; agent in mark tooltip and hover card, words when unmarked) and the desktop hidden-attention notice is a badge on the scope picker; updated the inbox header and card-row sentences; checked ChatDockInboxRows.tsx, IdentityMarks.tsx, InboxScopeFilter.tsx and the InboxRow/SharedRows/geometry tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxPanel.css","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

@@ -265,7 +265,9 @@ test.describe
           guest.getByRole('heading', { name: 'People and access' }),
         ).toBeVisible({ timeout: 15_000 });
         await expect(
-          guest.getByText(/approve collaborator management for this browser/),
+          guest.getByRole('note').filter({
+            hasText: 'approve this browser for managing collaborators',
+          }),
         ).toBeVisible();
         // Account binding starts read-only; administration requires a
         // separate, explicit operator grant to this same browser.
@@ -284,10 +286,10 @@ test.describe
           .getByRole('button', { name: 'Refresh people and access' })
           .click();
         await expect(
-          guest.getByText('People administration: can submit changes'),
-        ).toBeVisible();
+          guest.getByRole('button', { name: 'Create invitation' }),
+        ).toBeEnabled();
         await expect(
-          guest.getByText('Shared work is view-only here'),
+          guest.getByRole('heading', { name: 'Shared Tasks' }),
         ).toBeVisible();
         // The operator-only bootstrap must never render for a guest,
         // even on an error surface: the guest counterpart has no such action.
@@ -392,7 +394,9 @@ test.describe
           .getByRole('button', { name: 'Refresh people and access' })
           .click();
         await expect(
-          guest.getByText(/approve collaborator management for this browser/),
+          guest.getByRole('note').filter({
+            hasText: 'approve this browser for managing collaborators',
+          }),
         ).toBeVisible({ timeout: 15_000 });
         await expect(
           guest.getByRole('button', { name: 'Create invitation' }),
@@ -415,10 +419,8 @@ test.describe
           .getByRole('button', { name: 'Refresh people and access' })
           .click();
         await expect(
-          guest.getByText('People administration: can submit changes'),
-        ).toBeVisible({
-          timeout: 15_000,
-        });
+          guest.getByRole('button', { name: 'Create invitation' }),
+        ).toBeEnabled({ timeout: 15_000 });
         await guest.getByRole('button', { name: 'Create invitation' }).click();
         await guest
           .locator('summary')

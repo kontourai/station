@@ -1,0 +1,7 @@
+{
+  "revision": "d09d29deb030b1f86786a3541d7f23ed77036134",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css follow-up (#4971) only changes the Run setup panel's engine-move caption to its own line; this page makes no claim about that caption, so it stays accurate.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

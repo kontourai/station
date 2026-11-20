@@ -1,0 +1,11 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Adds hasWaitingFollowUp (entries queued, placing or unconfirmed, by conversation or Session id); mustQueue now calls it with unchanged semantics. Placement, ordering and steer behavior unchanged. Citing documents (chat-composer, session-api, module-map) describe queueing and placement, which this does not alter.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Adds hasWaitingFollowUp (entries queued, placing or unconfirmed, by conversation or Session id); mustQueue now calls it with unchanged semantics. Placement, ordering and steer behavior unchanged. Citing documents (chat-composer, session-api, module-map) describe queueing and placement, which this does not alter.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Adds hasWaitingFollowUp (entries queued, placing or unconfirmed, by conversation or Session id); mustQueue now calls it with unchanged semantics. Placement, ordering and steer behavior unchanged. Citing documents (chat-composer, session-api, module-map) describe queueing and placement, which this does not alter.","inputs":["src-server/services/orchestration/thread-inbox.ts"]}
+  ]
+}

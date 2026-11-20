@@ -1,0 +1,91 @@
+{
+  "revision": "4deb31fedfb9740e8a0efd91342d493d6c38a57c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed ConnectionInspector and status inventory composition through the HTTP caller. The route propagates cancellation, publishes a named deadline refusal, and preserves live, unavailable, and retained evidence with its own provenance. Raw abandoned adapter work stays owned until settlement.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts","src-server/runtime/routes/runtime-route-support.ts","src-server/services/connections/connection-inspector.ts","src-server/services/connections/connection-service.ts","src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed the ordinary Connections read beside the Fleet contribution route. The new deadline belongs to the ordinary list. Fleet continues to own its completeness, capability and admission rules.","inputs":["docs/design/inference-fleet.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the Engine list, the warming ACP prerequisite message, and the retry guidance against live inspection and dispatch. A measured catalog and a completed smoke remain distinct evidence.","inputs":["docs/guides/connections.md","src-server/routes/system/system-status-routes.ts","src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the Engine list, the warming ACP prerequisite message, and the retry guidance against live inspection and dispatch. A measured catalog and a completed smoke remain distinct evidence.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed additive CLI presence evidence with separate state, freshness, measured time and PATH source. Callers still receive the existing boolean diagnostic shape.","inputs":["packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed additive CLI presence evidence with separate state, freshness, measured time and PATH source. Callers still receive the existing boolean diagnostic shape.","inputs":["packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the optional typed CLI presence projection from the status route and the existing SDK request path. The new field carries measurement evidence on route hosts that supply it.","inputs":["packages/sdk/src/query-domains/systemRuntime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked that the existing exact prerequisite tests now match the Engine description produced by the shared CLI owner. Approval tests and their authority boundaries retain their existing assertions.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked that the existing exact prerequisite tests now match the Engine description produced by the shared CLI owner. Approval tests and their authority boundaries retain their existing assertions.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the Muse engine description against its existing serve and exec paths. Launch policies and supported routes continue to use the same adapter.","inputs":["src-server/providers/adapters/muse-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the shared CLI lookup and prerequisite copy. The required binary description uses Engine terminology. Lookup policy and bounded execution remain the same.","inputs":["src-server/providers/auth/cli-auth.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the ordinary Engine list and onboarding route deadlines against the ConnectionService and Inspector. The route aborts the pending read on deadline or client cancellation and reports an incomplete inventory.","inputs":["src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the ordinary Engine list and onboarding route deadlines against the ConnectionService and Inspector. The route aborts the pending read on deadline or client cancellation and reports an incomplete inventory.","inputs":["src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the status cache and ordinary CLI evidence. A locator timeout or failure retains the observed result and timestamp, or leaves presence unknown. The partial refresh earns no report of freshness.","inputs":["src-server/routes/system/system-status-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the status route wiring. Its budget now reaches the enabled-state read. Existing automation, task, notification, and capability composition uses the same owner contracts.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked prerequisite, catalog, and command observation ownership. Healthy independent results keep their provenance. Abandoned raw adapter operation ownership stays held until settlement.","inputs":["src-server/services/connections/connection-inspector.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked normal list and execution readers, abort propagation, and per-adapter ownership with overlapping requests. Each current caller keeps its own result. Repeat reads report unavailable evidence while the abandoned operation settles.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked normal list and execution readers, abort propagation, and per-adapter ownership with overlapping requests. Each current caller keeps its own result. Repeat reads report unavailable evidence while the abandoned operation settles.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked normal list and execution readers, abort propagation, and per-adapter ownership with overlapping requests. Each current caller keeps its own result. Repeat reads report unavailable evidence while the abandoned operation settles.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked normal list and execution readers, abort propagation, and per-adapter ownership with overlapping requests. Each current caller keeps its own result. Repeat reads report unavailable evidence while the abandoned operation settles.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked execution admission against current connection evidence. The warming observation provides a retry explanation while the readiness and capability checks stay in place.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated ConnectionInspector topic against the updated module map. The shipped documentation carries the same deadline, partial evidence, and abandoned-operation ownership contract.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

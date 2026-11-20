@@ -5,14 +5,11 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   CHAT_DOCK_INBOX_EXIT_MS,
   chatModelLabel,
-  type DockChrome,
   effectiveChatModelId,
   firstRunDockNudge,
-  inboxPanelMounts,
   markDockFirstRunSeen,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
-  routeToOpenChatsCollection,
   shouldOpenDockForFirstRun,
   splitWorkingDirectoryPath,
 } from '../components/chat-dock/chat-dock-utils';
@@ -122,46 +119,6 @@ describe('firstRunDockNudge (#2151)', () => {
         sessionsStatus: 'pending',
       }),
     ).toBe('skip');
-  });
-});
-
-describe('routeToOpenChatsCollection (#3314 SF-1)', () => {
-  test('mobile routes to the task switcher sheet, never the desktop panel', () => {
-    expect(
-      routeToOpenChatsCollection({
-        isMobile: true,
-        dockMode: 'bottom',
-        isFullscreenPlacement: false,
-      }),
-    ).toEqual({ surface: 'mobile-inbox' });
-  });
-
-  test('an edge placement is moved to bottom mode, where the panel exists', () => {
-    const chrome: DockChrome = {
-      isMobile: false,
-      dockMode: 'right',
-      isFullscreenPlacement: false,
-    };
-    expect(inboxPanelMounts(chrome)).toBe(false);
-    expect(routeToOpenChatsCollection(chrome)).toEqual({
-      surface: 'inbox-panel',
-      switchToBottomMode: true,
-      snapHalf: true,
-    });
-  });
-
-  test('a fullscreen placement already mounts the panel and is not snapped', () => {
-    expect(
-      routeToOpenChatsCollection({
-        isMobile: false,
-        dockMode: 'right',
-        isFullscreenPlacement: true,
-      }),
-    ).toEqual({
-      surface: 'inbox-panel',
-      switchToBottomMode: false,
-      snapHalf: false,
-    });
   });
 });
 

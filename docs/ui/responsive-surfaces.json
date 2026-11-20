@@ -108,6 +108,7 @@
     {
       "path": "src-ui/src/components/coding-layout/NewTerminalModal.tsx",
       "strategy": "covered",
+      "contract": "Dialog",
       "evidence": "tests/coding-layout-plan-panel.spec.ts"
     },
     {

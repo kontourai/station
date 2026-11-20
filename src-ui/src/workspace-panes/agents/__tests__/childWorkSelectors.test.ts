@@ -50,6 +50,7 @@ import {
   type ChildWorkSelectorInput,
   type ChildWorkSessionSource,
   controlsFor,
+  countWork,
   emptyStateFor,
   GLOBAL_FINISHED_LIMIT,
   provenanceFor,
@@ -57,6 +58,7 @@ import {
   selectGlobalChildWork,
   subagentNoticeFor,
   uniqueChatKey,
+  workCountLabel,
 } from '../childWorkSelectors';
 
 function delegate(
@@ -306,6 +308,34 @@ describe('scopes and bounds', () => {
     );
   });
 
+  test('the bound trims old delegates, never a subagent its own chat still lists', () => {
+    // A chat's settled subagent, older than every delegate: trimming the
+    // oldest rows regardless of kind would drop it from All while the chat's
+    // own scope (unbounded over the already-bounded registry) still shows it.
+    const sessions = Array.from({ length: GLOBAL_FINISHED_LIMIT + 3 }, (_, i) =>
+      delegate(`d-${i}`, {
+        status: 'completed',
+        endedAt: new Date(Date.UTC(2026, 8, 24, 1, 0, i)).toISOString(),
+      }),
+    );
+    const facts = input(
+      sessions,
+      [
+        engineItem('exec-1', 'old-sub', {
+          status: 'completed',
+          endedAt: '2026-09-24T00:00:00.000Z',
+        }),
+      ],
+      { chatKeyFor: (thread) => (thread === 'exec-1' ? 'chat-1' : undefined) },
+    );
+    const view = selectGlobalChildWork(facts);
+    const chat = selectChatChildWork(facts, 'chat-1');
+    expect(chat.finished.map((row) => row.item.childId)).toEqual(['old-sub']);
+    expect(view.finished.map((row) => row.item.childId)).toContain('old-sub');
+    expect(view.finished).toHaveLength(GLOBAL_FINISHED_LIMIT);
+    expect(view.finishedOmitted).toBe(4);
+  });
+
   test('a chat shows the subagents its sessions and its delegates report — never the delegates themselves (those are store cards)', () => {
     const facts = input(
       [
@@ -403,5 +433,45 @@ describe('which open chat a session thread names', () => {
     expect(uniqueChatKey(chats, 'conv-c')).toBe('chat-c');
     expect(uniqueChatKey(chats, 'conv-shared')).toBe(undefined);
     expect(uniqueChatKey(chats, 'nobody')).toBe(undefined);
+  });
+});
+
+describe('work counts', () => {
+  test('each kind keeps one noun, whichever list a row came from', () => {
+    const child = (overrides: Partial<ChildWorkItem>) => ({
+      kind: 'child' as const,
+      row: {
+        key: String(Math.random()),
+        title: 't',
+        provenance: { kind: 'none' as const },
+        level: 0,
+        item: engineItem('exec-1', 'c', overrides),
+      },
+    });
+    const card = (kind: 'tool' | 'agent', workKind?: 'command') => ({
+      kind: 'task' as const,
+      entry: {
+        id: 'x',
+        kind,
+        source: workKind ? ('provider-task' as const) : ('tool-event' as const),
+        chatThreadId: 'chat-1',
+        title: 't',
+        state: 'running' as const,
+      },
+      ...(workKind ? { workKind } : {}),
+    });
+    expect(
+      workCountLabel(
+        countWork([
+          child({}),
+          child({ workKind: 'command' }),
+          child({ workKind: 'monitor' }),
+          card('tool'),
+          card('tool'),
+          // A bridged card for a background command is a command, not an agent.
+          card('agent', 'command'),
+        ]),
+      ),
+    ).toBe('1 agent · 2 commands · 1 monitor · 2 tools');
   });
 });

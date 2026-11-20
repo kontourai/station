@@ -100,6 +100,23 @@ function statusOf(summary: OrchestrationSessionSummary) {
   return { line, lane, rung };
 }
 
+it('keeps an armed check-back in Working after its turn settles, without hiding running work or attention', () => {
+  const nextWakeUpAt = '2026-09-30T10:10:00.000Z';
+  const waiting = rowFor({ ...TURN_COMPLETED, nextWakeUpAt });
+  expect(workStatus(waiting.item, NOW, waiting.facts)).toMatchObject({
+    word: 'Waiting',
+    lane: 'running',
+    rung: 'scheduled',
+  });
+  expect(statusOf({ ...RUNNING_TOOL, nextWakeUpAt })).toEqual(
+    statusOf(RUNNING_TOOL),
+  );
+  expect(statusOf({ ...APPROVAL_IN_OPEN_TURN, nextWakeUpAt })).toEqual(
+    statusOf(APPROVAL_IN_OPEN_TURN),
+  );
+  expect(statusOf(TURN_COMPLETED).lane).not.toBe('running');
+});
+
 describe('the status ladder, from real server summaries', () => {
   it('a running row with a pending approval reads as needs-approval, never as running', () => {
     // The turn really is still open on this summary; the shared attention

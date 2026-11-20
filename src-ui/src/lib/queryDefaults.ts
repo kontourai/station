@@ -1,4 +1,9 @@
-import type { DefaultOptions } from '@tanstack/react-query';
+import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
+import {
+  StationHttpError,
+  StationRequestAuthorityError,
+} from '@kontourai/station-sdk/client';
+import type { DefaultOptions, RefetchOptions } from '@tanstack/react-query';
 
 /**
  * station#2327 — the desktop native broker refuses a read with this code when
@@ -27,6 +32,43 @@ function stationDefaultQueryRetry(
 ): boolean {
   return failureCount < 1 && !isSaturatedTransportError(error);
 }
+
+export function isStationReadAccessRefusal(
+  error: unknown,
+): error is StationHttpError {
+  return (
+    error instanceof StationHttpError &&
+    isTerminalConnectionStatus(error.status)
+  );
+}
+
+function isRemoteInventoryMissing(error: unknown): boolean {
+  return error instanceof StationHttpError && error.status === 404;
+}
+
+/** The host may omit the optional remote-work reader. */
+export function isRemoteInventoryUnavailable(error: unknown): boolean {
+  return isStationReadAccessRefusal(error) || isRemoteInventoryMissing(error);
+}
+
+export function optionalRemoteInventoryRefetch(
+  refetch: (options?: RefetchOptions) => Promise<unknown>,
+) {
+  return async (options: RefetchOptions) => {
+    try {
+      await refetch(options);
+    } catch (error) {
+      if (!isRemoteInventoryMissing(error)) throw error;
+    }
+  };
+}
+
+export const stationViewReadQueryOptions = {
+  retry: (failureCount: number, error: Error) =>
+    !isStationReadAccessRefusal(error) &&
+    !(error instanceof StationRequestAuthorityError) &&
+    stationDefaultQueryRetry(failureCount, error),
+};
 
 /**
  * The query defaults shared by every app-owned QueryClient: the bootstrap

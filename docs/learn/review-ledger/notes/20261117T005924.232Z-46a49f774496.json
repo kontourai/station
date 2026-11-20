@@ -1,0 +1,7 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked: the resolver accepts the caller's prefetched current child and takes a message count instead of the message array; child-changed checks and the resolution shape are unchanged, so SDK and contract claims hold.","inputs":["src-server/services/orchestration/conversation-open-resolver.ts"]}
+  ]
+}

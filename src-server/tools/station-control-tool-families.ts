@@ -1,0 +1,242 @@
+/**
+ * The family of every tool Station's built-in servers register through
+ * `StationControlToolRegistry` (station-control, station-knowledge,
+ * station-browser and Codex's bound channel). A family groups tools in the
+ * Tools catalog (`ai.kontour/tool-group`) and is the unit
+ * `list_tool_families` / `load_tool_family` disclose (epic #2376).
+ *
+ * Stated per tool rather than guessed from its name: a name pattern put
+ * `html_preview` with review evidence (it contains "review") and the
+ * device tools in the catch-all. Each tool is listed exactly once;
+ * `station-control-tool-families.test.ts` fails on a registered tool that is
+ * missing here and on an entry no server registers.
+ */
+export const STATION_TOOL_FAMILY_MEMBERS = {
+  Agents: [
+    'create_agent',
+    'delete_agent',
+    'get_agent',
+    'list_agents',
+    'update_agent',
+  ],
+  Browser: [
+    'browser_capture_to_task',
+    'browser_click',
+    'browser_close',
+    'browser_color_scheme',
+    'browser_drag',
+    'browser_evaluate',
+    'browser_hover',
+    'browser_navigate',
+    'browser_network',
+    'browser_open',
+    'browser_press',
+    'browser_record_to_task',
+    'browser_resize',
+    'browser_scroll',
+    'browser_select',
+    'browser_snapshot',
+    'browser_status',
+    'browser_type',
+    'browser_wait_for',
+  ],
+  // The Sessions in a Project and what each says it is on (#3413 B) are
+  // chat-level reads, not Project records.
+  Chats: [
+    'claim_work',
+    'delete_conversation',
+    'fork_conversation',
+    'get_conversation_messages',
+    'get_session_digest',
+    'get_session_inventory',
+    'interrupt_session',
+    'list_active_work',
+    'list_conversations',
+    'list_project_activity',
+    'read_conversation',
+    'release_claim',
+    'rename_session',
+    'renew_claim',
+    'search_conversations',
+    'search_sessions',
+    'send_message',
+    'send_to_session',
+    'settle_conversation',
+    'wait_session',
+  ],
+  Devices: [
+    'device_capture_to_task',
+    'device_close',
+    'device_input',
+    'device_install_app',
+    'device_launch_app',
+    'device_list',
+    'device_logs',
+    'device_open',
+    'device_open_url',
+    'device_record_to_task',
+    'device_screenshot',
+    'device_snapshot',
+    'device_terminate_app',
+  ],
+  Evidence: [
+    'get_answer_assessment_target',
+    'get_basis',
+    'get_review_receipt',
+    'get_review_request',
+    'get_task_basis',
+    'list_review_receipts',
+    'publish_answer_assessment',
+    'remove_answer_assessment',
+    'run_independent_review',
+  ],
+  Integrations: [
+    'check_plugin_updates',
+    'create_integration',
+    'create_provider',
+    'delete_integration',
+    'get_integration',
+    'install_plugin',
+    'install_registry_integration',
+    'list_engine_setup',
+    'open_engine_setup',
+    'list_integrations',
+    'list_plugins',
+    'list_providers',
+    'list_registry_integrations',
+    'propose_plugin_install',
+    'remove_plugin',
+    'update_plugin',
+    'validate_plugin',
+  ],
+  Knowledge: [
+    'add_knowledge_record',
+    'get_knowledge_record',
+    'list_knowledge_records',
+    'list_knowledge_roots',
+    'migrate_knowledge',
+    'reindex_knowledge',
+    'search_knowledge',
+  ],
+  Projects: [
+    'board_move',
+    'board_pin',
+    'board_read',
+    'board_unpin',
+    'forget_project_note',
+    'get_personal_board',
+    'get_project',
+    'list_personal_boards',
+    'list_project_layouts',
+    'list_project_library',
+    'list_project_notes',
+    'list_projects',
+    'propose_personal_board',
+    'read_project_library_file',
+    'read_project_note',
+    'remember_project_note',
+  ],
+  Scheduling: [
+    'add_job',
+    'cancel_wake_up',
+    'delete_job',
+    'disable_job',
+    'enable_job',
+    'get_job_logs',
+    'get_scheduler_stats',
+    'get_scheduler_status',
+    'list_jobs',
+    'list_scheduler_providers',
+    'list_wake_ups',
+    'preview_schedule',
+    'propose_job',
+    'run_job',
+    'schedule_wake_up',
+    'update_job',
+  ],
+  Skills: [
+    'install_skill',
+    'list_registry_skills',
+    'list_skills',
+    'record_skill_outcome',
+    'track_skill_run',
+    'uninstall_skill',
+    'update_skill',
+  ],
+  Station: [
+    'coordinator_picture_read',
+    'coordinator_picture_update',
+    'draft_troubleshoot_report',
+    'get_achievements',
+    'get_appearance',
+    'get_config',
+    'get_troubleshoot_playbook',
+    'get_usage',
+    'get_walkthrough',
+    'html_preview',
+    'html_render',
+    'list_automation_deliveries',
+    'list_automation_episodes',
+    'list_automation_proposals',
+    'list_automation_rules',
+    'list_automation_sources',
+    'list_models',
+    'list_walkthroughs',
+    'navigate_to',
+    'notify_user',
+    'propose_appearance',
+    'propose_automation_rule',
+    'propose_automation_source',
+    'read_logs',
+    'read_monitoring_events',
+    'system_status',
+    'terminal_read',
+    'terminal_run',
+    'update_config',
+    'workload_status',
+  ],
+  Tasks: [
+    'connect_ssh_environment',
+    'continue_task',
+    'create_ssh_environment',
+    'declare_pull_request',
+    'delegate_task',
+    'disconnect_ssh_environment',
+    'get_ssh_environment',
+    'get_task',
+    'get_task_brief',
+    'get_task_events',
+    'interrupt_task',
+    'list_delegated_tasks',
+    'list_delegation_environments',
+    'list_delegation_targets',
+    'read_pull_request_guide',
+    'remove_ssh_environment',
+    'respond_to_task_request',
+    'task_record',
+    'task_summary_update',
+    'task_thread_list',
+    'task_thread_reply',
+    'task_thread_resolve',
+    'write_pull_request_guides',
+  ],
+} as const satisfies Record<string, readonly string[]>;
+
+export type StationToolFamily = keyof typeof STATION_TOOL_FAMILY_MEMBERS;
+
+const FAMILY_OF = new Map<string, StationToolFamily>();
+for (const [family, members] of Object.entries(STATION_TOOL_FAMILY_MEMBERS))
+  for (const name of members) {
+    if (FAMILY_OF.has(name))
+      throw new Error(`Station tool ${name} is listed in two families`);
+    FAMILY_OF.set(name, family as StationToolFamily);
+  }
+
+/**
+ * `name`'s family, or `undefined` for a tool this map does not list. The
+ * registry shows such a tool under `Station`, as before; the test above
+ * keeps that from shipping.
+ */
+export function stationToolFamily(name: string): StationToolFamily | undefined {
+  return FAMILY_OF.get(name);
+}

@@ -32,7 +32,7 @@ const surface = z
   .object({
     kind: z.literal('station-native'),
     appIdentifier: z.string().min(1).max(255),
-    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    channel: z.enum(['dev', 'stable', 'nightly']),
     clientInstanceId: z.string().uuid(),
     keyThumbprint: opaque,
   })

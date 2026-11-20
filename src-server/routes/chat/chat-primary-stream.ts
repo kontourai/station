@@ -37,7 +37,8 @@ import {
   runtimeConfigurationLeaseIsCurrent,
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { InjectableStream } from '../../runtime/streaming/InjectableStream.js';
-import type { RuntimeContext } from '../../runtime/types.js';
+import type { IStreamResult, RuntimeContext } from '../../runtime/types.js';
+import { assertInheritedDelegationToolPolicy } from '../../services/orchestration/delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import {
   chatContextInjectionBlocks,
@@ -123,6 +124,7 @@ interface StreamPrimaryAgentChatArgs {
   /** Private, source-admitted instructions from the authenticated native relay only. */
   skillExperienceContext?: string;
   restOptions: Record<string, unknown>;
+  fileConversationOwnerId?: string;
   injectContext: string | null;
   ragContext: string | null;
   /**
@@ -202,6 +204,7 @@ export function streamPrimaryAgentChat({
   ambientContext,
   skillExperienceContext,
   restOptions,
+  fileConversationOwnerId,
   injectContext,
   ragContext,
   contextInjection,
@@ -320,16 +323,19 @@ export function streamPrimaryAgentChat({
     let ownsClientTurnClaim = initialClaim?.claimed === true;
     let agentInvoked = false;
     let streamDrained = false;
+    let spanError: Error | undefined;
+    const abortController = new AbortController();
     let dedupShortCircuited = false;
     // Populated only when the outer catch below fires — used to persist a
     // reload-safe failure marker when the turn produced zero output (archive#191
     // R2's persistence-gap fix). Left undefined on every non-error path, so
     // a successful turn never persists a marker.
     let turnFailureText: string | undefined;
-    // biome-ignore lint: agent framework types inferred from Map
-    let result;
+    let result: IStreamResult | undefined;
     let memory = null;
-    let memoryAdapter = null;
+    let memoryAdapter: Parameters<
+      typeof finalizeChatRequest
+    >[0]['memoryAdapter'];
     // archive#1566: hoisted so the `finally` block (where
     // `finalizeChatRequest` runs) can pass the same handle through for the
     // auto-title write. Declared here rather than as a `const` inside the
@@ -444,19 +450,21 @@ export function streamPrimaryAgentChat({
       if (agentHooks && operationContext.conversationId) {
         releaseApprovalRequester = agentHooks.registerApprovalRequester(
           operationContext.conversationId,
-          async (tool) => {
-            const result = await elicitation({
-              type: 'tool-approval',
-              toolName: tool.toolName,
-              toolDescription: tool.toolDescription || '',
-              toolArgs: tool.toolArgs,
-            });
+          async (tool, guardianReason) => {
+            const result = await elicitation(
+              {
+                type: 'tool-approval',
+                toolName: tool.toolName,
+                toolDescription: tool.toolDescription || '',
+                toolArgs: tool.toolArgs,
+              },
+              guardianReason,
+            );
             return !!result;
           },
         );
       }
 
-      const abortController = new AbortController();
       conversationId = operationContext.conversationId;
 
       const abortFromClient = prepareDurableForegroundHandoff({
@@ -484,7 +492,12 @@ export function streamPrimaryAgentChat({
       ctx.logger.debug('Abort signal configured', { conversationId });
 
       memory = agent.getMemory();
-      memoryAdapter = ctx.memoryAdapters.get(slug);
+      const newFileOwnerId = isNewConversation
+        ? fileConversationOwnerId
+        : undefined;
+      const storageSlug =
+        newFileOwnerId && slug === 'station' ? 'default' : slug;
+      memoryAdapter = ctx.memoryAdapters.get(storageSlug);
       // archive#914: one conversation store, not a choice between two. This used to
       // pick the agent's own memory for file-backed agents and Station's
       // adapter for runtime ones — which were different objects, so the title
@@ -495,11 +508,12 @@ export function streamPrimaryAgentChat({
         typeof operationContext.delegation === 'object'
           ? operationContext.delegation
           : undefined;
+      assertInheritedDelegationToolPolicy(requestedDelegation);
       await ensureChatConversation({
         conversationStorage,
         conversationId: operationContext.conversationId,
-        userId: operationContext.userId,
-        slug,
+        userId: (memoryAdapter && newFileOwnerId) || operationContext.userId,
+        slug: memoryAdapter ? storageSlug : slug,
         input,
         title: operationContext.title,
         projectSlug,
@@ -514,6 +528,7 @@ export function streamPrimaryAgentChat({
             )
           : null;
       const persistedDelegation = persistedConversation?.metadata?.delegation;
+      assertInheritedDelegationToolPolicy(persistedDelegation);
       if (persistedDelegation && typeof persistedDelegation === 'object') {
         operationContext.delegation =
           persistedDelegation as AgentDelegationContext;
@@ -635,7 +650,7 @@ export function streamPrimaryAgentChat({
         memoryBrief?.delivered();
         return agent.streamText(input as string, streamOptions);
       };
-      result = nativeForeground
+      const invokedResult: IStreamResult = nativeForeground
         ? await nativeForeground.invoke(
             {
               get spec() {
@@ -648,6 +663,7 @@ export function streamPrimaryAgentChat({
             invokeAgent,
           )
         : await invokeAgent();
+      result = invokedResult;
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
@@ -690,9 +706,9 @@ export function streamPrimaryAgentChat({
           error: err,
         });
       };
-      result.text?.catch(recordAuxiliaryRejection);
-      result.usage?.catch(recordAuxiliaryRejection);
-      result.finishReason?.catch(recordAuxiliaryRejection);
+      invokedResult.text?.catch(recordAuxiliaryRejection);
+      invokedResult.usage?.catch(recordAuxiliaryRejection);
+      invokedResult.finishReason?.catch(recordAuxiliaryRejection);
 
       const saveCancellationMessage = async () => {
         await StreamOrchestrator.saveCancellationMessage(
@@ -788,7 +804,7 @@ export function streamPrimaryAgentChat({
       });
 
       const wrappedStream = stripOutputDeclarationHandles(
-        injectableStream.wrap(result.fullStream),
+        injectableStream.wrap(invokedResult.fullStream),
       );
       for await (const chunk of pipeline.run(wrappedStream)) {
         requireCurrentRuntimeConfiguration(ctx, configurationLease);
@@ -823,13 +839,15 @@ export function streamPrimaryAgentChat({
         streamDrained = true;
       }
     } catch (error: unknown) {
-      chatSpan.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: errorMessage(error),
-      });
-      chatSpan.recordException(
-        error instanceof Error ? error : new Error(errorMessage(error)),
-      );
+      const canceled =
+        completionReason === 'aborted' ||
+        (abortController.signal.aborted &&
+          error instanceof Error &&
+          error.name === 'AbortError');
+      if (!canceled) {
+        spanError =
+          error instanceof Error ? error : new Error(errorMessage(error));
+      }
       const agentModelForError = agent.model as
         | { modelId?: string }
         | undefined;
@@ -846,65 +864,90 @@ export function streamPrimaryAgentChat({
       await StreamOrchestrator.writeSSEError(streamWriter, error);
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {
-      stopKeepalive();
-      // A turn that ended without invoking the agent (a replayed turn, a refusal, an
-      // error) did not deliver its brief; a delivered one is unaffected.
-      if (!agentInvoked) memoryBrief?.abandoned();
-      releaseDurableForeground(streamWriter, releaseApprovalRequester);
-      // archive#1224 (offline): the dedup short-circuit above
-      // already wrote its own terminal SSE frames and `return`ed — none of
-      // this turn's own bookkeeping (stats, cost, and critically
-      // `persistUserTurnIfMissing`, which would otherwise see the empty
-      // `accumulatedText` this short-circuit leaves behind and persist a
-      // SECOND copy of the user's message) applies to it, since nothing
-      // here executed a turn at all.
-      if (dedupShortCircuited) {
-        // finalizeChatRequest() (which ends the span for every other path)
-        // never runs here — end it directly so it isn't left open.
-        chatSpan.end();
-      } else {
-        if (clientTurnId && ownsClientTurnClaim) {
-          if (agentInvoked && streamDrained && conversationId) {
-            try {
-              dedupStore?.resolve(clientTurnId, conversationId);
-            } catch (error) {
+      const settle = async () => {
+        stopKeepalive();
+        // A turn that ended without invoking the agent (a replayed turn, a refusal, an
+        // error) did not deliver its brief; a delivered one is unaffected.
+        if (!agentInvoked) memoryBrief?.abandoned();
+        releaseDurableForeground(streamWriter, releaseApprovalRequester);
+        // archive#1224 (offline): the dedup short-circuit above
+        // already wrote its own terminal SSE frames and `return`ed — none of
+        // this turn's own bookkeeping (stats, cost, and critically
+        // `persistUserTurnIfMissing`, which would otherwise see the empty
+        // `accumulatedText` this short-circuit leaves behind and persist a
+        // SECOND copy of the user's message) applies to it, since nothing
+        // here executed a turn at all.
+        if (!dedupShortCircuited) {
+          if (clientTurnId && ownsClientTurnClaim) {
+            if (agentInvoked && streamDrained && conversationId) {
+              try {
+                dedupStore?.resolve(clientTurnId, conversationId);
+              } catch (error) {
+                dedupStore?.retain(clientTurnId);
+                ctx.logger.error(
+                  'Chat turn resolution failed after invocation',
+                  {
+                    clientTurnId,
+                    error,
+                  },
+                );
+              }
+            } else if (agentInvoked) {
               dedupStore?.retain(clientTurnId);
-              ctx.logger.error('Chat turn resolution failed after invocation', {
-                clientTurnId,
-                error,
-              });
+            } else {
+              dedupStore?.release(clientTurnId);
             }
-          } else if (agentInvoked) {
-            dedupStore?.retain(clientTurnId);
-          } else {
-            dedupStore?.release(clientTurnId);
           }
+          await finalizeChatRequest({
+            ctx,
+            slug,
+            plugin,
+            input,
+            operationContext: {
+              userId: operationContext.userId,
+              conversationId: operationContext.conversationId,
+              traceId: requestTraceId,
+            },
+            completionReason,
+            accumulatedText,
+            reasoningText,
+            artifacts,
+            result,
+            modelOverride,
+            memoryAdapter,
+            conversationStorage,
+            conversationId,
+            isNewConversation,
+            chatStartMs,
+            chatSpan,
+            turnFailureText,
+          });
         }
-        await finalizeChatRequest({
-          ctx,
-          slug,
-          plugin,
-          input,
-          operationContext: {
-            userId: operationContext.userId,
-            conversationId: operationContext.conversationId,
-            traceId: requestTraceId,
-          },
-          completionReason,
-          accumulatedText,
-          reasoningText,
-          artifacts,
-          result,
-          modelOverride,
-          memoryAdapter,
-          conversationStorage,
-          conversationId,
-          isNewConversation,
-          chatStartMs,
-          chatSpan,
-          turnFailureText,
+      };
+      await settle()
+        .catch((error: unknown) => {
+          spanError ??=
+            error instanceof Error ? error : new Error(errorMessage(error));
+          throw error;
+        })
+        .finally(() => {
+          if (spanError) {
+            chatSpan.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: spanError.message,
+            });
+            chatSpan.recordException(spanError);
+          } else if (completionReason === 'error') {
+            chatSpan.setStatus({ code: SpanStatusCode.ERROR });
+          } else if (
+            agentInvoked &&
+            streamDrained &&
+            completionReason !== 'aborted'
+          ) {
+            chatSpan.setStatus({ code: SpanStatusCode.OK });
+          }
+          chatSpan.end();
         });
-      }
     }
   };
 

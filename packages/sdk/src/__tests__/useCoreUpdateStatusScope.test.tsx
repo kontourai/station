@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { StationRequestAuthorityError } from '../client/http';
 import { useCoreUpdateStatusQuery } from '../query-domains/systemRuntime';
 
 /**
@@ -107,55 +108,92 @@ describe('useCoreUpdateStatusQuery scope', () => {
     client.clear();
   });
 
-  test('a completion that went stale in flight never resolves as current data', async () => {
-    let current = true;
-    let resolveFetch: ((value: Response) => void) | undefined;
-    const fetchMock = vi.fn().mockReturnValue(
-      new Promise<Response>((resolve) => {
-        resolveFetch = resolve;
+  test('a false predicate before the request never reaches the wire', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(VALID_STATUS), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     });
-
     const { result } = renderHook(
       () =>
-        useCoreUpdateStatusQuery(
-          API_BASE,
-          { enabled: true },
-          {
-            scopeKey: 'scope-a',
-            assertCurrent: () => {
-              if (!current) throw new Error('scope superseded in flight');
-            },
-          },
-        ),
+        useCoreUpdateStatusQuery(API_BASE, undefined, {
+          scopeKey: 'scope-a',
+          assertCurrent: () => false,
+        }),
       { wrapper: wrapperFor(client) },
     );
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    // The scope is superseded while the request is in flight, then the
-    // response arrives anyway — the exact A→B ordering the assertion guards.
-    current = false;
-    await act(async () => {
-      resolveFetch?.(
-        new Response(JSON.stringify(VALID_STATUS), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      );
-    });
-
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect((result.current.error as Error).message).toBe(
-      'scope superseded in flight',
-    );
-    expect(result.current.data).toBeUndefined();
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(result.current.error).toBeInstanceOf(StationRequestAuthorityError);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
     client.clear();
   });
+
+  test.each(['throw', 'false'])(
+    'an in-flight scope that is no longer current (%s) is never cached',
+    async (guard) => {
+      let current = true;
+      let resolveFetch: ((value: Response) => void) | undefined;
+      const fetchMock = vi.fn().mockReturnValue(
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, gcTime: 0 } },
+      });
+
+      const { result } = renderHook(
+        () =>
+          useCoreUpdateStatusQuery(
+            API_BASE,
+            { enabled: true },
+            {
+              scopeKey: 'scope-a',
+              assertCurrent: () => {
+                if (guard === 'false') return current;
+                if (!current) throw new Error('scope superseded in flight');
+              },
+            },
+          ),
+        { wrapper: wrapperFor(client) },
+      );
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      // The scope is superseded while the request is in flight, then the
+      // response arrives anyway — the exact A→B ordering the assertion guards.
+      current = false;
+      await act(async () => {
+        resolveFetch?.(
+          new Response(JSON.stringify(VALID_STATUS), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      });
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      if (guard === 'false') {
+        expect(result.current.error).toBeInstanceOf(
+          StationRequestAuthorityError,
+        );
+      } else {
+        expect(result.current.error?.message).toBe(
+          'scope superseded in flight',
+        );
+      }
+      expect(result.current.data).toBeUndefined();
+      expect(client.getQueryData(QUERY_KEY)).toBeUndefined();
+      client.clear();
+    },
+  );
 
   test('the per-attempt abort signal is forwarded from the query', async () => {
     const signals: AbortSignal[] = [];

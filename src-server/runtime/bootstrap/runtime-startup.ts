@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
+  type FileMutationLockTemporarySweep,
+  sweepOrphanedFileMutationLockTemporaries,
+} from '@kontourai/station-shared/lifecycle-events';
+import {
   type OrchestrationUsageRef,
   UsageAggregator,
 } from '../../analytics/usage-aggregator.js';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
 import { managedRegistryLimits } from '../../security/managed-capability-limits.js';
-import { startupDefaultSelection } from '../../telemetry/metrics.js';
+import {
+  fileMutationLockOrphanTemporaries,
+  startupDefaultSelection,
+} from '../../telemetry/metrics.js';
 
 interface RuntimeStartupLogger {
   info: (message: string, meta?: Record<string, unknown>) => void;
@@ -52,6 +59,10 @@ interface RuntimeStartupContext {
   orchestrationUsageRef?: OrchestrationUsageRef;
   setIntervalImpl?: typeof setInterval;
   runStartupMigrations?: (projectHomeDir: string) => Promise<void>;
+  /** Injectable for tests; defaults to the lock module's own sweep. */
+  sweepOrphanedMutationTemporaries?: (
+    projectHomeDir: string,
+  ) => Promise<FileMutationLockTemporarySweep>;
   checkBedrockCredentials?: () => Promise<boolean>;
   checkOllamaAvailability?: () => Promise<boolean>;
   registerSkillRegistryProvider?: (provider: any) => void;
@@ -218,6 +229,48 @@ export async function seedRuntimeDefaultProviderConnection(
   }
 }
 
+/**
+ * #4995: reclaims `*.mutation.<uuid>.tmp` lock temporaries a dead acquirer
+ * left in the Station home. The lock module owns which files qualify (exact
+ * name, age, no live owner); this only reports the result — one metric per
+ * outcome and one info line when anything was found — and never fails
+ * startup over it.
+ */
+export async function sweepRuntimeOrphanedMutationTemporaries(
+  projectHomeDir: string,
+  logger: Pick<RuntimeStartupLogger, 'info' | 'warn'>,
+  sweep: (
+    projectHomeDir: string,
+  ) => Promise<FileMutationLockTemporarySweep> = sweepOrphanedFileMutationLockTemporaries,
+): Promise<void> {
+  let result: FileMutationLockTemporarySweep;
+  try {
+    result = await sweep(projectHomeDir);
+  } catch (error) {
+    logger.warn('Orphaned mutation lock temporary sweep failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+  if (result.removed > 0)
+    fileMutationLockOrphanTemporaries.add(result.removed, {
+      outcome: 'removed',
+    });
+  if (result.retainedLive > 0)
+    fileMutationLockOrphanTemporaries.add(result.retainedLive, {
+      outcome: 'retained_live',
+    });
+  if (result.failed > 0)
+    fileMutationLockOrphanTemporaries.add(result.failed, { outcome: 'failed' });
+  if (
+    result.removed > 0 ||
+    result.retainedLive > 0 ||
+    result.failed > 0 ||
+    result.truncated
+  )
+    logger.info('Swept orphaned mutation lock temporaries', { ...result });
+}
+
 export async function prepareRuntimeStartup(
   context: RuntimeStartupContext,
 ): Promise<UsageAggregator> {
@@ -251,6 +304,11 @@ export async function prepareRuntimeStartup(
   );
 
   await context.runStartupMigrations?.(context.projectHomeDir);
+  await sweepRuntimeOrphanedMutationTemporaries(
+    context.projectHomeDir,
+    context.logger,
+    context.sweepOrphanedMutationTemporaries,
+  );
   await seedRuntimeDefaultProviderConnection(context);
 
   return usageAggregator;

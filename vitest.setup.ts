@@ -44,6 +44,11 @@ delete process.env[GROUP_MANIFEST_DIR_ENV];
 // tests construct the source with an injected fetch instead.
 process.env.STATION_PUBLIC_AGENT_REGISTRY = 'off';
 
+// Tests assert on individual warnings, often the same one from many cases in
+// one file, so the logger's repeat limit (#4995) is off here. Its own tests
+// turn it on with `configureLogRepeatLimit`.
+process.env.STATION_LOG_REPEAT_LIMIT = '0';
+
 installNodeHttpCompatibility();
 
 /**

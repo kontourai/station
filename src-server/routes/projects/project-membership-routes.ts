@@ -1,6 +1,7 @@
-import type {
-  ProjectMembershipScope,
-  ProjectSharingEnablement,
+import {
+  GRANTABLE_PROJECT_ROLES,
+  type ProjectMembershipScope,
+  type ProjectSharingEnablement,
 } from '@kontourai/station-contracts/project-membership';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
@@ -24,7 +25,7 @@ const scopeSchema = z
     portableProjectId: z.string().min(1).max(512),
   })
   .strict();
-const roleSchema = z.enum(['viewer', 'contributor', 'admin']);
+const roleSchema = z.enum(GRANTABLE_PROJECT_ROLES);
 /**
  * Caller-captured mutation intent: the principal id the page was rendered
  * for. The service compares it against freshly authenticated authority

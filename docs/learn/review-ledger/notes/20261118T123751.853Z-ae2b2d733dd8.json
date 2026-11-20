@@ -1,0 +1,7 @@
+{
+  "revision": "b3ec7905124c458b56e711bcf56d1cf3629f2786",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the merged mobile composer browser evidence against the actual model picker navigation and accessible actions. The conflict resolution retains the Model collections navigation and queries model buttons in the Models group. The original fixture, hit-test, chooser layout, preference write and composer ownership checks all remain enabled. Managed Chromium suite executed 69 of 69 successfully on the merge source. No native or hosted qualification inferred.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "39644cd839e199b65715ed04df6900fdf6478b94",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the compact native Current session disclosure against the guide and module-map claims after semantic action-list and shared-action adoption. It now reuses the existing 44px control floor and preserves the native disclosure marker and keyboard behavior. The 11-case controlled browser journey already passed with toolbar target measurements; the added disclosure geometry assertion remains a separate final run until its actual result. Turn identity, canvas continuity, approvals, input safety and explicit recording are unchanged; no new native, provider, production browser or release qualification is claimed.","inputs":["src-ui/src/components/browser-activity/InlineBrowserActivity.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the compact native Current session disclosure against the guide and module-map claims after semantic action-list and shared-action adoption. It now reuses the existing 44px control floor and preserves the native disclosure marker and keyboard behavior. The 11-case controlled browser journey already passed with toolbar target measurements; the added disclosure geometry assertion remains a separate final run until its actual result. Turn identity, canvas continuity, approvals, input safety and explicit recording are unchanged; no new native, provider, production browser or release qualification is claimed.","inputs":["src-ui/src/components/browser-activity/InlineBrowserActivity.tsx"]}
+  ]
+}

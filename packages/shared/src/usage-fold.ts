@@ -1,3 +1,4 @@
+import { isHtmlReplyPublication } from '@kontourai/station-contracts/html-reply';
 import {
   CONVERSATION_REPORTED_COST_UNITS_MAX,
   type ConversationEngineMcpStatus,
@@ -940,7 +941,7 @@ function foldUsageEventsInner(
         // count must NOT be read as is "tool calls that produced a result";
         // the per-turn envelope's `succeeded`/`failed`/`cancelled`/
         // `unresolved` breakdown is where that distinction lives.
-        aggregate.toolCalls += 1;
+        if (!isHtmlReplyPublication(event)) aggregate.toolCalls += 1;
         break;
       }
       case 'session.configured': {

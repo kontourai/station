@@ -98,9 +98,7 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/runtime/agents/durable-agent-tools.ts",
-
-    "src-server/telemetry-sdk.ts"
+    "src-server/runtime/agents/durable-agent-tools.ts"
   ],
 
   "checks": [

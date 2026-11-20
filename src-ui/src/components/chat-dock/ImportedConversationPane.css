@@ -25,3 +25,37 @@
   align-items: center;
   gap: 6px;
 }
+
+.imported-conversation-pane__origin-action {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.imported-conversation-pane__origin-action:empty {
+  display: none;
+}
+
+/* The dock title bar's slot for this conversation's one action (Continue in
+   Station), beside its origin. Loaded with the pane, which is what fills it;
+   empty until then. */
+.chat-dock__header-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__header-action:empty {
+  display: none;
+}
+
+/* Sized to the title bar's own controls, and kept below the dock's 8px
+   resize handle along the top edge so no part of it starts a resize. */
+.chat-dock__header-action {
+  margin-top: 8px;
+}
+
+.chat-dock__header-action .button {
+  min-height: 26px;
+  height: 26px;
+  padding-block: 0;
+}

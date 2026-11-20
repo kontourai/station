@@ -1,0 +1,7 @@
+{
+  "revision": "0d10f0f69697ae8d86474c3aef25a262c4b0f37f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the new third-derivation paragraph against scanNativeLiteralPins and nativeLiteralPinEdges: roots, JS/TS and generated-tree exclusions, supplemental-only edges, verify-local deferral kept, and the stated gaps (joined paths, substituted templates, tests outside scripts/__tests__) match the code and native-literal-pin-boundary.test.ts.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/test-impact-manifest.mjs"]}
+  ]
+}

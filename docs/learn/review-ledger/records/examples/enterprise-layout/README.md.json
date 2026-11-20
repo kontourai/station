@@ -52,7 +52,15 @@
 
     "src-server/services/plugins/workspace-pane-host-actions.ts",
 
-    "src-server/services/plugins/workspace-pane-host-admission.ts"
+    "src-server/services/plugins/workspace-pane-host-admission.ts",
+
+    "examples/enterprise-layout/src/Notes.tsx",
+
+    "tests/enterprise-pane-lifecycle.spec.ts",
+
+    "examples/enterprise-layout/src/useCalendarNavigation.ts",
+
+    "packages/sdk/src/providers.tsx"
   ],
 
   "checks": [

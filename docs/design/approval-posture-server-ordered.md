@@ -904,8 +904,14 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
   - `-c sandbox_workspace_write.writable_roots=[]`, for a thread not under
     the profile (a `read-only` review start, or a Codex that does not apply
     it), whose tightening restores the reported workspace baseline.
-  - `-c approvals_reviewer="user"`: with `auto_review` a model, not a person,
-    would approve a sandbox escalation.
+  - `-c approvals_reviewer="user"` selects a person to review escalations.
+    If Codex reports automatic review when starting, resuming, or forking an
+    explicit workspace session, Station refuses the session before announcing
+    it. An omitted reviewer is compatible with older responses and provides
+    no reviewer evidence. The approval sheet shows the current Codex binding's
+    reported reviewer as You, Automatic, or Unknown. Station records changes
+    from the current native thread and restores the newest report on reconnect.
+    Changing the approval mode does not change this reviewer report.
 
   A `-c` override outranks every file layer and applies to every
   configuration load of that process (start, resume, fork): a user or
@@ -1109,15 +1115,27 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     `~/.gnupg`, `~/.kube`, `~/.azure`, `~/.config/gh`, `~/.config/gcloud`,
     `~/Library/Keychains`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`,
     `~/.pypirc` and `~/.docker/config.json`. Also denied: `~/.claude.json`,
-    `~/.claude/.credentials.json`, `~/.codex/auth.json`, and Station's root
-    and runtime home. Station's `installs` stay readable.
+    `~/.claude/.credentials.json`, `~/.codex/auth.json`, Station's root
+    and runtime home, and the short per-user session temp roots
+    (`<system temp>/stn-<uid>`), which hold other sessions' temp
+    directories. Station's `installs` stay readable.
+    A workspace that contains, equals or sits inside a short session root is
+    refused; its write grant could otherwise reopen other sessions' files.
   - Writes are allowed to the workspace, a per-session Station temp directory
-    (`<home>/tmp/confined-sessions/session-<pid>-*`, also the engine's
-    `TMPDIR`), and the Station-owned Claude configuration directory. A
-    session removes its temp directory when it stops. At boot and on the
-    engine temp sweep's schedule, Station removes a temp directory whose
-    owner process is gone, after checking it is a real directory directly in
-    that root, owned by this user, and named for that process.
+    (`session-<pid>-*`, a fresh one for each launch, also the engine's
+    `TMPDIR`), and the Station-owned Claude configuration directory. The
+    temp directory grant is that one directory, never its root, `/tmp` or the
+    system temp directory. Agents' tools create Unix sockets in `TMPDIR`, and
+    macOS caps a socket path at 104 bytes, so the directory is held to the
+    same 64-byte budget as an unconfined session's (#4740): it is in
+    `<home>/tmp/confined-sessions` when it fits there, otherwise in the short
+    root (under a default home, `/private/tmp/stn-<uid>/session-<pid>-*`),
+    created 0700 and checked to be this user's real directory, otherwise in
+    `<home>/tmp/confined-sessions` over budget. A session removes its temp
+    directory when it stops. At boot and on the engine temp sweep's schedule,
+    Station removes a temp directory whose owner process is gone, after
+    checking it is a real directory directly in one of those roots, owned by
+    this user, and named for that process.
   - For a linked worktree, writes are also allowed to its own git directory,
     the shared `objects`, and exactly its branch's
     `refs/heads/<branch>`, `.lock` and `logs/refs/heads/<branch>`. The git

@@ -1,5 +1,6 @@
 import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import type { ReactNode } from 'react';
+import { releaseVersionLabel } from '../lib/releaseVersionLabel';
 import './StatusSummary.css';
 
 /** Shared hierarchy for a named resource: identity, status, then check metadata. */
@@ -52,12 +53,12 @@ export function StatusSummary({
         <div className="status-summary__facts">
           {current && (
             <p className="status-summary__version">
-              <code>{current}</code>
-              {transition && (
+              <code title={current}>{releaseVersionLabel(current)}</code>
+              {transition && target && (
                 <>
                   <span aria-hidden="true"> → </span>
                   <span className="sr-only"> to </span>
-                  <code>{target}</code>
+                  <code title={target}>{releaseVersionLabel(target)}</code>
                 </>
               )}
             </p>

@@ -64,7 +64,7 @@ updater payloads; it is not the Android upload key.
 1. **Setup** — the Node version in `.nvmrc`, Rust with Android targets, and the Java/SDK/NDK versions pinned in the workflow
 2. **Build frontend** — `npm run dependencies:ci`, then the SDK, Connect, and desktop resources
 3. **Tauri Android Init** — `node scripts/reset-android-generated-project.mjs`
-   first removes the tracked seed, as the Nightly and beta lanes do, so the
+   first removes the tracked seed, as the Nightly and tagged Stable lanes do, so the
    project comes entirely from the pinned CLI's templates. Init then runs from
    `src-desktop` with the base and Dev overlays, `--ci` and
    `--skip-targets-install`. Running discovery from the repository root can

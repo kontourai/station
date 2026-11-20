@@ -1,0 +1,7 @@
+{
+  "revision": "c2d157194d0a5e07c43bf6ee4e19427a1b742d3f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Review-fix round: the handoff request contract is unchanged; the dialog now re-checks its target before a fresh request and sends the composer's prepared text.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "af1cea05a8e1cc36f8eec6b6bf3b01626d75b1a5",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the injected-clock runner, CLI and receipt summary regression. It verifies that the selector ran and that the unlaunched check has no failure attribution. Existing execution, promotion and test-selection claims retain the same scope.","inputs":["scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the injected-clock runner, CLI and receipt summary regression. It verifies that the selector ran and that the unlaunched check has no failure attribution. Existing execution, promotion and test-selection claims retain the same scope.","inputs":["scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the injected-clock runner, CLI and receipt summary regression. It verifies that the selector ran and that the unlaunched check has no failure attribution. Existing execution, promotion and test-selection claims retain the same scope.","inputs":["scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the injected-clock runner, CLI and receipt summary regression. It verifies that the selector ran and that the unlaunched check has no failure attribution. Existing execution, promotion and test-selection claims retain the same scope.","inputs":["scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the injected-clock runner, CLI and receipt summary regression. It verifies that the selector ran and that the unlaunched check has no failure attribution. Existing execution, promotion and test-selection claims retain the same scope.","inputs":["scripts/__tests__/run-ci-fast.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the Hide/Settle-only paragraph and action-placement sentence; traced against inbox-dismissals.tsx (host hide, adoption unhide, one-shot migration), ChatDockInboxRows.tsx (owned rows drop Dismiss, Hide label, Show older), useInboxGroups.ts (7-day window from settled record else finishedAtOf, Third-party by updatedAt, search unwindowed), conversation-work-state store/routes (hidden file, 1000 cap, forget on delete). inbox-hide-and-window.test.tsx and route tests pass; preview-off path unchanged.","inputs":["docs/design/chat-composer.md","src-server/routes/chat/conversation-work-state.ts","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/mobile-activity-groups.ts","src-ui/src/components/chat-dock/useConversationWorkState.ts","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/inbox-row/inbox-row-actions.ts"]}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "revision": "8f2b38092fd187c8717e9c9bac729b345753ec0e",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Only the Gallery app-error and attribution paragraphs changed (#5028); the anchors and lane/verification/test-effectiveness guidance these pages link to are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the Gallery app-error and attribution paragraphs changed (#5028); the anchors and lane/verification/test-effectiveness guidance these pages link to are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Only the Gallery app-error and attribution paragraphs changed (#5028); the anchors and lane/verification/test-effectiveness guidance these pages link to are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Only the Gallery app-error and attribution paragraphs changed (#5028); the anchors and lane/verification/test-effectiveness guidance these pages link to are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Only the Gallery app-error and attribution paragraphs changed (#5028); the anchors and lane/verification/test-effectiveness guidance these pages link to are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Only the Gallery app-error and attribution paragraphs changed (#5028); the anchors and lane/verification/test-effectiveness guidance these pages link to are unchanged.","inputs":["docs/guides/testing.md"]}
+  ]
+}

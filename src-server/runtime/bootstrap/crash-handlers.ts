@@ -6,7 +6,7 @@ import {
 /**
  * Process-level crash logging (archive#1895, logging slice 1).
  *
- * Factored out of `src-server/server-main.ts` so the REAL wiring — not a
+ * Factored out of `src-server/index.ts` so the REAL wiring — not a
  * hand-written replica — is what the crash-integration test exercises, and
  * so the "logger itself must never crash the crash path" contract has its
  * own direct unit coverage.
@@ -25,7 +25,7 @@ interface InstallCrashHandlersDeps {
    * `fatal` line so it survives a process that exits immediately after. */
   flushSync: () => void;
   /** Invoked after an uncaught exception has been logged and flushed —
-   * `server-main.ts` wires this to its own graceful-shutdown sequence. */
+   * `index.ts` wires this to its own graceful-shutdown sequence. */
   onUncaughtException?: (err: unknown) => void;
   /** Immutable identity captured during bootstrap. Its absence must never
    * suppress a crash record. */

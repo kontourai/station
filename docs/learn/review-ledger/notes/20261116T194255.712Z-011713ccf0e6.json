@@ -1,0 +1,7 @@
+{
+  "revision": "46298fd55011327d709c9575c39006737b9e0a80",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"Re-reviewed for #5056 after a formatting-only Biome pass on the generator and test. Rendered bytes are unchanged (docs:metrics:check passes); rows are sorted by name with no digest, count or line links.","inputs":["docs/reference/metrics.md","scripts/__tests__/metric-reference.test.ts","scripts/generate-metric-reference.mjs"]}
+  ]
+}

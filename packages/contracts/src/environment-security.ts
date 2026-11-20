@@ -1135,6 +1135,17 @@ export interface WebPushSubscription {
   };
 }
 
+/** Canonical input to the SHA-256 registration check, never a wire payload. */
+export function webPushRegistrationFingerprintInput(
+  subscription: WebPushSubscription,
+): string {
+  return JSON.stringify([
+    subscription.endpoint,
+    subscription.keys.p256dh,
+    subscription.keys.auth,
+  ]);
+}
+
 export interface DevicePairingExchangeRequest {
   offerId: string;
   proof: string;
@@ -1220,8 +1231,20 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /**
+   * #5067: the Project Library (`/api/projects/:slug/library…`): uploads and
+   * kept Task outputs in one list. Absent on hosted deployments.
+   */
+  projectLibrary?: boolean;
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
+  /**
+   * Continue a conversation on a paired Station: this Station serves
+   * `POST /api/environments/peers/:id/conversation-handoffs` (the source side)
+   * and `POST /agents/:slug/conversation-imports` (the receiver side). Both
+   * Stations must advertise it.
+   */
+  conversationStationHandoff?: boolean;
   /** Child steering and its separately paged instruction history. */
   childWorkSteering?: boolean;
   /** Consented private terminal outcome reads. */
@@ -1234,8 +1257,18 @@ export interface StationCapabilityFlags {
    * flag. Absent on hosted deployments, whose scheduler routes answer 404.
    */
   scheduledConversationTarget?: boolean;
+  /** #5070: the scheduler accepts a job `projectId` (runs as a Task). */
+  projectSchedules?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
+  /**
+   * `GET /api/environments/ssh/sessions/:environmentId/:threadId/history`
+   * relays one bounded, read-only history page of a session that lives on a
+   * connected SSH environment's Station. A host without it answers 404 for
+   * that path, which a client cannot tell from a missing session, so clients
+   * gate opening a remote session on this flag.
+   */
+  remoteSessionHistory?: boolean;
   /**
    * Review, recall and briefing for private memory
    * (`/api/knowledge/memory/queue|recall|brief|measurement`). The routes also
@@ -1285,6 +1318,23 @@ export interface StationCapabilityFlags {
    * 404, so a client offers those actions only with this flag.
    */
   projectRoomMessageActions?: boolean;
+  /**
+   * #4798, #4799: one live stream carries all of a Project's rooms
+   * (`GET /api/projects/:slug/rooms/live`), rooms take typing signals
+   * (`POST …/typing`) and list who can be mentioned (`GET …/members`). A host
+   * without them answers 404; a client keeps the per-room stream instead.
+   */
+  projectRoomLive?: boolean;
+  /**
+   * #5063: the `#general` coordinator's routes: its cards
+   * (`GET /api/projects/:slug/room/coordinator`), Start
+   * (`POST …/coordinator/proposals/:proposalId/start`), the status sweep
+   * (`POST …/coordinator/sweep`) and the Project's limits
+   * (`PUT /api/projects/:slug/room-coordinator`). A host without them answers
+   * 404; a client shows no card or sweep. The preview still decides whether
+   * they answer.
+   */
+  projectRoomCoordinator?: boolean;
   /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
@@ -1433,6 +1483,8 @@ export interface StationCapabilityFlags {
    * Absent on hosted deployments, which have no conversation inbox.
    */
   followUpAttachments?: boolean;
+  /** Pull request agent feedback (`/api/pull-request-feedback`). */
+  pullRequestFeedback?: boolean;
 }
 
 export interface PublicStationHandshake {
@@ -1523,6 +1575,100 @@ export function parsePublicStationHandshake(
     return undefined;
   }
   return value as unknown as PublicStationHandshake;
+}
+
+/**
+ * How a Station's unauthenticated public handshake
+ * ({@link PUBLIC_STATION_HANDSHAKE_PATH}) answered, in the vocabulary the
+ * Station switcher and the Runs-on picker share:
+ *
+ * - `online`: 200 with schemaVersion 1 and an environmentId.
+ * - `recovering`: the Station UI proxy's `503/504
+ *   {"ready":false,"status":"unavailable"}` envelope (server down or
+ *   restarting behind a live proxy).
+ * - `unconfirmed`: something answered, but not a readable Station handshake.
+ * - `unreachable`: no answer (network error or deadline).
+ */
+export const STATION_READINESS_STATUSES = [
+  'online',
+  'recovering',
+  'unconfirmed',
+  'unreachable',
+] as const;
+export type StationReadinessStatus =
+  (typeof STATION_READINESS_STATUSES)[number];
+
+/** A paired peer Station's readiness as this Station last probed it. */
+export interface PeerStationReadiness {
+  status: StationReadinessStatus;
+  /**
+   * `identity-mismatch`: the handshake answered `online` for a different
+   * environmentId than the one stored for this peer, so the Station at that
+   * address is not this peer. Reported as `unconfirmed`.
+   */
+  reason?: 'identity-mismatch';
+  /** Epoch milliseconds of the probe this answer came from. */
+  checkedAt: number;
+}
+
+/**
+ * Classifies a handshake answer. `body` is the parsed JSON body, or
+ * `undefined` when the bytes were not JSON. A caller with a stored identity
+ * passes `expectedEnvironmentId`; a different one is `unconfirmed` with
+ * reason `identity-mismatch`. Network failures never reach here: the caller
+ * reports them as `unreachable`.
+ */
+export function classifyStationHandshakeAnswer(input: {
+  httpStatus: number;
+  body: unknown;
+  expectedEnvironmentId?: string;
+}): Pick<PeerStationReadiness, 'status' | 'reason'> {
+  const body = isObjectRecord(input.body) ? input.body : undefined;
+  if (
+    input.httpStatus === 200 &&
+    body?.schemaVersion === PUBLIC_HANDSHAKE_SCHEMA_VERSION &&
+    typeof body.environmentId === 'string' &&
+    body.environmentId.length > 0
+  ) {
+    if (
+      input.expectedEnvironmentId !== undefined &&
+      body.environmentId !== input.expectedEnvironmentId
+    )
+      return { status: 'unconfirmed', reason: 'identity-mismatch' };
+    return { status: 'online' };
+  }
+  if (
+    (input.httpStatus === 503 || input.httpStatus === 504) &&
+    body?.ready === false &&
+    body.status === 'unavailable'
+  )
+    return { status: 'recovering' };
+  return { status: 'unconfirmed' };
+}
+
+/** Whether this readiness means the Station can take work now. */
+export function stationReadinessIsReady(
+  readiness: Pick<PeerStationReadiness, 'status'>,
+): boolean {
+  return readiness.status === 'online';
+}
+
+/** A short, user-facing reason a not-ready Station cannot take work. */
+export function stationReadinessReason(
+  readiness: Pick<PeerStationReadiness, 'status' | 'reason'>,
+): string | undefined {
+  if (readiness.reason === 'identity-mismatch')
+    return 'Identity mismatch · a different Station answers at this address';
+  switch (readiness.status) {
+    case 'online':
+      return undefined;
+    case 'recovering':
+      return 'Recovering · server down or restarting';
+    case 'unconfirmed':
+      return 'Unconfirmed · not answering as a Station';
+    case 'unreachable':
+      return 'Unreachable';
+  }
 }
 
 /** Same-user native access decisions; requires direct loopback and this boot's local proof. */

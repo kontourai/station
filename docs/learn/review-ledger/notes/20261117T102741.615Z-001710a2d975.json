@@ -1,0 +1,19 @@
+{
+  "revision": "4f2467aae7759faa38cebda0246832017f7b595c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: this change moves one import line to the order Biome requires after merging main; no behaviour or composition changed, so their claims about this file are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

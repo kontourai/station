@@ -1201,7 +1201,7 @@ describe('createSessionAgentResolver', () => {
   test("resolves a real agent's authored non-empty prompt into input.agent.systemPrompt for a claude session (delivered report, source agent)", async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
-        agentSpec({ prompt: 'You are a specialized writing assistant.' }),
+        agentSpec({ prompt: 'You are a writing assistant for {{project}}.' }),
       resolveToolServer: async () => null,
       resolveSkillDir: async () => null,
     });
@@ -1209,7 +1209,7 @@ describe('createSessionAgentResolver', () => {
     const result = await resolver(baseInput({ provider: 'claude' }));
 
     expect(result.agent?.systemPrompt).toBe(
-      'You are a specialized writing assistant.',
+      'You are a writing assistant for {{project}}.',
     );
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY
@@ -1593,6 +1593,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     options: {
       enabled?: () => boolean;
       codexBound?: () => boolean;
+      families?: () => Promise<boolean>;
     } = {},
   ) {
     const { selfIntegration } = createRuntimeSelfIntegration();
@@ -1611,6 +1612,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
       resolveSkillDir: async () => null,
       stationInstructionsEnabled: options.enabled ?? (() => true),
       codexBoundToolsEnabled: options.codexBound,
+      codexToolFamiliesAdmitted: options.families,
     });
   }
 
@@ -1637,10 +1639,34 @@ describe('Station orchestration instructions (resolution receipt)', () => {
       ).has('device_open'),
       delegated: false,
       harness: provider,
-      toolSearch: provider === 'claude',
+      // The default spec names no `mcpLoading`, so Station does not turn
+      // Claude's tool search on and says nothing about loading.
+      toolSearch: false,
       progressiveFamilies: false,
     });
   }
+
+  test.each([
+    [undefined, false],
+    ['on-demand', true],
+    ['always', false],
+  ] as const)(
+    'Claude with mcpLoading %s: the on-demand loading line is %s, matching what the adapter sets',
+    async (mcpLoading, says) => {
+      const result = await resolverFor({
+        prompt: 'Authored.',
+        tools: {
+          mcpServers: ['station-control'],
+          ...(mcpLoading ? { mcpLoading } : {}),
+        },
+      })(baseInput({ provider: 'claude' }));
+      expect(result.agent?.toolServerLoading).toBe(mcpLoading);
+      const text = result.agent?.stationInstructions ?? '';
+      expect(text.length).toBeGreaterThan(0);
+      expect(text.includes('Station tools load on demand')).toBe(says);
+      expect(text.includes('ToolSearch')).toBe(says);
+    },
+  );
 
   test('Claude with an authored prompt appends: definition.stationInstructions plus a system-prompt-append receipt', async () => {
     const result = await resolverFor({ prompt: 'Authored.' })(
@@ -1739,6 +1765,58 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     );
     expect(off.sections).not.toContain('devices');
     expect(off.firstTurnText).not.toContain('device_open');
+  });
+
+  test('Codex on the bound catalog is told the bound tools it is offered; on the header channel, only delegated ones', async () => {
+    const bound = receiptOf(
+      await resolverFor(
+        { prompt: '' },
+        { codexBound: () => true },
+      )(baseInput({ provider: 'codex' })),
+    );
+    // Both channels expose local target discovery.
+    expect(
+      effectiveStationControlTools({}, catalog(), 'delegated-custody').has(
+        'list_delegation_targets',
+      ),
+    ).toBe(true);
+    expect(bound.firstTurnText).toContain('`list_delegation_targets`');
+    const header = receiptOf(
+      await resolverFor(
+        { prompt: '' },
+        { codexBound: () => false },
+      )(baseInput({ provider: 'codex' })),
+    );
+    expect(header.firstTurnText).toContain('`list_delegation_targets`');
+    expect(header.firstTurnText).toContain('`list_agents`');
+  });
+
+  test('only an admitted Codex header-token Session is told to load tool families', async () => {
+    const families = 'list_tool_families';
+    const textFor = async (
+      provider: 'claude' | 'codex' | 'acp',
+      codexBound: boolean,
+      admitted: boolean,
+    ) =>
+      receiptOf(
+        await resolverFor(
+          { prompt: '' },
+          {
+            codexBound: () => codexBound,
+            families: async () => admitted,
+          },
+        )(baseInput({ provider })),
+      )?.firstTurnText ?? '';
+    // The header channel is HTTP station-control, where families exist.
+    expect(await textFor('codex', false, true)).toContain(families);
+    // Not admitted (preview off, or an unqualified Codex version).
+    expect(await textFor('codex', false, false)).not.toContain(families);
+    // The bound catalog is served without disclosure.
+    expect(await textFor('codex', true, true)).not.toContain(families);
+    // Claude keeps native tool search; ACP engines are unqualified.
+    expect(await textFor('claude', false, true)).not.toContain(families);
+    expect(await textFor('acp', false, true)).toContain('delegate_task');
+    expect(await textFor('acp', false, true)).not.toContain(families);
   });
 
   test('no station-control means no receipt and no stationInstructions', async () => {

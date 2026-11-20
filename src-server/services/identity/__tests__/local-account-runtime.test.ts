@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { readLocalAccountConfiguration } from '../local-account-configuration.js';
 import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
+  readLocalAccountConfiguration,
 } from '../local-account-runtime.js';
 
 const makeTempDir = trackTempDirs();

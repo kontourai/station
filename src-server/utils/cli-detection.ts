@@ -4,22 +4,7 @@ import {
 } from '../providers/auth/cli-auth.js';
 
 export interface CliDetectionOptions {
-  /**
-   * Cancels the probe: detection resolves `false` at once, and an
-   * already-aborted signal never starts a lookup at all.
-   *
-   * That `false` is NOT a statement about the host. This function has one
-   * answer channel and no way to widen it without changing every caller, so
-   * "the locator said no" and "you cancelled me" arrive identically — and a
-   * caller that needs to tell them apart must consult the signal it passed,
-   * as `adoptDetectedNativeEngines` does after each probe.
-   *
-   * `/api/system/status` passes a signal (station#1815) and still needs no
-   * such concept — not because it cannot reach the case, which an earlier
-   * version of this sentence claimed in the same change that gave it a
-   * signal, but because it commits the falsy answer on its own expired
-   * budget regardless and caches it either way (station#1832).
-   */
+  /** Cancels the observation without reporting an absence. */
   signal?: AbortSignal;
   /**
    * Wall-clock ceiling for the lookup. Opt-in: an unbounded probe is
@@ -47,8 +32,8 @@ export interface CliDetectionOptions {
  * `STATION_DISABLE_LOGIN_PATH_RESOLVE=1` still narrows both to the process
  * PATH.
  *
- * `true` is therefore always a host fact. `false` is only a host fact when
- * the probe was neither cancelled nor cut off by `timeoutMs`; see `signal`.
+ * Both boolean results are locator observations. Cancellation, a deadline, or
+ * a failed lookup returns undefined.
  *
  * station#1815 added `options`. Adoption WRITES what it finds into the agent
  * registry, so the runtime has to be able to stop waiting on a probe. The
@@ -57,14 +42,14 @@ export interface CliDetectionOptions {
  * `resolveLoginShellPath` bounds and SIGKILLs itself and which other callers
  * share, so abandoning it here leaves nothing of this caller's running.
  */
-export async function detectCliOnPath(
+export async function observeCliOnPath(
   command: string,
   options?: CliDetectionOptions,
-): Promise<boolean> {
+): Promise<boolean | undefined> {
   // Checked before anything starts: the caller of an aborted probe is a
   // runtime that has begun shutting down, and the first lookup in a process
   // is what spawns the shared login-shell capture.
-  if (options?.signal?.aborted) return false;
+  if (options?.signal?.aborted) return undefined;
   // A hit needs no login-shell PATH, so it must not wait on one. The async
   // lookup awaits that capture (up to 5s) BEFORE searching, which let a cold
   // `/api/system/status` refresh, on a 2s budget, report a CLI sitting on
@@ -77,19 +62,19 @@ export async function detectCliOnPath(
   }
   const lookup = findCliBinaryAsync(command).then(
     (binary) => binary !== null,
-    () => false,
+    () => undefined,
   );
   const signal = options?.signal;
   const timeoutMs = options?.timeoutMs ?? 0;
   if (!signal && timeoutMs <= 0) return lookup;
   let timer: NodeJS.Timeout | undefined;
   let onAbort: (() => void) | undefined;
-  const givenUp = new Promise<boolean>((resolve) => {
-    onAbort = () => resolve(false);
+  const givenUp = new Promise<undefined>((resolve) => {
+    onAbort = () => resolve(undefined);
     signal?.addEventListener('abort', onAbort, { once: true });
     // `timeoutMs: 0` means "no ceiling", as Node's own `timeout: 0` did here.
     if (timeoutMs > 0) {
-      timer = setTimeout(() => resolve(false), timeoutMs);
+      timer = setTimeout(() => resolve(undefined), timeoutMs);
       timer.unref?.();
     }
   });
@@ -99,4 +84,12 @@ export async function detectCliOnPath(
     if (timer) clearTimeout(timer);
     if (onAbort) signal?.removeEventListener('abort', onAbort);
   }
+}
+
+/** Compatibility for callers whose existing API returns a boolean. */
+export async function detectCliOnPath(
+  command: string,
+  options?: CliDetectionOptions,
+): Promise<boolean> {
+  return (await observeCliOnPath(command, options)) ?? false;
 }

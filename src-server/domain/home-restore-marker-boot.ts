@@ -3,7 +3,7 @@
  * marker and its decision live in
  * `@kontourai/station-shared/station-home-restore-marker`).
  *
- * `consumeHomeRestoreMarkerAtBoot` runs in src-server/server-main.ts immediately
+ * `consumeHomeRestoreMarkerAtBoot` runs in src-server/index.ts immediately
  * before the home schema gate, in every mode: a release the supervisor
  * parked and then promoted runs the same boot, so nothing here is
  * supervisor-specific. `clearRestoreMarkerOnCommit` is what the supervisor

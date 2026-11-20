@@ -33,7 +33,6 @@ pub(crate) type ProofResult<T> = Result<T, ProofKeyError>;
 #[serde(rename_all = "lowercase")]
 pub(crate) enum NativeProofKeyChannel {
     Stable,
-    Beta,
     Nightly,
     Dev,
 }
@@ -97,7 +96,6 @@ impl NativeProofKeyChannel {
     pub(crate) fn keyring_label(self) -> &'static str {
         match self {
             Self::Stable => "stable",
-            Self::Beta => "beta",
             Self::Nightly => "nightly",
             Self::Dev => "dev",
         }
@@ -1555,7 +1553,7 @@ fn validate_native_request_identity(
         && url.path() == "/"
         && url.query().is_none()
         && url.fragment().is_none();
-    let valid_channel = matches!(identity.channel, "stable" | "beta" | "nightly" | "dev");
+    let valid_channel = matches!(identity.channel, "stable" | "nightly" | "dev");
     let valid_grant_id = (8..=128).contains(&identity.grant_id.len())
         && identity
             .grant_id
@@ -1758,7 +1756,6 @@ mod tests {
     fn make_owner(channel: NativeProofKeyChannel, instance: &str) -> NativeProofKeyOwner {
         let app_identifier = match channel {
             NativeProofKeyChannel::Stable => "io.kontourai.station",
-            NativeProofKeyChannel::Beta => "io.kontourai.station.beta",
             NativeProofKeyChannel::Nightly => "io.kontourai.station.nightly",
             NativeProofKeyChannel::Dev => "io.kontourai.station.dev",
         };
@@ -1914,7 +1911,7 @@ mod tests {
     fn created_key_restores_stably_and_is_bound_to_exact_channel_and_instance() {
         let vault = vault();
         let owner = make_owner(
-            NativeProofKeyChannel::Beta,
+            NativeProofKeyChannel::Nightly,
             "11111111-1111-4111-8111-111111111111",
         );
         let created = vault.create(&owner).unwrap();
@@ -1947,7 +1944,7 @@ mod tests {
                 "11111111-1111-4111-8111-111111111111",
             ),
             make_owner(
-                NativeProofKeyChannel::Beta,
+                NativeProofKeyChannel::Nightly,
                 "22222222-2222-4222-8222-222222222222",
             ),
         ] {
@@ -1955,7 +1952,7 @@ mod tests {
         }
         let other_app = make_owner_with_app(
             "io.kontourai.station.test",
-            NativeProofKeyChannel::Beta,
+            NativeProofKeyChannel::Nightly,
             "11111111-1111-4111-8111-111111111111",
         );
         assert_eq!(
@@ -2011,12 +2008,22 @@ mod tests {
             "11111111-1111-4111-8111-111111111111",
         );
         let foreign = make_owner(
-            NativeProofKeyChannel::Beta,
+            NativeProofKeyChannel::Nightly,
             "22222222-2222-4222-8222-222222222222",
         );
         let foreign_record = generate_record(&foreign).unwrap();
         let serialized = serde_json::to_string(&foreign_record).unwrap();
         backend.write(&target.account(), &serialized).unwrap();
+        assert_eq!(vault.restore(&target).unwrap_err(), ProofKeyError::Corrupt);
+
+        let mut retired_channel = serde_json::to_value(generate_record(&target).unwrap()).unwrap();
+        retired_channel["owner"]["channel"] = serde_json::json!("beta");
+        backend
+            .write(
+                &target.account(),
+                &serde_json::to_string(&retired_channel).unwrap(),
+            )
+            .unwrap();
         assert_eq!(vault.restore(&target).unwrap_err(), ProofKeyError::Corrupt);
 
         backend.write(&target.account(), "{truncated").unwrap();

@@ -28,7 +28,10 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import type { WebPushService } from '../../../services/notifications/web-push-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { orchestrationStreamPresenceSubjectForSession } from '../../../services/orchestration/orchestration-stream-presence.js';
-import { wireTurnCompletionNotifications } from '../../../services/orchestration/turn-completion-notifications.js';
+import {
+  FINISHED_ALERT_CONFIRM_MS,
+  wireTurnCompletionNotifications,
+} from '../../../services/orchestration/turn-completion-notifications.js';
 import { FocusPresence } from '../../../services/presence/focus-presence.js';
 import { ClientConnectionPresence } from '../../../services/ssh/client-connection-presence.js';
 import { pairedDevicePrincipal } from '../../bootstrap/orchestration-request-principal.js';
@@ -235,6 +238,7 @@ function harness(
     caller: Caller,
     document: string,
     state: 'focused' | 'visible' | 'hidden',
+    viewingSessionIds?: string[],
   ) {
     seq += 1;
     const response = await app.request(FOCUS_PRESENCE_REPORT_PATH, {
@@ -244,7 +248,12 @@ function harness(
         'X-Station-Client-Session': document,
         'x-test-caller': caller,
       },
-      body: JSON.stringify({ clientSessionId: document, state, seq }),
+      body: JSON.stringify({
+        clientSessionId: document,
+        state,
+        seq,
+        ...(viewingSessionIds ? { viewingSessionIds } : {}),
+      }),
     });
     expect(response.status).toBe(204);
   }
@@ -460,5 +469,85 @@ describe('focus presence gated by per-tab stream liveness (#2620)', () => {
       expect(h.pushedTo()).toEqual([]);
       await notifications.shutdown();
     });
+  });
+});
+
+/**
+ * Focus is per session for a finished session: the laptop's report says
+ * which chat it shows (`viewingSessionIds`, through the real route and
+ * FocusPresence), and the turn-completion listener's real record targets
+ * that session.
+ */
+describe('a finished turn while the laptop is focused', () => {
+  async function finishWhileLaptopShows(viewing: string[] | undefined) {
+    const eventBus = new EventBus();
+    const notifications = new NotificationService(
+      eventBus,
+      makeTempDir('delivery-focus-session-'),
+      999_999,
+    );
+    const h = harness({
+      eventBus,
+      getNotification: (id) => notifications.get(id),
+    });
+    await h.openStream('laptop', TAB);
+    await h.report('laptop', TAB, 'focused', viewing);
+    wireTurnCompletionNotifications(
+      eventBus,
+      {
+        isReadOnlyAttachedSession: () => false,
+        isEphemeralSession: () => false,
+        resolveSessionPresenceSubject: () =>
+          orchestrationStreamPresenceSubjectForSession('owner-1'),
+      },
+      notifications,
+      { warn: vi.fn() },
+    );
+    await notifications.start();
+    const turn = {
+      createdAt: NOW.toISOString(),
+      provider: 'claude',
+      threadId: 'session-1',
+      turnId: 'turn-1',
+    };
+    eventBus.emit('orchestration:event', {
+      event: { ...turn, method: 'turn.started', prompt: 'go' },
+    } as never);
+    eventBus.emit('orchestration:event', {
+      event: { ...turn, method: 'turn.completed', finishReason: 'stop' },
+    } as never);
+    await notifications.drainAsyncDispatch();
+    expect(await notifications.list()).toEqual([]);
+    // The finish's confirmation window.
+    await vi.advanceTimersByTimeAsync(FINISHED_ALERT_CONFIRM_MS);
+    await notifications.drainAsyncDispatch();
+    await flush();
+    const [record] = await notifications.list();
+    expect(record?.category).toBe('turn-completed');
+    return { h, notifications };
+  }
+
+  test('showing another chat, the phones still get it', async () => {
+    const { h, notifications } = await finishWhileLaptopShows(['session-2']);
+    expect(h.pushedTo()).toEqual(['phone', 'tablet']);
+    await notifications.shutdown();
+  });
+
+  test('showing no chat, the phones still get it', async () => {
+    const { h, notifications } = await finishWhileLaptopShows([]);
+    expect(h.pushedTo()).toEqual(['phone', 'tablet']);
+    await notifications.shutdown();
+  });
+
+  test('showing that chat, the phones do not', async () => {
+    const { h, notifications } = await finishWhileLaptopShows(['session-1']);
+    expect(h.pushedTo()).toEqual([]);
+    await notifications.shutdown();
+  });
+
+  test('a client that does not say what it shows quiets the phones, as before', async () => {
+    const { h, notifications } = await finishWhileLaptopShows(undefined);
+    expect(h.pushedTo()).toEqual([]);
+    await notifications.shutdown();
   });
 });

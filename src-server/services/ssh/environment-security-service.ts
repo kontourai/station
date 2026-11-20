@@ -72,7 +72,10 @@ export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/enviro
 
 import packageJson from '../../../package.json' with { type: 'json' };
 import { resolveStationCapabilityFlags } from '../../capabilities/station-capability-flags.js';
-import { isPeerChatMutation } from '../../routes/environments/peer-chat-policy.js';
+import {
+  isPeerChatMutation,
+  isPeerConversationHandoff,
+} from '../../routes/environments/peer-chat-policy.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
@@ -686,9 +689,11 @@ export class EnvironmentSecurityService {
       (request.path === '/api/environments/peers' ||
         request.path.startsWith('/api/environments/peers/')) &&
       // The owner's own devices may send foreground chat through the bridge
-      // (D14); peer-credential administration stays operator-only.
+      // (D14), and continue a conversation there; peer-credential
+      // administration stays operator-only.
       !(
-        isPeerChatMutation(request.method, request.path) &&
+        (isPeerChatMutation(request.method, request.path) ||
+          isPeerConversationHandoff(request.method, request.path)) &&
         this.credentialHasOwnerStanding(candidate)
       )
     ) {
@@ -814,6 +819,7 @@ export class EnvironmentSecurityService {
 
   async getPublicHandshake(
     peerChatEnabled = false,
+    sharedProjectRooms = false,
   ): Promise<PublicStationHandshake> {
     const { environmentId } = await this.initialize();
     return {
@@ -837,6 +843,7 @@ export class EnvironmentSecurityService {
       capabilities: resolveStationCapabilityFlags({
         hosted: this.#hosted,
         peerChatEnabled,
+        sharedProjectRooms,
       }),
     };
   }

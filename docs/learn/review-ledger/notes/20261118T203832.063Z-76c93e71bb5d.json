@@ -1,0 +1,19 @@
+{
+  "revision": "2fa6d43569b6acc398305e3cd821e78285f28b83",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Verified the clean cbfd9227ce1 browser timing sample and source identity. Browser extraction failures are explicit and excluded from the resource conclusions. The failure control retained the ordinary interaction assertion when extraction also failed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The timing sample and bounded failure classes describe the current first-run evidence only. Existing lane selection, execution and qualifications retain their scope.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The timing sample and bounded failure classes describe the current first-run evidence only. Existing lane selection, execution and qualifications retain their scope.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"The timing sample and bounded failure classes describe the current first-run evidence only. Existing lane selection, execution and qualifications retain their scope.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The timing sample and bounded failure classes describe the current first-run evidence only. Existing lane selection, execution and qualifications retain their scope.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The timing sample and bounded failure classes describe the current first-run evidence only. Existing lane selection, execution and qualifications retain their scope.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"The timing sample and bounded failure classes describe the current first-run evidence only. Existing lane selection, execution and qualifications retain their scope.","inputs":["docs/guides/testing.md"]}
+  ]
+}

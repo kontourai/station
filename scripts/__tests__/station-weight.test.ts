@@ -6,6 +6,8 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   contextSwitchDelta,
+  evaluateRun,
+  formatAttribution,
   hostFingerprint,
   hostFingerprintInputs,
   IDLE_CPU_GAP,
@@ -13,9 +15,12 @@ import {
   killEligibility,
   LEFTOVER_GAP,
   linuxProcessTable,
+  measureRequestConversation,
+  memoryByRole,
   ownedTree,
   parseFootprint,
   parseProcStat,
+  processRole,
   processTable,
   recordedRoots,
   restMetric,
@@ -23,6 +28,7 @@ import {
   runTagging,
   runTagKind,
   sampleTreeCpu,
+  serverHeapReport,
   signalIfSame,
   spawnControlChild,
   taggedRows,
@@ -37,9 +43,11 @@ import {
   STATION_WEIGHT_BUDGETS,
 } from '../bench/station-weight-budgets.mjs';
 import {
+  analyzeConversationTurn,
   diffAgainstControl,
   findTurnRequest,
   markersReached,
+  requestConversationTurns,
   summarizeRequest,
 } from '../bench/station-weight-request.mjs';
 import {
@@ -47,6 +55,7 @@ import {
   STUB_REPLY_TEXT,
   startStubAnthropic,
 } from '../bench/station-weight-stub.mjs';
+import { darwinWakeupMetric } from '../bench/station-weight-wakeups.mjs';
 
 const stubs: Array<{ close: () => Promise<void> }> = [];
 afterEach(async () => {
@@ -101,7 +110,7 @@ function engineTurn({
     tools: [...ENGINE_TOOLS, ...extraTools],
     messages: [
       {
-        role: 'user' as const,
+        role: 'user' as 'user' | 'assistant',
         content: [
           {
             type: 'text' as const,
@@ -170,6 +179,189 @@ describe('station-weight stub endpoint', () => {
 });
 
 describe('station-weight request analysis', () => {
+  test.each(['refused dispatch', 'replayed completion'])(
+    'the diagnostic caller fails closed on %s',
+    async (fault) => {
+      const turns = requestConversationTurns('caller');
+      const result = await measureRequestConversation({
+        api: {
+          call: async (method: string) =>
+            method === 'POST'
+              ? fault === 'refused dispatch'
+                ? { status: 409, json: { success: false }, text: 'refused' }
+                : {
+                    status: 200,
+                    json: {
+                      data: {
+                        sessionId: 'session',
+                        providerTurnId: 'old-turn',
+                      },
+                    },
+                    text: '',
+                  }
+              : {
+                  status: 200,
+                  json: {
+                    data: {
+                      events: [
+                        {
+                          method: 'turn.completed',
+                          turnId: 'old-turn',
+                          finishReason: 'stop',
+                          outputText: 'ok',
+                        },
+                      ],
+                    },
+                  },
+                  text: '',
+                },
+        },
+        cwd: process.cwd(),
+        env: {},
+        executable: process.execPath,
+        turns,
+        markers: {},
+        stub: { requests: [] },
+        sideCallWindowMs: 0,
+      });
+      expect(result.status).toBe('not_measured');
+      expect(
+        result.turns.map((turn: { status: string }) => turn.status),
+      ).toEqual(['not_measured', 'not_measured', 'not_measured']);
+      expect(result.reason).toContain(
+        fault === 'refused dispatch' ? 'HTTP 409' : 'expected successful reply',
+      );
+      const evaluated = evaluateRun(
+        { ...resultAtBaseline(), requestConversation: result },
+        { reportOnly: true },
+      );
+      expect(evaluated.gate.passed).toBe(false);
+      expect(evaluated.gate.reasons.join()).toContain(
+        'request conversation NOT_MEASURED',
+      );
+    },
+  );
+
+  test('pairs HTTP-captured ordinals, observes duplicated guidance and rejects missing rules or replayed history', async () => {
+    const turns = requestConversationTurns('fixture');
+    const endpoint = await startStubAnthropic({ turns });
+    stubs.push(endpoint);
+    const rules = { claudeMd: 'fixture-claude', agentsMd: 'fixture-agents' };
+    const first = engineTurn({
+      sessionId: 'station',
+      versionSuffix: 'aaa',
+      userText: turns[0].prompt,
+      extraLines: Object.values(rules),
+    });
+    expect(await sendThrough(endpoint, first)).toBe(turns[0].reply);
+    const firstAnalysis = analyzeConversationTurn({
+      calls: endpoint.requests.slice(0, 1),
+      turns,
+      index: 0,
+      markers: rules,
+    });
+    const next = structuredClone(first);
+    next.messages.push(
+      { role: 'assistant', content: [{ type: 'text', text: turns[0].reply }] },
+      { role: 'user', content: [{ type: 'text', text: turns[1].prompt }] },
+    );
+    await sendThrough(endpoint, next);
+    const second = analyzeConversationTurn({
+      calls: endpoint.requests.slice(1, 2),
+      turns,
+      index: 1,
+      markers: rules,
+      previous: firstAnalysis.request.body,
+    });
+    expect(second.report.text.repeatedFromPrevious.bytes).toBeGreaterThan(0);
+    expect(second.report.text.newSincePrevious.excerpts).toEqual([
+      turns[0].reply,
+      turns[1].prompt,
+    ]);
+    const duplicate = structuredClone(next);
+    duplicate.system.push({
+      type: 'text',
+      text: 'Station guidance\nStation guidance',
+    });
+    await sendThrough(endpoint, duplicate);
+    const changed = analyzeConversationTurn({
+      calls: endpoint.requests.slice(2, 3),
+      turns,
+      index: 1,
+      markers: rules,
+    });
+    expect(
+      diffAgainstControl(changed.request.body, second.request.body).addedText,
+    ).toMatchObject({
+      bytes: 34,
+      lineCount: 2,
+      excerpts: ['Station guidance', 'Station guidance'],
+    });
+    for (const [name, broken, reason] of [
+      [
+        'missing rules',
+        {
+          ...next,
+          messages: next.messages.map((message, index) =>
+            index
+              ? message
+              : {
+                  ...message,
+                  content: [{ type: 'text', text: turns[0].prompt }],
+                },
+          ),
+        },
+        'repository rules missing',
+      ],
+      [
+        'replayed reply',
+        {
+          ...next,
+          messages: next.messages.map((message) =>
+            message.role === 'assistant'
+              ? { ...message, content: [{ type: 'text', text: 'ok' }] }
+              : message,
+          ),
+        },
+        'history',
+      ],
+      [
+        'reply after next prompt',
+        {
+          ...next,
+          messages: [next.messages[0], next.messages[2], next.messages[1]],
+        },
+        'interleaved history',
+      ],
+      [
+        'skipped ordinal',
+        { ...next, messages: [next.messages.at(-1)] },
+        'history',
+      ],
+    ] as const) {
+      const from = endpoint.requests.length;
+      await sendThrough(endpoint, broken as typeof first);
+      expect(
+        () =>
+          analyzeConversationTurn({
+            calls: endpoint.requests.slice(from),
+            turns,
+            index: 1,
+            markers: rules,
+          }),
+        name,
+      ).toThrow(reason);
+    }
+    expect(() =>
+      analyzeConversationTurn({
+        calls: endpoint.requests.slice(1, 3),
+        turns,
+        index: 1,
+        markers: rules,
+      }),
+    ).toThrow('expected one request, found 2');
+  });
+
   test('isolates exactly what the Station turn adds beyond the control turn', async () => {
     const endpoint = await stub();
     await sendThrough(
@@ -401,6 +593,7 @@ function resultAtBaseline(host = HOST) {
     host: { ...host },
     metrics,
     request: { station: { claudeCodeVersion: '2.1.318' } },
+    repoRules: { claudeMd: true, agentsMd: true } as Record<string, unknown>,
   };
 }
 
@@ -639,6 +832,62 @@ describe('station-weight gate', () => {
       passed: false,
       comparedCount: 0,
     });
+  });
+
+  test('a repository instruction file missing from the first request fails the gate and refuses a baseline', () => {
+    const cases: Array<[string, Record<string, unknown> | undefined, string]> =
+      [
+        [
+          'AGENTS.md not reached',
+          { claudeMd: true, agentsMd: false },
+          'did not reach the first request: agentsMd',
+        ],
+        [
+          'AGENTS.md absent from the result',
+          { claudeMd: true },
+          'did not reach the first request: agentsMd',
+        ],
+        [
+          'neither reached',
+          { claudeMd: false, agentsMd: false },
+          'did not reach the first request: claudeMd, agentsMd',
+        ],
+        [
+          'not measured',
+          { status: 'not_measured', reason: 'Claude engine not ready' },
+          'repoRules not measured: Claude engine not ready',
+        ],
+        ['no repoRules at all', undefined, 'claudeMd, agentsMd'],
+      ];
+    for (const [label, repoRules, reason] of cases) {
+      const result = { ...resultAtBaseline(), repoRules };
+      const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
+      // Every budget passes: only the instruction files fail the run.
+      expect(
+        verdicts.map((entry) => entry.verdict),
+        label,
+      ).not.toContain('FAIL');
+      const gate = gateOutcome(result, verdicts);
+      expect(gate.passed, label).toBe(false);
+      expect(gate.reasons.join('\n'), label).toContain(reason);
+      // Report-only skips the baseline, not the measurement.
+      expect(
+        gateOutcome(
+          result,
+          evaluateBudgets(result, undefined, { reportOnly: true }),
+          { reportOnly: true },
+        ).passed,
+        label,
+      ).toBe(false);
+      expect(() => recordBaseline(result, FIXTURE_BASELINE), label).toThrow(
+        reason,
+      );
+    }
+    // Control: both reached, the same run passes.
+    const passing = resultAtBaseline();
+    expect(
+      gateOutcome(passing, evaluateBudgets(passing, FIXTURE_BASELINE)).passed,
+    ).toBe(true);
   });
 
   test('a run that did not complete fails even with nothing over budget', () => {
@@ -893,7 +1142,7 @@ describe('station-weight process identity', () => {
         { pid: 9, exactStart: 'linux:boot:700', killEligible: false },
         { pid: 10, killEligible: true },
         // An omitted flag is not eligible, even with a birth that holds.
-        { pid: 11, exactStart: 'linux:boot:800' } as never,
+        { pid: 11, exactStart: 'linux:boot:800' },
       ],
       'SIGKILL',
       {
@@ -1344,6 +1593,44 @@ describe('station-weight process identity', () => {
     ).toThrow('cannot read process environments exactly');
   });
 
+  test('macOS wakeups count matched births and disclose endpoint-only processes', () => {
+    const start = new Map([
+      [1, { birth: 10n, interrupt: 100n, packageIdle: 7n }],
+      [2, { birth: 20n, interrupt: 200n, packageIdle: 30n }],
+    ]);
+    const end = new Map([
+      [1, { birth: 10n, interrupt: 123n, packageIdle: 9n }],
+      [3, { birth: 30n, interrupt: 900n, packageIdle: 400n }],
+    ]);
+    expect(darwinWakeupMetric(start, end)).toMatchObject({
+      status: 'measured',
+      value: 23,
+      packageIdleWakeups: 2,
+      comparedProcesses: 1,
+      endpointOnlyProcesses: 2,
+    });
+  });
+
+  test('macOS wakeups report a gap rather than zero for untrusted endpoints', () => {
+    const counter = { birth: 10n, interrupt: 100n, packageIdle: 7n };
+    const start = new Map([[1, counter]]);
+    for (const [end, reason] of [
+      [new Map([[2, counter]]), 'no process matched'],
+      [new Map([[1, null]]), 'unreadable'],
+      [new Map([[1, { ...counter, birth: 11n }]]), 'identity changed'],
+      [new Map([[1, { ...counter, interrupt: 99n }]]), 'decreased'],
+    ] as const) {
+      expect(darwinWakeupMetric(start, end)).toMatchObject({
+        status: 'not_measured',
+        reason: expect.stringContaining(reason),
+      });
+    }
+    expect(darwinWakeupMetric(start, new Map([[1, counter]]))).toMatchObject({
+      status: 'measured',
+      value: 0,
+    });
+  });
+
   test('context switches count only processes read at both ends of the window', () => {
     expect(
       contextSwitchDelta(
@@ -1398,6 +1685,147 @@ Auxiliary data:
 Summary Footprint: 1059556832 B
 ======================================================================
 `;
+
+describe('station-weight memory attribution', () => {
+  const row = (pid: number, memoryBytes: number, command = 'node') => ({
+    pid,
+    ppid: 1,
+    rssBytes: memoryBytes,
+    cpuSeconds: 0,
+    started: 'x',
+    command,
+    memoryBytes,
+  });
+
+  test('names the fixed entries, then the script, then the executable', () => {
+    expect(
+      processRole(
+        '/usr/bin/node /b/dist-server-x/station-supervisor.js --entry /b/dist-server-x/command-station.js',
+      ),
+    ).toBe('supervisor');
+    expect(
+      processRole('/usr/bin/node /b/dist-server-x/command-station.js'),
+    ).toBe('server');
+    expect(
+      processRole('node /b/dist-server/attached-session-path-child.js'),
+    ).toBe('attached-session-path-child.js');
+    expect(processRole('/opt/claude --print')).toBe('claude');
+  });
+
+  test('names a known identity by its pid and birth, not its command line', () => {
+    const ui = { ...row(5, 18), started: 'Sun Nov 15 18:06:17 2026' };
+    const known = [
+      { pid: 5, started: 'Sun Nov 15 18:06:17 2026', role: 'ui-listener' },
+    ];
+    expect(memoryByRole([ui], [{ pid: 5, command: 'node -' }], known)).toEqual([
+      { role: 'ui-listener', processCount: 1, memoryBytes: 18 },
+    ]);
+    // A reused pid with another birth is not the known process.
+    expect(
+      memoryByRole(
+        [{ ...ui, started: 'Sun Nov 15 18:09:00 2026' }],
+        [{ pid: 5, command: 'node -' }],
+        known,
+      ),
+    ).toEqual([{ role: 'node', processCount: 1, memoryBytes: 18 }]);
+  });
+
+  test('sums memory per role from the described command lines, largest first', () => {
+    const rows = [row(1, 10), row(2, 500), row(3, 30), row(4, 20, 'claude')];
+    expect(
+      memoryByRole(rows, [
+        { pid: 1, command: 'node /b/station-supervisor.js' },
+        { pid: 2, command: 'node /b/command-station.js' },
+        { pid: 3, command: 'node /b/command-station.js' },
+      ]),
+    ).toEqual([
+      { role: 'server', processCount: 2, memoryBytes: 530 },
+      { role: 'claude', processCount: 1, memoryBytes: 20 },
+      { role: 'supervisor', processCount: 1, memoryBytes: 10 },
+    ]);
+  });
+
+  test("reads the server's heap beside the memory measured for its pid", async () => {
+    const rows = [row(7, 400_000_000), row(8, 20_000_000)];
+    const posture = (process: object) => async () => ({
+      status: 200,
+      json: { success: true, data: { resources: { process } } },
+      text: '',
+    });
+    await expect(
+      serverHeapReport(
+        posture({
+          pid: 7,
+          heapUsedBytes: 150_000_000,
+          heapTotalBytes: 300_000_000,
+        }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'measured',
+      value: 400_000_000,
+      pid: 7,
+      heapUsedBytes: 150_000_000,
+      heapTotalBytes: 300_000_000,
+      outsideHeapBytes: 100_000_000,
+    });
+    // A pid outside the measured tree, a refused read and a throw are gaps.
+    await expect(
+      serverHeapReport(
+        posture({ pid: 9, heapUsedBytes: 1, heapTotalBytes: 1 }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('9'),
+    });
+    await expect(
+      serverHeapReport(
+        async () => ({ status: 503, json: null, text: 'unavailable' }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('503'),
+    });
+    await expect(
+      serverHeapReport(async () => {
+        throw new Error('refused');
+      }, rows),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('refused'),
+    });
+  });
+
+  test('prints the attribution as REPORT lines', () => {
+    expect(
+      formatAttribution({
+        metrics: {
+          restMemoryBytes: {
+            byRole: [{ role: 'server', processCount: 1, memoryBytes: 400 }],
+          },
+        },
+        attribution: {
+          serverHeapAtRest: {
+            status: 'measured',
+            value: 400,
+            basis: 'rss',
+            pid: 7,
+            heapUsedBytes: 150,
+            heapTotalBytes: 300,
+            outsideHeapBytes: 100,
+          },
+          serverHeapWithSessions: { status: 'not_measured', reason: 'gone' },
+        },
+      }),
+    ).toEqual([
+      'REPORT restMemoryBytes role=server processes=1 bytes=400',
+      'REPORT serverHeapAtRest pid=7 rss=400 heapTotal=300 heapUsed=150 outsideHeap=100 bytes',
+      'REPORT serverHeapWithSessions not measured: gone',
+    ]);
+  });
+});
 
 describe('station-weight memory reading', () => {
   test('reads phys_footprint per pid, not the peak or the summary', () => {

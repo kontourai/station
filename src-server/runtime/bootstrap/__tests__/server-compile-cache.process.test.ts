@@ -1,6 +1,9 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   chmodSync,
   cpSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -29,7 +32,7 @@ test('source-only wiring: compile-cache isolation is the first server import', (
 describe.skipIf(process.platform === 'win32')(
   'server compile cache process boundary',
   () => {
-    test('the built server entry removes dotenv cache settings before child inheritance', () => {
+    test('the built server entry removes dotenv cache settings before child inheritance; the built station-control child keeps its cache to itself', async () => {
       const directory = tempDir('station-dotenv-cache-');
       const build = buildTempDir('dist-server-cache-entry-');
       const env: NodeJS.ProcessEnv = {};
@@ -145,6 +148,79 @@ describe.skipIf(process.platform === 'win32')(
         // No child launch is observed in that dependency graph for this build.
         expect(observed.dependencyLaunches).toEqual([]);
       }
+
+      // The built station-control child the server hands the home's cache to.
+      const stationControl = join(build, 'station-control.js');
+      const initialize = `${JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'cache-test', version: '1' },
+        },
+      })}\n`;
+      const childEnv = (cache: string) => ({
+        ...env,
+        NODE_COMPILE_CACHE: cache,
+        STATION_API_BASE: 'http://127.0.0.1:9',
+      });
+      // An engine may end it with a signal, after which Node writes nothing:
+      // its cache must be on disk while it still runs.
+      const signalCache = join(directory, 'signal-cache');
+      const signalled = spawn(process.execPath, [stationControl], {
+        env: childEnv(signalCache),
+        stdio: ['pipe', 'pipe', 'inherit'],
+        windowsHide: true,
+      });
+      try {
+        signalled.stdin.write(initialize);
+        await once(signalled.stdout, 'data');
+        const written = () =>
+          existsSync(signalCache) &&
+          readdirSync(signalCache).some(
+            (version) => readdirSync(join(signalCache, version)).length > 0,
+          );
+        const deadline = Date.now() + 20000;
+        while (!written() && Date.now() < deadline)
+          await new Promise((settle) => setTimeout(settle, 100));
+        expect(written()).toBe(true);
+      } finally {
+        signalled.kill('SIGKILL');
+      }
+      // It keeps Node's cache and removes the setting from its own env.
+      const childCache = join(directory, 'child-cache');
+      const childObservation = join(directory, 'child-observation.json');
+      const childPreload = join(directory, 'observe-child.mjs');
+      writeFileSync(
+        childPreload,
+        `
+        import { getCompileCacheDir } from 'node:module';
+        import { writeFileSync } from 'node:fs';
+        process.on('exit', () => writeFileSync(${JSON.stringify(childObservation)}, JSON.stringify({
+          env: process.env.NODE_COMPILE_CACHE ?? null,
+          cacheDir: getCompileCacheDir() ?? null,
+        })));
+      `,
+      );
+      const graceful = spawnSyncBounded(
+        process.execPath,
+        ['--import', childPreload, stationControl],
+        {
+          input: initialize,
+          encoding: 'utf8',
+          timeout: 30000,
+          windowsHide: true,
+          env: childEnv(childCache),
+        },
+      );
+      expect(graceful.error).toBeUndefined();
+      expect(graceful.status, graceful.stderr).toBe(0);
+      expect(graceful.stdout).toContain('"id":1');
+      const child = JSON.parse(readFileSync(childObservation, 'utf8'));
+      expect(child.env).toBeNull();
+      expect(child.cacheDir.startsWith(childCache)).toBe(true);
     }, 240000);
 
     test('keeps its active cache across two starts while every affected child path sees no setting', () => {
@@ -155,8 +231,8 @@ describe.skipIf(process.platform === 'win32')(
         mcp,
         `
       const readline = require('node:readline');
-      const tools = [{ name: process.env.NODE_COMPILE_CACHE ? 'cache_leaked' : 'cache_absent',
-        description: 'Observed child environment', inputSchema: { type: 'object' } }];
+      const tools = [{ name: process.env.NODE_COMPILE_CACHE ? 'cache_present' : 'cache_absent',
+        description: process.env.NODE_COMPILE_CACHE ?? 'Observed child environment', inputSchema: { type: 'object' } }];
       readline.createInterface({ input: process.stdin }).on('line', line => {
         const message = JSON.parse(line);
         if (message.id === undefined) return;
@@ -202,6 +278,23 @@ describe.skipIf(process.platform === 'win32')(
         try {
           await client.connect(createMCPTransport({ ...def, transport }));
           assert.equal((await client.listTools()).tools[0].name, 'cache_absent');
+        } finally { await client.close(); }
+      }
+      // Only the exact built-in bundle is handed the home's cache, through the
+      // real stdio transport; a third-party server with the same command and
+      // environment is not.
+      const { builtinStationControlServerPath, withStationControlRuntimeEnv } = await import(${JSON.stringify(moduleUrl('src-server/runtime/bootstrap/station-control-runtime-env.ts'))});
+      const builtin = { command: process.execPath, args: [builtinStationControlServerPath()] };
+      for (const [toolId, name, description] of [
+        ['station-control', 'cache_present', ${JSON.stringify(join(home, 'cache', 'node-compile'))}],
+        ['third-party', 'cache_absent', 'Observed child environment'],
+      ]) {
+        const env = withStationControlRuntimeEnv(toolId, builtin, { STATION_PORT: '43127' });
+        const client = new Client({ name: 'cache-test', version: '1' });
+        try {
+          await client.connect(createMCPTransport({ ...def, env }));
+          const [tool] = (await client.listTools()).tools;
+          assert.deepEqual({ name: tool.name, description: tool.description }, { name, description }, toolId);
         } finally { await client.close(); }
       }
       const { loadStrandsTools } = await import(${JSON.stringify(moduleUrl('src-server/runtime/frameworks/strands-tool-loader.ts'))});

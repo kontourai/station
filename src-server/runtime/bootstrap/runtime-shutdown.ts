@@ -60,6 +60,7 @@ export async function shutdownRuntimeServices({
   stopHealthChecks,
   schedulerService,
   orchestrationService,
+  settleSessionExitWrites,
   attachedSessionFollowService,
   consoleBridgeService,
   voltAgent,
@@ -90,6 +91,7 @@ export async function shutdownRuntimeServices({
     stopCascadeDelivery?(): void;
     shutdown(): Promise<void>;
   };
+  settleSessionExitWrites?: () => Promise<void>;
   attachedSessionFollowService?: { stop(): void };
   consoleBridgeService?: { stop(): Promise<void> };
   voltAgent?: { shutdown(): Promise<void> };
@@ -226,6 +228,17 @@ export async function shutdownRuntimeServices({
     'orchestrationService.shutdown',
     orchestrationService ? () => orchestrationService.shutdown() : undefined,
   );
+  // Exit finalizers may still use Git and the room stores after the
+  // orchestration service stops. Their owner must settle them first.
+  try {
+    await settleSessionExitWrites?.();
+  } catch (error) {
+    if (failures.length === 0) throw error;
+    throw new AggregateError(
+      [...failures, error],
+      'Runtime shutdown cleanup was incomplete.',
+    );
+  }
   await attempt(
     'voltAgent.shutdown',
     voltAgent ? () => voltAgent.shutdown() : undefined,

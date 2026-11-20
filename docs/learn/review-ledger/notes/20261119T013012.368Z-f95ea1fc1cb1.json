@@ -1,0 +1,13 @@
+{
+  "revision": "524dcb9d3df3cb45ed534ead327f204364b4377f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the picker search and scroll layout against the shared control guidance. Chromium at 390 px confirmed safe-area bounds and reachability of the close action and final script row.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the picker search and scroll layout against the shared control guidance. Chromium at 390 px confirmed safe-area bounds and reachability of the close action and final script row.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the picker search and scroll layout against the shared control guidance. Chromium at 390 px confirmed safe-area bounds and reachability of the close action and final script row.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the picker search and scroll layout against the shared control guidance. Chromium at 390 px confirmed safe-area bounds and reachability of the close action and final script row.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

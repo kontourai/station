@@ -1187,36 +1187,28 @@ describe('lifecycle instance state', () => {
       ),
       '',
     );
-    const spawn = vi
-      .fn()
-      .mockReturnValueOnce({ pid: 43031, unref: vi.fn() })
-      .mockReturnValueOnce({ pid: 43032, unref: vi.fn() });
-    vi.spyOn(process, 'kill').mockImplementation(((
-      pid: number,
-      signal?: NodeJS.Signals | number,
-    ) => {
-      if (signal === 0 && (pid === 43031 || pid === 43032)) {
-        return true;
-      }
-      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
-    }) as typeof process.kill);
-    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const launchCaptured = new Error('supervisor launch captured');
+    const spawn = vi.fn().mockImplementationOnce(() => {
+      throw launchCaptured;
+    });
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       platformOverrides: { sleepSync: vi.fn() },
     });
     const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
 
-    await lifecycle.start({
-      baseDir: TEST_ALT_HOME,
-      instanceName: 'supervised-no-birth',
-      serverPort: 3253,
-      supervisorPid: 12345,
-      supervisorBirth,
-      uiPort: 5283,
-    });
+    await expect(
+      lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'supervised-no-birth',
+        serverPort: 3253,
+        supervisorPid: 12345,
+        supervisorBirth,
+        uiPort: 5283,
+      }),
+    ).rejects.toBe(launchCaptured);
 
-    // The supervisor bundle ran, and it discards the birth: never probed.
+    // The attempt chose the supervisor bundle without probing launcher birth.
     expect(String(spawn.mock.calls[0][1][0])).toContain(
       'station-supervisor.js',
     );
@@ -4517,8 +4509,13 @@ describe('homeReset (station#1913)', () => {
 
   it('--if-incompatible still archives an incompatible home when confirmed (the deploy path)', async () => {
     ensureDir(TEST_CWD);
-    ensureDir(TEST_ALT_HOME);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
     ensureDir(join(TEST_ALT_HOME, 'agents'));
+    upsertInstance(
+      'past-service',
+      { port: 38142, type: 'service' },
+      TEST_ALT_HOME,
+    );
 
     const { lifecycle } = await loadLifecycleModule();
 
@@ -4532,6 +4529,49 @@ describe('homeReset (station#1913)', () => {
     expect(result.archived).toBe(true);
     expect(existsSync(TEST_ALT_HOME)).toBe(false);
     expect(existsSync(result.archivePath!)).toBe(true);
+    expect(existsSync(join(result.archivePath!, 'instances.json'))).toBe(true);
+  });
+
+  it('refuses a live supervised instance recorded only in the home registry', async () => {
+    ensureDir(TEST_CWD);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+    upsertInstance(
+      'active-service',
+      { port: 38142, type: 'service', pid: process.pid },
+      TEST_ALT_HOME,
+    );
+    const registryPath = join(TEST_ALT_HOME, 'instances.json');
+    const registryBytes = readFileSync(registryPath);
+    const { lifecycle } = await loadLifecycleModule();
+
+    expect(() =>
+      lifecycle.homeReset({
+        confirm: true,
+        projectHome: TEST_ALT_HOME,
+        homeSource: '--base',
+      }),
+    ).toThrow(
+      /active-service \(service\).*station service stop --instance=active-service/s,
+    );
+    expect(readFileSync(registryPath)).toEqual(registryBytes);
+  });
+
+  it('keeps a home whose instance registry cannot establish inactivity', async () => {
+    ensureDir(TEST_CWD);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+    const registryPath = join(TEST_ALT_HOME, 'instances.json');
+    const unreadable = '{broken registry';
+    writeFileSync(registryPath, unreadable, { mode: 0o600 });
+    const { lifecycle } = await loadLifecycleModule();
+
+    expect(() =>
+      lifecycle.homeReset({
+        confirm: true,
+        projectHome: TEST_ALT_HOME,
+        homeSource: '--base',
+      }),
+    ).toThrow(/instance registry is corrupt or not owner-controlled/i);
+    expect(readFileSync(registryPath, 'utf8')).toBe(unreadable);
   });
 
   it('is a harmless no-op when the target home does not exist at all', async () => {
@@ -5704,7 +5744,7 @@ describe('upgrade', () => {
       launcher: 'station-nightly',
     },
   ] as const)(
-    'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
+    'enforces packaged $runtimeChannel upgrade admission before installer effects',
     async ({ runtimeChannel, releaseChannel, launcher }) => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
@@ -5771,6 +5811,14 @@ describe('upgrade', () => {
           spawnSync: staleSchedulingSpawnSync(unitPath),
         },
       });
+      if (runtimeChannel === 'beta') {
+        await expect(lifecycle.upgrade()).rejects.toThrow(
+          'packaged release provenance is invalid',
+        );
+        expect(execFileSync).not.toHaveBeenCalled();
+        expect(execSync).not.toHaveBeenCalled();
+        return;
+      }
       // What the CLI bootstrap writes into every CLI process: this
       // process's launch facts, never a request for the installed runtime.
       // The installer's own port variable is the caller's, and passes.
@@ -6029,10 +6077,10 @@ describe('upgrade', () => {
       `${JSON.stringify({
         schemaVersion: 2,
         sha: 'd'.repeat(40),
-        ref: 'v1.2.3-preview.4',
+        ref: 'v1.2.3-nightly.4',
         createdAt: '2026-07-22T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       })}\n`,
     );
@@ -8486,72 +8534,75 @@ describe('lifecycle build + restart ergonomics', () => {
     ).toBe('active-ui');
   });
 
-  it('uses exact packaged release provenance when Git metadata is absent', async () => {
-    ensureDir(TEST_CWD);
-    // Byte-for-byte what package-portable-release.sh writes: same key order,
-    // 2-space indent, trailing newline.
-    writeFileSync(
-      join(TEST_CWD, '.station-release.json'),
-      `${JSON.stringify(
-        {
-          schemaVersion: 2,
-          sha: 'fedcba9876543210fedcba9876543210fedcba98',
-          ref: 'v0.1.0',
-          createdAt: '2026-07-22T12:34:56.000Z',
-          channel: 'stable',
-          releaseChannel: 'stable',
-          prerelease: false,
+  it.each([2, 3] as const)(
+    'uses exact packaged v%s release provenance when Git metadata is absent',
+    async (schemaVersion) => {
+      ensureDir(TEST_CWD);
+      // Byte-for-byte what package-portable-release.sh writes: same key order,
+      // 2-space indent, trailing newline.
+      writeFileSync(
+        join(TEST_CWD, '.station-release.json'),
+        `${JSON.stringify(
+          {
+            schemaVersion,
+            sha: 'fedcba9876543210fedcba9876543210fedcba98',
+            ...(schemaVersion === 2 ? { ref: 'v0.1.0' } : { version: '0.1.0' }),
+            createdAt: '2026-07-22T12:34:56.000Z',
+            channel: 'stable',
+            releaseChannel: 'stable',
+            prerelease: false,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const execSync = vi.fn(
+        (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+          if (command === 'npm run build:server') {
+            const serverDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_SERVER_DIR),
+            );
+            ensureDir(serverDir);
+            writeFileSync(
+              join(serverDir, 'command-station.js'),
+              'candidate-server',
+            );
+          }
+          if (command === 'npm run build:ui') {
+            const uiDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_UI_DIR),
+            );
+            ensureDir(uiDir);
+            writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
+          }
+          return '';
         },
-        null,
-        2,
-      )}\n`,
-    );
-    const execSync = vi.fn(
-      (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
-        if (command === 'npm run build:server') {
-          const serverDir = join(
-            TEST_CWD,
-            String(options?.env?.STATION_BUILD_SERVER_DIR),
-          );
-          ensureDir(serverDir);
-          writeFileSync(
-            join(serverDir, 'command-station.js'),
-            'candidate-server',
-          );
-        }
-        if (command === 'npm run build:ui') {
-          const uiDir = join(
-            TEST_CWD,
-            String(options?.env?.STATION_BUILD_UI_DIR),
-          );
-          ensureDir(uiDir);
-          writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
-        }
-        return '';
-      },
-    );
-    const { lifecycle } = await loadLifecycleModule({
-      childProcessMock: { execSync },
-    });
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync },
+      });
 
-    const manifest = await lifecycle.buildApplication({
-      instanceName: 'portable',
-      baseDir: TEST_ALT_HOME,
-      serverPort: 3242,
-      uiPort: 5274,
-    });
+      const manifest = await lifecycle.buildApplication({
+        instanceName: 'portable',
+        baseDir: TEST_ALT_HOME,
+        serverPort: 3242,
+        uiPort: 5274,
+      });
 
-    expect(manifest).toEqual({
-      sha: 'fedcba9876543210fedcba9876543210fedcba98',
-      branch: 'v0.1.0',
-      builtAt: expect.any(String),
-    });
-    expect(Number.isFinite(Date.parse(manifest.builtAt))).toBe(true);
-    expect(execSync).not.toHaveBeenCalledWith(
-      'git rev-parse HEAD',
-      expect.anything(),
-    );
-  });
+      expect(manifest).toEqual({
+        sha: 'fedcba9876543210fedcba9876543210fedcba98',
+        branch: 'v0.1.0',
+        builtAt: expect.any(String),
+      });
+      expect(Number.isFinite(Date.parse(manifest.builtAt))).toBe(true);
+      expect(execSync).not.toHaveBeenCalledWith(
+        'git rev-parse HEAD',
+        expect.anything(),
+      );
+    },
+  );
 
   it('reports the exact missing packaged provenance path', async () => {
     ensureDir(TEST_CWD);
@@ -10220,7 +10271,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
   });
 
   /**
-   * An install.sh archive install (v0.7.0-preview.3 active through `current`)
+   * An install.sh archive install (v0.7.0-nightly.3 active through `current`)
    * whose home holds one running service; `serviceFields` adjusts its
    * manifest, which otherwise names this install root's `current`.
    */
@@ -10230,7 +10281,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     ) => Record<string, unknown> = () => ({}),
   ) {
     const installRoot = join(TEST_ROOT, 'archive-install');
-    const version = join(installRoot, 'versions', '0.7.0-preview.3');
+    const version = join(installRoot, 'versions', '0.7.0-nightly.3');
     const stationHome = join(TEST_ROOT, 'home-archive');
     ensureDir(version);
     ensureDir(stationHome);
@@ -10243,10 +10294,10 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       `${JSON.stringify({
         schemaVersion: 2,
         sha: 'a'.repeat(40),
-        ref: 'v0.7.0-preview.3',
+        ref: 'v0.7.0-nightly.3',
         createdAt: '2026-09-26T00:00:00.000Z',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       })}\n`,
     );
@@ -10257,13 +10308,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
-    const manifestUrl = 'https://example.test/station/preview.json';
+    const manifestUrl = 'https://example.test/station/nightly.json';
     writeFileSync(
       join(installRoot, '.station-release-state.json'),
       `${JSON.stringify({
         schemaVersion: 4,
-        channel: 'beta',
-        releaseChannel: 'preview',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         installRoot,
         stationRoot: join(TEST_ROOT, 'root-archive'),
         stationHome,
@@ -10317,7 +10368,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'nightly',
           STATION_HOME: stationHome,
           STATION_INSTALL_ROOT: installRoot,
           STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
@@ -10400,7 +10451,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
-          STATION_CHANNEL: 'beta',
+          STATION_CHANNEL: 'nightly',
           STATION_HOME: stationHome,
           STATION_INSTALL_ROOT: installRoot,
           STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,

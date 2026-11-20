@@ -1,0 +1,11 @@
+{
+  "revision": "dc5fde4384a636956c3bc84bbd2b8f34dd4a85fe",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Loopback cookie path now clears the peer's failure count after a verified cookie, as the auth frame does; threat model's budget statement stays accurate, connections/connect describe transport only.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Loopback cookie path now clears the peer's failure count after a verified cookie, as the auth frame does; threat model's budget statement stays accurate, connections/connect describe transport only.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Loopback cookie path now clears the peer's failure count after a verified cookie, as the auth frame does; threat model's budget statement stays accurate, connections/connect describe transport only.","inputs":["src-server/routes/operations/voice.ts"]}
+  ]
+}

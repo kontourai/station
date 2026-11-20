@@ -1,4 +1,7 @@
-import { isApprovalMode } from '@kontourai/station-contracts/provider';
+import {
+  isApprovalMode,
+  isEngineApprovalReviewer,
+} from '@kontourai/station-contracts/provider';
 import type {
   StationStateScope,
   StationStateSource,
@@ -14,13 +17,51 @@ import { serverTurnLive } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
+  updateModelRuntimeOption,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { backgroundTasksAfterSessionEnds } from './childWorkHandlers';
 import { eventStreamPosition } from './streamPosition';
 import { observeStopSettled } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
+
+export function handleSessionEngineModeObservedEvent(
+  event: Extract<
+    OrchestrationEvent,
+    { method: 'session.engine-mode-observed' }
+  >,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
+  if (chat && typeof event.modeId === 'string' && event.modeId.length > 0)
+    chatStore.updateChat(
+      event.threadId,
+      observedEngineModeUpdates(event.modeId, chat),
+    );
+}
+
+export function observedEngineModeUpdates(
+  modeId: string,
+  chat: Pick<ChatUIState, 'requestedProviderOptions'> | undefined,
+): Partial<ChatUIState> {
+  const requested = chat?.requestedProviderOptions;
+  const remaining =
+    requested?.mode === modeId
+      ? updateModelRuntimeOption(requested, 'mode', undefined)
+      : undefined;
+  return {
+    currentModeId: modeId,
+    ...(remaining
+      ? {
+          requestedProviderOptions:
+            Object.keys(remaining).length > 0 ? remaining : undefined,
+        }
+      : {}),
+  };
+}
 
 export function handleSessionLifecycleEvent(
   event: Extract<
@@ -51,6 +92,20 @@ export function handleSessionLifecycleEvent(
       ? (event.metadata.effectiveModelOptions as Record<string, unknown>)
       : undefined;
   const currentChat = chatStore.getChatForExecutionSession(event.threadId);
+  const reportedMode =
+    event.method === 'session.configured' &&
+    typeof event.metadata?.acpSessionMode === 'string'
+      ? event.metadata.acpSessionMode
+      : undefined;
+  const observedMode = reportedMode
+    ? observedEngineModeUpdates(reportedMode, currentChat)
+    : {};
+  const remainingAfterMode = Object.hasOwn(
+    observedMode,
+    'requestedProviderOptions',
+  )
+    ? observedMode.requestedProviderOptions
+    : currentChat?.requestedProviderOptions;
   // #4162: a Session's engine connection is fixed when it starts, and the
   // server stamps it on that Session's own `session.started`. Without this a
   // successor Session on another connection kept its predecessor's id.
@@ -77,11 +132,17 @@ export function handleSessionLifecycleEvent(
       : {}),
     orchestrationSessionStarted: true,
     ...startedConnection,
-    ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
-    ...(event.method === 'session.configured' &&
-    typeof event.metadata?.acpSessionMode === 'string'
-      ? { currentModeId: event.metadata.acpSessionMode }
+    ...(event.method === 'session.started'
+      ? {
+          reportedApprovalReviewer:
+            event.provider === 'codex' &&
+            isEngineApprovalReviewer(event.metadata?.reportedApprovalReviewer)
+              ? event.metadata.reportedApprovalReviewer
+              : undefined,
+        }
       : {}),
+    ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    ...observedMode,
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
@@ -97,7 +158,10 @@ export function handleSessionLifecycleEvent(
             currentChat?.requestedProviderOptions,
             effectiveModelOptions,
           )
-            ? { requestedProviderOptions: undefined }
+            ? {
+                requestedProviderOptions:
+                  pendingNonModelOptions(remainingAfterMode),
+              }
             : {}),
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }

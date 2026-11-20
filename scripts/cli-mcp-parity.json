@@ -1,5 +1,21 @@
 {
-  "app": {},
+  "app": {
+    "engine-install-terminal": {
+      "route": "POST /acp/registry/:id/install-terminal",
+      "exempt": "person-only",
+      "reason": "A person confirms the exact reviewed installer and operates its owned terminal; chat only opens the existing setup pane."
+    },
+    "engine-recommended-setup": {
+      "route": "POST /acp/connections/:id/recommended-setup",
+      "exempt": "person-only",
+      "reason": "A person reviews and applies built-in launch arguments while preserving the saved connection and Agent."
+    },
+    "engine-station-tools": {
+      "route": "POST /acp/connections/:id/station-tools",
+      "exempt": "person-only",
+      "reason": "A person explicitly selects Station tools for the canonical Agent; agent tools cannot grant themselves this selection."
+    }
+  },
   "cli": {
     "acp command-options": {
       "missing": 4286,
@@ -13,6 +29,7 @@
       "missing": 4286,
       "want": "List|create|update|delete|reconnect_acp_connection"
     },
+    "acp setup": { "tools": ["list_engine_setup"] },
     "acp status": {
       "missing": 4286,
       "want": "Acp_status"
@@ -75,9 +92,75 @@
       "exempt": "person-only",
       "reason": "Person directory lookup (/api/users/search)."
     },
-    "automation deliveries": {
+    "automation delete": {
       "exempt": "person-only",
-      "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation deliveries": {
+      "tools": ["list_automation_deliveries"]
+    },
+    "automation disable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation enable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation episodes": {
+      "tools": ["list_automation_episodes"]
+    },
+    "automation retry-episode": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation rule-create": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation rule-update": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation rules": {
+      "tools": ["list_automation_rules"]
+    },
+    "automation source-create": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation source-delete": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation source-disable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation source-enable": {
+      "exempt": "person-only",
+      "reason": "Changes an Automation trigger, its authority or its episode; only the operator in person may (AUTOMATION_OPERATOR_SURFACE has no MCP verb for it), so an agent can never create, widen, enable or retry its own triggers."
+    },
+    "automation sources": {
+      "tools": ["list_automation_sources"]
+    },
+    "board move": {
+      "tools": ["board_move"]
+    },
+    "board pin": {
+      "tools": ["board_pin"]
+    },
+    "board read": {
+      "tools": ["board_read"]
+    },
+    "board unpin": {
+      "tools": ["board_unpin"]
+    },
+    "boards get": {
+      "tools": ["get_personal_board"]
+    },
+    "boards list": {
+      "tools": ["list_personal_boards"]
     },
     "branding get": {
       "exempt": "presentation",
@@ -92,16 +175,16 @@
       "note": "`chat --session` is the person's own send (POST /api/orchestration/chat); send_to_session uses the agent-only session-control leaf."
     },
     "checkpoints history": {
-      "missing": 4281,
-      "want": "a tool for the restore history the server serves at GET /api/orchestration/sessions/:threadId/checkpoint-restores"
+      "exempt": "local-host",
+      "reason": "Reads the local Station home audit for one thread. The authenticated application history route remains scoped to a readable Session and has no agent tool."
     },
     "checkpoints prune": {
       "exempt": "local-host",
       "reason": "Reads or prunes git checkpoint refs in this Station home on disk."
     },
     "checkpoints restore": {
-      "missing": 4281,
-      "want": "a tool that previews and restores a turn checkpoint"
+      "exempt": "person-only",
+      "reason": "Restoration replaces workspace files. The authenticated person owns the approval and restoration audit, so there is no agent tool."
     },
     "checkpoints retention": {
       "exempt": "local-host",
@@ -229,12 +312,26 @@
       "missing": 4286,
       "want": "Update_connection"
     },
+    "conversation delete": {
+      "tools": ["delete_conversation"],
+      "note": "The CLI uses the person-only owned file route. The tool uses its existing caller authorization."
+    },
     "conversation export": {
       "tools": ["get_conversation_messages", "read_conversation"],
       "note": "Export endpoint GET /agents/:slug/conversations/:id/export?format= has no tool; transcript read is covered."
     },
     "conversation fork": {
       "tools": ["fork_conversation"]
+    },
+    "conversation reopen": {
+      "tools": ["settle_conversation"]
+    },
+    "conversation search": {
+      "tools": ["search_conversations"],
+      "note": "The CLI uses the person’s conversation read authority. The tool keeps the verified agent’s Project and transcript rules."
+    },
+    "conversation settle": {
+      "tools": ["settle_conversation"]
     },
     "delegate attempt": {
       "exempt": "client-local",
@@ -1055,20 +1152,16 @@
       "want": "Knowledge records add"
     },
     "board_move": {
-      "missing": 4282,
-      "want": "Board move"
+      "cli": ["board move"]
     },
     "board_pin": {
-      "missing": 4282,
-      "want": "Board pin"
+      "cli": ["board pin"]
     },
     "board_read": {
-      "missing": 4282,
-      "want": "Board read"
+      "cli": ["board read"]
     },
     "board_unpin": {
-      "missing": 4282,
-      "want": "Board unpin"
+      "cli": ["board unpin"]
     },
     "browser_capture_to_task": {
       "exempt": "agent-self",
@@ -1198,8 +1291,7 @@
       "cli": ["agents delete"]
     },
     "delete_conversation": {
-      "missing": 4281,
-      "want": "Agents delete-conversation"
+      "cli": ["conversation delete"]
     },
     "delete_integration": {
       "cli": ["tools delete"]
@@ -1272,6 +1364,10 @@
     "enable_job": {
       "cli": ["schedule enable"]
     },
+    "forget_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "fork_conversation": {
       "cli": ["conversation fork"]
     },
@@ -1286,6 +1382,10 @@
     "get_answer_assessment_target": {
       "exempt": "agent-self",
       "reason": "Machine-produced Surface trust bundle for an answer; no person workflow publishes one."
+    },
+    "get_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent reads the person's custom appearance to propose a change; the person previews and keeps it in the Appearance page."
     },
     "get_basis": {
       "cli": ["tasks basis"],
@@ -1308,8 +1408,7 @@
       "want": "Knowledge records get"
     },
     "get_personal_board": {
-      "missing": 4282,
-      "want": "Boards get"
+      "cli": ["boards get"]
     },
     "get_project": {
       "cli": ["projects get"]
@@ -1398,9 +1497,21 @@
       "cli": ["agents list"],
       "note": "Different route: MCP GET /agents, CLI GET /api/agents."
     },
+    "list_automation_deliveries": {
+      "cli": ["automation deliveries"]
+    },
+    "list_automation_episodes": {
+      "cli": ["automation episodes"]
+    },
     "list_automation_proposals": {
       "exempt": "agent-self",
       "reason": "Lists the caller's own Automation proposals."
+    },
+    "list_automation_rules": {
+      "cli": ["automation rules"]
+    },
+    "list_automation_sources": {
+      "cli": ["automation sources"]
     },
     "list_conversations": {
       "cli": ["agents conversations"]
@@ -1414,6 +1525,7 @@
     "list_delegation_targets": {
       "cli": ["delegate targets"]
     },
+    "list_engine_setup": { "cli": ["acp setup"] },
     "list_integrations": {
       "cli": ["tools list"]
     },
@@ -1433,8 +1545,7 @@
       "note": "Different route: MCP GET /api/models, CLI GET /api/connections/models."
     },
     "list_personal_boards": {
-      "missing": 4282,
-      "want": "Boards list"
+      "cli": ["boards list"]
     },
     "list_plugins": {
       "cli": ["plugin list"]
@@ -1445,6 +1556,14 @@
     "list_project_layouts": {
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
+    },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
+    },
+    "list_project_notes": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "list_project_s3_objects": {
       "missing": 4283,
@@ -1504,8 +1623,16 @@
       "cli": ["notifications create"],
       "note": "The tool posts an agent-attributed notification (POST /api/notifications/agent); the CLI posts as the person (POST /notifications)."
     },
+    "open_engine_setup": {
+      "exempt": "agent-ui",
+      "reason": "Navigates to the existing engine setup pane via POST /api/ui; station acp setup returns its setupPath."
+    },
     "preview_schedule": {
       "cli": ["schedule preview"]
+    },
+    "propose_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent proposes, the person previews and keeps or discards it in the Appearance page."
     },
     "propose_automation_rule": {
       "exempt": "agent-proposal",
@@ -1541,6 +1668,14 @@
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
     },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
+    },
+    "read_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "read_project_s3_object": {
       "missing": 4283,
       "want": "Knowledge s3 read"
@@ -1559,6 +1694,10 @@
     "release_claim": {
       "missing": 3427,
       "want": "Claims release"
+    },
+    "remember_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "remove_answer_assessment": {
       "exempt": "agent-self",
@@ -1593,8 +1732,7 @@
       "reason": "Wake-up is bound to the caller's own conversation (route rule wake-up-stays-in-own-conversation)."
     },
     "search_conversations": {
-      "missing": 4281,
-      "want": "Conversations search"
+      "cli": ["conversation search"]
     },
     "search_knowledge": {
       "cli": ["knowledge search"]
@@ -1609,6 +1747,10 @@
     "send_to_session": {
       "cli": ["chat"],
       "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+    },
+    "settle_conversation": {
+      "cli": ["conversation settle", "conversation reopen"],
+      "note": "Both reach PUT /api/conversations/:id/work-state, the person's own Open and Settled inbox record."
     },
     "system_status": {
       "missing": 4284,

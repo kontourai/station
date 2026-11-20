@@ -191,7 +191,7 @@ describe('SkillsView', () => {
     renderEditor();
 
     expect(screen.getByLabelText('Loading list')).toBeTruthy();
-    expect(screen.queryByText('No installed skills yet')).toBeNull();
+    expect(screen.queryByText('No skills yet')).toBeNull();
   });
 
   test('shows the empty state once the skills read settles empty', () => {
@@ -200,7 +200,7 @@ describe('SkillsView', () => {
 
     renderEditor();
 
-    expect(screen.getByText('No installed skills yet')).toBeTruthy();
+    expect(screen.getByText('No skills yet')).toBeTruthy();
     expect(screen.queryByLabelText('Loading list')).toBeNull();
   });
 
@@ -215,7 +215,7 @@ describe('SkillsView', () => {
 
     renderEditor();
 
-    expect(screen.queryByText('No installed skills yet')).toBeNull();
+    expect(screen.queryByText('No skills yet')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load skills')).toBeTruthy();
     expect(screen.getByText('Try again in a moment.')).toBeTruthy();
@@ -319,9 +319,9 @@ describe('SkillsView', () => {
 
     renderEditor();
 
-    expect(screen.getByText('New Skill')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'New skill' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
-    expect(screen.queryByText('No skill selected')).toBeNull();
+    expect(screen.queryByText('Select a skill to see what it does')).toBeNull();
   });
 
   test('requests the new-skill route when the add button is clicked', () => {
@@ -412,13 +412,16 @@ describe('SkillsView', () => {
     },
   );
 
-  test('offers supported finding and file import from the library welcome', () => {
+  test('offers Registry and file import from the empty library', () => {
+    localSkillsMock = [];
     render(<SkillsView />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Find skills in Registry' }),
-    );
+    expect(screen.getByText('No skills yet')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Browse Registry Skills' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse Registry' }));
     expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
-    fireEvent.click(screen.getByRole('button', { name: 'Import skill files' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
     expect(screen.getByRole('dialog', { name: 'Import skills' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Choose .md files' }),
@@ -426,6 +429,9 @@ describe('SkillsView', () => {
   });
 
   test('keeps the Registry Skills link in the skills body', () => {
+    localSkillsMock = [
+      { name: 'existing-skill', source: 'local', origin: 'local', body: 'x' },
+    ];
     renderEditor();
 
     fireEvent.click(
@@ -850,7 +856,7 @@ describe('SkillsView', () => {
       ];
 
       render(<SkillsView filter="commands" />);
-      fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+      fireEvent.change(screen.getByPlaceholderText('Search skills…'), {
         target: { value: 'plain' },
       });
 
@@ -1007,6 +1013,86 @@ describe('SkillsView', () => {
         packageDirectory: '/station/plugins/vendor',
       },
     };
+
+    test('a stale writable listing keeps the unsaved edit and labels the refused path', async () => {
+      const { updateLocalSkill } = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const sourcePath = '/station/plugins/author-copy.example/skills/notes';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              success: false,
+              code: 'skill-not-owned',
+              error: 'A plugin serves it in place.',
+              details: {
+                reason: 'served-in-place',
+                detail: 'A plugin serves it in place.',
+                packageDirectory: sourcePath,
+              },
+            }),
+            { status: 409, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      );
+      updateLocalSkillMock.mockImplementationOnce(({ name, ...data }) =>
+        updateLocalSkill('http://localhost', name, data),
+      );
+      selectRow(REGISTRY_BUT_WRITABLE);
+      const { container } = renderEditor();
+      fireEvent.change(
+        screen.getByLabelText('Description', { selector: 'input' }),
+        {
+          target: { value: 'My unsaved edit' },
+        },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('Package directory');
+      expect(
+        container.querySelector('.skill-detail__source-path code')?.textContent,
+      ).toBe(sourcePath);
+      expect(
+        container.querySelector('.skill-detail__source-note')?.textContent,
+      ).toContain('The plugin that provides it is what to change.');
+      expect(
+        container.querySelector('.skill-detail__source-note')?.textContent,
+      ).not.toContain(sourcePath);
+      expect(showToastMock).toHaveBeenCalledWith(
+        'The changes could not be saved.',
+      );
+      expect(screen.getByDisplayValue('My unsaved edit')).toBeTruthy();
+    });
+
+    test('an older server write error remains a failure without adopting its raw message', async () => {
+      const { updateLocalSkill } = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const response = new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Session expired. Visit author-copy.example.',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      updateLocalSkillMock.mockImplementationOnce(({ name, ...data }) =>
+        updateLocalSkill('http://localhost', name, data),
+      );
+      selectRow(REGISTRY_BUT_WRITABLE);
+      renderEditor();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(showToastMock).toHaveBeenCalledWith(
+          'The changes could not be saved.',
+        ),
+      );
+      expect(JSON.stringify(showToastMock.mock.calls)).not.toContain(
+        'author-copy.example',
+      );
+      expect(screen.queryByText('Package directory')).toBeNull();
+    });
 
     test("offers Save on a writable package the old derivation called read-only (source: 'registry')", () => {
       selectRow(REGISTRY_BUT_WRITABLE);

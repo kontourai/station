@@ -1,0 +1,9 @@
+{
+  "revision": "341b487490a2e5b65298338fbc7cfa08f9b99def",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked outbox restoration through the shared Home and Inbox work projection. The restored send supplies no synthetic conversation title or catalog name. A matching Station inventory row and Agent catalog provide the known identity.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the outbox projection's scoped replay and restored chat record. The queue keeps delivery state and destination unchanged while deferring display identity to the observed conversation and Agent.","inputs":["src-ui/src/hooks/outboundQueueProjection.ts"]}
+  ]
+}

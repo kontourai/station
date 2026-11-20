@@ -1,0 +1,7 @@
+{
+  "revision": "80933fd7347e17564b98c4707ef2c716b811e8f3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Peer list now answers from PeerReadinessService.snapshot (stored readiness, background refresh of stale entries) instead of awaiting probeAll; the Runs-on Station list polls every 5s only while open (watchReadiness). Checked against peer-readiness-service.ts, peer-credential-routes.ts, useExecutionStationCatalog.ts, StartPickerMenus.tsx and their tests (79 + 25 passing; fault injection of the awaited read fails the new tests).","inputs":["docs/guides/connections.md"]}
+  ]
+}

@@ -39,7 +39,9 @@ decomposes what reached it, and the
    separately.
 5. Samples the instance's process tree, sends `hi` to the Claude agent in the
    fixture repository, creates more idle sessions the same way, runs the
-   control request, then runs `station stop` and looks for survivors.
+   optional [delegated run](#delegated-run-optional-report-only) when asked,
+   runs the control request, then runs `station stop` and looks for
+   survivors.
 
 Every turn is answered by the stub (`ok`). No real model is called.
 
@@ -51,14 +53,14 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `restMemoryBytes` | Summed memory of the instance's tree with no sessions, once two consecutive samples 5 s apart agree within 5% (after at least 30 s, at most 300 s). |
 | `idleSessionsMemoryBytes` | The same, after three sessions each created by one stub-answered turn. Each Claude session keeps an engine process alive. |
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
-| `idleWakeups` | Not measured: see [Gaps](#gaps). |
+| `idleWakeups` | macOS, report only. Libproc interrupt wakeups over the idle CPU window. The result also carries package-idle wakeups and the process counts at the endpoints. |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
 | `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: any process seen in the instance's tree during the run, and any process carrying the run's environment, however it detached. Only the kill-eligible ones are then killed; the rest are reported as left running (see [Ownership](#ownership-kill-eligible-and-report-only)). What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). A read of the tree that failed while following it makes the value `NOT_MEASURED`. |
 | `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
-| `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
+| `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. Not a budget but a requirement: a marker that did not arrive, or a turn that was never measured, fails the gate, report-only runs included, and a baseline is not recorded from such a run. Station has Claude Code load `AGENTS.md` beside `CLAUDE.md` (see [Connections](../guides/connections.md#add-an-engine)), so the control request, which runs the engine without Station, lacks the `AGENTS.md` text, and `request.stationAddedTextBytes` counts it. |
 
 **Process tree.** The tree is found three ways, and the union is measured:
 
@@ -152,9 +154,10 @@ signalled only when it is affirmatively shown to qualify.
   outlives its timeout, the run sends SIGKILL to that group, untagged members
   included, but only while Node has not reaped the launcher. A session
   leader cannot change its group, and an unreaped pid cannot be reused, so
-  until then the group id names the group this run created. Node records the
-  exit status in the same libuv callback that reaps the child, and the
-  timeout runs from a timer, so it reads that state accurately. Once the
+  until then the group id names the group this run created. Libuv can reap
+  several children before Node receives their exit callbacks. The strict
+  signal waits until the current batch of callbacks finishes and then
+  checks the leader's status immediately before sending the signal. Once the
   launcher has been reaped, the group may have ended and its id been reused,
   and no POSIX call signals a group only if it is still a given one, so the
   group is not signalled: the command fails with that reason, and anything
@@ -164,11 +167,11 @@ signalled only when it is affirmatively shown to qualify.
 - **C. A child the run spawned, through its own handle.** The control
   engine processes the Agent SDK starts (see *Control request* below) are
   spawned by the run, which keeps each one's `ChildProcess`. They are
-  signalled only through that handle's `kill`, and only while Node has not
-  reaped them: right before each signal, `exitCode` and `signalCode` must
-  both still be null. Node records them in the callback that reaps the
-  child, and an unreaped pid cannot be reused, so the handle still names the
-  process the run spawned. Every path that ends them goes through that
+  signalled only through that handle's `kill`. The synchronous guard
+  refuses once Node records `exitCode` or `signalCode` in the child's exit
+  callback. This check assumes it is outside a sibling's exit callback
+  from the same reaping batch, where the target's status may still be
+  pending. Every path that ends them goes through that
   `kill`: the run's cleanup (SIGTERM, then SIGKILL after 5 s), the SDK's
   own close and escalation, its kill-all when the run's process exits, and
   the abort signal Node wires to `kill`. No environment is read for this:
@@ -206,6 +209,40 @@ removed, when its owner (the test worker, passed in as pid plus birth) no
 longer answers or has another birth, or at a deadline (60 s; 120 s for the
 end-to-end daemon), so a killed test worker does not leak them.
 
+**Attribution (report only).** Both memory metrics carry `byRole`: the
+memory of each process role, largest first. The supervisor
+(`station-supervisor.js`) and the server (`command-station.js`) are fixed
+roles, and the UI listener, which runs a script from stdin, is named from the
+instance record's fingerprint (pid plus birth). Any other process is named by
+its first script argument, or by its executable (`claude`). `attribution.serverHeapAtRest` and
+`attribution.serverHeapWithSessions` set the server's memory beside its V8
+heap: `heapTotalBytes` and `heapUsedBytes` come from the server's own
+`/api/system/resource-posture` (`process.memoryUsage()`, with no forced GC),
+and `outsideHeapBytes` is the server's measured memory minus `heapTotalBytes`.
+That remainder is native memory: malloc, worker isolates, code and stacks.
+The output prints these as `REPORT` lines. Nothing in the attribution is
+compared or recorded, and a read that fails is `not_measured` with its reason
+without affecting the gate.
+
+### Server memory at rest
+
+On one 64 GB Mac (macOS 26), an idle server on a build without the source-map
+leak had a footprint of 576–603 MB. Its V8 heap was 301 MB committed, but
+only 146 MB was live after GC. 134 MB of the committed heap was young-generation space with 1 MB live:
+V8 sizes the young generation from the host's memory and does not shrink it
+at rest. The supervisor therefore forks each core with
+`--max-semi-space-size=16`
+([supervisor](../../packages/supervisor/src/supervisor.ts)), which bounds it
+near 34 MB. The rest was native: 96–209 MB of `MALLOC_SMALL` (about 100 MB
+live; the rest is freed memory the allocator keeps, and the amount varied
+from run to run), and a worker isolate for room working state that started at
+composition. That worker now starts on first use (see
+[ProjectTaskRoom](../architecture/module-map.md#projecttaskroom)). The
+Task and transcript search workers stay warm on purpose, so the first search
+does not pay their startup. The desktop app launches its server sidecar
+directly, not through the supervisor, and passes the same flag itself
+([desktop build](../guides/desktop-build.md#startup-cost-and-linux-graphics)).
+
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out
 of RSS: on a busy host one process showed 4 MiB RSS and an 87 MiB footprint.
@@ -223,6 +260,83 @@ not measured.
 
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
+
+### Paired multi-turn requests (optional, report-only)
+
+`npm run perf:station-weight -- --multi-turn --report-only` adds a separate
+three-turn conversation after the ordinary samples and first-turn comparison.
+Without `--report-only`, the ordinary gate still compares its original metrics;
+the added conversation is always diagnostic and never a budget. `--multi-turn`
+cannot record a baseline. The default workload, metrics and baseline schema
+are unchanged when the flag is absent.
+
+The Station conversation uses `/api/orchestration/chat` with the same
+conversation id for both follow-ups. The SDK control resumes its own session,
+using the same bundled executable, fixture directory and model at ordinals
+1, 2 and 3. Each prompt and canned reply carries a distinct run/ordinal marker.
+There are no real provider API or plan calls, tool calls, discovery transitions, or
+context edits in this workload. Required instructions and tools remain enabled.
+The control must receive `CLAUDE.md`; Station must receive both `CLAUDE.md`
+and `AGENTS.md` on every turn.
+
+`requestConversation.turns` records each pair's cumulative request sizes,
+history text, loaded and named deferred tools, request count, sidecalls and
+other endpoint calls. `stationAdded` uses the same line-multiset and whole-tool
+definition comparison as the first-turn metric. `text` and
+`stationAdded.addedTextProgress` split cumulative lines into those repeated
+from the preceding ordinal and those newly introduced; removed lines are
+reported too. This is a multiset accounting of observed text, not a causal
+classification. History deliberately repeated on follow-ups is not all new
+overhead. Only the existing billing-header version suffix is normalized.
+There are no token or cost estimates.
+
+Every pair requires one unambiguous prompt-bearing request per caller window,
+successful completion with that ordinal's exact reply, intact ordered prompt
+and reply history, matching Claude versions/models, and fresh request and
+accepted-turn identities. A missing/refused/replayed/ambiguous turn is
+`not_measured` (`NOT_MEASURED` in the summary); later turns are explicitly
+skipped, and the run fails even in report-only mode. The bounded workload has
+three turns; dispatch and completion waits retain the existing 90 s and 120 s
+bounds per Station turn, and each SDK query has a 120 s interruption deadline.
+
+This diagnostic does not measure parking cost, memory or latency. In particular,
+the released and warm follow-ups below have different history ordinals and
+cannot establish a causal parking-cost difference. Codex/ACP parity and a
+read-only discovery transition remain `NOT_VERIFIED`.
+
+### Delegated run (optional, report-only)
+
+`--delegated-run` adds one step after the idle-session sample. It writes a
+`delegatedRun` section to `result.json`, which is never a budget and never
+recorded in the baseline. The step runs three rounds. Each round delegates a
+new stub-answered task as the operator (`POST /api/orchestration/delegations`),
+the way an agent's delegation starts a child Session. It waits for that task's
+engine to be [parked early](../architecture/module-map.md#conversationsessionlineage),
+then sends the task two stub-answered follow-ups through
+`POST /api/orchestration/delegations/:taskId/continue`. The first restarts the
+released engine in place from its resume cursor; the second reaches it warm.
+Each round needs a new task because the operator's follow-up is a person's
+turn, which keeps that engine for the ordinary idle park afterwards.
+
+- `engineProcessesBefore`: Claude engine processes in the tree, counted by
+  executable name, before the first task.
+- `engineProcessesAtFinish`, `engineReleasedAfterMs`: for the first task, the
+  count when its turn completed, and how long after that the count fell back
+  to what it was before the task. `null` when that did not happen within
+  `--delegated-release-max-ms` (default 90 s).
+- `finishedMemoryBytes`: the tree's memory after the first task's engine was
+  released, settled as for the other memory metrics. Compare it with
+  `idleSessionsMemoryBytes`.
+- `releasedFollowUpMs`, `warmFollowUpMs`: the medians, over the rounds, of
+  the first and second follow-up, each timed from the request to its reply,
+  polled every 50 ms. A round whose engine was not released records no
+  released follow-up.
+- `rounds`: each round's `enginesAtFinish`, `releasedAfterMs`,
+  `releasedFollowUpMs` (`null` when its engine was not released) and
+  `warmFollowUpMs`.
+
+A failed step is written as `delegatedRun.status: not_measured` with its
+reason. It does not fail the run.
 
 ## Budgets and baseline
 
@@ -280,13 +394,18 @@ Each run writes `result.json` (metrics, per-process detail, request breakdown,
 verdicts) and `requests.json` (every request the stub received) under
 `.kontourai/station-weight/<sha>/<run-id>/`. Diff two results to compare
 revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
-`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms` and
-`--ready-launches` override the defaults.
+`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms`,
+`--ready-launches` and `--delegated-release-max-ms` override the defaults.
+`--delegated-run` adds the [delegated run](#delegated-run-optional-report-only).
 
 ## Gaps
 
-- **Wakeups on macOS.** Per-process wakeup counts need `powermetrics` (root)
-  or libproc, and `top`'s `IDLEW` did not advance between samples.
+- **Wakeups on macOS.** The [sampler](../../scripts/bench/station-weight-wakeups.mjs) counts only processes with matching kernel
+  birth identities at both ends of the idle window. Processes present at only
+  one endpoint are counted separately and omitted from the wakeup sum. An
+  unreadable counter, mismatched birth, or decreasing count on a shared PID
+  makes the result `NOT_MEASURED`. Processes that live entirely between the
+  endpoints are missed. Wakeup counts do not measure energy consumption.
 - **Windows.** The launcher is a bash script and the tree is read with POSIX
   `ps`, so the whole run reports `not_measured`.
 - **Unready engine.** A memory sample that never settles, an engine that never

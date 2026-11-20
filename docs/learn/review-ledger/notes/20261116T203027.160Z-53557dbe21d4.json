@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Checked the new 'When the verifier gets no runner' section against nightly-native-cohort.yml (confirm-finalize-runner-loss, protected-finalize-retry, record/clear/recovery gates), scripts/nightly-finalize-runner-loss.mjs, the recovery-receipt finality change in release-cohort-workflow.mjs, the 24h attestation window in verify-release-cohort.mjs, and the 2026-11-02..16 jobs-API scan (24 not-acquired macOS jobs, runs 42242672641 and 43863134706).","inputs":["docs/guides/native-releases.md",".github/workflows/nightly-native-cohort.yml","scripts/release-cohort-workflow.mjs"]}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Passes projectRuns and projectHold through to the built-in scheduler; existing scheduler composition (turn adapter, conversation runs, notifications) is unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

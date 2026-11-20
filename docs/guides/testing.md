@@ -37,7 +37,21 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 `npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
-for a quick local look; it reads no baseline and gates nothing.
+for a quick local look; it reads no baseline and gates nothing. Every fallow
+entry point waits for a [host heavy-check slot](#host-heavy-check-slots).
+
+`fallow audit` builds a full checkout of its base commit (about 380 MB here) in
+its temp directory. The audit runners give each run a private directory under
+a disk-backed cache, removed when the run ends, and remove any run directory
+older than an hour that a killed run left behind. The cache is
+`$XDG_CACHE_HOME/station/fallow` (when `XDG_CACHE_HOME` is absolute), else
+`~/.cache/station/fallow`, created owner-only; `STATION_FALLOW_CACHE_DIR`
+overrides it. It is never the system temp directory by default: where `/tmp` is
+tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
+The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
+directly, without that private directory. The runners also hold each fallow
+child to a [memory budget](code-quality.md#memory-budget) and, off CI, one
+analysis thread.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -151,8 +165,12 @@ and inspect the current store's persisted envelope when testing migrations.
 
 Local unsharded changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
-provisional and do not satisfy the deferred obligations. Broad import expansion
-and larger selections stay deferred within the existing feedback budget.
+provisional and leave the broader obligations pending. When the deferral drops
+related discovery for a changed UI component, directly importing UI suites
+join the explicit fallback if the combined selection fits within 32. The
+summary reports when the cap omits those additions, and the selection artifact
+lists their paths. Normal related discovery and hosted planning use their
+existing budgets.
 
 
 Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
@@ -292,9 +310,10 @@ It has only `workflow_dispatch`, no schedule and no merge-blocking latency gate.
 `npm run perf:station-weight` is the per-PR check for Station's weight at rest
 and the text and tools it adds to the Claude engine's first request. It runs
 the real launcher against a loopback model stub, so it costs no model spend.
-It compares with a committed baseline and fails on growth past headroom or on
-any budget it could not compare; `--report-only` serves hosts without a
-baseline. Its end-to-end test is process-heavy, so the full-regression
+It compares with a committed baseline and fails on growth past headroom, on
+any budget it could not compare, and when the fixture's `CLAUDE.md` or
+`AGENTS.md` does not reach the first request; `--report-only` serves hosts
+without a baseline. Its end-to-end test is process-heavy, so the full-regression
 workflow runs it on Linux. The [reference](../reference/station-weight.md)
 owns its metrics, budgets, baseline recording and gaps.
 
@@ -310,7 +329,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 Dependency advisory scans are not part of PR, merge-queue or Nightly feature
 verification. The central scheduled scan retains one assigned actionable tracker;
-Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+Stable RC/final publication runs a fresh exact-source audit using trusted policy.
 This does not remove secret scanning, dependency review, signatures, integrity or
 functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
 
@@ -394,24 +413,6 @@ For the one-candidate throughput trial and its before/after measurements, use
 ruleset is the configuration authority; fewer speculative builds do not prove
 higher delivery throughput.
 
-`Repo: CI throughput health` records one metadata-only snapshot on issue #3101
-every six hours while that outcome issue remains open. It installs no project
-dependencies and starts no tests, retries, cancellations or merges. Its six-hour
-observation windows end two hours behind the cadence boundary; unfinished or
-unattributed work remains explicitly incomplete. A window that is incomplete
-only because work was still running (unfinished jobs, which also lack runner
-attribution) is recorded with a warning annotation and does not fail the
-report job. Work unfinished more than six hours after it was created, or a
-run with no jobs that old, is reported as stuck in its own warning rather
-than as running; it does not fail the job either, because it is not a
-throughput measurement. A read GitHub answers with a 5xx is retried up to
-three attempts with a short backoff (the `--record` write is not); any
-collection failure that remains (an API error, a pagination cap, an
-unresolved PR or merge base, finished work without runner attribution, or an
-unavailable ledger) still fails it.
-Snapshots are retained for 30 days. This reporting does not establish a speedup,
-close the issue automatically or replace manual-intervention outcome review.
-
 Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
 with a concurrent force-push. Existing per-SHA concurrency groups remain in
@@ -467,7 +468,6 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (classifier-filtered: UI-only landings); manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
-| [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
@@ -487,7 +487,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -506,7 +506,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
-| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
+| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
@@ -566,8 +566,8 @@ that ref without checking out or advancing local `main`.
 ```bash
 npm run ci:health -- --hours=6
 npm run ci:health -- --since=2026-10-01T00:00:00Z --until=2026-10-02T00:00:00Z --json
-npm run ci:health -- --hours=6 --record --issue=3101
-npm run ci:health -- --history --issue=3101
+npm run ci:health -- --hours=6 --record --issue=<n>
+npm run ci:health -- --history --issue=<n>
 ```
 
 The default window is the last 24 hours; `--since` and `--hours` are alternatives.
@@ -575,9 +575,8 @@ The default window is the last 24 hours; `--since` and `--hours` are alternative
 requires the exact same local origin owner/name on GitHub. Default output is
 Markdown; `--json` emits one snapshot object. Recording is explicit: `--record --issue=<n>` appends a
 human summary and fenced JSON snapshot to that issue through REST. There is no
-default issue. The [throughput health workflow](../../.github/workflows/ci-throughput-health.yml)
-records six-hour windows on issue #3101 while it remains open; it starts no
-verification builds. `--history --issue=<n>` reads these
+default issue. No workflow records snapshots; the command is run by hand.
+`--history --issue=<n>` reads recorded snapshot
 comments into a trend table; `--json` also works for history. The trend table
 adds runner-hours per landing, last-entry-to-merge median/p90 and the
 cancelled-run share; snapshots recorded before those fields show
@@ -701,8 +700,12 @@ targets and executes no test, is incomplete. Hosted `fast-checks` still passes
 such a plan when its bounded mapped tests and invariants pass, but it reports
 the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
-a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
-leaves the run complete.
+a provisional note in its description. The `fast-checks` aggregate output
+triggers the `Mark fast-checks provisional` workflow step. The source policy
+publisher reads that step's name and conclusion from the jobs API. The required `Merge-queue regression` job can still admit the candidate based on
+the exact bounded integration plan and its successful receipts. Main
+qualification owns the deferred full corpus. An E2E, desktop or pre-push
+deferral is owned outside the selection and leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
 nested causes, stacks and durations separate. Excerpts prefer the observed
@@ -753,7 +756,27 @@ related selection. Hosted shard planning instead retains the other mapped
 related paths and concrete explicit targets, including selections over 32,
 while preserving every unresolved lane obligation. This produces earlier
 failures without declaring global coverage complete.
-A third kind is derived per diff, from its base content: when a `package.json`
+A third derivation covers native files that a test names by a literal
+repository path (#4891). A change under `src-desktop/**` only names the deferred
+`verify-local` lane, yet many suites assert on the text of Rust, Kotlin, Swift,
+plist, manifest and Tauri configuration files they read through a cwd-relative
+literal such as `readFileSync('src-desktop/src/lib.rs')`, which the path-read
+scan refuses by design. In a test under `packages`, `scripts`, `src-server` or
+`src-ui`, a string literal whose whole value is a path to an existing file under `src-desktop/`,
+`tests/ios-runtime-smoke/`, `scripts/templates/` or `deployment/`, or to a
+`Dockerfile` or `docker-compose` file, that is not a JS or TS module
+and not in a generated tree selects that test when the file changes. The
+`verify-local` deferral is still reported; the edge only adds tests. A literal
+in a fixture string or an error message counts too, so some selections are more
+than a read. In local unsharded feedback, which runs an escalated diff's explicit
+targets only up to 32 of them, a test that only this derivation selected is the
+first to be left out, so these edges cannot push a diff past that bound; the
+hosted shard plan keeps every one. It does not see a path built from several segments
+(`join('src-desktop', 'src', 'lib.rs')`), a template literal with a
+substitution, a literal inside a longer string, or a suite under `tests/`, which
+a pull-request shard cannot run. For a path that also escalates, such as
+`Dockerfile`, the escalation is still reported and the named tests run beside it.
+A fourth kind is derived per diff, from its base content: when a `package.json`
 dependency section or a `pnpm-lock.yaml` importer's resolved version changes
 for a sibling `@kontourai/*` package that is not a workspace package, the
 suites that import that package by name are selected (#3149). A version bump
@@ -777,6 +800,39 @@ A workspace `package.json` must not reach related discovery: Vitest's default
 the whole corpus and overruns the shard budget, while a checkout under a
 dot-directory selects nothing. Give a changed manifest explicit readers in the
 impact manifest instead, as the contracts, SDK and Basis pane manifests do.
+An escalated path (`ESCALATION_PATHS`: `packages/shared/`, `packages/contracts/`,
+root configuration, workflows, the selector's own files) records `ci-fast` and
+gets no related discovery, because most of the corpus imports it. The hosted
+shard plan (#5010) also runs the suites near each escalated file that exists
+and Vitest can import (a JS, TS or JSON file): every suite that reaches it
+through at most one intermediate module when there are at most 100 of them,
+otherwise every suite that imports it directly when there are at most 100.
+The distances come from the Vite module graph related discovery walks, in the
+same child process, matched by real path; a diff whose only importable changes
+are escalated files now starts that child. Only a path whose chosen set is
+non-empty counts as covered. A path over both limits, a path whose chosen set
+is empty, and a path missing from Vitest's graph each add a `ci-fast` reason
+that names it; an escalated workflow, lockfile or deleted file has no importer
+graph and is named as such. A file re-exported through a widely imported
+barrel (`packages/contracts/src/index.ts` has 70 direct importers) is usually
+over the limit at two steps, so it gets only its direct importers, and often
+none. The union of suites the rule adds beyond what the plan runs anyway is
+capped at 250; above that the rule adds none for the diff and one `ci-fast`
+reason gives the count. The plan never runs an arbitrary part of a set. The
+plan's `escalatedImporters` field records each path's outcome, depth and
+counts, and the plan step prints the union and every path not covered. The
+`escalation:` reason and the `ci-fast` obligation stay either way, so the plan
+remains provisional and main qualification still runs the full corpus. Local
+unsharded feedback is unchanged. A failing discovery child (a timeout, a
+non-zero exit, malformed output or an unmatched seed) fails the plan for every
+diff alike, including an escalated-only diff that started no child before;
+the error names the escalated-importer query, so a broken rule cannot degrade
+into silently running less. Over the 150 merges before 2026-11-16 the rule
+added a median of 0 files and at most 95 to a plan, and deferred no path.
+It misses a suite further away, or one intermediate module away from a file
+with more than 100 such suites (`runtime-port.test.ts`, through
+`runtime-port.ts`, from `runtime-path-resolver.ts`, which has 134), and a
+suite that reads a changed file by path rather than importing it.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -790,6 +846,9 @@ so a pull request stays scoped and the merge queue stays advisory.
 It also sets `STATION_PUBLIC_AGENT_REGISTRY=off`, so a runtime a test builds
 never downloads the public agent registry; tests of that source construct it
 with an injected `fetch`.
+It sets `STATION_LOG_REPEAT_LIMIT=0`, so the logger writes every repeated
+warning a test asserts on; the limiter's own tests turn it back on with
+`configureLogRepeatLimit` ([logger](../../src-server/utils/logger.ts)).
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
@@ -852,11 +911,68 @@ by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
 plan, shards and statics run, because it cannot merge and that work would be
 discarded. Only the job's explicit `admitted=false` output defers: mergeability
 still being computed, an API failure or the job failing to start admit the run.
-A deferred run fails `fast-checks` with the annotation naming the conflict. Merge `main`
+A deferred run fails `fast-checks` with the annotation naming the conflict. The
+pre-push hook warns about the same conflict before the push, against the
+`origin/main` the checkout last fetched (`scripts/prepush-main-conflict.mjs`);
+that `main` may be stale, so the warning never refuses a push. Merge `main`
 (a new head starts a new run), or, when `main` has since cleared
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
 the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
+
+#### Heavy checks when armed
+
+The repository variable `STATION_PR_HEAVY_CHECKS` chooses when a
+same-repository pull request runs the heavy part of `PR: CI`: the
+affected-test shards, the critical browser journeys, the `UI entry bundle
+delta` report and delivery validation. Unset or `every-push`, every push runs
+them, as before the switch existed. `when-armed` runs only the cheap part on an
+unarmed push (the plan, the `ci:fast` statics, which include lint, every
+typecheck lane and the `git diff --check` whitespace gate, and `Repository
+source scans`, which nothing else runs before landing) and the heavy part once
+the pull request is armed for auto-merge. The merge queue runs the journeys
+again in its statics; delivery validation runs only on pull requests and in
+scheduled main qualification. Merge
+groups, pushes to `main`, manual dispatches and fork pull requests always run
+everything. The `PR source admission` job decides with
+[`pr-heavy-checks-decision.mjs`](../../scripts/pr-heavy-checks-decision.mjs)
+and prints its reason; anything it cannot read decides heavy.
+
+Arming (`auto_merge_enabled`, run name `PR armed`) starts a run that spends
+the heavy part on the current head, and a push to an armed pull request runs
+heavy. Re-arming a head that already reads verified runs only the cheap part.
+Under `when-armed` a head whose newest run deferred the heavy part reads
+`Source verification policy` pending ("heavy checks run once armed"), never
+success, so arming cannot enqueue it before the armed run passes; a head
+already verified enqueues at once. The source policy ignores a `PR armed` run
+until its `PR source admission` job has completed (with the switch off that
+job is skipped, so the run never counts), and once a head has a successful
+proof it ignores newer runs that recorded a deferral, so a cheap run or its
+re-run can neither pend nor fail a verified head. A newer run that may be
+heavy (in progress, failed or cancelled) still decides, as before.
+
+To get a full run before arming, add the `full-checks` label, then push or use
+**Re-run all jobs** on the newest `PR: CI` run: that re-runs `PR source
+admission`, which reads the label and the live auto-merge state. **Re-run
+failed jobs** does not re-run a successful admission job, so it repeats that
+run's earlier decision. To roll back, set the variable to `every-push` or
+delete it; a head left pending by a cheap-only run needs one push or **Re-run
+all jobs**.
+
+The saving for `PR: CI` alone is modest: on the 2026-11-09 to 11-16 runs,
+roughly 350–480 runner-minutes a day (about 3,330 a week: 11,871 heavy minutes
+before arming, less a full run for each first arm and a cheap run for each
+re-arm), about 1.6% of daily runner time. The switch is meant to be turned on
+together with the Gallery, iOS and Windows adoptions of the same decision.
+Before turning it on, with it still off: arm one pull request and confirm a
+`PR armed` run appears (GitHub delivered the event), then push to that armed
+pull request and confirm its `Decide whether the heavy checks run` step prints
+`pull_request.auto_merge populated`. Under `when-armed` an arming run's step
+prints which path it took: `head already verified: cheap`, `not verified:
+heavy` or `status unreadable: heavy`. A workflow whose own required check would skip before arming
+cannot adopt the switch by itself: a `skipped` required check passes, so the
+source policy must also hold the head until that check has run (see the
+decision script's header).
 
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
@@ -868,19 +984,25 @@ producer is skipped. Ambiguous metadata remains non-passing. Missing or incomple
 source proof remains pending; failed or cancelled source proof remains non-passing. The required-context
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
-PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and five affected-test shard jobs run across all PRs. Statics use two
-buckets by PR number parity. Shards use five shared buckets: the PR number's
+PR source computation has repository-wide FIFO ceilings: at most three statics
+jobs and five affected-test shard jobs run across all PRs. Statics use three
+buckets by the PR number's last digit (0, 2, 4 and 6 `even`; 1, 3 and 5 `odd`;
+7, 8 and 9 `third`), so every run of one PR waits in the same bucket. Shards use five shared buckets: the PR number's
 last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
 PR's shards never share a bucket and every plan's first shard spreads across all
 five; larger plans retain every shard. The release-bot PR (head
 `changeset-release/main` from this repository, opened by
-`station-automation[bot]`) is re-pushed on every main push, so its shard and
+`station-automation[bot]`) is re-pushed whenever a main push changes what it
+releases, and also on a conflict, unreadable state, a dirty checkout or a probe
+timeout, where it fails open ([releasing](releasing.md#release-procedure)), so its shard and
 statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
 shared buckets; supersession cancels its older heads as for any PR. A job holds
 its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
 groups from the base branch, so a bucket change applies to PR runs created
-after it lands. Different-head
+after it lands. The three-bucket statics change kept the `odd` and `even`
+names, so runs created before it share those buckets and the ceiling stays
+three; until such a run finishes or is superseded, a PR ending in 7, 8 or 9 can
+hold its old bucket and `third` at once. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
@@ -894,17 +1016,34 @@ next `PR: CI` event for the branch tries again. Ambiguous job metadata,
 changed identities and any other API failure still fail the controller;
 cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These eight PR computation
+diagnostic jobs use separate source-specific groups. These nine PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
-succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final
+use it, along with main pushes. Every canonical phase and the Android viewport
+suite must succeed, with bounded exact-source reuse. Pushes that change only
+the two deploy-ledger files are ignored. UI-only pushes qualify their own SHA,
+including the Android viewport job. Qualification completion triggers
+Main: Qualification health, whose result is watched by Main: Health.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native
 boundary checks and deterministic browser smoke against one exact source SHA.
+Those checks are a subset of `fast-checks statics`, which the merge queue runs
+on the exact commit it then fast-forwards `main` to. The gate first looks for
+that receipt ([`nightly-source-gate-receipt.mjs`](../../scripts/nightly-source-gate-receipt.mjs)):
+exactly one successful `merge_group` run of `ci.yml` from a
+`gh-readonly-queue/main/` branch at the Nightly source SHA, whose statics job
+passed with its `ci:fast` and browser-journey steps executed. It then records
+that run in a notice and the job summary and skips its own checks; the job,
+its name and its `source_sha` output are unchanged for everything downstream.
+Anything else, including a deploy-ledger commit (a pass on a ledger-equivalent
+ancestor never counts, because tests read the ledger), several runs, an API
+error or a failure of the lookup itself, runs the checks as before.
+Installation and the Chromium cache steps run either way.
 Signing, staged inventory, provenance, provider admission and readback remain
 mandatory. This usability gate does not claim full qualification.
 
@@ -1094,9 +1233,11 @@ clearing package caches leaves those installed dependency trees in place.
 
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
-already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel; biome, the governance proof and the
-commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+already holds, `.githooks/pre-push` skips the push-range checks, documentation
+freshness (which otherwise refuses only a clean checkout of the pushed commit,
+with no untracked review-ledger file, on a branch that records reviews, and
+warns in every other case), transfer gate, static gates and SDK barrel; the main-conflict warning,
+biome, the governance proof and the commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
 ls-remote`, never a local ref such as `origin/main`), and each merge's tree
@@ -1137,13 +1278,21 @@ is a real finding: raise the fixture envelope only with a matching
 the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
-chat-image line). `agent-context-budget.test.ts` beside it recomputes each
+chat-image line). station-control is measured twice: `bound`, the listing
+Claude's in-process delivery receives, and `delegated-custody`, the subset ACP
+engines, and Codex without its bound channel, list. `codexBoundToolsJsonBytes`
+measures the `dynamicTools` Codex's bound channel offers at thread start, the
+browser tools plus the whole station-control catalog at `bound`, through the
+mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
 number. `PR: Agent context budget` fails a pull request that raises any value
 above its merge base's, so only the pull request's own change counts; a branch
 that predates the file passes until it merges `main`. Cut the added text first; if the growth is worth it, a
-maintainer adds the `agent-context-increase` label. On a merge conflict in the
+maintainer adds the `agent-context-increase` label. The workflow counts a key
+the merge base lacks as growth, so a pull request that adds a measurement also
+needs that label: accepting new keys unlabeled would let a renamed key reset
+its baseline. On a merge conflict in the
 JSON, rerun the test and take its measured values.
 
 ### Latest E2E screenshot evidence
@@ -1597,10 +1746,19 @@ same assertion with different actual numbers compare equal. The assertion
 message, matcher, every `Expected` value, locator, timeout bound, quoted or
 mixed `Received` values, repo-relative paths with their line numbers, and URL
 paths must match, and an error that is not text, or is empty once normalised,
-never matches. `telemetry-feedback-mobile` throws one line that embeds console
-output, so its failure is never excused; a message whose own last line is
+never matches. Console text inside a message's own lines is compared, so such
+a failure is never excused; a message whose own last line is
 `Browser errors: [...]` could not be told from the appended one, and no
-current message ends that way.
+current message ends that way. An app error surface's identity (below) leads
+the error and carries only the surfaces and the failed chunk paths with their
+content hashes masked, so the same chunk failing compares equal between two
+builds as long as it keeps its name. When every failure `main` does not have
+is such an identity naming a failed chunk request (not `no failed chunk
+request`), the comparison answers `infrastructure` instead of `pr`: the job
+still fails, under the title `Gallery chunk load failure` and with each screen
+and chunk listed as `CHUNK LOAD`, so a lost chunk is not reported as the pull
+request's layout (#5028). It is not excused, because a pull request that breaks
+a chunk's delivery fails the same way.
 So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
 test-level assertion with no failing screen, a failing screen `main` lacks,
@@ -1618,9 +1776,8 @@ spec. The job checks out the base without replace refs or hooks, refuses a
 base checkout that is not exactly the base commit and clean, and runs the
 attribution with the `node` resolved before candidate code; that keeps honest
 accidents out, nothing more. Nothing may trust the PR Gallery
-conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
-workflow's contexts, but the capture job skips there: Gallery is not a required
-context, so a candidate's capture could not stop a landing. Combined changes
+conclusion, which is one reason it is not a required check. Merge-queue candidates run the allowlist ceiling and skip both capture and its
+input classifier. GitHub still reports the Gallery job contexts for each candidate. Combined changes
 are otherwise captured after landing by `Nightly: Gallery` once a day, which
 checks capture integrity and reports pixel differences but does not run the
 product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
@@ -1636,6 +1793,9 @@ base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
 whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+Rendered screens retain bounded browser errors in `capture.json` beside their
+UI audit, so a valid PNG with a failing product assertion keeps its runtime
+diagnostics. These errors do not change the capture or findings verdict.
 When an intentional change should become the new reference, download that
 hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
 Commit reviewed baseline updates separately; they are optional for a green
@@ -1762,6 +1922,174 @@ To add
 a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
+
+#### Named lazy-surface readiness
+
+The [lazy boundary](../../src-ui/src/components/LazyBoundary.tsx) keeps a
+loader's original promise separate from the tracing promise React receives.
+This lets a caller reuse its settled promise across mounts. A rejected import
+can be retried through the boundary, which creates a fresh lazy attempt.
+
+The live first-run journey observes **Chat actions** and **Inbox** by their
+stable `data-lazy-surface` IDs on visible failure rows. An unrelated failure
+can appear, clear, or coexist without changing that observation. The displayed
+message names the affected surface, and the shared row offers Retry and Reload.
+Custom History chrome uses the same row.
+
+A boundary failure identifies the UI that failed. Gallery uses its existing
+request evidence to determine whether an app asset failed to load. The
+[Chromium remount and Retry fixture](../../src-ui/src/__tests__/LazyBoundary.browser.test.tsx)
+and the
+[readiness adapter fixture](../../src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx)
+cover those contracts with controlled loaders and saved failure markup.
+
+#### Gallery app error states and the after-photo control record
+
+When a lazily loaded part of the product fails, it shows an error surface and
+does not retry on its own. Photographed and audited, that state produced
+hit-target findings that attribution, which re-captures only on `main`, blamed
+on the pull request: 7 certain and 3 probable of 312 finished runs between
+2026-11-13 and 2026-11-15. `tests/screenshots.spec.ts` therefore checks every
+screen for the product's error surfaces immediately before the screenshot and
+again after the audit, the second check catching a surface that appeared after
+the photo. The loop over screens, the run's second-capture budget, the order of
+the checks, the photo, the audit and the retry rule live in
+`tests/helpers/gallery-screen-attempt.ts`, and the page listeners that record
+failed requests in `observeGalleryRequests`
+(`tests/helpers/gallery-document-tracker.ts`). The spec drives both with its
+page operations; `scripts/__tests__/gallery-screen-attempt.test.ts` drives them
+with fakes, and `scripts/__tests__/gallery-app-error-state.browser.test.ts`
+wires them as the spec does against a small real page in Chromium. The helper
+empties the failed-request log before every attempt, so one screen's failed
+request cannot count for the next. That the two `*-conversation-resync`
+screens declare `afterAudit` is seen only by reading the spec, like any
+screen's own assertion.
+
+Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
+`LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
+notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), the
+route boundary's chunk failure (an `.error-state` titled with the catalog's
+`route.chunk.title` or `route.chunk.offlineTitle`), and a route still suspended
+after its loading window (`.route-pending-recovery`). A surface can appear
+while a script request is still pending or after a render error. The Gallery
+records failed requests independently. NOT detected, because none
+has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
+`RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
+`DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
+their own `unavailable` slot that omits the shared row (several render nothing). The route boundary's
+other error states, its authority failure (`route.authority.title`) and its
+render failure (`route.generic.title`), are not detected either. The route
+chunk failure is matched by its en-US titles. The stalled route is matched
+by class in every locale. No screen shows a detected surface on purpose, checked by
+grep; no full capture has been run since route-chunk detection was added. A
+screen that starts to must be exempted by name in
+`APP_ERROR_SURFACE_EXEMPT_SCREENS`.
+
+A screen with a surface fails as `capture-failed`, and no layout findings are
+judged for that state. A failed chunk request means a script request of the
+live document for one of the app's own build files: the same origin as the
+page under capture and a path under `/assets/`. A cross-origin script, or a
+same-origin script elsewhere, is recorded in `appError` (with `appAsset:
+false`) but is not a chunk. The first line of the error is its identity: the
+surfaces and the failed chunk requests with hashes masked, for example `app-error-surface: lazy-boundary-row; failed chunk requests:
+/assets/CoreUpdateLaunchCheck-<hash>.js`, or `no failed chunk request` when there
+was none (a render error, or a chunk that downloaded but threw). It leaves out
+what differs between two captures of one failure: requests of the document a
+navigation was replacing, error text (one aborted chunk read `ERR_ABORTED` on one
+attempt and `ERR_FAILED` on another), whether it surfaced before or after the
+photo, counts, and a capture step's own error. All of that is in the screen's
+`appError` in `capture.json`, with the console errors. The capture's log and
+its final assertion name each failed screen; one that lost a chunk reads
+`lazy chunk unavailable: <screen> (<path> <error>)` with the real request paths.
+`scripts/__tests__/gallery-app-error-state.browser.test.ts` aborts a chunk on
+both attempts of one screen whose error row sits in a hard clip, and checks that
+reason and that the findings judge reports only `capture-failed`, though the
+same row audited directly yields `hit-target:unreachable` for Retry and Reload.
+
+A second capture needs both in the same attempt: a detected surface and a
+failed chunk request. A failed chunk request alone is not evidence that the
+screen lost a chunk it needed: in a full capture on 2026-11-16,
+`task-capabilities-light-desktop` and `task-capabilities-light-mobile` each had
+two app chunk requests aborted in the live document and rendered correctly. So
+a render error that coincides with an aborted request is captured again too,
+and its identity names that chunk. The second capture runs once, on the same
+instance with a fresh navigation (`beforeGoto` and `cleanup` run again), and for
+at most `MAX_SECOND_CAPTURES` (5) screens a run, after which further screens fail
+without one and the log says so. That includes a capture step that threw while
+such a surface was on the page, so an ordinary failure that coincides with a
+download failure is captured again too; it passes only if the whole second
+capture passes. A surface without that evidence, an ordinary assertion or audit
+failure with no surface, and a screen failing a second time are not captured
+again. A clean second capture passes the screen as a transient: a `::warning`
+annotation, a `TRANSIENT <screen>: ...` line from
+`node scripts/gallery-ui-findings.mjs` (which does not change its verdict), and
+an entry under `secondCaptures` in `capture.json` with the first attempt's
+identity and record; the first attempt's image (the full-page photo when one
+was taken) is kept as `gallery/transients/<screen>.attempt-1.png`. A second
+capture that fails, fails the screen as before, so a pull request that breaks a
+chunk fails twice and attribution proceeds unchanged. A second capture that
+throws (a screen's `cleanup`, say) fails that one screen with both errors and the
+capture goes on. A screen whose fixture keeps state across `beforeGoto` calls
+can behave differently the second time. The flip side: a pull request that makes
+chunk delivery fail intermittently, or only on a screen's first visit, passes
+each such screen as a transient with a warning, and fails only once more than
+five screens in one run need a second capture.
+
+Not verified: none of the four hosted runs this was built from (43751068714,
+43739274329, 43704347024, 43769487439) has been shown to have had a failed
+chunk request of the live document, which is what earns a second capture. Their
+asset diagnostics put screens 127 to 242 in one bucket and did not record which
+document a request belonged to, so the first hosted runs after this landed are
+the evidence that the rule catches the transient it was built for.
+
+Each failed request is recorded with its wall-clock time, resource type and
+whether it belonged to the document then showing (`current`) or to one a
+navigation was replacing (`previous`, ordinary teardown). A new document is
+counted when the main frame navigates after its navigation request has a
+response; a history change (`pushState`, `replaceState`, a hash change),
+including one the outgoing page makes while the next navigation is pending,
+is not a new document. The capture's asset
+diagnostics (`gallery/diagnostics/asset-network-v3.json`) give every declared
+screen its own bucket; the capture refuses to start when the gallery outgrows
+`GALLERY_ASSET_MAX_SCOPES` instead of sharing one.
+
+Report only, never failing a screen: the visible controls are read immediately
+before the screenshot and again as soon as the audit ends. `controlsAfterPhoto`
+lists names that appeared or disappeared, `controlMovement` counts same-name
+controls that moved more than half a pixel, with the largest displacement in CSS
+pixels and the control, and `windowMs` is how long the window actually was. The
+capture prints the ten screens that changed most. A change that arrives after
+the audit ends is not seen. Nor is: content that is not a control (a `button`,
+`[role="button"]` or `input[type="submit"]`), anything outside the viewport, or
+any control past the first 100 in document order. Controls are paired by name
+and by order among controls of that name, so two same-named controls that swap
+places read as two moves, and a renamed control reads as one removed and one
+added, not as a move. To look for a screen that moves later, set
+`STATION_E2E_GALLERY_SETTLE_WINDOW_MS` (an integer from 1 to 5000) on a local
+capture: the second read then waits until at least that long after the photo,
+the test timeout grows by that much per screen, and `capture.json` records
+`settleWindowMs`. It is off by default because a 1 s pad cost about a second on
+every screen (four minutes on a full capture) for report-only data. An earlier
+version used Chromium's `layout-shift` observer instead; it read zero when an
+80 px block was inserted right after the photo, so it was removed. Before
+anything gates on this record, a full hosted capture has to show which screens
+change by design and how stable the rest are run to run; there is no allowlist
+for it.
+
+To see all of this against the real app, a targeted local capture accepts
+`STATION_E2E_GALLERY_FAULTS`, a JSON array: `chunk` fails every request for the
+named chunk on the listed attempts (`mode` `abort`, `not-found`, or `poison`, a
+module that throws when evaluated; `"when": "after-screenshot"` holds the
+request until the photo is written), `fail-step` throws an ordinary error,
+`fail-cleanup` throws from the screen's cleanup, and `move-after-photo` inserts
+an 80 px block above `.app` `delayMs` after the photo. It is refused on GitHub
+Actions and whenever the selection covers every declared screen, and is recorded
+under `faultInjection` when used:
+
+```bash
+STATION_E2E_GALLERY_FAULTS='[{"screen":"run-setup-dark-412","kind":"chunk","chunk":"CoreUpdateLaunchCheck","attempts":[1]}]' \
+  npm run test:e2e:screenshot -- --screens=run-setup-dark-412
+```
 
 `npm run gate:for` names the gallery screens whose module graph loads each
 changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints
@@ -2074,12 +2402,34 @@ slot and then runs the script as the slot holder. These entry points use it:
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+| `node scripts/code-health-gate.mjs` (also a `ci:fast` step), started any way | `code-health-gate` |
+| `npm run veritas:fallow:advisory` (a Veritas readiness evidence check), `npm run audit:code-health` | `fallow audit`, `fallow audit --whole-tree` |
+| `npm run fallow:baseline`, `npm run fallow:ceiling` (not with `--report`) | `fallow:baseline`, `fallow:ceiling` |
+| `npm run fallow`, `npm run fallow:dead-code`, `npm run fallow:audit` | the script name |
+
+The code-health gate and the fallow runners take the slot themselves, so a
+direct `node scripts/<script>.mjs` queues like a package script. One `fallow
+audit` reached 5.1 GiB, and two worktrees running the gate at once got a
+Station engine OOM-killed ([#5080](https://github.com/kontourai/station/issues/5080)).
+`npm run docs:review:record` takes no slot. It is single-threaded bookkeeping:
+it snapshots the repository's review inputs, checks them, and writes the review
+ledger (measured on 2026-11-16: 41 s, 1.1 cores, 1.1 GiB peak for
+`--show-delta`). The slot is sized for checks that saturate about four cores
+and hold several GiB, and with one slot, a ledger write would wait behind a
+whole test run.
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
 - A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
   for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
   every minute.
+- That message leaves the inherited stdout or stderr non-blocking, and the
+  flag survives execve. Before a slot holder execs the slotted program on
+  macOS or Linux, `scripts/lib/slot-holder-exec.mjs` (also used by
+  `scripts/run-biome.mjs`) restores blocking stdio. Otherwise a native program
+  such as Biome fails with `Resource temporarily unavailable` (EAGAIN) as soon
+  as the process reading its output falls behind
+  ([#5119](https://github.com/kontourai/station/issues/5119)).
 - Waiters are admitted in arrival order. Each waiter writes a ticket under the
   pool's `queue/` directory, and only the earliest N live tickets may claim a
   slot. A ticket whose waiter died is removed by the next reader.
@@ -2167,7 +2517,7 @@ liveness bounds ×4`.
 | Vitest `testTimeout` and `hookTimeout` | 30 s | `vitest.config.ts` |
 | Product-law per-observation default | 30 s | `productLawObservationTimeoutMs` |
 | Product-law total runtime ceiling | 150 s | `productLawRuntimeBudgetMs` |
-| Fallow watchdog per command | 120 s | `runFallowAnalysis` |
+| Fallow watchdog per command | 240 s | `runFallowAnalysis` |
 | Transfer capture child default | 60 s | `transferCaptureLivenessTimeoutMs` |
 | Transfer capture in-process barriers | half the capture bound (30 s), so they scale with it | `scripts/lib/transfer-capture-barrier.ts` |
 
@@ -2257,7 +2607,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Veritas readiness executes full-repository lint once through its required `style-standard` check. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -2429,8 +2779,12 @@ full-corpus call on the merge queue's critical path.
 validates the plan, exact candidate SHA and base, including its explicit
 coverage deferrals. The required aggregate accepts only successful diff,
 plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
-Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
-it does not start an expensive fallback corpus. The required
+Missing, invalid, foreign, cancelled or unavailable evidence blocks integration.
+If an owned related-discovery child reaches its timeout and settles cleanly,
+the hosted plan runs the mapped exact suites plus bounded direct UI component
+importers. The plan names the timeout and retains the `ci-fast` deferral.
+Those shard results are diagnostic and the aggregate and queue decision block
+admission. A refused launch or failed cleanup still stops planning. The required
 `Source verification policy` status for the queue head is published from
 inside the merge-group run once `fast-checks` settles; the post-run lifecycle
 reconcile recomputes the same verdict from the same jobs and stays the
@@ -2756,6 +3110,28 @@ ports, temporary home, instance build roots, and `test-results/<instance>`
 directory. `STATION_E2E_CAPACITY` is bounded and is for measured,
 deliberately-provisioned hosts—not an edit-loop speed knob.
 
+The first-run Chromium journey records `first-run-surface-timing` samples
+in the suite log. The sample distinguishes the visible surface wait from
+same-origin JavaScript resource timing. A negative resource start offset
+means the browser started that resource before the timed interaction. A
+zero transfer size does not establish a network fetch. A missing resource
+entry is recorded separately from a slow surface.
+
+Each receipt records the checkout revision and whether tracked files differ.
+Only an observed timing entry contributes to a resource conclusion. An
+unavailable observation names the stage and failure class. Keep the existing
+20-second allowances until a slow-host sample establishes the tail.
+
+A clean run at `cbfd9227ce19297fb1ba090e2463c579ff5e154d` with one-minute host
+load 7.1–7.9 observed both setup launchers at 168–169 ms, the unconfigured
+composer at 4 ms, the Connections Models action at 338 ms, the Station Agent
+row at 1.08 s, and Chat actions at 812 ms. Inbox opened in 40–51 ms. The
+browser returned resource durations of 5.0 ms for the Connections frame,
+4.2 ms for the provider view, and 3.6 ms for the Chat actions sheet. Each
+had a zero transfer size. The Agent picker row's recorded script request
+preceded the timed picker interaction, and the Inbox recorded no new
+same-origin script entries during those opens.
+
 `tests/mobile-chat-composer.spec.ts` owns the mobile task-switcher journey:
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
@@ -2868,13 +3244,12 @@ Focused automation:
 
 The connected-agent macro runs the same provider/service/route coverage
 through the existing focused runner, with one worker, no file parallelism,
-and the original 10-second test bound. The high-cardinality EventStore case is
-the first of seven test files and owns a fresh process-exclusive test-file lifecycle.
-EventStore is explicitly process-exclusive
-in the resource manifest; calling raw Vitest would bypass that constraint and
-run its high-cardinality SQLite fixture alongside other suites. This routing
-change neither removes a suite nor increases its timer. The fixed macro accepts
-no CLI overrides; other focused runs retain their existing defaults.
+and a 10-second limit per test. The high-cardinality EventStore projection runs
+to completion in its own Vitest invocation before the other six files start.
+Both phases report in-flight diagnostics. An ordinary test failure in either
+phase makes the command exit nonzero after both phases run. EventStore is
+process-exclusive in the resource manifest, so use the focused runner to retain
+that constraint. The macro accepts no CLI overrides.
 
 ```bash
 npm run test:connected-agents
@@ -3173,7 +3548,10 @@ The `seatbelt-kernel` profile pins the kernel legs of
 - **Where they do not:** every pull-request, merge-queue and corpus lane.
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. A regression in these legs therefore shows after merge, on the
-  `main` push that introduced it, not on its pull request.
+  `main` push that introduced it, not on its pull request. Registration/profile
+  alignment is checked separately before landing when either kernel test file
+  changes; that audit collects test identities without running the bodies and
+  is not kernel execution evidence.
 - **Restricted network (#4769):** the nested `with a restricted network
   (#4769)` legs run real `sandbox-exec` children under the broker-only
   profile with an in-process egress broker and local listeners only; no
@@ -3283,7 +3661,7 @@ hold an otherwise eligible PR. A demonstrated product defect still needs an
 explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
 and exact-SHA promotion receipts establish different things.
 
-For asset-load failures, inspect `gallery/diagnostics/asset-network-v2.json`. Scoped request summaries are independent of the capped, sampled detail; detail remains nonexhaustive. Inspect summary, dictionary, pending, metadata-error and incomplete fields separately. Emitted-file hashes establish file identity; recognized literal references are a projection, not a complete import graph. `capture.json` reports retention and the post-write identity/budget check (2 MiB JSON, 4 MiB diagnostic folder); `RETAINED` does not mean complete diagnostics or a successful capture. These checks require a single writer and stable directory. Compare the bounded start/end checkout receipts with the hosted checkout record; `workflowEventSha` identifies the workflow event. Disk-cache use and UI-process lifecycle remain unknown. Preserve the original capture failure and avoid inferring its cause from a later passing run.
+For asset-load failures, inspect `gallery/diagnostics/asset-network-v3.json` and a failed screen's `appError` in `capture.json`. Each screen has its own scoped request summary; summaries are independent of the capped, sampled detail, which remains nonexhaustive. A sampled failed request carries `requestedAt`, `failedAt` (wall clock), `resourceType` and `document` (`current` or `previous`). Inspect summary, dictionary, pending, metadata-error and incomplete fields separately. Emitted-file hashes establish file identity; recognized literal references are a projection, not a complete import graph. `capture.json` reports retention and the post-write identity/budget check (2 MiB JSON, 4 MiB diagnostic folder); `RETAINED` does not mean complete diagnostics or a successful capture. These checks require a single writer and stable directory. Compare the bounded start/end checkout receipts with the hosted checkout record; `workflowEventSha` identifies the workflow event. Disk-cache use and UI-process lifecycle remain unknown. Preserve the original capture failure and avoid inferring its cause from a later passing run.
 
 Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
 reusing a verdict or skipping capture. Run it in the exact candidate checkout

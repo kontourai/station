@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Cites notification-delivery.md; its run-delivery dedupe claims are the automation ledger's, unaffected by notification record retention.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

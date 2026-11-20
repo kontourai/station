@@ -1,0 +1,17 @@
+{
+  "revision": "da3f9ba9df04737bc6151d7943da623e60540231",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Only the desktop sidecar compile-cache paragraph changed (server launched without a cache, inherited setting removed); pages citing this guide rely on its verification lanes and routing, which are unchanged.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Only the desktop sidecar compile-cache paragraph changed (server launched without a cache, inherited setting removed); pages citing this guide rely on its verification lanes and routing, which are unchanged.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Only the desktop sidecar compile-cache paragraph changed (server launched without a cache, inherited setting removed); pages citing this guide rely on its verification lanes and routing, which are unchanged.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Only the desktop sidecar compile-cache paragraph changed (server launched without a cache, inherited setting removed); pages citing this guide rely on its verification lanes and routing, which are unchanged.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Only the desktop sidecar compile-cache paragraph changed (server launched without a cache, inherited setting removed); pages citing this guide rely on its verification lanes and routing, which are unchanged.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Only the desktop sidecar compile-cache paragraph changed (server launched without a cache, inherited setting removed); pages citing this guide rely on its verification lanes and routing, which are unchanged.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

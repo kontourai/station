@@ -1,0 +1,13 @@
+{
+  "revision": "b284c1a8e554e952640bf89bd76d2c7359572c67",
+
+  "notes": [
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"Reviewed the two SDK fixture exports added for Project Overview notification preferences. They let the Project Settings browser fixture bundle. The invitation test uses a separate authority fixture and is unchanged. All three browser tests passed. Existing images retain their original capture provenance.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"Reviewed the two SDK fixture exports added for Project Overview notification preferences. They let the Project Settings browser fixture bundle. The invitation test uses a separate authority fixture and is unchanged. All three browser tests passed. Existing images retain their original capture provenance.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"Reviewed the two SDK fixture exports added for Project Overview notification preferences. They let the Project Settings browser fixture bundle. The invitation test uses a separate authority fixture and is unchanged. All three browser tests passed. Existing images retain their original capture provenance.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"Reviewed the two SDK fixture exports added for Project Overview notification preferences. They let the Project Settings browser fixture bundle. The invitation test uses a separate authority fixture and is unchanged. All three browser tests passed. Existing images retain their original capture provenance.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]}
+  ]
+}

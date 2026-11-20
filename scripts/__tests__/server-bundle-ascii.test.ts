@@ -31,16 +31,6 @@ describe('assertAsciiServerBundles', () => {
     );
   });
 
-  it('checks the code-split chunks beside the entry', () => {
-    const dir = bundleDir({
-      'command-station.js': 'await import("./station-chunk-ABCD2345.js");',
-      'station-chunk-ABCD2345.js': 'const quote = /[’]/u;',
-    });
-    expect(() => assertAsciiServerBundles(dir)).toThrow(
-      /station-chunk-ABCD2345\.js @/,
-    );
-  });
-
   it('ignores files that are not loaded as scripts', () => {
     const dir = bundleDir({ 'command-station.js.map': '{"names":["’"]}' });
     expect(() => assertAsciiServerBundles(dir)).not.toThrow();

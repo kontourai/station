@@ -1,5 +1,6 @@
 import type {
   MouseEvent as ReactMouseEvent,
+  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -22,6 +23,8 @@ import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { MobileDockHeaderLeadingContext } from './MobileDockHeaderLeading';
 import { MobileSheetPending } from './MobileSheetPending';
 
+const chatActionsSurface = { id: 'chat-actions', label: 'Chat actions' };
+
 const loadChatDockMobileOverflowSheet = () =>
   import('./ChatDockMobileOverflowSheet').then((module) => ({
     default: module.ChatDockMobileOverflowSheet,
@@ -41,6 +44,8 @@ export interface ChatDockMobileOverflowActions {
    * identities, so the sheet is their only home. Absent: no rows.
    */
   copyActions?: DockMoreAction[];
+  /** Changed files / Task context: panel toggles, checked while shown. */
+  panelActions?: DockMoreAction[];
   onOpenProject: (() => void) | null;
   openProjectName: string | null;
   inputOriginLabel?: string;
@@ -128,6 +133,7 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  reportedStart?: ReactNode;
   routeLabel?: string;
   stationName?: string;
   sessionProjectMismatchLabel?: string | null;
@@ -153,6 +159,7 @@ export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  reportedStart,
   routeLabel,
   stationName,
   sessionProjectMismatchLabel,
@@ -234,7 +241,7 @@ export function ChatDockMobileHeader({
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
             aria-haspopup="dialog"
             aria-expanded={isOverflowOpen}
-            aria-label="Chat actions"
+            aria-label={chatActionsSurface.label}
             aria-describedby={
               activitySummary ? activityDescriptionId : undefined
             }
@@ -285,10 +292,14 @@ export function ChatDockMobileHeader({
           {!inboxActive && agentIdentity && ' '}
           {!inboxActive && (agentIdentity || stationName) && (
             <span className="chat-dock__mobile-eyebrow">
+              {!childTrail && reportedStart}
               {stationName && `Via ${stationName}`}
               {stationName && agentIdentity && ' · '}
               {agentIdentity?.name}
-              {!stationName && routeLabel && ` · via ${routeLabel}`}
+              {!stationName &&
+                routeLabel &&
+                !agentIdentity?.name.includes(routeLabel) &&
+                ` · ${routeLabel}`}
               {sessionProjectMismatchLabel &&
                 ` · ${sessionProjectMismatchLabel}`}
             </span>
@@ -326,9 +337,10 @@ export function ChatDockMobileHeader({
       {isOverflowOpen && (
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}
+          surface={chatActionsSurface}
           pending={
             <MobileSheetPending
-              label="Chat actions"
+              label={chatActionsSurface.label}
               onClose={() => setIsOverflowOpen(false)}
               returnFocusTarget={chatActionsTriggerRef.current}
             />

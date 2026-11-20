@@ -2911,6 +2911,10 @@ async function inspectRetainedPluginRecovery(
   const captures: Array<
     NonNullable<ReturnType<typeof captureLocalPluginInstallation>>
   > = [];
+  const dependencyTrust = new Map<
+    string,
+    ReturnType<typeof pluginRegistryTrust>
+  >();
   const approvals: Array<{
     id: string;
     expectedInstallation: PluginInstallationRevision;
@@ -2993,6 +2997,7 @@ async function inspectRetainedPluginRecovery(
           ),
         );
       }
+      dependencyTrust.set(dependency.id, pluginRegistryTrust(childTrust));
       approvals.push({
         id: dependency.id,
         expectedInstallation,
@@ -3072,7 +3077,10 @@ async function inspectRetainedPluginRecovery(
         autoGranted: basis.autoGranted,
         pendingConsent: basis.pendingConsent,
       },
-      dependencies: approvals,
+      dependencies: approvals.map((approval) => ({
+        ...approval,
+        registryTrust: dependencyTrust.get(approval.id),
+      })),
       skip: plan.skipped ?? [],
     },
   };

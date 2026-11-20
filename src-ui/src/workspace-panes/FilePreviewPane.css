@@ -170,14 +170,29 @@
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
 }
-/* The text itself: `code` has the browser's own monospace rule, which would
-   otherwise replace the family and size set on the block above. */
+.workspace-file-preview__code [data-line] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.workspace-file-preview__code [data-line] > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the block's font in the code and its line cells. */
 .workspace-file-preview__code code {
   font: inherit;
 }
 /* The line's own number: a link to the line, drawn as a gutter, not a link. */
 .workspace-file-preview__code a {
+  align-self: start;
+  min-width: 3.5em;
+  margin-inline-end: 1em;
+  color: var(--k-text-muted);
+  text-align: end;
   text-decoration: none;
+  user-select: none;
 }
 .workspace-file-preview__visually-hidden {
   position: absolute;

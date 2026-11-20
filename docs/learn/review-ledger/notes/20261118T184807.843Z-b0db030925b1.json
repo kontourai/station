@@ -1,0 +1,9 @@
+{
+  "revision": "f503ade60c5cd2c462a56495900c2466116abca6",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Reviewed the CLI test addition against the status command and remote preparation guidance. It adds a served current account-limit reason and explicit UTC reset to stdout, without inventing a plan window or changing workspace preparation and admission assertions.","inputs":["packages/cli/src/__tests__/delegate.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the CLI test addition against the status command and remote preparation guidance. It adds a served current account-limit reason and explicit UTC reset to stdout, without inventing a plan window or changing workspace preparation and admission assertions.","inputs":["packages/cli/src/__tests__/delegate.test.ts"]}
+  ]
+}

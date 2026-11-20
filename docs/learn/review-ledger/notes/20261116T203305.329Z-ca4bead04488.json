@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md gained a past-the-end read clause; no glossary term changed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

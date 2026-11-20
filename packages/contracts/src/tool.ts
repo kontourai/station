@@ -595,10 +595,33 @@ export interface ModelOptionCapabilities {
   imageInput?: boolean;
 }
 
+export interface CatalogModelRoute {
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+}
+
+export function readCatalogModelRoute(
+  value: unknown,
+): CatalogModelRoute | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const { providerId, modelId, displayName } = value as Record<string, unknown>;
+  const valid = (field: unknown): field is string =>
+    typeof field === 'string' && field.trim().length > 0 && field.length <= 512;
+  if (!valid(providerId) || !valid(modelId)) return undefined;
+  return {
+    providerId,
+    modelId,
+    ...(valid(displayName) ? { displayName } : {}),
+  };
+}
+
 export interface ModelOption {
   id: string;
   name: string;
   originalId: string;
+  /** Structured engine catalog fields for display. The selector remains `id`. */
+  catalogRoute?: CatalogModelRoute;
   /**
    * For alias/default entries, the concrete model id the engine reports this
    * entry currently resolves to (e.g. Claude's 'default' → 'claude-opus-5[1m]').

@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execGit } from '../../../utils/git-exec.js';
 import { ReviewLensRouter } from '../review-lens-router.js';
 
@@ -196,6 +196,37 @@ describe('ReviewLensRouter', () => {
       kind: 'planned',
       lenses: [{ id: 'ui' }],
     });
+  });
+
+  it('names a failed Veritas engine load apart from a failed classification', async () => {
+    // The engine is loaded on first plan (scripts/lib/server-static-imports.mjs);
+    // a fresh router module sees an engine that cannot load.
+    vi.resetModules();
+    vi.doMock('@kontourai/veritas/engine', () => {
+      throw new Error('veritas engine unavailable');
+    });
+    try {
+      const { ReviewLensRouter: FreshRouter } = await import(
+        '../review-lens-router.js'
+      );
+      const repo = await fixture();
+      await write(repo.root, 'src-server/changed.ts', 'export {}\n');
+      const head = await commit(repo.root, 'server change');
+      await expect(
+        new FreshRouter(repo.base).plan({
+          repositoryRoot: repo.root,
+          baseSha: repo.base,
+          headSha: head,
+        }),
+      ).resolves.toMatchObject({
+        kind: 'human-review-required',
+        reason:
+          'The Veritas engine that classifies the change could not be loaded.',
+      });
+    } finally {
+      vi.doUnmock('@kontourai/veritas/engine');
+      vi.resetModules();
+    }
   });
 
   it('requires human coverage for unknown paths and candidate policy changes', async () => {

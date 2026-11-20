@@ -104,8 +104,11 @@ ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
-invoke the callback is the engine's own configuration; for OpenCode, Station
-sets that configuration from the chat's approval mode
+invoke the callback is the engine's own configuration. Station's approval
+mode can answer those requests without changing that configuration. For
+verified OpenCode 1.x over ACP, Station also sets the launch configuration.
+For OpenCode 2.x over ACP, host Never ask answers the engine's own requests
+without a launch overlay; confined modes remain refused
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 The `opencode` engine delivers the same staged evaluator on both transports.
 Over ACP it is the `requestPermission` path above. On its native transport it
@@ -124,16 +127,22 @@ tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
-Child fan-out is the one denial Station also enforces server-side for every
-engine. A delegated child that calls `delegate_task` or `send_message` is
-refused at the routes behind them (`POST /api/orchestration/delegations`, and
-`/chat`, `/chat/delegated` and `/chat/background`) with `403` and
-`delegated_tool_blocked`, before the depth limit is read. The decision uses the
-calling session's own recorded delegation context and the built-in denial list,
-so an Agent's `allowedTools` cannot re-allow it. It needs a verified
-station-control caller: a Codex URL token, an ACP header token or the Claude
-in-process server. A shell `station` CLI run under an operator credential is not
-that caller, so this is not coverage of every way a child could start work.
+Inherited delegation allowlists are conjunctive. Each group is an allowlist
+from an ancestor, and the tool must match every group as well as the child's
+own allowlist. An empty group permits no tool. Station preserves the groups
+in delegated requests and binds them to the runtime attestation. Station
+refuses execution of requests or recorded sessions carrying inherited groups,
+including managed Station execution and forwarding to a peer or SSH target.
+Enabling that execution requires binding the policy to conversation reuse and
+durable intent, then proving enforcement at the actual tool effect.
+
+Station Control derives the dispatch caller from its verified session.
+A child can start another child only on this Station in the caller's own
+scope, within the recorded depth limit and inherited tool policy. Station
+refuses a child that calls `send_message` with `delegated_tool_blocked`.
+The calling session's recorded context controls both decisions. This
+covers verified ACP, Codex, and Claude callers. Commands issued with an
+operator credential have their own authority.
 
 ### Codex approval policy and reviewer
 
@@ -159,11 +168,12 @@ approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
 escalations of a `host` session automatically without opening a Station
-approval card. The Ask
-chip confirms the approval-policy mapping only; Station does not currently
-report the effective reviewer. Its picker option and the chip's accessible name
-name that gap; the chip's hover tooltip carries only the policy boundary.
-Ask alone is not evidence that a person must approve every sandbox escalation.
+approval card. The approval sheet shows the reviewer Codex reported for the
+current native thread as You, Automatic, or Unknown. Station records startup,
+resume, fork, and subsequent settings reports independently of the approval
+mode. The last report is restored on reconnect. An explicit workspace start
+is refused if Codex reports an automatic reviewer in conflict with the
+human-reviewer configuration.
 See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 
 This mapping was checked against Codex CLI 0.162.1's generated app-server
@@ -244,6 +254,31 @@ Claude Code, Codex and ACP is at the Station seams that carry their MCP calls
 passes only on a person's recorded approval of that tool. Calls an engine
 makes to a server it connects to itself are not enforced
 ([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
+
+Under full access the `ask` is not raised: full access is the person's own
+standing answer, so the external evaluator records it as that person's
+approval for the seam and leaves the call to the engine. Each engine's
+adapter says when it runs at full access: Claude Code at
+`bypassPermissions`, Codex at an applied `never` (which also answers its
+Station-bound browser and station-control calls), and an OpenCode or other
+Station-governed ACP session at `never`. `deny` still refuses, and the
+persistence protection below still applies.
+
+## Built-in tools that change authority
+
+Owner decision (2026-11-16): full access trusts an agent with the work,
+never with widening its own trust. The station-control tools that change who
+or what holds authority (`STATION_AUTHORITY_TOOLS`: Station configuration,
+creating or updating Agents, plugins, deleting integrations, skills and SSH
+hosts) are a required question on every engine, in any name the engine gives
+them: the staged evaluator asks a person before any grant, pattern or full
+access is read, and `toolRequestNeedsPerson` offers and honours no session
+answer for them. On Station's own engine (voice and other unattended runs
+included) an approval guardian the operator enabled may still allow one, as
+it may any mutation there (archive#2016); on an external engine, which would
+run a guardian-allowed call unasked at full access, a person is always asked.
+Tools that run host code or store credentials
+stay person-only at the station-control guard and never reach an agent.
 
 Engine-native web reads set the same mark (#4828): Claude Code through an
 in-process `PostToolUse` hook on every session (`WebFetch`, `WebSearch`), Codex
@@ -557,6 +592,21 @@ different reasons leave it unrecorded, so it reads as missing; the same
 request seen twice is kept once. At most 256 unread records are kept; the
 oldest is dropped beyond that. A stdout line longer than 8 MiB is forwarded
 without being read.
+
+A person's own session answer is offered on every tool approval, an
+escalation included (owner decision, 2026-11-16): where a narrower grant
+below does not apply (an acceptEdits mode change, a folder), the whole-tool
+grant is offered. Only a request addressed to a person (a plan exit, a
+question, a per-host sandbox network ask, a built-in tool that changes
+authority) offers none. A grant covers what it was given on: one given on a
+plain call answers later plain calls of the tool, and only one given on an
+escalation also answers the tool's later escalations. A grant widened onto
+an escalation is Station's own and forwards none of the engine's
+suggestions, so it never switches a full-access or plan-mode session to
+acceptEdits. The command-prefix and server-wide browser choices are offered
+for a plain call only. What follows decides which requests escalate, and so
+whether a pattern, the guardian or a delegated child may answer the call
+(`toolRequestIsPlainCall`).
 
 `claudeAskEscalates` in the shared computation then decides, for both the
 session grant and `toolRequestIsPlainCall`:

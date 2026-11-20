@@ -86,6 +86,30 @@
       "sha256": "4f030fab5a00cc08660db4a7f03d85cd0d4cbe5fc5a8c7ac5ebad1340be16e72"
     },
     {
+      "name": "channel-nav-list-dark-mobile",
+      "width": 390,
+      "height": 1200,
+      "sha256": "6f47ecf0e96d151cbe20571ad2880b5f42b5eaf0f550915c9605f1e36801051b"
+    },
+    {
+      "name": "channel-nav-list-light-mobile",
+      "width": 390,
+      "height": 1200,
+      "sha256": "16a4f8121c447a8aa80a00137e584d7b4b45bf97e9485fb748ab99a14ea57aed"
+    },
+    {
+      "name": "channel-nav-thread-dark-mobile",
+      "width": 390,
+      "height": 844,
+      "sha256": "c8e7d8336cc7454818947c1254c8255927295863d67f980757793672fbf8bfef"
+    },
+    {
+      "name": "channel-nav-thread-light-mobile",
+      "width": 390,
+      "height": 844,
+      "sha256": "e5b0ca8610e50917078e3e84fcfb840b1e639756f3c697dd2d1c44e99ed07b66"
+    },
+    {
       "name": "child-chat-dark-1440",
       "width": 1440,
       "height": 900,
@@ -815,25 +839,25 @@
       "name": "room-long-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "ceac53e5ecf28915b00239892a99b9dc52bae32e99a979484fb6557548d3759f"
+      "sha256": "c98a024f84e36893300559f9a24502749c8c6f9d404889ce2d2b07e326eb321c"
     },
     {
       "name": "room-long-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "09b62e955d75568507c199f04ec56681b1bb87bcdcf70b0f9295dad91107cdd3"
+      "sha256": "498620c0b69f3305ac5b211d5fff922a25f79de758083665f75641f413471ded"
     },
     {
       "name": "room-long-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "c257caf62cd597df3ea20259932e69dad8f84141f32aecd65078ea19f3ef79b1"
+      "sha256": "dc3bdd17a456a993cbb9259d13231886ebcb457674a822044ec875fdf4074f77"
     },
     {
       "name": "room-long-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "fb50019f5c733eaada53d82fcc3ac5e5e9464d5820d27938a02c5cfb54ca4c54"
+      "sha256": "82990d4c299bf11ad7f5a06154843e96f028745d4670cbe906847825dd00d1e0"
     },
     {
       "name": "room-mention-dark-desktop",
@@ -1109,25 +1133,25 @@
       "name": "task-capabilities-dark-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "5a7d6d277f29b9d1fb9e1d03818056f9a69531eda5259c9e4cc2a4d82a61d2b2"
+      "sha256": "6297ea95fd5ca1c6a66600a7d1c2637778a2ad98bc01be11bd1ccdb81e9a3638"
     },
     {
       "name": "task-capabilities-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "34b644a3ab05e0d514c039cf72a64799d56ffc72f7aa6e806c467f3640ad795e"
+      "sha256": "3f65f69cc046b1c25e8fb1656856e7c92b1ccfe6f0956ba9e28672d9839cf59b"
     },
     {
       "name": "task-capabilities-light-desktop",
       "width": 1440,
       "height": 900,
-      "sha256": "a44ffe5644c49738f3e0feacf165c2ad9e9fa74f8358de50bca3fe2182ce152f"
+      "sha256": "74f57589e9e7e1f9d0fcce19efd37b22c4082477c0d6e3b5042aa616e0d501e7"
     },
     {
       "name": "task-capabilities-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "3c1bca38f9abfd8d63f1c2154c11b2b6ff04f5917064e23776bb1c30b892b512"
+      "sha256": "9a44070c7a31f078cb48d988c85bb1a623b3791d1be24ca1202c55147ea04c20"
     },
     {
       "name": "telemetry-dialog-default-desktop",

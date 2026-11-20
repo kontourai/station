@@ -1,0 +1,15 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Interrupt notices, hook text in a tool-result message and reader notes stay in the run as notices; results without their call are tool rows that still read Text output unavailable when empty, as the captures illustrate.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Interrupt notices, hook text in a tool-result message and reader notes stay in the run as notices; results without their call are tool rows that still read Text output unavailable when empty, as the captures illustrate.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Interrupt notices, hook text in a tool-result message and reader notes stay in the run as notices; results without their call are tool rows that still read Text output unavailable when empty, as the captures illustrate.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Interrupt notices, hook text in a tool-result message and reader notes stay in the run as notices; results without their call are tool rows that still read Text output unavailable when empty, as the captures illustrate.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Interrupt notices, hook text in a tool-result message and reader notes stay in the run as notices; results without their call are tool rows that still read Text output unavailable when empty, as the captures illustrate.","inputs":["src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"]}
+  ]
+}

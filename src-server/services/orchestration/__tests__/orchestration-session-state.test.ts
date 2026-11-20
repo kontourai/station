@@ -4,6 +4,7 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
 } from '@kontourai/station-contracts/provider';
+import { ACP_RESUME_CONFIGURATION_CHANGED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionAttentionKind } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test, vi } from 'vitest';
@@ -12,6 +13,7 @@ import {
   ApprovalGovernanceRefusedError,
   type ProviderAdapterShape,
   type ProviderSession,
+  SessionStartRefusedError,
 } from '../../../providers/adapter-shape.js';
 import { waitForReceipt } from '../../infra/receipt-bus.js';
 import { ToolLibraryService } from '../../plugins/tool-library-service.js';
@@ -712,6 +714,39 @@ describe('orchestration-session-state', () => {
       );
       expect(eventStore.appendEventIfAbsent.mock.calls[0][0].message).toContain(
         'This conversation could not be reopened',
+      );
+    });
+
+    test('an ACP connection change releases the start boundary and remains a typed refusal', async () => {
+      const { adapter, eventStore, session } = failingRecovery();
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+      const refusal = new SessionStartRefusedError(
+        'Choose Continue from history.',
+        ACP_RESUME_CONFIGURATION_CHANGED_CODE,
+      );
+      vi.mocked(adapter.startSession).mockRejectedValueOnce(refusal);
+      await expect(
+        startRecovered({
+          session,
+          adapter,
+          options: {
+            eventStore,
+            invokeSessionStart: (threadId, invoke) =>
+              runSessionStartWithBoundary(authority, threadId, invoke),
+          },
+        }),
+      ).rejects.toBe(refusal);
+      expect(
+        authority.claimSessionStart(session.threadId, new Date().toISOString())
+          .kind,
+      ).toBe('owner');
+      expect(eventStore.appendEventIfAbsent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: ACP_RESUME_CONFIGURATION_CHANGED_CODE,
+          failurePhase: 'refused',
+          retryable: false,
+          message: expect.stringContaining('Continue from history'),
+        }),
       );
     });
 

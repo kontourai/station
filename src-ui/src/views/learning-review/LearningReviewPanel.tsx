@@ -260,9 +260,7 @@ function ProjectLearningReview({
       <div className="learning-review__heading">
         <div>
           <h3 id={`${id}-title`}>Learning review</h3>
-          <p>
-            Review owner evidence and register approved context instructions.
-          </p>
+          <p>Turn Task decisions into reusable instructions.</p>
         </div>
         {proposalSource && (
           <Button

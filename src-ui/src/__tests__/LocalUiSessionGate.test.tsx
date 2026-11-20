@@ -175,7 +175,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
   test.each([
     ['Pair with a code', /pair.*code/i],
     ['Request access', /request.*access/i],
-    ['Enter a host address', /add station/i],
+    ['Enter Station address', /add station/i],
   ])(
     'opens the usable %s recovery flow without mounting protected data',
     async (label, dialogCopy) => {

@@ -389,11 +389,11 @@ const APP_UUID = '11111111-2222-3333-4444-555555555555';
 const EXTENSION_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
 function extensionProfile(
-  appBundleId = 'io.kontourai.station.beta',
+  appBundleId = 'io.kontourai.station.nightly',
 ): DistributionProfile {
   return {
     distribution: 'app-store-connect',
-    name: 'Station Beta Agent Activity App Store',
+    name: 'Station Nightly Agent Activity App Store',
     uuid: EXTENSION_UUID,
     team: TEAM,
     expiration: '2027-01-01T00:00:00.000Z',
@@ -410,7 +410,7 @@ function extensionProfile(
  */
 function channelSpecWithExtensions(
   notificationService = false,
-  appBundleId = 'io.kontourai.station.beta',
+  appBundleId = 'io.kontourai.station.nightly',
 ) {
   const committed = readFileSync('src-desktop/gen/apple/project.yml', 'utf8');
   const rendered = committed.replace(
@@ -421,7 +421,7 @@ function channelSpecWithExtensions(
     expect(rendered).not.toBe(committed);
   const signed = storeSigningTemplate({
     template: rendered,
-    profile: { name: 'Station Beta App Store', uuid: APP_UUID, team: TEAM },
+    profile: { name: 'Station Nightly App Store', uuid: APP_UUID, team: TEAM },
     identity: IDENTITY,
     bundleId: appBundleId,
   });
@@ -437,14 +437,14 @@ function channelSpecWithExtensions(
 
 describe('iOS App Store signing for the Live Activity extension (#2513)', () => {
   test('names reviewed extensions for release channels', () => {
-    expect(agentActivityBundleId('io.kontourai.station.beta')).toBe(
-      'io.kontourai.station.beta.AgentActivity',
-    );
     expect(agentActivityBundleId('io.kontourai.station.nightly')).toBe(
       'io.kontourai.station.nightly.AgentActivity',
     );
     expect(agentActivityBundleId('io.kontourai.station')).toBe(
       'io.kontourai.station.AgentActivity',
+    );
+    expect(() => agentActivityBundleId('io.kontourai.station.beta')).toThrow(
+      /No reviewed Live Activity extension/,
     );
     expect(() => agentActivityBundleId('io.other')).toThrow(
       /No reviewed Live Activity extension/,
@@ -457,22 +457,23 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
         project: channelSpecWithExtensions(),
         profile: extensionProfile(),
         identity: IDENTITY,
-        appBundleId: 'io.kontourai.station.beta',
+        appBundleId: 'io.kontourai.station.nightly',
       }),
     );
     expect(project.targets[EXTENSION_TARGET].settings.base).toMatchObject({
-      STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station.beta',
+      STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station.nightly',
       PRODUCT_BUNDLE_IDENTIFIER:
         '$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity',
       CODE_SIGN_STYLE: 'Manual',
       CODE_SIGN_IDENTITY: IDENTITY,
       DEVELOPMENT_TEAM: TEAM,
       PROVISIONING_PROFILE: EXTENSION_UUID,
-      PROVISIONING_PROFILE_SPECIFIER: 'Station Beta Agent Activity App Store',
+      PROVISIONING_PROFILE_SPECIFIER:
+        'Station Nightly Agent Activity App Store',
     });
     // The app keeps the template's signing and gains push and the groups.
     expect(project.settingGroups.app.base).toMatchObject({
-      PRODUCT_BUNDLE_IDENTIFIER: 'io.kontourai.station.beta',
+      PRODUCT_BUNDLE_IDENTIFIER: 'io.kontourai.station.nightly',
       CODE_SIGN_STYLE: 'Manual',
       PROVISIONING_PROFILE: APP_UUID,
     });
@@ -492,27 +493,27 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
         project: committed,
         profile: extensionProfile(),
         identity: IDENTITY,
-        appBundleId: 'io.kontourai.station.beta',
+        appBundleId: 'io.kontourai.station.nightly',
       }),
     ).toThrow(/no StationAgentActivity app-extension target/);
     expect(() =>
       storeAgentActivitySigningSpec({
-        project: channelSpecWithExtensions(),
+        project: channelSpecWithExtensions(false, 'io.kontourai.station'),
         profile: extensionProfile('io.kontourai.station.nightly'),
         identity: IDENTITY,
         appBundleId: 'io.kontourai.station.nightly',
       }),
-    ).toThrow(/belongs to io.kontourai.station.beta/);
+    ).toThrow(/belongs to io.kontourai.station/);
     expect(() =>
       storeAgentActivitySigningSpec({
         project: channelSpecWithExtensions(),
         // The APP's profile handed in as the extension's.
         profile: {
           ...extensionProfile(),
-          applicationIdentifier: `${TEAM}.io.kontourai.station.beta`,
+          applicationIdentifier: `${TEAM}.io.kontourai.station.nightly`,
         },
         identity: IDENTITY,
-        appBundleId: 'io.kontourai.station.beta',
+        appBundleId: 'io.kontourai.station.nightly',
       }),
     ).toThrow(/profile is for/);
     expect(() =>
@@ -520,7 +521,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
         project: channelSpecWithExtensions(),
         profile: extensionProfile(),
         identity: 'Apple Distribution: Example (OTHERTEAM1)',
-        appBundleId: 'io.kontourai.station.beta',
+        appBundleId: 'io.kontourai.station.nightly',
       }),
     ).toThrow(/does not bind/);
   });
@@ -530,8 +531,8 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
       identity: `Apple Distribution: A & B (${TEAM})`,
       team: TEAM,
       profiles: {
-        'io.kontourai.station.beta': APP_UUID,
-        'io.kontourai.station.beta.AgentActivity': EXTENSION_UUID,
+        'io.kontourai.station.nightly': APP_UUID,
+        'io.kontourai.station.nightly.AgentActivity': EXTENSION_UUID,
       },
     });
     expect(plist).toMatch(
@@ -542,12 +543,12 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     );
     expect(plist).toMatch(
       new RegExp(
-        `<key>io\\.kontourai\\.station\\.beta</key>\\s*<string>${APP_UUID}</string>`,
+        `<key>io\\.kontourai\\.station\\.nightly</key>\\s*<string>${APP_UUID}</string>`,
       ),
     );
     expect(plist).toMatch(
       new RegExp(
-        `<key>io\\.kontourai\\.station\\.beta\\.AgentActivity</key>\\s*<string>${EXTENSION_UUID}</string>`,
+        `<key>io\\.kontourai\\.station\\.nightly\\.AgentActivity</key>\\s*<string>${EXTENSION_UUID}</string>`,
       ),
     );
     expect(plist).toContain(`A &amp; B (${TEAM})`);
@@ -555,7 +556,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
       storeExportOptions({
         identity: IDENTITY,
         team: TEAM,
-        profiles: { 'io.kontourai.station.beta': 'not-a-uuid' },
+        profiles: { 'io.kontourai.station.nightly': 'not-a-uuid' },
       }),
     ).toThrow(/Invalid provisioning-profile UUID/);
     expect(() =>
@@ -592,7 +593,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
         appProfile: join(root, 'app.mobileprovision'),
         identity: IDENTITY,
         team: TEAM,
-        appBundleId: 'io.kontourai.station.beta',
+        appBundleId: 'io.kontourai.station.nightly',
         apsEnvironment: 'production',
         project,
         exportOptionsOutput: exportOptions,
@@ -605,9 +606,9 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
             ? extensionProfile()
             : {
                 ...extensionProfile(),
-                name: 'Station Beta App Store',
+                name: 'Station Nightly App Store',
                 uuid: APP_UUID,
-                applicationIdentifier: `${TEAM}.io.kontourai.station.beta`,
+                applicationIdentifier: `${TEAM}.io.kontourai.station.nightly`,
               };
         },
       },
@@ -616,12 +617,12 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
       expect.objectContaining({
         path: join(root, 'extension.mobileprovision'),
         expectedTeam: TEAM,
-        expectedBundleIdentifier: 'io.kontourai.station.beta.AgentActivity',
+        expectedBundleIdentifier: 'io.kontourai.station.nightly.AgentActivity',
       }),
       expect.objectContaining({
         path: join(root, 'app.mobileprovision'),
         expectedTeam: TEAM,
-        expectedBundleIdentifier: 'io.kontourai.station.beta',
+        expectedBundleIdentifier: 'io.kontourai.station.nightly',
         expectedApsEnvironment: 'production',
       }),
     ]);
@@ -651,7 +652,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
           appProfile: join(root, 'app.mobileprovision'),
           identity: IDENTITY,
           team: TEAM,
-          appBundleId: 'io.kontourai.station.beta',
+          appBundleId: 'io.kontourai.station.nightly',
           apsEnvironment: 'production',
           project,
           exportOptionsOutput: exportOptions,
@@ -706,7 +707,7 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
       '--team',
       TEAM,
       '--app-bundle-id',
-      'io.kontourai.station.beta',
+      'io.kontourai.station.nightly',
       '--aps-environment',
       'production',
       '--project',
@@ -735,19 +736,19 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
   });
 });
 
-describe.each(['io.kontourai.station', 'io.kontourai.station.beta'])(
+describe.each(['io.kontourai.station', 'io.kontourai.station.nightly'])(
   'iOS App Store signing for the Notification Service Extension: %s',
   (appBundleId) => {
     const notificationUuid = '99999999-8888-7777-6666-555555555555';
     const notificationProfile = (): DistributionProfile => ({
       ...extensionProfile(appBundleId),
-      name: 'Station Beta Notification Service App Store',
+      name: 'Station Nightly Notification Service App Store',
       uuid: notificationUuid,
       applicationIdentifier: `${TEAM}.${appBundleId}.NotificationService`,
     });
     const appProfile = (): DistributionProfile => ({
       ...extensionProfile(appBundleId),
-      name: 'Station Beta App Store',
+      name: 'Station Nightly App Store',
       uuid: APP_UUID,
       applicationIdentifier: `${TEAM}.${appBundleId}`,
     });
@@ -871,13 +872,16 @@ describe.each(['io.kontourai.station', 'io.kontourai.station.beta'])(
     test('refuses an NSE target bound to another app', () => {
       const { options, dependencies } = fixture(true);
       const spec = YAML.parse(readFileSync(options.project, 'utf8'));
+      const foreignApp =
+        appBundleId === 'io.kontourai.station'
+          ? 'io.kontourai.station.nightly'
+          : 'io.kontourai.station';
       spec.targets[
         NOTIFICATION_SERVICE_TARGET
-      ].settings.base.STATION_APP_BUNDLE_IDENTIFIER =
-        'io.kontourai.station.nightly';
+      ].settings.base.STATION_APP_BUNDLE_IDENTIFIER = foreignApp;
       writeFileSync(options.project, YAML.stringify(spec));
       expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
-        /StationNotificationService belongs to io.kontourai.station.nightly/,
+        `StationNotificationService belongs to ${foreignApp}`,
       );
     });
 
@@ -887,7 +891,7 @@ describe.each(['io.kontourai.station', 'io.kontourai.station.beta'])(
       spec.targets[
         NOTIFICATION_SERVICE_TARGET
       ].settings.base.PRODUCT_BUNDLE_IDENTIFIER =
-        'io.kontourai.station.beta.Wrong';
+        'io.kontourai.station.nightly.Wrong';
       writeFileSync(options.project, YAML.stringify(spec));
       expect(() => writeIosAgentActivitySigning(options, dependencies)).toThrow(
         /StationNotificationService bundle identifier is not derived from its app/,

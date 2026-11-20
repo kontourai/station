@@ -1,6 +1,6 @@
 import { runSetupControl } from './helpers/run-setup';
 /**
- * First-run "Which agents do you use?" chapter in the real app (archive#3027,
+ * First-run "Which engines do you use?" chapter in the real app (archive#3027,
  * re-placed by the UX audit's RT-02/SHELL-12).
  *
  * The unit suite (`EnginesStep.test.tsx`, `FirstRunHomeChapter.test.tsx`)
@@ -400,7 +400,7 @@ async function passEngineRoleStep(page: Page) {
 /**
  * Home is intent-first (#3082, `<FirstRunHomeChapter intentFirst />`): once
  * nothing is left to disclose, the run never opens over the task on its own.
- * It waits behind the Home card's explicit "Personalize Station". Asserting
+ * It waits behind the Home card's explicit "Open setup". Asserting
  * the absence after the card is up is what keeps a chapter that starts
  * auto-opening again from passing here unnoticed.
  */
@@ -409,7 +409,7 @@ async function openRunFromHomeCard(page: Page) {
   await expect(card).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
   await expect(page.locator('.responsive-surface-overlay')).toHaveCount(0);
-  await card.getByRole('button', { name: 'Personalize Station' }).click();
+  await card.getByRole('button', { name: 'Open setup' }).click();
 }
 
 function disclosureInventory(acknowledged: boolean, telemetryEnabled = true) {
@@ -490,7 +490,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.goto('/');
     await page
       .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
+      .getByRole('button', { name: 'Open setup' })
       .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
@@ -498,7 +498,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await expect(
       page.getByRole('dialog').filter({ has: chapter }),
     ).toBeVisible();
-    await expect(page.getByText('Which agents do you use?')).toBeVisible();
+    await expect(page.getByText('Which engines do you use?')).toBeVisible();
 
     // available — pre-ticked and the user's to change.
     for (const engineId of ['claude-code', 'codex', 'muse']) {
@@ -584,7 +584,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.goto('/');
     await page
       .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
+      .getByRole('button', { name: 'Open setup' })
       .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
@@ -703,7 +703,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.goto('/');
     await page
       .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
+      .getByRole('button', { name: 'Open setup' })
       .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
@@ -732,7 +732,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.goto('/');
     await page
       .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
+      .getByRole('button', { name: 'Open setup' })
       .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
@@ -787,7 +787,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.goto('/');
     await page
       .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
+      .getByRole('button', { name: 'Open setup' })
       .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
@@ -824,7 +824,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
     await page.goto('/');
     await page
       .getByTestId('first-run-home-card')
-      .getByRole('button', { name: 'Personalize Station' })
+      .getByRole('button', { name: 'Open setup' })
       .click();
     const chapter = page.getByTestId('first-run-engines');
     await expect(chapter).toBeVisible({ timeout: 20_000 });
@@ -844,7 +844,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
       path: testInfo.outputPath('first-run-home-card.png'),
       fullPage: false,
     });
-    await card.getByRole('button', { name: 'Personalize Station' }).click();
+    await card.getByRole('button', { name: 'Open setup' }).click();
     await expect(chapter).toBeVisible();
   });
 
@@ -927,7 +927,7 @@ test.describe('First-run engines chapter (station#3027)', () => {
       timeout: 20_000,
     });
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
     // Answering the launcher hands Home back to the task; the run is one
@@ -1204,7 +1204,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(standaloneModal(page)).toHaveCount(0);
 
     // And it takes the screen the moment the launcher is answered.
-    await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
     await expect(standaloneModal(page)).toBeVisible();
   });
 
@@ -1226,7 +1226,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-home-card')).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByRole('button', { name: 'Personalize Station' }).click();
+    await page.getByRole('button', { name: 'Open setup' }).click();
 
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(standaloneModal(page)).toHaveCount(0);
@@ -1254,7 +1254,7 @@ for (const viewport of [
     // This fixture has no ready engine: explicitly leave the prerequisite
     // launcher before Home's card can open the first-run chapter.
     await page
-      .getByRole('button', { name: 'Continue Without Setup', exact: true })
+      .getByRole('button', { name: 'Dismiss setup reminder', exact: true })
       .click();
     await openRunFromHomeCard(page);
     const engines = page.getByTestId('first-run-engines');

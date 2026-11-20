@@ -198,6 +198,13 @@ const REVIEWED_PROTOCOL_BRANCHES = [
       'Validates the two sign-in response wire formats; no conversation durability decision.',
   },
   {
+    file: 'src-server/providers/sessions/acp-session-list-source.ts',
+    expression: "session.provider !== 'acp'",
+    count: 1,
+    reason:
+      'Decodes only the ACP-owned session cursor for this attached-session source.',
+  },
+  {
     file: 'src-server/providers/sessions/grok-session-source.ts',
     expression: "session.provider !== 'acp'",
     count: 1,
