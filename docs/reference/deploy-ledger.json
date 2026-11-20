@@ -1,5 +1,125 @@
 [
   {
+    "timestampUtc": "2026-11-20T23:49:28Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261120.3",
+    "sha": "a820710bf89c8535cbb1d4c2e8f573d77b19a6db",
+    "artifactBuiltAt": "2026-11-20T23:02:47.224Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44833049230",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44833049230)"
+    ],
+    "changelog": {
+      "previousSha": "cba6c158c079b2b0ddd09a22c1d05d972ed2f0a2",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5328](https://github.com/kontourai/station/pull/5328) fix(acp): handle Kiro KAS permission identity, workspace reads, and rejection reasons",
+          "[#5358](https://github.com/kontourai/station/pull/5358) fix(test): wait for broker owners to close before readback",
+          "[#5357](https://github.com/kontourai/station/pull/5357) fix(chat): open the mobile Inbox from Chat actions",
+          "[#5356](https://github.com/kontourai/station/pull/5356) fix(ci): wait for the Station switcher in pairing smoke",
+          "[#5355](https://github.com/kontourai/station/pull/5355) fix(ci): run TestFlight uploads on the iOS build pool",
+          "[#5350](https://github.com/kontourai/station/pull/5350) fix(ci): move container smoke to hosted Ubuntu"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5359](https://github.com/kontourai/station/pull/5359) perf(claude): start the built-in docs helper on first use",
+          "[#5354](https://github.com/kontourai/station/pull/5354) perf(chat): preserve Markdown controls while older history loads",
+          "[#5351](https://github.com/kontourai/station/pull/5351) perf(bench): compare matched warm and resumed delegated follow-ups",
+          "[#5352](https://github.com/kontourai/station/pull/5352) perf(acp): stop periodic discovery sweeps when no probes exist",
+          "[#5353](https://github.com/kontourai/station/pull/5353) perf(runtime): reduce wakeups from the event-loop stall monitor"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-11-20T23:49:28Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261120.3",
+    "sha": "a820710bf89c8535cbb1d4c2e8f573d77b19a6db",
+    "artifactBuiltAt": "2026-11-20T23:02:01.233Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44833049230",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44833049230)"
+    ],
+    "changelog": {
+      "previousSha": "cba6c158c079b2b0ddd09a22c1d05d972ed2f0a2",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5328](https://github.com/kontourai/station/pull/5328) fix(acp): handle Kiro KAS permission identity, workspace reads, and rejection reasons",
+          "[#5358](https://github.com/kontourai/station/pull/5358) fix(test): wait for broker owners to close before readback",
+          "[#5357](https://github.com/kontourai/station/pull/5357) fix(chat): open the mobile Inbox from Chat actions",
+          "[#5356](https://github.com/kontourai/station/pull/5356) fix(ci): wait for the Station switcher in pairing smoke",
+          "[#5355](https://github.com/kontourai/station/pull/5355) fix(ci): run TestFlight uploads on the iOS build pool",
+          "[#5350](https://github.com/kontourai/station/pull/5350) fix(ci): move container smoke to hosted Ubuntu"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5359](https://github.com/kontourai/station/pull/5359) perf(claude): start the built-in docs helper on first use",
+          "[#5354](https://github.com/kontourai/station/pull/5354) perf(chat): preserve Markdown controls while older history loads",
+          "[#5351](https://github.com/kontourai/station/pull/5351) perf(bench): compare matched warm and resumed delegated follow-ups",
+          "[#5352](https://github.com/kontourai/station/pull/5352) perf(acp): stop periodic discovery sweeps when no probes exist",
+          "[#5353](https://github.com/kontourai/station/pull/5353) perf(runtime): reduce wakeups from the event-loop stall monitor"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-11-20T23:05:01Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261120.44833049230",
+    "sha": "a820710bf89c8535cbb1d4c2e8f573d77b19a6db",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44833049230",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261120.44833049230 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "cba6c158c079b2b0ddd09a22c1d05d972ed2f0a2",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5328](https://github.com/kontourai/station/pull/5328) fix(acp): handle Kiro KAS permission identity, workspace reads, and rejection reasons",
+          "[#5358](https://github.com/kontourai/station/pull/5358) fix(test): wait for broker owners to close before readback",
+          "[#5357](https://github.com/kontourai/station/pull/5357) fix(chat): open the mobile Inbox from Chat actions",
+          "[#5356](https://github.com/kontourai/station/pull/5356) fix(ci): wait for the Station switcher in pairing smoke",
+          "[#5355](https://github.com/kontourai/station/pull/5355) fix(ci): run TestFlight uploads on the iOS build pool",
+          "[#5350](https://github.com/kontourai/station/pull/5350) fix(ci): move container smoke to hosted Ubuntu"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5359](https://github.com/kontourai/station/pull/5359) perf(claude): start the built-in docs helper on first use",
+          "[#5354](https://github.com/kontourai/station/pull/5354) perf(chat): preserve Markdown controls while older history loads",
+          "[#5351](https://github.com/kontourai/station/pull/5351) perf(bench): compare matched warm and resumed delegated follow-ups",
+          "[#5352](https://github.com/kontourai/station/pull/5352) perf(acp): stop periodic discovery sweeps when no probes exist",
+          "[#5353](https://github.com/kontourai/station/pull/5353) perf(runtime): reduce wakeups from the event-loop stall monitor"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-11-20T16:56:39Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261120.2",
