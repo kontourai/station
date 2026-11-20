@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { createStationDocsMcpServer } from '../station-docs-mcp-server.js';
 import questionFixture from './fixtures/station-docs-questions.json';
+import { callTool } from './station-docs-mcp-fixture.js';
 
 /**
  * #4831: search_station_docs ranks Station's shipped Corpus bundle with
@@ -17,21 +17,6 @@ interface Question {
 }
 
 const { questions } = questionFixture as { questions: Question[] };
-
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
-
-async function callTool(name: string, args: unknown): Promise<any> {
-  const tools = (
-    createStationDocsMcpServer() as unknown as {
-      _registeredTools: Record<
-        string,
-        { handler: (...a: any[]) => Promise<ToolResult> }
-      >;
-    }
-  )._registeredTools;
-  const result = await tools[name].handler(args, {} as any);
-  return JSON.parse(result.content[0].text);
-}
 
 async function topThree(question: string): Promise<string[]> {
   const payload = await callTool('search_station_docs', {

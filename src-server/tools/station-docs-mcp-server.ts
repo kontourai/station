@@ -1,13 +1,15 @@
 /// <reference path="../corpus-search.d.ts" />
 import { searchBundles } from '@kontourai/corpus/search';
-import { McpServer } from '@modelcontextprotocol/server';
-import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/server';
 
-import packageJson from '../../package.json' with { type: 'json' };
 import {
   STATION_DOCS_BUNDLE,
   type StationDocsBundleTopic,
 } from './station-docs-content.js';
+import {
+  createStationDocsToolServer,
+  STATION_DOCS_VERSION,
+} from './station-docs-tools.js';
 
 /**
  * station-docs — Station's credential-free documentation MCP server
@@ -34,10 +36,6 @@ import {
  * credential-free documentation does not create a transport for engines such
  * as Muse, whose tool-server capability is unsupported.
  */
-
-// Package version is not a build identity (archive#1547, archive#1635).
-// The content digest below identifies the exact compiled documentation only.
-export const STATION_DOCS_VERSION: string = packageJson.version;
 
 /**
  * A topic without its `body` — the shape list/search results return. These
@@ -152,122 +150,33 @@ function shippedSourceEnvelope(): Promise<Readonly<Record<string, string>>> {
   return shippedSource;
 }
 
-const STATION_DOCS_TOOLS = [
-  {
-    name: 'list_station_docs_topics',
-    title: 'Browse documentation',
-    description:
-      "List topics in Station's SHIPPED DOCUMENTATION, including the architecture learning tree. Filter parentId to manual, architecture, or a branch id returned by this tool. Returns bundled documentation, never live state: it cannot tell you what exists on this Station.",
-    group: 'Documentation',
-    readOnly: true,
-  },
-  {
-    name: 'get_station_docs_topic',
-    title: 'Read documentation',
-    description:
-      "Read one topic of Station's SHIPPED DOCUMENTATION by id (use list_station_docs_topics for the ids). Returns bundled documentation, never live state: it describes how Station works in general, not this Station's agents, runs, or settings.",
-    group: 'Documentation',
-    readOnly: true,
-  },
-  {
-    name: 'search_station_docs',
-    title: 'Search documentation',
-    description:
-      "Ranked search across Station's SHIPPED DOCUMENTATION, best match first. Returns bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
-    group: 'Documentation',
-    readOnly: true,
-  },
-];
-
-export function stationDocsToolCatalog() {
-  return STATION_DOCS_TOOLS;
-}
-
 export function createStationDocsMcpServer(): McpServer {
-  const server = new McpServer(
-    {
-      name: 'station-docs',
-      version: STATION_DOCS_VERSION,
-    },
-    {
-      // The content cannot change while the process lives — it is compiled in
-      // — so discovery and listing are safely cacheable.
-      cacheHints: {
-        'server/discover': { ttlMs: 300_000, cacheScope: 'private' },
-        'tools/list': { ttlMs: 300_000, cacheScope: 'private' },
-      },
-    },
-  );
-
-  server.registerTool(
-    'list_station_docs_topics',
-    {
-      ...STATION_DOCS_TOOLS[0],
-      annotations: { readOnlyHint: true },
-      _meta: { 'ai.kontour/tool-group': 'Documentation' },
-      inputSchema: z.object({
-        parentId: z
-          .string()
-          .optional()
-          .describe(
-            'Optional parent topic id, such as architecture or architecture-execution.',
-          ),
-      }),
-    },
-    async ({ parentId }) =>
-      jsonToolResult({
-        ...(await shippedSourceEnvelope()),
-        topics: listStationDocsTopics(parentId),
-      }),
-  );
-
-  server.registerTool(
-    'get_station_docs_topic',
-    {
-      ...STATION_DOCS_TOOLS[1],
-      annotations: { readOnlyHint: true },
-      _meta: { 'ai.kontour/tool-group': 'Documentation' },
-      inputSchema: z.object({
-        id: z.string().describe('Topic id, e.g. "station-overview".'),
-      }),
-    },
-    async ({ id }) => {
-      const topic = findStationDocsTopic(id);
-      if (!topic) {
+  return createStationDocsToolServer(async (request) => {
+    const source = await shippedSourceEnvelope();
+    switch (request.name) {
+      case 'list_station_docs_topics':
         return jsonToolResult({
-          ...(await shippedSourceEnvelope()),
-          error: `Unknown documentation topic '${id}'.`,
-          availableTopicIds: [...TOPICS_BY_ID.keys()],
+          ...source,
+          topics: listStationDocsTopics(request.args.parentId),
         });
+      case 'get_station_docs_topic': {
+        const topic = findStationDocsTopic(request.args.id);
+        return jsonToolResult(
+          topic
+            ? { ...source, topic }
+            : {
+                ...source,
+                error: `Unknown documentation topic '${request.args.id}'.`,
+                availableTopicIds: [...TOPICS_BY_ID.keys()],
+              },
+        );
       }
-      return jsonToolResult({ ...(await shippedSourceEnvelope()), topic });
-    },
-  );
-
-  server.registerTool(
-    'search_station_docs',
-    {
-      ...STATION_DOCS_TOOLS[2],
-      annotations: { readOnlyHint: true },
-      _meta: { 'ai.kontour/tool-group': 'Documentation' },
-      inputSchema: z.object({
-        query: z.string().describe('Words to look for, e.g. "cron job".'),
-        limit: z
-          .number()
-          .int()
-          .min(1)
-          .max(25)
-          .optional()
-          .describe('Maximum number of topics to return (default 10).'),
-      }),
-    },
-    async ({ query, limit }) =>
-      jsonToolResult({
-        ...(await shippedSourceEnvelope()),
-        query,
-        results: searchStationDocs(query, limit ?? 10),
-      }),
-  );
-
-  return server;
+      case 'search_station_docs':
+        return jsonToolResult({
+          ...source,
+          query: request.args.query,
+          results: searchStationDocs(request.args.query, request.args.limit),
+        });
+    }
+  });
 }
