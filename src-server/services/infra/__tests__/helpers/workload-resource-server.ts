@@ -343,6 +343,10 @@ const server = createServer(async (request, response) => {
             }
           });
         });
+      if (!terminal.terminate) {
+        terminal.kill();
+        throw new Error('Terminal process-group termination unavailable');
+      }
       let cwd: string | null;
       try {
         terminal.resize(101, 37);
@@ -362,8 +366,6 @@ const server = createServer(async (request, response) => {
         terminal.write("printf '__PROOF_%s__\\n' RESUMED\r");
         await resumed;
       } finally {
-        if (!terminal.terminate)
-          throw new Error('Terminal process-group termination unavailable');
         await terminal.terminate();
       }
       response.end(JSON.stringify({ pid: terminal.pid, cwd, output }));
