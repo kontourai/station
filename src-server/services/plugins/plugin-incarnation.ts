@@ -7,7 +7,6 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
-  realpathSync,
   renameSync,
   symlinkSync,
   unlinkSync,
@@ -15,6 +14,7 @@ import {
 } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import { canonicalPath } from '../../utils/path-containment.js';
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -30,7 +30,7 @@ function selectionAlias(parent: string, pluginId: string): string {
     : join(parent, pluginId);
 }
 export function localManagedPluginAliases(pluginsDir: string): string[] {
-  const root = join(realpathSync(pluginsDir), '.selected');
+  const root = join(canonicalPath(pluginsDir), '.selected');
   if (!existsSync(root)) return [];
   directory(root);
   return readdirSync(root, { withFileTypes: true })
@@ -82,7 +82,7 @@ export function resolveInstalledPluginRoot(
     throw new PluginIncarnationError('unsafe-pointer');
   let parent: string;
   try {
-    parent = realpathSync(pluginsDir);
+    parent = canonicalPath(pluginsDir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -123,7 +123,7 @@ export function resolveInstalledPluginRoot(
     });
   }
   const target = readlinkSync(alias);
-  const physical = realpathSync(alias);
+  const physical = canonicalPath(alias);
   const parts = relative(parent, physical).split(sep);
   if (
     parts.length !== 4 ||
@@ -134,7 +134,11 @@ export function resolveInstalledPluginRoot(
   )
     throw new PluginIncarnationError('unsafe-pointer');
   const captured = resolvePluginMaterialization(parent, pluginId, parts[2]!);
-  if (readlinkSync(alias) !== target || realpathSync(alias) !== physical)
+  if (
+    captured.packageRoot !== physical ||
+    readlinkSync(alias) !== target ||
+    canonicalPath(alias) !== physical
+  )
     throw new PluginIncarnationError('unsafe-pointer');
   return captured;
 }
@@ -168,7 +172,7 @@ export function preparePluginIncarnation(
   const prior = resolveInstalledPluginRoot(pluginsDir, pluginId);
   if (prior?.kind === 'legacy')
     throw new PluginIncarnationError('migration-required');
-  const parent = realpathSync(pluginsDir);
+  const parent = canonicalPath(pluginsDir);
   for (const path of [
     join(parent, '.generations'),
     join(parent, '.generations', localPluginStorageKey(pluginId)),
@@ -221,7 +225,7 @@ export function publishPluginIncarnation(
   pluginId: string,
   target: InstalledPluginRoot | null,
 ): void {
-  const parent = realpathSync(pluginsDir);
+  const parent = canonicalPath(pluginsDir);
   const current = resolveInstalledPluginRoot(parent, pluginId);
   if (current?.kind === 'legacy' || (target && target.kind !== 'incarnation'))
     throw new PluginIncarnationError('migration-required');
@@ -304,7 +308,7 @@ export function prepareLocalPluginDataScope(
     (previous !== null && !UUID.test(previous))
   )
     throw new PluginIncarnationError('unsafe-pointer');
-  const parent = realpathSync(pluginsDir);
+  const parent = canonicalPath(pluginsDir);
   for (const path of [
     join(parent, '.data'),
     join(parent, '.data', localPluginStorageKey(pluginId)),
@@ -330,7 +334,7 @@ export function resolvePluginMaterialization(
 ): InstalledPluginRoot {
   if (!isCanonicalPluginId(pluginId) || !UUID.test(generation))
     throw new PluginIncarnationError('unsafe-pointer');
-  const parent = realpathSync(pluginsDir);
+  const parent = canonicalPath(pluginsDir);
   let path = parent;
   for (const part of [
     '.generations',

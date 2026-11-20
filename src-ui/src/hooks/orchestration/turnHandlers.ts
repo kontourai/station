@@ -38,6 +38,7 @@ import { withDeliveryCheck } from '../../utils/messageDeliveryState';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import {
@@ -378,7 +379,11 @@ export function handleTurnStartedEvent(
             currentChat?.requestedProviderOptions,
             effectiveModelOptions,
           )
-            ? { requestedProviderOptions: undefined }
+            ? {
+                requestedProviderOptions: pendingNonModelOptions(
+                  currentChat?.requestedProviderOptions,
+                ),
+              }
             : {}),
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }

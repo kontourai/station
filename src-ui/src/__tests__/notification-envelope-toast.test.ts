@@ -25,11 +25,11 @@ const envelope = {
     kind: 'agent',
     sessionId: 'session-1',
     agent: 'planner',
-    assurance: 'bearer-exposed',
+    assurance: 'bound',
   },
   audience: { kind: 'owner' },
   urgency: 'info',
-  interrupt: 'silent',
+  interrupt: 'default',
 };
 
 describe('enveloped delivery toast (#2587)', () => {

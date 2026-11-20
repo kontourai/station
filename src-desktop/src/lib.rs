@@ -6500,11 +6500,8 @@ fn profile_lock_birth_with_current_process_cache(
 fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>, String> {
     static CURRENT_BIRTH: std::sync::OnceLock<(u32, String)> = std::sync::OnceLock::new();
     profile_lock_birth_with_current_process_cache(pid, &CURRENT_BIRTH, || {
-        let resource_dir = simplified_sidecar_resource_dir(
-            &app.path()
-                .resource_dir()
-                .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
-        );
+        let resource_dir = desktop_runtime_resource_dir(app)
+            .map_err(|error| format!("locate packaged process identity authority: {error}"))?;
         profile_lock_birth_observation(pid, profile_lock_birth_bridge(&resource_dir, pid))
     })
 }
@@ -10207,11 +10204,34 @@ fn decide_home_ownership_from_runtime(resource_dir: &Path, home: &Path) -> HomeO
 #[cfg(not(mobile))]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// The packaged resource directory must be normalized before Node sees it:
-/// Windows verbatim paths (`\\?\`) are not accepted by Node's module resolver.
-#[cfg(not(mobile))]
-fn simplified_sidecar_resource_dir(resource_dir: &Path) -> PathBuf {
-    dunce::simplified(resource_dir).to_path_buf()
+#[cfg(all(
+    not(mobile),
+    not(all(target_os = "linux", feature = "appimage-runtime"))
+))]
+fn desktop_runtime_resource_dir(app: &AppHandle) -> tauri::Result<PathBuf> {
+    // Windows verbatim paths are not accepted by Node's module resolver.
+    Ok(dunce::simplified(&app.path().resource_dir()?).to_path_buf())
+}
+
+#[cfg(all(target_os = "linux", feature = "appimage-runtime"))]
+fn desktop_runtime_resource_dir(_app: &AppHandle) -> tauri::Result<PathBuf> {
+    Ok(appimage_runtime_resource_dir(
+        &tauri::utils::platform::current_exe()?,
+    )?)
+}
+
+// The bundle overlay puts the runtime beside usr/bin, inside the same AppDir
+// as this executable. Anchor it to the executable instead of inherited APPDIR.
+#[cfg(any(
+    all(test, unix),
+    all(target_os = "linux", feature = "appimage-runtime")
+))]
+fn appimage_runtime_resource_dir(executable: &Path) -> std::io::Result<PathBuf> {
+    let bin = executable
+        .parent()
+        .filter(|dir| executable.is_absolute() && dir.ends_with("usr/bin"))
+        .ok_or_else(|| std::io::Error::other("Station AppImage executable is outside usr/bin"))?;
+    Ok(bin.with_file_name("share").join("Station"))
 }
 
 /// Present packaged entrypoint for the desktop-owned Command Station sidecar.
@@ -15608,7 +15628,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                         }
                     }
                 }
-                let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
+                let resource_dir = desktop_runtime_resource_dir(app.handle())?;
                 let packaged_channel = admit_native_startup_channel(
                     &app.config().identifier,
                     cfg!(debug_assertions),
@@ -20307,11 +20327,16 @@ mod tests {
         assert!(parse_pinned_desktop_port(Some("not-a-port")).is_err());
     }
 
-    #[cfg(not(mobile))]
+    #[cfg(unix)]
     #[test]
-    fn resource_normalization_preserves_regular_paths() {
-        let resource_dir = Path::new("/bundle/resources");
-        assert_eq!(simplified_sidecar_resource_dir(resource_dir), resource_dir);
+    fn appimage_runtime_is_resolved_inside_the_executables_appdir() {
+        let executable = Path::new("/tmp/.mount_station/usr/bin/station");
+        assert_eq!(
+            appimage_runtime_resource_dir(executable).unwrap(),
+            Path::new("/tmp/.mount_station/usr/share/Station"),
+        );
+        assert!(appimage_runtime_resource_dir(Path::new("usr/bin/station")).is_err());
+        assert!(appimage_runtime_resource_dir(Path::new("/tmp/other/bin/station")).is_err());
     }
 
     #[test]

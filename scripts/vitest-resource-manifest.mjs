@@ -378,6 +378,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
+  // Real MCP stdio child and a loopback Station session-read fixture.
+  'examples/station-sessions-mcp/__tests__/server.process.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.
   'scripts/__tests__/portable-smoke-diagnostics.test.ts',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).

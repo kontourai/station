@@ -1087,17 +1087,31 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
   describe('resync', () => {
     it('says the list is the last known one when its read failed, and Refresh re-reads it', () => {
       const onRefresh = vi.fn();
-      renderPanel({ sync: { failed: true, refreshing: false, onRefresh } });
+      renderPanel({
+        sync: {
+          failed: true,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'idle', recovering: false, run: onRefresh },
+        },
+      });
       expect(screen.getByRole('alert').textContent).toContain(
         'Showing the last known list.',
       );
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(onRefresh).toHaveBeenCalledExactlyOnceWith(true);
     });
 
     it('a failed read that is already re-reading offers no second Retry', () => {
       const onRefresh = vi.fn();
-      renderPanel({ sync: { failed: true, refreshing: true, onRefresh } });
+      renderPanel({
+        sync: {
+          failed: true,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'refreshing', recovering: true, run: onRefresh },
+        },
+      });
       const retry = screen.getByRole('button', { name: 'Retrying…' });
       expect(retry).toHaveProperty('disabled', true);
       fireEvent.click(retry);
@@ -1106,7 +1120,14 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
 
     it('a retry whose start clears the failure keeps its notice until the re-read settles', () => {
       const onRefresh = vi.fn();
-      renderPanel({ sync: { failed: false, refreshing: true, onRefresh } });
+      renderPanel({
+        sync: {
+          failed: false,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'refreshing', recovering: true, run: onRefresh },
+        },
+      });
       expect(screen.getByRole('alert').textContent).toContain(
         'Showing the last known list.',
       );
@@ -1118,7 +1139,12 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
 
     it('a healthy list shows no refresh control at all', () => {
       renderPanel({
-        sync: { failed: false, refreshing: false, onRefresh: vi.fn() },
+        sync: {
+          failed: false,
+          pending: false,
+          updating: false,
+          refresh: { phase: 'idle', recovering: false, run: vi.fn() },
+        },
       });
       expect(
         screen.queryByRole('button', { name: /Retry|Refresh/ }),

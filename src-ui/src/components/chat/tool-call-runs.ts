@@ -1,4 +1,8 @@
-import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
+import {
+  HTML_REPLY_PUBLICATION_ID_PREFIX,
+  type HtmlReplyReference,
+} from '@kontourai/station-contracts/html-reply';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import { htmlReplyReference } from './html-reply-reference';
 import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 
@@ -177,24 +181,25 @@ export function splitToolCallRuns<P extends ToolCallLike>(
       isToolCallPart(part) &&
       !appTools.has(transcriptMcpToolRef(part) ?? '')
     ) {
-      pending.push({ part, index });
       const name = part.toolName ?? part.name ?? part.type;
+      const reference =
+        stationControlToolName(name) === 'html_render'
+          ? (htmlReplyReference(part) ??
+            htmlReplyReference(part.output ?? part.result))
+          : undefined;
       if (
-        /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
-          name,
-        )
-      ) {
-        const reference =
-          htmlReplyReference(part) ??
-          htmlReplyReference(part.output ?? part.result);
-        if (reference) {
-          flushRun();
-          blocks.push({
-            type: 'html-reply',
-            key: `html-reply:${part.toolCallId ?? index}:${reference.pageId}`,
-            reference,
-          });
-        }
+        !reference ||
+        part.toolCallId !==
+          `${HTML_REPLY_PUBLICATION_ID_PREFIX}${reference.pageId}`
+      )
+        pending.push({ part, index });
+      if (reference) {
+        flushRun();
+        blocks.push({
+          type: 'html-reply',
+          key: `html-reply:${part.toolCallId ?? index}:${reference.pageId}`,
+          reference,
+        });
       }
       return;
     }
@@ -236,8 +241,22 @@ export function foldTurnWork<P extends ToolCallLike>(
   showReasoning = true,
 ): RunBlock<P>[] {
   const blocks = splitToolCallRuns(parts, appTools, showReasoning);
-  if (!parts) return blocks;
-  if (blocks.some((block) => block.type === 'html-reply')) return blocks;
+  const folded: RunBlock<P>[] = [];
+  let start = 0;
+  for (const [index, block] of blocks.entries()) {
+    const ownRow =
+      block.type === 'html-reply' ||
+      (block.type === 'content-part' && isToolCallPart(block.part));
+    if (!ownRow) continue;
+    folded.push(...foldToolRuns(blocks.slice(start, index)), block);
+    start = index + 1;
+  }
+  return [...folded, ...foldToolRuns(blocks.slice(start))];
+}
+
+function foldToolRuns<P extends ToolCallLike>(
+  blocks: RunBlock<P>[],
+): RunBlock<P>[] {
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
   if (runCount < 2) return blocks;
 
@@ -256,7 +275,10 @@ export function foldTurnWork<P extends ToolCallLike>(
     } else if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
       interludes.push(...(block.interludes ?? []));
-    } else if (block.type === 'content-part' && isFoldableProse(block.part)) {
+    } else if (
+      block.type === 'content-part' &&
+      (block.part.type === 'reasoning' || isFoldableProse(block.part))
+    ) {
       interludes.push({ part: block.part, index: block.index });
     } else {
       kept.push(block);

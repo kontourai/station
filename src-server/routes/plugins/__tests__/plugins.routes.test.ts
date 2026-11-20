@@ -8,7 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { cp, readFile } from 'node:fs/promises';
+import { cp } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -281,6 +281,9 @@ const mockRegistryInstallAliases = vi.hoisted<
 const manifestFileText = vi.hoisted(() => ({
   override: null as string | null,
 }));
+const fixtureManifestText = vi.hoisted(
+  () => () => manifestFileText.override ?? JSON.stringify(mockManifest),
+);
 const enoent = vi.hoisted(
   () => (syscall: string, path: string) =>
     Object.assign(
@@ -299,16 +302,23 @@ const enoent = vi.hoisted(
 const lstatFixture = vi.hoisted(
   () => (exists: (path: string) => boolean) => (path: unknown) => {
     if (!exists(String(path))) throw enoent('lstat', String(path));
+    const file = String(path).endsWith('.json');
     return {
       isSymbolicLink: () => false,
-      isDirectory: () => !String(path).endsWith('.json'),
-      isFile: () => String(path).endsWith('.json'),
+      isDirectory: () => !file,
+      isFile: () => file,
+      dev: 1,
+      ino: file ? 2 : 1,
+      size: file ? Buffer.byteLength(fixtureManifestText()) : 0,
     };
   },
 );
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
+  const manifestDescriptor = 4;
+  let openedManifest: Buffer;
+  let manifestOffset = 0;
   const existsSync = vi.fn((p: string) => {
     if (typeof p === 'string' && p.endsWith('/config/registry-installs.json')) {
       return Object.keys(mockRegistryInstallAliases).length > 0;
@@ -348,7 +358,7 @@ vi.mock('node:fs', async (importOriginal) => {
       // the state of a Station whose migration has not run.
       if (typeof p === 'string' && p.endsWith('/plugin-trust.json'))
         throw enoent('open', p);
-      return manifestFileText.override ?? JSON.stringify(mockManifest);
+      return fixtureManifestText();
     }),
     lstatSync: vi.fn(lstatFixture((path) => existsSync(path))),
     // No fixture path is a symbolic link unless a test says so through
@@ -356,7 +366,12 @@ vi.mock('node:fs', async (importOriginal) => {
     readlinkSync: vi.fn((path: unknown) => {
       throw enoent('readlink', String(path));
     }),
-    realpathSync: vi.fn((p: string) => p),
+    realpathSync: Object.assign(
+      vi.fn((p: string) => p),
+      {
+        native: vi.fn((p: string) => p),
+      },
+    ),
     mkdirSync: vi.fn(),
     rmSync: vi.fn(),
     cpSync: vi.fn(),
@@ -372,6 +387,11 @@ vi.mock('node:fs', async (importOriginal) => {
     openSync: vi.fn((path: unknown) => {
       if (String(path).endsWith('/plugin-command-effects.json'))
         throw enoent('open', String(path));
+      if (String(path).endsWith('/plugin.json')) {
+        openedManifest = Buffer.from(fixtureManifestText());
+        manifestOffset = 0;
+        return manifestDescriptor;
+      }
       return 3;
     }),
     // `fsyncDirectorySync` fstats the descriptor `openSync` returned. That 3
@@ -379,7 +399,25 @@ vi.mock('node:fs', async (importOriginal) => {
     // whatever this worker happens to hold at fd 3 -- the test's outcome
     // would depend on the runner's fd table, and an EBADF there would
     // surface as an unrelated 500 from the uninstall transaction.
-    fstatSync: vi.fn(() => ({ isDirectory: () => true })),
+    fstatSync: vi.fn((descriptor: number) =>
+      descriptor === manifestDescriptor
+        ? { isFile: () => true, dev: 1, ino: 2 }
+        : { isDirectory: () => true },
+    ),
+    readSync: vi.fn(
+      (descriptor: number, buffer: Buffer, offset: number, length: number) => {
+        if (descriptor !== manifestDescriptor)
+          throw new Error('No fixture bytes for descriptor');
+        const bytes = openedManifest.copy(
+          buffer,
+          offset,
+          manifestOffset,
+          manifestOffset + length,
+        );
+        manifestOffset += bytes;
+        return bytes;
+      },
+    ),
     fsyncSync: vi.fn(),
     closeSync: vi.fn(),
     renameSync: vi.fn(),
@@ -606,7 +644,6 @@ describe('Plugin Routes', () => {
     vi.mocked(readlinkSync).mockImplementation((path: unknown) => {
       throw enoent('readlink', String(path));
     });
-    vi.mocked(readFile).mockResolvedValue(JSON.stringify(mockManifest));
     manifestFileText.override = null;
     pluginGrantScope.run.mockClear();
     pluginGrantScope.commit.mockClear();
@@ -678,7 +715,7 @@ describe('Plugin Routes', () => {
   test('rejects a plugin identity change and restores the prior provider source', async () => {
     const oldManifest = { ...mockManifest, name: 'test-plugin' };
     const renamedManifest = { ...mockManifest, name: 'renamed-plugin' };
-    vi.mocked(readFile).mockResolvedValueOnce(JSON.stringify(oldManifest));
+    manifestFileText.override = JSON.stringify(oldManifest);
     postUpdateManifest.text = JSON.stringify(renamedManifest);
     const beginMutation = vi.fn();
     const applyConfigurationMutation = vi.fn(
@@ -1106,7 +1143,7 @@ describe('Plugin Routes', () => {
         installed: true,
       },
     ]);
-    vi.mocked(readFile).mockResolvedValue(JSON.stringify(aliasedManifest));
+    manifestFileText.override = JSON.stringify(aliasedManifest);
     postUpdateManifest.text = JSON.stringify(aliasedManifest);
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>
@@ -1157,7 +1194,7 @@ describe('Plugin Routes', () => {
         installed: true,
       },
     ]);
-    vi.mocked(readFile).mockResolvedValue(JSON.stringify(aliasedManifest));
+    manifestFileText.override = JSON.stringify(aliasedManifest);
     postUpdateManifest.text = JSON.stringify(aliasedManifest);
     const app = setup({
       applyConfigurationMutation: vi.fn(async (operation) =>

@@ -128,7 +128,7 @@ function orchestrationSection(
   }
   lines.push(
     'Report unavailable targets with catalog options. Change Agent or model only with user approval. Never delegate through a shell.',
-    'Brief the child on one outcome and what to return. Supply excerpts if it cannot read files.',
+    'Brief one outcome. Pass `appearanceProposal: true` for local appearance handoffs.',
     'Use a fresh `clientTurnId` except for identical retries. Start a new task for re-review.',
   );
   const follow: string[] = [];
@@ -137,7 +137,7 @@ function orchestrationSection(
   if (has('get_task')) {
     follow.push(
       has('get_task_events')
-        ? 'Read `get_task` and `get_task_events`; pass `nextCursor`.'
+        ? 'Read status with `get_task`; inspect `get_task_events` only for missing details.'
         : 'Read state with `get_task`.',
     );
   } else if (has('get_task_events')) {
@@ -148,7 +148,7 @@ function orchestrationSection(
   if (follow.length > 0) lines.push(follow.join(' '));
   if (has('wait_session')) {
     lines.push(
-      'Wait with `wait_session`, its `sessionId` and `until: "turn-settled"`; repeat on timeout. Never poll with sleep/shell loops.',
+      'Use `wait_session` until turn-settled; repeat on timeout. Report the result or blocker.',
     );
   }
   if (has('interrupt_task')) {

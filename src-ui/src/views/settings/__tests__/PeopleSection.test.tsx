@@ -277,24 +277,35 @@ describe('People section', () => {
     expect(select.value).toBe('admin');
   });
 
-  test('a 401 group change says the operator credential is needed and keeps the group', async () => {
-    const list = peopleRoute(() => [ada()]);
-    handler = (call) =>
-      call.method === 'PUT'
-        ? json({ error: 'authentication_required' }, 401)
-        : list(call);
-    mount(<PeopleSection />);
+  test.each([
+    {
+      status: 401,
+      error: 'authentication_required',
+      remedy: 'Reconnect to Station.',
+    },
+    {
+      status: 403,
+      error: { code: 'operator_credential_required' },
+      remedy: 'Use the Station host CLI to change groups and tokens.',
+    },
+  ])(
+    'a $status group refusal gives the correct remedy and keeps the group',
+    async ({ status, error, remedy }) => {
+      const list = peopleRoute(() => [ada()]);
+      handler = (call) =>
+        call.method === 'PUT' ? json({ error }, status) : list(call);
+      mount(<PeopleSection />);
 
-    const select = (await screen.findByLabelText(
-      'Group for ada@example.com',
-    )) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'admin' } });
+      const select = (await screen.findByLabelText(
+        'Group for ada@example.com',
+      )) as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'admin' } });
 
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('Only the Station operator');
-    expect(alert.textContent).toContain('can only view');
-    expect(select.value).toBe('member');
-  });
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain(remedy);
+      expect(select.value).toBe('member');
+    },
+  );
 
   test('a group store that cannot take the change says so', async () => {
     const list = peopleRoute(() => [ada()]);

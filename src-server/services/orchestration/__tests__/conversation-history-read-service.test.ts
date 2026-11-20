@@ -137,6 +137,59 @@ describe('ConversationHistoryReadService', () => {
     );
   });
 
+  test('finds personal-account owner history for a paired reader and keeps the final Session ACL', () => {
+    const at = '2026-08-08T12:00:00.000Z';
+    for (const [threadId, userId] of [
+      ['family-run', 'human:local:operator'],
+      ['refused-run', 'human:device:eligible-owner'],
+      ['unrelated-run', 'human:unrelated'],
+    ] as const) {
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: threadId + '-started',
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: at,
+        metadata: { userId, agentSlug: 'claude' },
+      });
+    }
+    const authority = sessionReadAuthorityFromRequest(
+      'human:device:paired-reader',
+      undefined,
+      undefined,
+    );
+    const ownerUserIdsFor = vi.fn(() => [
+      'human:local:operator',
+      'human:device:eligible-owner',
+    ]);
+    const canReadSession = vi.fn(
+      (threadId: string) => threadId !== 'refused-run',
+    );
+    const reader = new ConversationHistoryReadService({
+      ...readServiceOptions(eventStore),
+      ownerUserIdsFor,
+      canReadSession,
+    });
+
+    expect(
+      reader
+        .readPage({ authority, limit: 10 })
+        .records.map((row) => row.threadId),
+    ).toEqual(['family-run']);
+    expect(ownerUserIdsFor).toHaveBeenCalledExactlyOnceWith(authority);
+    expect(canReadSession).toHaveBeenCalledWith('family-run', authority);
+    expect(canReadSession).toHaveBeenCalledWith('refused-run', authority);
+    expect(canReadSession).not.toHaveBeenCalledWith('unrelated-run', authority);
+  });
+
   test('projects child Sessions into Environment-scoped conversation rows with the newest accepted model', async () => {
     eventStore.upsertSession({
       provider: 'claude',

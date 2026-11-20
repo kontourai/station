@@ -102,17 +102,17 @@ rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
 
-A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
-visible at rest, and opens the Chat inventory scoped to that answer
+A settled answer's **Basis** chip stays visible while the other actions are
+hidden and opens the Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 It reads plain **Basis** for an unassessed answer, which is nearly every answer
 today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-In a narrow dock or phone row, Surface's label is cut short with an ellipsis
-after a whole **Basis ·**, and the full label stays in the chip's accessible
-name and tooltip.
+The answer footer wraps when its controls need more space. In a narrow dock
+or phone row, a long Surface label can end in an ellipsis after a whole
+**Basis ·**. The full label stays in the chip's accessible name and tooltip.
 The chip reads an answer's standing only after the answer has stayed on screen
 for about 150ms, so a fling through history sends no read for answers it only
 passes. It cancels a read that scrolls off screen unanswered, does not re-read a
@@ -270,6 +270,14 @@ turn, queued message or pending check blocks the switch; the handoff's
 **Switch to …** action is disabled for the same reasons ([entry
 point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
 [dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+An idle chat whose saved engine was removed keeps its transcript readable and
+offers **Continue with another agent** to callers allowed to continue. A first
+handoff to a different Agent starts a fresh Session in the same Conversation
+with a bounded excerpt from the transcript, even if both Agents use the same
+connection. Returning to an earlier Session of the selected Agent can resume
+its engine context when Station verifies the original binding and engine
+support.
+
 New chat, the active composer and the handoff dialog use the shared model picker.
 Their catalogs prefer the executing engine's models; another engine's profile
 aliases are not offered. Handoff runtime settings are retained with the exact
@@ -745,7 +753,8 @@ for not sent and may-have-reached, and caution-coloured for a send with no
 answer. An assistant row with nothing to draw renders no bubble: the streaming
 row appears with its first text, reasoning or tool row (the pill carries the
 starting state before that) and eases in, and a settled row whose only content
-is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
+is reasoning keeps a collapsed **Reasoning · N words** disclosure. On a
+phone, live reasoning disclosures also start collapsed. A turn that
 ended with nothing to draw (no text, tool or file rows, or only reasoning the
 reader hides) keeps its row as one line, **No reply**, or **Stopped** when it
 was stopped, with the turn's actions at the end of that line, so both are the
@@ -1117,9 +1126,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   Station has taken over. A pick the engine could not be switched to is never
   shown as applied: the chip shows what still runs, marked pending, with text
   that differs from Default ("Own settings", or "Ask · kept"), and its name
-  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
-  shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. Codex's Default likewise names the engine's own settings
+  says the pick was not applied. A newly recorded decision clears that.
+  Other ACP engines, including Antigravity, use Station's approval modes for
+  the requests they send while keeping their own tool rules. If the host
+  has no request-mode support, the chip shows **Approval: Set by engine**.
+  Signed-in users can save personal approval defaults for Codex, Claude, and
+  Muse where the selected Station permits personal defaults.
+  Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.
@@ -1130,10 +1143,17 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   writable, for a trusted host folder and under Station's `station-workspace`
   profile).
   An engine's advertised Mode (OpenCode's build or plan agent)
-  is a separate picker beside it, never a replacement for it. While Station
+  is a separate picker beside it. In an existing chat, the picker stages the
+  request for the next send even when the model is engine-selected. The chip
+  shows it as pending until the engine reports the mode. If the model picker
+  is available only at start, the composer offers the model and its advertised
+  thinking effort when starting a new chat. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot
   apply names the OpenCode setting and the next step, and offers no Retry.
+  Confirming Full access closes Run Setup. If Station refuses, the notice shows
+  the outcome first and keeps the operator's instructions under **Full access
+  recovery**.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
@@ -1153,6 +1173,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   model, and there is no engine history to carry over. The session list that
   says so is re-read after every send that did not take, and a turn in flight
   outranks it, so a running first turn never reopens Model.
+
+- An ACP mode pick stays pending until the engine confirms it. Station records
+  confirmed ACP and native OpenCode modes as Session observations without
+  changing the Session's model, directory or lifecycle. The Session summary
+  restores the last confirmed mode after reconnecting.
 
 ### Turn activity and follow-up delivery
 
@@ -1255,6 +1280,8 @@ proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
 window holds reads **Queued in another window.** (that window sends it), one
 from a closed window **From a closed window. Not sent.**; both offer **Send**.
+When a held outbox message restores an unopened chat, Home and Inbox use the
+conversation title and Agent from Station’s inventory and catalog when available.
 Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
@@ -1266,6 +1293,16 @@ than popping.
 In a dock too short for the list and the draft, the list yields before the
 draft does, down to its toggle row (and, while open, its first row); the rest
 scrolls inside it.
+
+A no-project composer can omit its workspace when the conversation already
+runs in a Station-managed chat folder. Station holds that follow-up for the
+Session and folder it observed at admission. If a different Session takes
+over before placement, the held message is refused. A request that names an
+explicit directory or Project still has to match the conversation's binding.
+While an automatic turn prepares a successor in the same conversation, Queue
+can use the existing binding for that ordinary continuation. The held
+follow-up waits for startup and the earlier turn. A handoff or a fresh-context
+reservation must establish its own binding before this path can admit a message.
 
 The pending-message section starts collapsed, showing only its
 count and a Needs review (or Not sent) indicator; a live region outside the

@@ -62,6 +62,8 @@ interface SessionEventWindowReader {
   memoryContinuation?: OrchestrationConversationEventWindow['memoryContinuation'];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
+  /** A materialized child named by a fresh head read and the binding it read from. */
+  executionRead?: { sessionId: string; priorSessionId: string | undefined };
   /** Per-execution-Session Agent identity for historical transcript rows. */
   sessionLineage?: NonNullable<
     OrchestrationConversationEventWindow['sessionLineage']
@@ -374,13 +376,14 @@ export function useSessionEventWindow(
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [childObservation, setChildObservation] = useState<{
     sessionId: string;
-    sessionIdAtRead: string | undefined;
+    priorSessionId: string | undefined;
+    materialized: boolean;
   }>();
   // The rows can keep painting when a foreground receipt or /open changes
   // the child. A head read started under a different child cannot undo it.
   const currentSessionId =
     childObservation &&
-    (childObservation.sessionIdAtRead === legacySessionId ||
+    (childObservation.priorSessionId === legacySessionId ||
       childObservation.sessionId === legacySessionId)
       ? childObservation.sessionId
       : undefined;
@@ -538,7 +541,11 @@ export function useSessionEventWindow(
         );
       setChildObservation(
         page.currentSessionId
-          ? { sessionId: page.currentSessionId, sessionIdAtRead: legacyAtSend }
+          ? {
+              sessionId: page.currentSessionId,
+              priorSessionId: legacyAtSend,
+              materialized: page.session?.threadId === page.currentSessionId,
+            }
           : undefined,
       );
       setSessionLineage(page.sessionLineage);
@@ -1079,6 +1086,9 @@ export function useSessionEventWindow(
     watermark: currentReader ? watermark : 0,
     memoryContinuation: currentReader ? memoryContinuation : undefined,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
+    ...(currentReader && currentSessionId && childObservation?.materialized
+      ? { executionRead: childObservation }
+      : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],

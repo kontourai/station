@@ -2766,6 +2766,78 @@ describe('Conversation Routes', () => {
     },
   );
 
+  test('named runtime reads refuse when the request cannot resolve the Session owner', async () => {
+    const adapter = createMockAdapter();
+    adapter.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'human:fixture:owner',
+      resourceId: 'default',
+    });
+    const readSessionMessages = vi.fn();
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        isRuntimeConversation: () => true,
+        readSessionConversation: vi.fn().mockResolvedValue(null),
+        readSessionMessages,
+      } as any,
+      () => 'human:fixture:reader',
+    );
+    for (const endpoint of ['messages', 'export']) {
+      const response = await app.request(
+        `/station/conversations/c1/${endpoint}`,
+      );
+      expect(response.status).toBe(404);
+      expect(await json(response)).toEqual({
+        success: false,
+        error: 'Conversation not found',
+      });
+    }
+    expect(readSessionMessages).not.toHaveBeenCalled();
+    expect(adapter.getMessages).not.toHaveBeenCalled();
+  });
+
+  test('named runtime reads refuse a different recorded Agent even in the same visible Session', async () => {
+    const adapter = createMockAdapter();
+    const readSessionMessages = vi.fn();
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        isRuntimeConversation: () => true,
+        readSessionConversation: vi
+          .fn()
+          .mockResolvedValue({ agentSlug: 'alpha' }),
+        readSessionMessages,
+      } as any,
+    );
+    for (const endpoint of ['messages', 'export']) {
+      const response = await app.request(
+        `/station/conversations/c1/${endpoint}`,
+      );
+      expect(response.status).toBe(404);
+      expect(await json(response)).toEqual({
+        success: false,
+        error: 'Conversation not found',
+      });
+    }
+    expect(readSessionMessages).not.toHaveBeenCalled();
+    expect(adapter.getMessages).not.toHaveBeenCalled();
+  });
+
   test('GET /:slug/conversations/:id/messages returns messages', async () => {
     const adapters = new Map([['default', createMockAdapter()]]);
     const app = createConversationRoutes(adapters as any, mockLogger);

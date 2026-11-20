@@ -43,6 +43,7 @@ import {
   pullRequestFeedbackActive,
   pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
+import type { TaskPullRequestWatchReviewHold } from '@kontourai/station-contracts/pull-request-watch';
 import { pullRequestReadyForPerson } from '@kontourai/station-contracts/pull-request-watch';
 import { errorMessage } from '../../utils/error-message.js';
 import { quotedLines, singleLine } from '../orchestration/quoted-text.js';
@@ -93,6 +94,7 @@ export interface PullRequestFeedbackDeliveryPorts {
    * `pull-request-head-review` preview). Absent: never.
    */
   headReviewEnabled?(): boolean;
+  headReviewHold?(prKey: string): TaskPullRequestWatchReviewHold | undefined;
   session(conversationId: string): FeedbackSessionState;
   /** The inbox's live send rule for this user on this conversation. */
   mayContinue(conversationId: string, userId: string): boolean;
@@ -1195,6 +1197,14 @@ export class PullRequestFeedbackDelivery {
     nowIso: string,
   ): void {
     if (!claim.watch || !pullRequestReadyForPerson(observation)) return;
+    if (claim.condition?.state === 'paused') return;
+    if (!this.ports.mayContinue(conversationId, claim.enabledBy)) return;
+    if (
+      claim.settings.reviewEachHead &&
+      this.ports.headReviewEnabled?.() &&
+      (!this.ports.headReviewHold || this.ports.headReviewHold(claim.prKey))
+    )
+      return;
     if (this.ports.session(conversationId).state !== 'idle') return;
     if (
       !store.recordWatchReport({

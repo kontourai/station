@@ -188,6 +188,7 @@ export const PROVIDER_FAILURE_KINDS = {
   stage_invalid_upload: 'input_unsupported',
   stage_capacity: 'busy',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
+  'acp-transport-closed': 'unavailable',
   sandbox_unavailable: 'permission_denied',
   provider_model_unavailable: 'model_unavailable',
   [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',

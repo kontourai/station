@@ -56,7 +56,16 @@ settings from a check that actually reached the provider:
 - **Unreachable** — configured, but Station cannot reach it.
 
 The engine page's Status, its **Ready** step and its readiness notice show the
-same state as its row. A section tab carries an attention mark when an engine
+same state as its row. If a saved ACP engine is still checking access, wait for
+the check to finish and retry. The current list describes the latest observation.
+Starting a Session checks readiness again. A live model catalog alone does not
+verify a completed turn.
+
+If the Engine inventory cannot finish in time, try Connections again shortly.
+A CLI shown in system diagnostics is a separate PATH observation. An unavailable
+check retains the last observed presence or reports it as unknown.
+
+A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
@@ -1003,6 +1012,17 @@ See [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption
 and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
+
+Saved command connections that match a built-in launch appear under their
+existing IDs with the built-in marks. For example, a saved Antigravity
+connection called `agy` satisfies the Antigravity catalog card.
+
+To remove a saved ACP engine, open its management menu and choose **Remove
+engine**. On a phone, swipe the row to reveal **Remove** and then confirm.
+The dialog lists affected Agents when Station has their bindings. Removing
+the connection clears its saved setup and Station credentials. Existing
+conversations are readable. Use **Continue with another agent** to resume
+the conversation with a connected engine.
 
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
 one there explicitly connects the Engine and creates its default Agent binding.

@@ -561,7 +561,11 @@ Browser visibility, focus and online signals can shorten a transient backoff
 once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
-are unchanged.
+are unchanged. Leaving the page aborts the stream unless the browser is
+preserving it in the back-forward cache. When a stream or retry wait settles,
+the SDK removes its listeners from the host targets where it registered them.
+A browser stream needs a window that supports page lifecycle events. The SDK
+stops before reconnecting if that window has retired.
 A stream opening has a 30-second deadline until response headers arrive,
 including credential resolution. `timeoutMs` changes that opening deadline;
 `null` or `0` explicitly disables it. The deadline stops at headers, so it never
@@ -588,6 +592,11 @@ using `refetchType: 'all'`. Credential-usage queries are excluded.
 The first snapshot uses cached server status as its baseline when available;
 an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
 authority have no effect. All status fields are compared.
+
+An ACP connection can report `stationApprovalRequests: true` when the host
+supports applying chat approval modes to the engine's ACP permission requests.
+This covers Antigravity and other ACP engines using the standard permission
+callback. Older hosts omit the field.
 
 `useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
 per API base and authority. SSE invalidates it promptly, while a 60-second
@@ -1021,6 +1030,24 @@ result reads capture the reference and Task scope before dispatch, require the
 sequence and both digests, and verify the returned Markdown content digest. No
 shared provider execution is enabled by this SDK surface.
 
+### Project Room coordinator
+
+`@kontourai/station-sdk/project-room-coordinator` reaches the `#general`
+coordinator's [routes](api.md#the-coordinator-in-general):
+`getProjectRoomCoordinator`, `startProjectRoomCoordinatorTasks` (some rows,
+or every proposed row when none are named), `runProjectRoomStatusSweep` and
+`setProjectRoomCoordinatorSettings`. Room calls take the room's
+`ApiRequestScope` and guards, like the other room clients. Its React hooks are
+`useProjectRoomCoordinatorCapability` (the `projectRoomCoordinator` flag,
+asked only when enabled), `useProjectRoomCoordinator` (one query per
+Project's `#general`, rechecked every five seconds while a Task waits, starts
+or works), `useStartProjectRoomCoordinatorTasks`, `useProjectRoomStatusSweep`
+and `useSetProjectRoomCoordinatorSettingsMutation`. Gate on the capability and
+the `project-room-coordinator` Feature Preview; with the preview off every
+route answers `feature_preview_disabled`. See the
+[client](../../packages/sdk/src/client/project-room-coordinator.ts) and
+[hooks](../../packages/sdk/src/query-domains/projectRoomCoordinator.ts).
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
@@ -1417,12 +1444,11 @@ caller must review the result before presenting the request as approved.
 `useRevokeStationPersonTokenMutation` make the operator's changes. A person's
 own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
-`StationAccessError` with the HTTP `status` and the server's `code`:
-`isOperatorCredentialRequired` detects the current 401 refusal. Only the operator
-credential (host CLI) or an operator passkey session with step-up can change groups
-and manage other people’s tokens. The current refusal status for other callers
-is tracked in [#4109](https://github.com/kontourai/station/issues/4109): the SDK
-treats that 401 as a dead credential and removes it.
+`StationAccessError` with the HTTP `status` and the server's `code`.
+`isOperatorCredentialRequired` recognizes `403 operator_credential_required`.
+This refusal preserves the Device credential. Group changes and management of
+other people’s tokens require the host operator credential or an operator
+passkey session with step-up. HTTP 401 still signals authentication failure.
 `isStationAccessUnavailable` is a read refused as not for this caller (401, 403 or
 404), which a surface hides rather than shows. A mint
 answers the secret once. The mint mutation holds that answer while observed, so
@@ -2378,10 +2404,9 @@ separate live request admission from persisted data identity.
 
 ### `useProjectConversationsQuery(projectSlug: string, limit?, config?)`
 
-Fetches recent conversations for a project. Default limit: 10. This legacy
-reader can turn a non-OK response or invalid/failed envelope into `[]`; an empty
-result does not distinguish no conversations from those failures. Transport or
-JSON-decoding failures can still reject. See `fetchProjectConversations` below.
+Wraps the legacy `fetchProjectConversations` endpoint. The query reports HTTP
+and response failures through its error state. The current Project view uses
+the scoped channel and Task room queries. See `fetchProjectConversations` below.
 
 ### `useRenameConversationMutation()`
 
@@ -2969,11 +2994,13 @@ does not mean a layout is installed and ready to load.
 
 ### `fetchProjectConversations(projectSlug: string, limit?: number): Promise<any[]>`
 
-Fetches recent conversations for a project, with a default limit of 10. The
-underlying [legacy helper](../../packages/sdk/src/api-knowledge-utils.ts) uses
-`allowFailure`, returning `[]` for HTTP refusals, false or malformed envelopes,
-or missing `data`. Network and JSON-decoding errors still reject. Consumers
-must not use this helper's empty array as proof that the Project has no history.
+Reads the legacy Project conversation endpoint on the selected Station. The
+default limit is 10. A valid array response is returned unchanged. HTTP and
+response failures reject with `StationHttpError`, which keeps the observed
+status and any server-supplied code, details, or `Retry-After`. The current
+Station refuses this legacy read with `project_conversations_unavailable`
+because its file-memory records lack a trusted Project binding. Use the scoped
+Project Room and Task room query surfaces for Project conversations.
 
 ### `addProjectLayoutFromPlugin(projectSlug: string, plugin: string): Promise<any>`
 
@@ -4289,9 +4316,10 @@ publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 Stores per-tab strings in browser `sessionStorage` under
 `layout-<layoutSlug>-tab-<tabId>` and updates the page hash for the active tab.
-Use a stable, distinct layout identity. Stored state may be restored on mount
-when the hash is empty, and on tab switches. This is browser UI state, not
-durable Project state; storage failures are not caught here.
+Use a stable, distinct layout identity. On mount, an empty hash is restored
+from the active tab's saved state before child plugins render. An incoming
+hash takes precedence. A tab switch restores the selected tab's saved state.
+This browser UI state lives in session storage for the current browser session.
 
 ```tsx
 <LayoutNavigationProvider layoutSlug="my-layout" activeTabId={activeTab}>
@@ -4311,10 +4339,9 @@ type LayoutNavigationExcerpt = {
 }
 ```
 
-`clearTabState` currently removes storage for an inactive tab, but clears only
-the URL hash for the active tab. It is not a reliable way to erase that active
-tab's saved string; a later restoration can read it again. Tracked in
-[#2806](https://github.com/kontourai/station/issues/2806).
+`clearTabState` removes the specified tab's saved string. For the active tab
+it also clears the URL hash and cancels its pending restoration. Other tabs
+keep their saved state.
 
 To hand state to another tab of the same Layout, write it for that tab and then
 select the tab. The state is a URL search-params string. `setTabState` stores
@@ -4466,17 +4493,21 @@ interface ConversationalOptions {
 }
 ```
 
+The [ElevenLabs example](../../examples/elevenlabs-voice/README.md) uses a
+server-held API key to mint browser WebSocket authorization and closes active
+resources when its registrations retire. Its scripted protocol checks and
+live provider acceptance are tracked separately.
+
 ### `ProviderCapability`
 
 Shape used in the voice lists returned by `GET /api/system/capabilities`.
 `configured` is the server's capability observation, not a successful live
 provider probe. Station can register configured server entries as display
 stubs whose methods warn that a plugin bundle is still needed; presence in the
-registry alone does not establish a working provider. The current capability
-hook does not retire its stubs when a later Station observation omits them, so
-a retained selection can still appear supported after changing connections.
-Lifecycle ownership for these entries is tracked in
-[#2807](https://github.com/kontourai/station/issues/2807).
+registry alone does not establish a working provider. The hook disposes its
+stubs when the observation is empty or fails, or its selected Station scope
+unmounts. A plugin that has replaced a stub with its own provider keeps that
+registration.
 
 ```ts
 interface ProviderCapability {
@@ -7234,19 +7265,37 @@ consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
 for expiry, source/Device revalidation and remaining qualification limits.
 
-### Observe-only Automation deliveries
+### Automation operator surface
 
-`listAutomationDeliveries(apiBase, { limit? }, options?)` from
-`@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
-management caller. It returns `AutomationDeliveryPage` with `deliveries` and
-`polls`, including partial coverage and source failures. Each delivery may
+`@kontourai/station-sdk/client` has one function per
+`AUTOMATION_OPERATOR_SURFACE` verb (#4513): `listAutomationDeliveries(apiBase,
+{ limit? })`, `listAutomationEpisodes`, `retryAutomationEpisode(apiBase,
+{ ruleId, episodeId })`, `listAutomationSources`, `createAutomationSource`,
+`enableAutomationSource(apiBase, id, expectedFingerprint)`,
+`disableAutomationSource`, `deleteAutomationSource`, `listAutomationRules`,
+`createAutomationRule`, `updateAutomationRule(apiBase, id, { ...rule,
+expectedFingerprint })`, `enableAutomationRule(apiBase, id,
+expectedFingerprint)`, `disableAutomationRule` and `deleteAutomationRule`.
+Each accepts `ClientRequestOptions`.
+
+`listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
+and `polls`, including partial coverage and source failures. Each delivery may
 carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
 rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
-`intent-retained`) and a bounded action snapshot. The server requires
-**GitHub automation observations** in Feature previews. A `StationHttpError`
-preserves the preview refusal's code and Settings link; a 404 from an older
-host reports the unsupported capability. No mutation or agent invocation is
-performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+`intent-retained`) and a bounded action snapshot. `listAutomationRules` and
+`listAutomationSources` return the `configurationFingerprint` the enable and
+update functions name. Rule functions take `AutomationDispatchRuleInput`
+(`dispatch-task` only); sources are disabled `github-poll` sources
+(`AutomationPollSourceInput`).
+
+Reads need a management caller; every change is refused unless the operator
+makes it in person (never an agent session). Everything except the disable and
+delete functions needs **GitHub automation observations** in Feature previews.
+A `StationHttpError` preserves the server's code: `feature_preview_disabled`
+with its Settings link, `automation_not_found` for a missing rule, source or
+episode, `operator_required`, or a retry refusal such as `not-exhausted`. Any
+other 404 (an older host) reports the unsupported capability. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Personal conversation resolution and turn directory
 

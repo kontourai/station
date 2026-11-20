@@ -267,6 +267,8 @@ export interface SchedulerJob {
   retryDelaySecs?: number;
   lastRun?: string;
   nextRun?: string;
+  /** Forecast for the requested week, in UTC. Omitted on normal list reads. */
+  weekOccurrences?: { times: string[]; truncated: boolean };
   /** Read-only server-issued identity for an exact unattended-tool grant. */
   unattendedPrincipal?: { kind: 'scheduled-job'; jobId: string };
   /** Optional deterministic external observation run before an agent turn. */
@@ -362,7 +364,15 @@ export interface SchedulerProviderStats {
   }[];
 }
 
+export interface SchedulerRowIssue {
+  jobId: string;
+  name: string;
+  reason: 'invalid-json' | 'invalid-job';
+}
+
 export interface SchedulerProviderStatus {
+  /** Available only to the Station operator. */
+  rowIssues?: SchedulerRowIssue[];
   running: boolean;
   jobCount: number;
   lastTickAt?: string | null;

@@ -12,6 +12,7 @@ import type {
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
+  EngineApprovalReviewer,
   ModelLaunchPlan,
   ProviderDurabilityProfile,
   ProviderSendTurnInput,
@@ -1025,6 +1026,10 @@ export interface TurnProgressSilence {
  * recognizes only its narrower progress vocabulary (#2959/#3031).
  */
 export interface TurnProgressObservation {
+  /** Execution Session observed by the watchdog, when reported by the host. */
+  threadId?: string;
+  /** Turn observed by the watchdog, when reported by the host. */
+  turnId?: string;
   lastProgressEventAt: string;
   progressSilence?: TurnProgressSilence;
 }
@@ -1238,6 +1243,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * inherited default until the next report.
    */
   appliedApprovalMode?: ApprovalMode;
+  /** The latest engine-confirmed mode on this execution Session. */
+  currentModeId?: string;
+  /** Reviewer reported by the engine for this binding. Unknown if omitted or unrecognized. */
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;

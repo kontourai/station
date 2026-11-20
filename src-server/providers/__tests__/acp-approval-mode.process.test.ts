@@ -38,7 +38,7 @@ import {
  *
  * The fixture is launched through an executable named `opencode`, so the
  * adapter recognizes it by its command exactly as it recognizes the real
- * one; a copy named `kiro-cli` is an ACP engine that decides for itself.
+ * one. A copy named `kiro-cli` exercises the standard request path without OpenCode launch rules.
  */
 const FIXTURE = fileURLToPath(
   new URL('./fixtures/fake-opencode-acp.mjs', import.meta.url),
@@ -1176,36 +1176,42 @@ describe.skipIf(process.platform === 'win32')(
       expect(JSON.stringify(edit.started)).not.toContain('edit ran');
     });
 
-    test('an engine that decides for itself is launched untouched and refuses a mode', async () => {
+    test('standard ACP requests follow chat approval changes without rewriting the engine rules', async () => {
       process.env.OPENCODE_CONFIG_CONTENT = '{"model":"mine/model"}';
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        permission: { bash: 'ask', edit: 'deny' },
+      });
       h = harness('kiro-cli');
-      await expect(start(h, 'refused', 'ask')).rejects.toThrow(
-        /decides which of its actions ask/,
-      );
-      // Refused before anything was launched.
-      expect(launches(h)).toHaveLength(0);
+      await start(h, 'request-approvals', 'never', 'host');
 
-      await start(h, 'engine-decides');
+      const shell = await turn(h, 'request-approvals', 'run: echo first', {
+        confinement: 'host',
+      });
+      expect(shell.asked).toBeUndefined();
+      expect(JSON.stringify(shell.completed)).toContain('bash ran');
+      expect(turnStarted(shell.started)?.metadata?.approvalMode).toBe('never');
+
+      const edit = await turn(h, 'request-approvals', 'edit: blocked.ts', {
+        confinement: 'host',
+      });
+      expect(edit.asked).toBeUndefined();
+      expect(existsSync(join(h.cwd, 'blocked.ts'))).toBe(false);
+
+      const asked = await turn(h, 'request-approvals', 'run: echo again', {
+        approvalMode: 'ask',
+        confinement: 'host',
+        answer: 'decline',
+      });
+      expect(asked.asked).toMatchObject({
+        title: 'echo again',
+        payload: { toolKind: 'execute' },
+      });
+      expect(JSON.stringify(asked.completed)).not.toContain('bash ran');
+      expect(turnStarted(asked.started)?.metadata?.approvalMode).toBe('ask');
       expect(launches(h)).toEqual([
         { OPENCODE_CONFIG_CONTENT: '{"model":"mine/model"}' },
       ]);
-      const configured = await waitFor(
-        () =>
-          h?.events.find((event) => event.method === 'session.configured') as
-            | (CanonicalRuntimeEvent & { metadata?: Record<string, unknown> })
-            | undefined,
-        'session.configured',
-      );
-      expect(configured.metadata?.approvalMode).toBeUndefined();
-      // The user's own "allow" decides: nothing asks.
-      const shell = await turn(h, 'engine-decides', 'run: echo hi');
-      expect(shell.asked).toBeUndefined();
-      expect(
-        turnStarted(shell.started)?.metadata?.approvalMode,
-      ).toBeUndefined();
-      await expect(
-        turn(h, 'engine-decides', 'run: echo again', { approvalMode: 'ask' }),
-      ).rejects.toThrow(/decides which of its actions ask/);
+      expect(engineAlways(h)).toEqual([]);
     });
 
     describe('#3924: OpenCode configuration is code OpenCode runs at launch', () => {

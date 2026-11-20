@@ -178,6 +178,18 @@ describe.skipIf(!posix)('station-weight end to end', () => {
       // Linux: switches counted across the window, not the end read twice.
       if (process.platform === 'linux')
         expect(result.metrics.idleContextSwitches.value).toBeGreaterThan(0);
+      if (process.platform === 'darwin') {
+        expect(result.metrics.idleWakeups).toMatchObject({
+          status: 'measured',
+          basis: 'libproc interrupt wakeups',
+          packageIdleWakeups: expect.any(Number),
+        });
+        expect(result.metrics.idleWakeups.comparedProcesses).toBeGreaterThan(0);
+        expect(result.metrics.idleWakeups.value).toBeGreaterThanOrEqual(0);
+        expect(
+          result.metrics.idleWakeups.packageIdleWakeups,
+        ).toBeGreaterThanOrEqual(0);
+      }
 
       // The leaked daemon is counted and ended, though no ancestry ties it
       // to the instance.

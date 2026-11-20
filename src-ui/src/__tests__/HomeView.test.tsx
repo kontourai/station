@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -107,6 +109,7 @@ const fixtures = vi.hoisted(() => ({
   >,
   projectsLoading: false,
   sessions: [] as any[],
+  conversationInventory: Array.of<ConversationListItem>(),
   tasks: [] as any[],
   chats: {} as Record<string, any>,
   agents: [{ slug: 'codex-agent', name: 'Codex', model: 'gpt-5.3-codex' }],
@@ -250,7 +253,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
   }),
   useConversationInventoryQuery: () => ({
-    data: [],
+    data: fixtures.conversationInventory,
     isError: false,
     isLoading: false,
     refetch: fixtures.inventoryRefetch,
@@ -499,6 +502,73 @@ function continueRow(): HTMLElement {
 }
 
 describe('HomeView', () => {
+  test.each(['ready', 'closed'] as const)(
+    'shows an idle delegation with %s transport under Just finished until its result is read',
+    (transportStatus) => {
+      const endedAt = '2026-11-18T20:00:00Z';
+      vi.useFakeTimers({ now: new Date('2026-11-18T20:01:00Z') });
+      const conversationId = 'task:directory-delegation';
+      const title = 'Directory delegation proof';
+      fixtures.sessions = [
+        {
+          threadId: conversationId,
+          conversationId,
+          provider: 'codex',
+          assignedAgentSlug: 'codex-agent',
+          displayTitle: title,
+          status: transportStatus,
+          lifecycleState: 'idle',
+          hasActiveTurn: false,
+          createdAt: '2026-11-18T19:59:00Z',
+          updatedAt: endedAt,
+          lifecycleChangedAt: endedAt,
+          delegation: { taskId: conversationId },
+          isLoaded: true,
+          isPersisted: true,
+          answerability: { answerable: true },
+          eventCount: 4,
+        },
+      ];
+      const inventory: ConversationListItem = {
+        id: conversationId,
+        title,
+        source: 'runtime',
+        agentSlug: agentId('codex-agent'),
+        createdAt: '2026-11-18T19:59:00Z',
+        updatedAt: endedAt,
+        lifecycleState: 'idle',
+        lifecycleChangedAt: endedAt,
+        messageCount: 2,
+        mutable: false,
+        answerability: { answerable: true },
+        readState: { version: 19, seenVersion: 0, unread: true },
+      };
+      fixtures.conversationInventory = [inventory];
+      const props = { continuation: null, onNavigate: vi.fn() };
+      const first = renderHomeView(props);
+      expect(queryContinue()).toBeNull();
+      expect(
+        within(
+          screen.getByRole('region', { name: /^Just finished/ }),
+        ).getByText(title),
+      ).toBeTruthy();
+
+      first.unmount();
+      fixtures.conversationInventory = [
+        {
+          ...inventory,
+          acknowledgedAt: endedAt,
+          readState: { version: 19, seenVersion: 19, unread: false },
+        },
+      ];
+      renderHomeView(props);
+      expect(within(continueRow()).getByText(title)).toBeTruthy();
+      expect(
+        screen.queryByRole('region', { name: /^Just finished/ }),
+      ).toBeNull();
+    },
+  );
+
   test('real Home render errors keep Retry and Close without an initial recovery signal', async () => {
     const signal = vi.fn();
     const unsubscribe = subscribeRequiredSlotFailures(signal);
@@ -567,6 +637,7 @@ describe('HomeView', () => {
     fixtures.selectedContextResolved = true;
     fixtures.selectionInputs = [];
     fixtures.sessions = [];
+    fixtures.conversationInventory = [];
     fixtures.tasks = [];
     fixtures.chats = {};
     fixtures.continueDecoy = false;

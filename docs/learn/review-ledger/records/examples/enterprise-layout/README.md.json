@@ -56,7 +56,11 @@
 
     "examples/enterprise-layout/src/Notes.tsx",
 
-    "tests/enterprise-pane-lifecycle.spec.ts"
+    "tests/enterprise-pane-lifecycle.spec.ts",
+
+    "examples/enterprise-layout/src/useCalendarNavigation.ts",
+
+    "packages/sdk/src/providers.tsx"
   ],
 
   "checks": [

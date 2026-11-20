@@ -55,6 +55,7 @@ import {
   STUB_REPLY_TEXT,
   startStubAnthropic,
 } from '../bench/station-weight-stub.mjs';
+import { darwinWakeupMetric } from '../bench/station-weight-wakeups.mjs';
 
 const stubs: Array<{ close: () => Promise<void> }> = [];
 afterEach(async () => {
@@ -1590,6 +1591,44 @@ describe('station-weight process identity', () => {
         },
       }),
     ).toThrow('cannot read process environments exactly');
+  });
+
+  test('macOS wakeups count matched births and disclose endpoint-only processes', () => {
+    const start = new Map([
+      [1, { birth: 10n, interrupt: 100n, packageIdle: 7n }],
+      [2, { birth: 20n, interrupt: 200n, packageIdle: 30n }],
+    ]);
+    const end = new Map([
+      [1, { birth: 10n, interrupt: 123n, packageIdle: 9n }],
+      [3, { birth: 30n, interrupt: 900n, packageIdle: 400n }],
+    ]);
+    expect(darwinWakeupMetric(start, end)).toMatchObject({
+      status: 'measured',
+      value: 23,
+      packageIdleWakeups: 2,
+      comparedProcesses: 1,
+      endpointOnlyProcesses: 2,
+    });
+  });
+
+  test('macOS wakeups report a gap rather than zero for untrusted endpoints', () => {
+    const counter = { birth: 10n, interrupt: 100n, packageIdle: 7n };
+    const start = new Map([[1, counter]]);
+    for (const [end, reason] of [
+      [new Map([[2, counter]]), 'no process matched'],
+      [new Map([[1, null]]), 'unreadable'],
+      [new Map([[1, { ...counter, birth: 11n }]]), 'identity changed'],
+      [new Map([[1, { ...counter, interrupt: 99n }]]), 'decreased'],
+    ] as const) {
+      expect(darwinWakeupMetric(start, end)).toMatchObject({
+        status: 'not_measured',
+        reason: expect.stringContaining(reason),
+      });
+    }
+    expect(darwinWakeupMetric(start, new Map([[1, counter]]))).toMatchObject({
+      status: 'measured',
+      value: 0,
+    });
   });
 
   test('context switches count only processes read at both ends of the window', () => {

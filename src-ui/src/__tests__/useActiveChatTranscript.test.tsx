@@ -102,6 +102,72 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('an open that moves the chat forward is not undone by its settled transcript', async () => {
+    const id = 'adoption-conversation';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Child adoption',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      currentSessionId: 'first-child',
+      conversationOpenPending: false,
+    });
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      }) as ChatSession;
+    let readable = 'first-child';
+    let tail = readable;
+    fetchConversationWindow.mockImplementation(async () => ({
+      protocolVersion: 1,
+      conversationId: id,
+      currentSessionId: tail,
+      session: { threadId: readable },
+      events: [],
+      hasMore: false,
+      watermark: 2,
+    }));
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript('http://station.test', chat),
+      { initialProps: { chat: session() } },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      activeChatsStore.updateChat(id, {
+        currentSessionId: 'second-child',
+        conversationOpenPending: false,
+      });
+      view.rerender({ chat: session() });
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'second-child',
+        conversationOpenPending: false,
+      });
+
+      readable = 'second-child';
+      tail = 'third-child';
+      await act(async () => view.result.current.reload());
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'second-child',
+        conversationOpenPending: false,
+      });
+
+      readable = 'third-child';
+      await act(async () => view.result.current.reload());
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'third-child',
+        conversationOpenPending: true,
+      });
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
   test('a settled receiver window retains readable text across reload without feeding it into live messages', async () => {
     const station = conversationConnection('relay');
     activeChatsStore.initChat('thread-1', {
@@ -1012,6 +1078,7 @@ describe('useActiveChatTranscript', () => {
         ? Promise.resolve({
             protocolVersion: 1,
             currentSessionId: 'parent-execution',
+            session: { threadId: 'parent-execution' },
             watermark: 1,
             hasMore: false,
             events: [],
@@ -1063,6 +1130,7 @@ describe('useActiveChatTranscript', () => {
         resolveFork({
           protocolVersion: 1,
           currentSessionId: 'fork-execution',
+          session: { threadId: 'fork-execution' },
           watermark: 1,
           hasMore: false,
           events: [],
@@ -1096,6 +1164,7 @@ describe('useActiveChatTranscript', () => {
       hasMore: false,
       events: [],
       currentSessionId: 'new-child',
+      session: { threadId: 'new-child' },
     });
     const session: ChatSession = {
       ...baseSession,

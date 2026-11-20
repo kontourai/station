@@ -17,6 +17,7 @@ import type {
 import { execGitContextCommand } from '../../utils/git-exec.js';
 import { readGitHubFeedbackObservation } from './github-feedback-observation.js';
 import { readGitHubPullRequestsByHead } from './github-pull-requests-by-head.js';
+import { isConfiguredGitLabHost } from './gitlab-pull-request-provider.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -250,9 +251,6 @@ const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
         ? 'review_required'
         : undefined;
 
-const canonicalHost = (host: string) =>
-  host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
-
 export function normalizeGitHubPullRequest(
   value: any,
   host: string,
@@ -330,7 +328,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
   readonly offeredCapabilities = offeredCapabilities;
   readonly offeredMergeMethods = offeredMergeMethods;
   canServeHost(host: string) {
-    return canonicalHost(host) !== 'gitlab.com';
+    return !isConfiguredGitLabHost(host);
   }
   constructor(
     private readonly transport: (

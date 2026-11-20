@@ -211,10 +211,12 @@ describe('frozen stable client-build provenance', () => {
     }
 
     const windows = workflowJob(release, 'desktop-windows');
-    const windowsBuild = windows.steps?.find((step) =>
-      step.uses?.startsWith('tauri-apps/tauri-action@'),
+    const windowsBuild = namedStep(
+      windows,
+      'Build signed Windows staging candidate',
     );
-    expect(windowsBuild?.env).toMatchObject({
+    expect(windowsBuild.run).toContain('npm run build:desktop --');
+    expect(windowsBuild.env).toMatchObject({
       STATION_CLIENT_BUILD_REUSE: '1',
     });
     expect(
@@ -277,6 +279,35 @@ describe('frozen stable client-build provenance', () => {
     ).toHaveLength(2);
     expect(stepIndex(androidJob, androidVerify.name as string)).toBeLessThan(
       stepIndex(androidJob, 'Upload to Play internal testing track'),
+    );
+  });
+
+  it('retains a failed Play observation journal separately from promotion authority', () => {
+    const android = workflowJob(release, 'android');
+    expectStepOrder(android, [
+      'Upload to Play internal testing track',
+      'Authenticate for Play bundle observation',
+      'Observe exact candidate Play bundle after upload',
+      'Retain failed Play observation journal',
+    ]);
+    const observation = namedStep(
+      android,
+      'Observe exact candidate Play bundle after upload',
+    );
+    expect(observation.env?.GOOGLE_PLAY_ACCESS_TOKEN).toBe(
+      '$' + '{{ steps.play_observation_auth.outputs.access_token }}',
+    );
+    const journal = namedStep(
+      android,
+      'Retain failed Play observation journal',
+    );
+    expect(journal.if).toContain("steps.play_observation.outcome == 'failure'");
+    expect(journal.with).toMatchObject({
+      path: 'provider-receipts/android-store-authority.json.observation.json',
+    });
+    expect(journal.with?.name).not.toEqual(
+      'station-android-store-authority-$' +
+        '{{ needs.preflight.outputs.android_version_code }}',
     );
   });
 
@@ -1223,7 +1254,7 @@ describe('native release workflow topology', () => {
     ).toMatchObject({
       uses: ANCHORE_SBOM_ACTION,
       with: {
-        format: 'cyclonedx-json',
+        format: 'cyclonedx-json@1.6',
         image:
           'ghcr.io/$' +
           '{{ github.repository }}@$' +
@@ -1241,6 +1272,7 @@ describe('native release workflow topology', () => {
     ).toMatchObject({
       uses: ANCHORE_SBOM_ACTION,
       with: {
+        format: 'cyclonedx-json@1.6',
         image:
           'ghcr.io/$' +
           '{{ github.repository }}@$' +
@@ -1412,7 +1444,7 @@ describe('native release workflow topology', () => {
     });
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
-    ).toContain('--no-sign');
+    ).toContain('--no-sign --bundles app');
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').env,
     ).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
@@ -1541,7 +1573,7 @@ describe('native release workflow topology', () => {
 
   it('builds deb and rpm before the signed AppImage overlay without post-sign mutation', () => {
     const debAndRpm = `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${githubExpression('runner.temp')}/tauri.version.conf.json`;
-    const appImage = `args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${githubExpression('runner.temp')}/tauri.release.conf.json`;
+    const appImage = `args: --target x86_64-unknown-linux-gnu --bundles appimage --config ${githubExpression('github.workspace')}/src-desktop/tauri.linux-appimage.conf.json --config ${githubExpression('runner.temp')}/tauri.release.conf.json`;
     expect(release).toContain(
       'node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"',
     );
@@ -1613,7 +1645,7 @@ describe('native release workflow topology', () => {
     expect(release).toContain('APPLE_DEVELOPER_ID_CERTIFICATE_BASE64');
     expect(release).toContain('Get-AuthenticodeSignature');
     expect(release).toContain(
-      '--config $' + '{{ runner.temp }}/tauri.windows.release.conf.json',
+      '--config "$RUNNER_TEMP/tauri.windows.release.conf.json"',
     );
     expect(macosArtifacts).toContain(
       "['--verify', '--deep', '--strict', '--verbose=2', app]",
@@ -1869,16 +1901,21 @@ describe('native release workflow topology', () => {
 
     expect(release).not.toContain('--config src-desktop/tauri.conf.json');
     expect(release).toContain(
-      `npx tauri build --no-sign --target ${githubExpression('matrix.target')} --config ${tagConfig}`,
+      `npx tauri build --no-sign --bundles app --target ${githubExpression('matrix.target')} --config ${tagConfig}`,
     );
-    expect(release).toContain(
-      `args: --target x86_64-pc-windows-msvc --config ${githubExpression('runner.temp')}/tauri.windows.release.conf.json --config ${tagConfig}`,
+    expect(
+      namedStep(
+        workflowJob(release, 'desktop-windows'),
+        'Build signed Windows staging candidate',
+      ).run,
+    ).toMatch(
+      /--config "\$RUNNER_TEMP\/tauri\.windows\.release\.conf\.json"\s*\\\s*--config "\$RUNNER_TEMP\/tauri\.release\.conf\.json"/,
     );
     expect(release).toContain(
       `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${versionConfig}`,
     );
     expect(release).toContain(
-      `args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${tagConfig}`,
+      `args: --target x86_64-unknown-linux-gnu --bundles appimage --config ${githubExpression('github.workspace')}/src-desktop/tauri.linux-appimage.conf.json --config ${tagConfig}`,
     );
     expect(release).toContain(
       'npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"',

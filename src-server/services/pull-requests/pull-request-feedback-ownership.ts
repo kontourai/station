@@ -27,6 +27,7 @@ import {
   type PullRequestHeadReviewWaiting,
   pullRequestFeedbackActive,
   pullRequestFeedbackKey,
+  pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import {
   type FeedbackSessionState,
@@ -203,6 +204,11 @@ export class PullRequestFeedbackOwnership {
       settings,
       enabledBy: input.viewer.userId,
       now: new Date(this.now()).toISOString(),
+      ...(existing?.conversationId === input.conversationId &&
+      pullRequestFeedbackSends(settings) &&
+      existing.watch
+        ? { watch: existing.watch }
+        : {}),
     });
     return {
       kind: 'ok',

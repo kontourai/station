@@ -1,0 +1,421 @@
+{
+  "revision": "a3004db4ba9438b616ad71ecaeccebfd379b7603",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked that the inbox retains the same swipe gesture and state rules through the shared hook. The connected-engine row uses that hook to reveal its separate confirmation action.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useInboxSwipe.ts","src-ui/src/hooks/useSwipeActions.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Checked that the inbox retains the same swipe gesture and state rules through the shared hook. The connected-engine row uses that hook to reveal its separate confirmation action.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css","src-ui/src/hooks/useInboxSwipe.ts","src-ui/src/hooks/useSwipeActions.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed saved alias identification, engine removal confirmation, and recovery with a different Agent against the routes and shared list and conversation components.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts","src-server/routes/agents/enriched-agents.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-operations-tools.ts","src-ui/src/components/SplitPaneLayout.css","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the inbox retains the same swipe gesture and state rules through the shared hook. The connected-engine row uses that hook to reveal its separate confirmation action.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useInboxSwipe.ts","src-ui/src/hooks/useSwipeActions.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Checked the optional delegated appearance owner callback in Station Control caller resolution. It supplies a proposal scope and leaves the acting principal and other runtime composition intact.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked missing ACP bindings in conversation open, the first delegated turn appearance lease, and durable-before-visible HTML publication. Other session authorization, turn accounting and approval inspection continue through their existing paths.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked one-time replies to standard permission requests against the host approval posture. The unattended-child floor, plan transitions, explicit persistent decisions and extension negotiation continue through their own gates.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked route composition for the scoped appearance owner and ACP turn-bound HTML publication. Browser preview, device sign-in and step-up, membership, transport and the other cited routes retain their existing authority and request paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the live ACP configuration read supplied to conversation open. It affects continuation readiness for the bound ACP connection and introduces no startup or configuration write.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked built-in branding on installed and repair reads, merged alias detection before install, idempotent retries for former stock icons, and host capability evidence for permission requests.","inputs":["src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that verified launch aliases receive the built-in presentation mark in the existing inventory without remapping the connection or inferring readiness.","inputs":["src-server/services/connections/connection-inspector.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the optional built-in mark on existing connection identity rows. Connection IDs, runtime adapter routing and smoke evidence remain independently resolved.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the optional built-in mark on existing connection identity rows. Connection IDs, runtime adapter routing and smoke evidence remain independently resolved.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the optional built-in mark on existing connection identity rows. Connection IDs, runtime adapter routing and smoke evidence remain independently resolved.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the optional built-in mark on existing connection identity rows. Connection IDs, runtime adapter routing and smoke evidence remain independently resolved.","inputs":["src-server/services/connections/connection-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked New chat passes its existing host inventory to the common start composer for permission support. The saved before-and-after captures show layout and Codex selection.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked New chat passes its existing host inventory to the common start composer for permission support. The saved before-and-after captures show layout and Codex selection.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked New chat passes its existing host inventory to the common start composer for permission support. The saved before-and-after captures show layout and Codex selection.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked New chat passes its existing host inventory to the common start composer for permission support. The saved before-and-after captures show layout and Codex selection.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked New chat passes its existing host inventory to the common start composer for permission support. The saved before-and-after captures show layout and Codex selection.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked New chat passes its existing host inventory to the common start composer for permission support. The saved before-and-after captures show layout and Codex selection.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the shared start composer receives its existing host inventory from the owner and offers permission controls only when supported. The shown layout and existing Codex start card retain the same contract.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked recovery against verified host inventory for ACP, with transcript retained, ordinary sends disabled and handoff gated by the caller and current turn. Peer views do not infer a missing connection from the host cache.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked recovery against verified host inventory for ACP, with transcript retained, ordinary sends disabled and handoff gated by the caller and current turn. Peer views do not infer a missing connection from the host cache.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked recovery against verified host inventory for ACP, with transcript retained, ordinary sends disabled and handoff gated by the caller and current turn. Peer views do not infer a missing connection from the host cache.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked recovery against verified host inventory for ACP, with transcript retained, ordinary sends disabled and handoff gated by the caller and current turn. Peer views do not infer a missing connection from the host cache.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked recovery against verified host inventory for ACP, with transcript retained, ordinary sends disabled and handoff gated by the caller and current turn. Peer views do not infer a missing connection from the host cache.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked that the dock passes the existing turn and queued-message gate to the handoff entry point. Pane placement, board launch and Project selection retain their existing paths.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared swipe hook uses the existing inbox row target and existing action descriptors. Inbox actions still follow their current eligibility and Details fallback.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the shared swipe hook uses the existing inbox row target and existing action descriptors. Inbox actions still follow their current eligibility and Details fallback.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared swipe hook uses the existing inbox row target and existing action descriptors. Inbox actions still follow their current eligibility and Details fallback.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked Home passes its existing host inventory into the shared composer for permissions. Project start before-and-after captures retain their historical layout comparison.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked Home passes its existing host inventory into the shared composer for permissions. Project start before-and-after captures retain their historical layout comparison.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked Home passes its existing host inventory into the shared composer for permissions. Project start before-and-after captures retain their historical layout comparison.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked Home passes its existing host inventory into the shared composer for permissions. Project start before-and-after captures retain their historical layout comparison.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked saved and failed-first-contact presentation, the shared confirmation for overflow and touch removal, and the retained Models and setup journeys in the learning media.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked saved and failed-first-contact presentation, the shared confirmation for overflow and touch removal, and the retained Models and setup journeys in the learning media.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked saved and failed-first-contact presentation, the shared confirmation for overflow and touch removal, and the retained Models and setup journeys in the learning media.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Checked saved and failed-first-contact presentation, the shared confirmation for overflow and touch removal, and the retained Models and setup journeys in the learning media.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked saved and failed-first-contact presentation, the shared confirmation for overflow and touch removal, and the retained Models and setup journeys in the learning media.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked saved and failed-first-contact presentation, the shared confirmation for overflow and touch removal, and the retained Models and setup journeys in the learning media.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the variable rename with the shared swipe hook and retained inbox transform and transition behavior.","inputs":["src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked that only rows with configured actions get a touch tray, retain keyboard row identity, and close on Escape. Models form and ordinary list-detail rows keep their navigation.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Checked that only rows with configured actions get a touch tray, retain keyboard row identity, and close on Escape. Models form and ordinary list-detail rows keep their navigation.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked that only rows with configured actions get a touch tray, retain keyboard row identity, and close on Escape. Models form and ordinary list-detail rows keep their navigation.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked that only rows with configured actions get a touch tray, retain keyboard row identity, and close on Escape. Models form and ordinary list-detail rows keep their navigation.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked that only rows with configured actions get a touch tray, retain keyboard row identity, and close on Escape. Models form and ordinary list-detail rows keep their navigation.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked that only rows with configured actions get a touch tray, retain keyboard row identity, and close on Escape. Models form and ordinary list-detail rows keep their navigation.","inputs":["src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the fresh connection read during a reserved native send. Removal gives a typed refusal, and rewind still checks the send reservation before staging.","inputs":["src-server/providers/adapters/opencode-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the explicit local-only appearance proposal opt-in on delegate_task and the shorter description against the same Project and SSH selection paths.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the explicit local-only appearance proposal opt-in on delegate_task and the shorter description against the same Project and SSH selection paths.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the explicit local-only appearance proposal opt-in on delegate_task and the shorter description against the same Project and SSH selection paths.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the explicit local-only appearance proposal opt-in on delegate_task and the shorter description against the same Project and SSH selection paths.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the explicit local-only appearance proposal opt-in on delegate_task and the shorter description against the same Project and SSH selection paths.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the explicit local-only appearance proposal opt-in on delegate_task and the shorter description against the same Project and SSH selection paths.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Checked brand projection for engine defaults and engine-generated Agents. Authored Agent icon and command metadata retain their existing shape.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked brand projection for engine defaults and engine-generated Agents. Authored Agent icon and command metadata retain their existing shape.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked brand projection for engine defaults and engine-generated Agents. Authored Agent icon and command metadata retain their existing shape.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked brand projection for engine defaults and engine-generated Agents. Authored Agent icon and command metadata retain their existing shape.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked brand projection for engine defaults and engine-generated Agents. Authored Agent icon and command metadata retain their existing shape.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked progressive disclosure, vertical touch scrolling and motion tokens for rows with an action tray. The Models screenshot shows a row without this tray.","inputs":["src-ui/src/components/SplitPaneLayout.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked progressive disclosure, vertical touch scrolling and motion tokens for rows with an action tray. The Models screenshot shows a row without this tray.","inputs":["src-ui/src/components/SplitPaneLayout.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked progressive disclosure, vertical touch scrolling and motion tokens for rows with an action tray. The Models screenshot shows a row without this tray.","inputs":["src-ui/src/components/SplitPaneLayout.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked progressive disclosure, vertical touch scrolling and motion tokens for rows with an action tray. The Models screenshot shows a row without this tray.","inputs":["src-ui/src/components/SplitPaneLayout.css"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the optional engine icon on the enriched Agent response. The saved Agent icon and engine binding retain their own fields.","inputs":["packages/contracts/src/enriched-agent.ts"]},
+
+    {"path":"docs/third-party/provider-icons.md","note":"Checked the engine mark projection follows explicit brand tokens and keeps authored identity separate from recognition of a connected engine.","inputs":["src-ui/src/components/icons/AgentIcon.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked Chromium touch input that reveals engine removal while preserving selection and requiring a separate action. This coverage is browser evidence.","inputs":["src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

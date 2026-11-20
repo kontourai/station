@@ -29,6 +29,7 @@ const fixtures: Plugin = {
         });
         export const useNotificationPreferencesQuery=()=>query({perProject:{}});
         export const useProjectDeletionPreviewQuery=()=>query(undefined);
+        export const usePullRequestContextQuery=()=>query({available:false,reason:'The project has no repository connection.'});
         export const useProjectIconCandidatesQuery=()=>query([]),useModelConnectionsQuery=()=>query([]),
           useEngineConnectionsQuery=()=>query([]),useAgentsQuery=()=>query(agents),
           useProjectLayoutsQuery=()=>query([{id:'code',slug:'code',name:'Coding',type:'coding'}]),

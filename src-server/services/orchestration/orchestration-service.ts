@@ -55,6 +55,11 @@ import {
   type ConfinementNetworkPlan,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
 } from '@kontourai/station-contracts/execution-confinement';
+import {
+  HTML_REPLY_PUBLICATION_ID_PREFIX,
+  type HtmlReplyPage,
+  type HtmlReplyReference,
+} from '@kontourai/station-contracts/html-reply';
 import type { SessionGrantScope } from '@kontourai/station-contracts/input-request';
 import {
   type LearningReviewRevisionRef,
@@ -164,6 +169,7 @@ import {
   isSessionLifecycleStateAtRest,
   SESSION_ENDED_REJECTION_CODE,
   SESSION_LIFECYCLE_TRANSITIONS,
+  validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import type {
@@ -1123,6 +1129,7 @@ interface OrchestrationServiceOptions {
    * Station does not know, which then has no approval knob.
    */
   acpApprovalControl?: (connectionId: string) => AcpApprovalControl | undefined;
+  isAcpConnectionConfigured?: (connectionId: string) => Promise<boolean>;
   /**
    * #2540: an `idle` session whose engine has been unused this long is
    * parked — its engine process stops, the session stays dormant and
@@ -1545,6 +1552,13 @@ function peerDelegationLifecyclePath(
  */
 export type OrchestrationTurnAdmission = (input: {
   threadId: string;
+  /**
+   * #4511: who caused the turn, classified by the server
+   * (`classifyTurnDispatchOrigin`): `interactive` only for a person's own
+   * authenticated send. Absent where the seam cannot know (a prepared-turn
+   * resume), which an observer must treat as not a person's turn.
+   */
+  dispatchOrigin?: TurnDispatchOrigin;
 }) => { allowed: true } | { allowed: false; reason: string };
 
 /**
@@ -2525,6 +2539,10 @@ export class OrchestrationService {
   >();
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
+  private readonly delegatedAppearance = new Map<
+    string,
+    { ownerId: string; parentSessionId: string; clientTurnId: string }
+  >();
   private readonly coordinatorToolGenerations = new Map<string, number>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
@@ -3561,6 +3579,9 @@ export class OrchestrationService {
       this.conversationHistoryReader = new ConversationHistoryReadService({
         readDurabilityProfile: this.durabilityProfileForProvider,
         eventStore: options.eventStore,
+        ownerUserIdsFor: (authority) =>
+          this.sessionAuthz.transcriptOwnerConstraint(authority).ownerUserIds ??
+          [],
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
         hydratePersistedSession: (threadId) => {
@@ -3699,6 +3720,11 @@ export class OrchestrationService {
                 .catch(() => undefined)
             : undefined;
         const connection = parseEngineConnectionId(startMetadata?.connectionId);
+        const disconnected =
+          connection &&
+          isAcpFamilyEngine(session.provider) &&
+          (await this.options.isAcpConnectionConfigured?.(connection)) ===
+            false;
         const executionAgentId =
           typeof startMetadata?.executionAgentId === 'string'
             ? agentId(startMetadata.executionAgentId)
@@ -3763,9 +3789,10 @@ export class OrchestrationService {
           // attachment, an active turn, a pending review, or a stopped child
           // does not become writable merely because the selected Agent has a
           // provider today.
-          canContinue: canResolveConversationContinuation(detail),
+          canContinue:
+            !disconnected && canResolveConversationContinuation(detail),
           continuationPending: isConversationContinuationPending(detail),
-          ...(nextTurnStartsSession === undefined
+          ...(disconnected || nextTurnStartsSession === undefined
             ? {}
             : { nextTurnStartsSession }),
           ...(detail.session.conversationActivity
@@ -6159,7 +6186,11 @@ export class OrchestrationService {
     threadId: string;
     turnId: string;
     clientInputId: string;
-    payload: { message: string; clientOrigin?: ClientOrigin };
+    payload: {
+      message: string;
+      clientOrigin?: ClientOrigin;
+      authoredBy?: 'person';
+    };
   }): void {
     const store = this.options.eventStore;
     const session =
@@ -6179,6 +6210,9 @@ export class OrchestrationService {
         createdAt: new Date().toISOString(),
         prompt: input.payload.message,
         inputKind: 'steer',
+        ...(input.payload.authoredBy === 'person'
+          ? { authoredBy: input.payload.authoredBy }
+          : {}),
         ...(input.payload.clientOrigin
           ? { clientOrigin: input.payload.clientOrigin }
           : {}),
@@ -6478,6 +6512,7 @@ export class OrchestrationService {
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ): Promise<{
     sessionId: string;
@@ -7498,6 +7533,7 @@ export class OrchestrationService {
   async deleteUnstartedConversationForkContext(
     id: string,
     authority: SessionReadScope,
+    isCurrent?: () => boolean,
   ): Promise<boolean> {
     this.initialize();
     if (this.startsUnderway.has(id))
@@ -7511,7 +7547,7 @@ export class OrchestrationService {
           throw new ConversationForkContextError(
             'The fork has a provider start in progress.',
           );
-        return this.forkContexts.deleteUnstarted(id, authority);
+        return this.forkContexts.deleteUnstarted(id, authority, isCurrent);
       },
     );
   }
@@ -9679,14 +9715,73 @@ export class OrchestrationService {
     return () => this.turnAdmissions.delete(admission);
   }
 
-  private assertTurnAdmitted(threadId: string): void {
+  private assertTurnAdmitted(
+    threadId: string,
+    dispatchOrigin?: TurnDispatchOrigin,
+  ): void {
     assertInheritedDelegationToolPolicy(
       this.firstStartedMetadataOfThread(threadId)?.delegation,
     );
     for (const admission of this.turnAdmissions) {
-      const result = admission({ threadId });
+      const result = admission({
+        threadId,
+        ...(dispatchOrigin ? { dispatchOrigin } : {}),
+      });
       if (!result.allowed) throw new Error(result.reason);
     }
+  }
+
+  /**
+   * #4511: marks a Session blocked with a server-written reason, so it reads
+   * "Session blocked: <reason>" in Needs you. Only from a state that may move
+   * to `blocked`; a Session already blocked or ended keeps its state.
+   * Returns whether the transition was recorded.
+   */
+  recordSessionBlocked(input: { threadId: string; message: string }): boolean {
+    this.initialize();
+    const session =
+      this.sessionReadModel.get(input.threadId) ??
+      this.options.eventStore?.readSessionByThread(input.threadId);
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(input.threadId)
+        .map((event) => event.payload) ?? [];
+    const current = projectSessionLifecycle({ session, events }).lifecycleState;
+    if (
+      current === 'blocked' ||
+      !validateSessionLifecycleTransition(current, 'blocked').ok
+    )
+      return false;
+    this.projectAndPublishEvent(
+      createManualSessionTransitionEvent({
+        provider: session.provider,
+        threadId: input.threadId,
+        from: current,
+        to: 'blocked',
+        reason: 'manual_update',
+        source: 'system_recovery',
+        message: input.message,
+      }),
+    );
+    return true;
+  }
+
+  /**
+   * #4511: a person's turn into a Session an automation started at `auto`
+   * must not inherit that posture. Records Ask unless a decision was already
+   * recorded for the conversation (a person's own pick stands).
+   */
+  recordAskWhereUndecided(threadId: string): void {
+    if (this.approvalPosture.decision(threadId)) return;
+    const provider = this.threadProviderForPosture(threadId);
+    if (!provider || !this.approvalKnobForThread(threadId, provider)) return;
+    this.recordApprovalModeDecision({
+      threadId,
+      provider,
+      approvalMode: 'ask',
+      basedOnSequence: null,
+    });
   }
 
   /**
@@ -9936,7 +10031,13 @@ export class OrchestrationService {
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
-          this.assertTurnAdmitted(submittedInput.threadId);
+          this.assertTurnAdmitted(
+            submittedInput.threadId,
+            classifyTurnDispatchOrigin(
+              internal?.dispatchOrigin,
+              context?.clientOrigin,
+            ),
+          );
           await this.authorizedConversationWorkspace(submittedInput.threadId);
           const current = await this.readSession(
             submittedInput.threadId,
@@ -10779,7 +10880,10 @@ export class OrchestrationService {
                             );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
-                            this.assertTurnAdmitted(turnInput.threadId);
+                            this.assertTurnAdmitted(
+                              turnInput.threadId,
+                              dispatchOrigin,
+                            );
                             this.assertForkContextAtProviderTurn(
                               turnInput,
                               context,
@@ -15679,6 +15783,100 @@ export class OrchestrationService {
     return turnId ? { kind: 'turn', turnId } : { kind: 'none' };
   }
 
+  grantDelegatedAppearance(
+    threadId: string,
+    grant: { ownerId: string; parentSessionId: string; clientTurnId: string },
+  ): () => void {
+    if (this.delegatedAppearance.has(threadId))
+      throw new Error('This task already has an appearance proposal grant.');
+    this.delegatedAppearance.set(threadId, grant);
+    return () => {
+      if (this.delegatedAppearance.get(threadId) === grant)
+        this.delegatedAppearance.delete(threadId);
+    };
+  }
+
+  delegatedAppearanceOwner(threadId: string): string | undefined {
+    const grant = this.delegatedAppearance.get(threadId);
+    if (!grant || !this.sessionAdapters.has(threadId)) return undefined;
+    const first = this.options.eventStore?.firstTurnStartedWithPrompt(
+      threadId,
+      false,
+      false,
+    )?.payload;
+    if (
+      first?.method !== 'turn.started' ||
+      first.dispatchOrigin !== 'delegation' ||
+      first.clientTurnId !== grant.clientTurnId ||
+      !first.turnId ||
+      this.activeTurnIdOfThread(threadId) !== first.turnId ||
+      this.resolveSessionActingPrincipal(grant.parentSessionId)?.id !==
+        grant.ownerId
+    )
+      return undefined;
+    return grant.ownerId;
+  }
+
+  captureAcpHtmlReplyPublisher(
+    sessionId: string,
+  ):
+    | ((conversationId: string, page: HtmlReplyPage) => HtmlReplyReference)
+    | null
+    | undefined {
+    const adapterId =
+      this.sessionAdapters.get(sessionId)?.provider ??
+      this.options.eventStore?.readSessionByThread(sessionId)?.provider;
+    if (adapterId !== 'acp') return undefined;
+    const turn = this.activeStationControlTurn(sessionId);
+    const store = this.options.eventStore;
+    const start = store?.latestOwnTurnStarted(sessionId)?.payload;
+    if (
+      !store ||
+      !turn ||
+      start?.method !== 'turn.started' ||
+      start.turnId !== turn.turnId
+    )
+      return null;
+    return (conversationId, page) => {
+      if (
+        !turn.isCurrent() ||
+        store.latestOwnTurnStarted(sessionId)?.payload.eventId !==
+          start.eventId ||
+        !this.deltaCoalescer.flushThread(sessionId)
+      )
+        throw new Error(
+          'The publishing turn ended before the visual reply was ready.',
+        );
+      return store.htmlReplyPages().publish(sessionId, conversationId, page, {
+        turnStartId: start.eventId,
+        commit: (reference, insert) => {
+          const itemId = `${HTML_REPLY_PUBLICATION_ID_PREFIX}${reference.pageId}`;
+          const published = this.publishCanonicalEvent(
+            {
+              eventId: reference.pageId,
+              method: 'tool.completed',
+              provider: 'acp',
+              threadId: sessionId,
+              turnId: turn.turnId,
+              ...(start.invocationId
+                ? { invocationId: start.invocationId }
+                : {}),
+              itemId,
+              toolCallId: itemId,
+              toolName: 'station-control/html_render',
+              status: 'success',
+              output: { success: true, htmlReply: reference },
+              createdAt: new Date().toISOString(),
+            },
+            insert,
+          );
+          if (!published)
+            throw new Error('The turn could not publish its visual reply.');
+        },
+      });
+    };
+  }
+
   /** The turn the session is running, as the lease for what it declares. */
   private activeStationControlTurn(
     threadId: string,
@@ -16303,6 +16501,40 @@ export class OrchestrationService {
   private readonly readOwnedWork = (threadId: string) =>
     this.options.eventStore?.ownedSessionActivities([threadId]).get(threadId);
 
+  /** A start command is preparing this thread before its turn can run. */
+  isSessionStartUnderway(threadId: string): boolean {
+    return this.startsUnderway.has(threadId);
+  }
+
+  /** Follow only the current plain reservation back to its readable predecessor. */
+  async readPreparingContinuationPredecessor(
+    conversationId: string,
+    sessionId: string,
+    authority: SessionReadScope,
+  ): Promise<OrchestrationSessionDetail | null> {
+    const unmaterialized = () =>
+      !this.sessionReadModel.has(sessionId) &&
+      !this.options.eventStore?.readSessionByThread(sessionId);
+    if (!this.startsUnderway.has(sessionId) || !unmaterialized()) return null;
+    const predecessor =
+      this.conversationLineage.plainReservationPredecessor(conversationId);
+    if (
+      !predecessor ||
+      this.currentConversationSessionId(conversationId) !== sessionId
+    )
+      return null;
+    const detail = await this.readSession(predecessor, authority, {
+      eventMethods: ['session.started', 'session.configured'],
+    });
+    return this.startsUnderway.has(sessionId) &&
+      unmaterialized() &&
+      this.currentConversationSessionId(conversationId) === sessionId &&
+      this.conversationLineage.plainReservationPredecessor(conversationId) ===
+        predecessor
+      ? detail
+      : null;
+  }
+
   /** Read-only quiescence seam for derived projections that must not race a turn. */
   hasActiveTurn(threadId: string): boolean {
     return this.sessionExecutionCoordinator.hasActiveTurn(threadId);
@@ -16539,7 +16771,10 @@ export class OrchestrationService {
     }
   }
 
-  private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
+  private publishCanonicalEvent(
+    event: CanonicalRuntimeEvent,
+    coCommit?: () => void,
+  ): boolean {
     this.options.eventStore?.assertNoOuterTransactionForPublication();
     // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
@@ -16570,7 +16805,7 @@ export class OrchestrationService {
     // #3561: store before show. Nothing a client or recovery can observe
     // changes before the append commits, so a throw from it propagates from
     // here with everything below unapplied, and a retry applies it once.
-    const append = () => this.appendCanonicalEvent(event);
+    const append = () => this.appendCanonicalEvent(event, coCommit);
     const committed = declined
       ? undefined
       : this.immediateObservedWrite && this.options.eventStore
@@ -16747,7 +16982,10 @@ export class OrchestrationService {
    * observers run only after it has committed, in
    * {@link observeCommittedEvent}.
    */
-  private appendCanonicalEvent(event: CanonicalRuntimeEvent): CommittedEvent {
+  private appendCanonicalEvent(
+    event: CanonicalRuntimeEvent,
+    appendSideEffect?: () => void,
+  ): CommittedEvent {
     const eventStore = this.options.eventStore;
     const projectedEvent = eventStore
       ? eventStore.projectLiveEvent(event)
@@ -16781,6 +17019,7 @@ export class OrchestrationService {
     const coCommit = () => {
       if (session) persistReadModelSession(eventStore, session);
       providerTurnRecorded = providerTurn?.record();
+      appendSideEffect?.();
     };
     try {
       if (eventStore)
@@ -16863,6 +17102,16 @@ export class OrchestrationService {
       this.approvalPosture.forgetThread(event.threadId);
       this.acceptedTurnConfinement.delete(event.threadId);
     }
+    if (
+      this.delegatedAppearance.has(event.threadId) &&
+      (event.method === 'session.exited' ||
+        ((event.method === 'turn.completed' ||
+          event.method === 'turn.aborted' ||
+          (event.method === 'runtime.error' &&
+            !isDeferredRetriableTurnError(event))) &&
+          !this.activeTurnIdOfThread(event.threadId)))
+    )
+      this.delegatedAppearance.delete(event.threadId);
     if (
       event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||

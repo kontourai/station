@@ -1,19 +1,22 @@
 {
   "build": {
-    "beforeBuildCommand": "npm run build:desktop:resources"
+    "beforeBuildCommand": "npm run build:desktop:resources",
+    "features": ["appimage-runtime"]
   },
   "bundle": {
     "resources": {
       "../dist-desktop-runtime/dist-server": null,
       "../dist-desktop-runtime/node_modules": null,
-      "../dist-desktop-runtime/examples": null
+      "../dist-desktop-runtime/examples": null,
+      "../schemas": null
     },
     "linux": {
       "appimage": {
         "files": {
           "usr/share/Station/dist-server": "../dist-desktop-runtime/dist-server",
           "usr/share/Station/node_modules": "../dist-desktop-runtime/node_modules",
-          "usr/share/Station/examples": "../dist-desktop-runtime/examples"
+          "usr/share/Station/examples": "../dist-desktop-runtime/examples",
+          "usr/share/Station/schemas": "../schemas"
         }
       }
     }

@@ -1280,7 +1280,10 @@ async function runSessionsCommand(
     return;
   }
 
-  const client = await createSessionClient(apiBase, { agentSlug });
+  const client = await createSessionClient(apiBase, {
+    agentSlug,
+    readOnly: action === 'list' || action === 'read',
+  });
 
   if (action === 'list') {
     printJson(await client.listSessions());
@@ -1346,6 +1349,12 @@ export async function runCoreCommand(
   if (command === 'activity') {
     const { runActivityCommand } = await import('./session-reads.js');
     await runActivityCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'board' || command === 'boards') {
+    const { runBoardCommand } = await import('./board.js');
+    await runBoardCommand(command, apiBase, parsed);
     return;
   }
 

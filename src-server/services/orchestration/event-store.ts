@@ -105,7 +105,10 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
-import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
+import {
+  parseStationControlRefusal,
+  stationControlToolName,
+} from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
@@ -2048,8 +2051,6 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
 /** Station's own HTML render tool, under every name it is exposed as. */
-const HTML_RENDER_TOOL_NAME =
-  /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/;
 /**
  * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
  * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
@@ -2433,7 +2434,7 @@ function snapshotEvent(
     // Keep them outside the ordinary 84-character tool-output excerpt.
     const pageReference =
       typeof payload.toolName === 'string' &&
-      HTML_RENDER_TOOL_NAME.test(payload.toolName)
+      stationControlToolName(payload.toolName) === 'html_render'
         ? htmlReplyReference(payload.output)
         : undefined;
     // A station-control refusal is the tool's whole result, as JSON: the
@@ -4872,6 +4873,19 @@ export class EventStore {
     if (projectedEvent.method === 'tool.completed') {
       delete projectedEvent.htmlReply;
       delete projectedEvent.mcpAppResourceUri;
+      if (
+        projectedEvent.provider === 'acp' &&
+        stationControlToolName(projectedEvent.toolName) === 'html_render'
+      ) {
+        const reference = htmlReplyReference(projectedEvent.output);
+        if (
+          reference?.sessionId === projectedEvent.threadId &&
+          reference.pageId !== projectedEvent.eventId &&
+          this.hasEventId(reference.pageId) &&
+          this.htmlReplyPages().contains(reference)
+        )
+          projectedEvent.output = { success: true };
+      }
       const replay = this.db
         .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
         .get(projectedEvent.eventId) as { payload: string } | undefined;
@@ -4917,7 +4931,7 @@ export class EventStore {
       const toolName =
         typeof stamped.toolName === 'string' ? stamped.toolName : undefined;
       const pageReference =
-        toolName && HTML_RENDER_TOOL_NAME.test(toolName)
+        stationControlToolName(toolName) === 'html_render'
           ? htmlReplyReference(raw.output)
           : undefined;
       if (pageReference) stamped.htmlReply = pageReference;
@@ -12498,6 +12512,8 @@ export class EventStore {
 
   listConversationHistoryPage(options: {
     ownerUserId: string;
+    /** Candidate owners already admitted by the personal-account read policy. */
+    ownerUserIds?: readonly string[];
     tenantId?: string;
     agentSlug?: string;
     requireBound?: boolean;
@@ -12517,13 +12533,14 @@ export class EventStore {
       created_at: string;
       updated_at: string;
     };
-    const readRows = (ownerPredicate: string): HistoryRow[] => {
-      const memberPredicates = [ownerPredicate];
+    const readRows = (owners: readonly string[]): HistoryRow[] => {
+      const memberPredicates = [
+        owners.length === 1
+          ? 'h.owner_user_id = ?'
+          : `h.owner_user_id IN (${owners.map(() => '?').join(', ')})`,
+      ];
       const conversationPredicates = ['row_rank = 1'];
-      const values: unknown[] = [];
-      if (ownerPredicate === 'h.owner_user_id = ?') {
-        values.push(options.ownerUserId);
-      }
+      const values: unknown[] = [...owners];
       if (options.tenantId !== undefined) {
         memberPredicates.push('h.tenant_id = ?');
         values.push(options.tenantId);
@@ -12628,7 +12645,11 @@ export class EventStore {
         )
         .all(...values) as HistoryRow[];
     };
-    const rows = readRows('h.owner_user_id = ?');
+    const owners =
+      options.tenantId === undefined && !options.requireBound
+        ? [...new Set([options.ownerUserId, ...(options.ownerUserIds ?? [])])]
+        : [options.ownerUserId];
+    const rows = readRows(owners);
     const hasMore = rows.length > options.limit;
     const records = rows.slice(0, options.limit).map((row) => ({
       threadId: row.thread_id,

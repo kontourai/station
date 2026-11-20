@@ -432,7 +432,9 @@ describe('SessionCommandModule', () => {
     expect(concurrent).toMatchObject({
       status: 'failed',
       receipt: { commandType: 'startSession', status: 'failed' },
-      message: 'Session is already starting for thread: thread-1',
+      code: 'provider_session_starting',
+      message:
+        'The session is still starting. Nothing was sent; try again in a moment.',
     });
     expect(bind).toHaveBeenCalledOnce();
     expect(persist).toHaveBeenCalledOnce();

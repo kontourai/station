@@ -94,6 +94,11 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
+import {
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
+  delegatedRuntimeFailureGuidance,
+  nativeUsageLimitReason,
+} from '../providers/delegated-runtime-failure.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../providers/finish-reason-authority.js';
 import {
   formatProviderQuotaEventText,
@@ -421,6 +426,9 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  appearanceProposal?: boolean;
+  /** Composed from the verified parent at the local route. */
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -1394,9 +1402,8 @@ export function delegatedTaskReason(
   // on its own (honest bounded behavior, documented on
   // `delegatedTurnSupervision`). A successful continuation or a newer
   // failure therefore never revives a previous turn's reason.
-  const newestStartTurnId = reversed.find(
-    (event) => event.method === 'turn.started',
-  )?.turnId;
+  const newestStart = reversed.find((event) => event.method === 'turn.started');
+  const newestStartTurnId = newestStart?.turnId;
   const terminalScopedToLatestTurn =
     typeof newestStartTurnId !== 'string' ||
     typeof terminal.turnId !== 'string' ||
@@ -1405,7 +1412,20 @@ export function delegatedTaskReason(
     return terminalScopedToLatestTurn
       ? { code: acpFailure.code, detail: acpFailure.message }
       : undefined;
-  const startupGuidance = engineStartupFailureGuidance(terminalCode);
+  const usageLimit = nativeUsageLimitReason(terminal);
+  if (usageLimit) {
+    if (
+      !terminalScopedToLatestTurn ||
+      (typeof newestStart?.invocationId === 'string' &&
+        typeof terminal.invocationId === 'string' &&
+        newestStart.invocationId !== terminal.invocationId)
+    )
+      return undefined;
+    return usageLimit;
+  }
+  const startupGuidance =
+    engineStartupFailureGuidance(terminalCode) ??
+    delegatedRuntimeFailureGuidance(terminalCode);
   if (startupGuidance && terminalCode) {
     if (!terminalScopedToLatestTurn) return undefined;
     return { code: terminalCode, detail: startupGuidance };
@@ -1445,6 +1465,10 @@ export function delegatedTaskReason(
       ? attribution.kind
       : undefined;
   if (!kind) return undefined;
+  if (kind === 'runtime_error' && terminal.provider === 'acp') {
+    if (!terminalScopedToLatestTurn) return undefined;
+    return { code: 'runtime_error', detail: ACP_UNKNOWN_FAILURE_GUIDANCE };
+  }
   if (kind === 'runtime_error') return { code: 'runtime_error' };
   if (kind === 'exit') {
     const exitCode = [...events]
@@ -4389,7 +4413,11 @@ export function projectDelegatedTaskEvent(
           : {}),
       };
     case 'runtime.error': {
-      const startupGuidance = engineStartupFailureGuidance(event.code);
+      const usageLimit = nativeUsageLimitReason(event);
+      const startupGuidance =
+        usageLimit?.detail ??
+        engineStartupFailureGuidance(event.code) ??
+        delegatedRuntimeFailureGuidance(event.code);
       if (startupGuidance)
         return {
           ...common,
@@ -4428,7 +4456,10 @@ export function projectDelegatedTaskEvent(
         ...common,
         kind: 'runtime',
         severity: 'error',
-        text: 'The delegated runtime reported an error.',
+        text:
+          event.provider === 'acp'
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : 'The delegated runtime reported an error.',
         ...(typeof event.retriable === 'boolean'
           ? { retriable: event.retriable }
           : {}),
@@ -5837,6 +5868,13 @@ export async function delegateTask(
     readAuthority,
     orchestrationService,
   );
+  if (
+    input.appearanceProposal &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
+    throw new Error(
+      'Appearance proposals can be delegated only on this Station.',
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
@@ -5897,6 +5935,7 @@ export async function delegateTask(
               environment: relayEnvironment(selectedTarget),
             },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
             ...forwarded,
           },
           'The selected Station could not start the delegated task',
@@ -6555,7 +6594,9 @@ export async function delegateTask(
         if (started.status !== 'accepted') {
           if (input.stagedFiles)
             throw new DelegationFileRefusal('delegation_files_start_refused');
-          const startupGuidance = engineStartupFailureGuidance(started.code);
+          const startupGuidance =
+            engineStartupFailureGuidance(started.code) ??
+            delegatedRuntimeFailureGuidance(started.code);
           if (startupGuidance && started.code)
             throw new Error(startupGuidance, {
               cause: new LocalStationRefusal(started.code, startupGuidance),
@@ -6598,8 +6639,20 @@ export async function delegateTask(
       // a second dispatch for the same claim.
       retainFiles = true;
       await markCreateRequestStarting(sessionId);
-      const attemptTurnDispatch =
-        await orchestrationService.dispatchWithReceipt(
+      const initialClientTurnId =
+        attemptClaim?.initialClientTurnId ??
+        (input.stagedFiles ? fileBinding.clientTurnId : undefined) ??
+        input.taskRoomInvocationAdmission?.clientTurnId ??
+        input.clientTurnId ??
+        randomUUID();
+      const revokeAppearance = input.delegatedAppearance
+        ? orchestrationService.grantDelegatedAppearance(sessionId, {
+            ...input.delegatedAppearance,
+            clientTurnId: initialClientTurnId,
+          })
+        : undefined;
+      const attemptTurnDispatch = await orchestrationService
+        .dispatchWithReceipt(
           {
             type: 'sendTurn',
             input: {
@@ -6616,16 +6669,7 @@ export async function delegateTask(
               ...(resolved.modelOptions
                 ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
-              clientTurnId:
-                input.taskRoomInvocationAdmission?.clientTurnId ??
-                input.clientTurnId ??
-                randomUUID(),
-              ...(input.stagedFiles
-                ? { clientTurnId: fileBinding.clientTurnId }
-                : {}),
-              ...(attemptClaim
-                ? { clientTurnId: attemptClaim.initialClientTurnId }
-                : {}),
+              clientTurnId: initialClientTurnId,
             },
           },
           dispatchContextForAuthority(
@@ -6662,7 +6706,17 @@ export async function delegateTask(
                 }
               : {}),
           },
-        );
+        )
+        .catch((error: unknown) => {
+          revokeAppearance?.();
+          throw error;
+        });
+      if (
+        revokeAppearance &&
+        attemptTurnDispatch.receipt.status !== 'accepted' &&
+        !attemptTurnDispatch.receiptStatus
+      )
+        revokeAppearance();
       input.stagedFiles?.accept(fileBinding);
       // The dispatch returning means the turn was durably accepted by the
       // adapter (the dedup-hit path returns the SAME already-accepted turn
@@ -7285,6 +7339,7 @@ export async function executeExecutionTargetMessage(
         provider: EngineId;
         connectionId?: string;
         modelOverride?: string;
+        expectedInboxSessionId?: string;
       },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
@@ -7846,39 +7901,45 @@ export function resumedWorkspaceBinding(
  * which rebuilds the target from the binding, so a body that names anything
  * else must take the live path, which checks it while the sender waits.
  * Conservative: a reserved handoff, an unreadable or unbound conversation,
- * or any shape it does not recognise answers `false`.
+ * or any shape it does not recognise returns no match.
  */
-export async function followUpTargetMatchesBinding(
+export async function matchFollowUpTargetBinding(
   orchestrationService: OrchestrationService,
   conversationId: string,
   target: ExecutionTarget,
   readAuthority: SessionReadAuthority,
-): Promise<boolean> {
-  if (target.expectedEngine) return false;
+): Promise<{ expectedInboxSessionId?: string } | undefined> {
+  if (target.expectedEngine) return undefined;
   const rootDetail = await orchestrationService.readSession(
     conversationId,
     readAuthority,
     SESSION_BINDING_EVENTS,
   );
-  if (!rootDetail) return false;
+  if (!rootDetail) return undefined;
   const currentSessionId =
     orchestrationService.currentConversationSessionId(conversationId);
   if (orchestrationService.reservedConversationHandoff(currentSessionId))
-    return false;
-  const currentDetail = await orchestrationService.readSession(
-    currentSessionId,
-    readAuthority,
-    SESSION_BINDING_EVENTS,
-  );
-  if (!currentDetail) return false;
+    return undefined;
+  const currentDetail =
+    (await orchestrationService.readSession(
+      currentSessionId,
+      readAuthority,
+      SESSION_BINDING_EVENTS,
+    )) ??
+    (await orchestrationService.readPreparingContinuationPredecessor?.(
+      conversationId,
+      currentSessionId,
+      readAuthority,
+    ));
+  if (!currentDetail) return undefined;
   const metadata = sessionBinding(rootDetail);
   const currentMetadata = sessionBinding(currentDetail);
   const bound = delegationTargetBinding(currentMetadata);
-  if (!bound || !metadata) return false;
+  if (!bound || !metadata) return undefined;
   const agent = target.agent;
   // A stale-definition precondition is checked only by the live path.
   if (typeof agent !== 'string' && agent.expectedDefinitionFingerprint)
-    return false;
+    return undefined;
   const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
   const requestedExecution =
     typeof agent === 'string' ? undefined : agent.executionAgent;
@@ -7887,23 +7948,38 @@ export async function followUpTargetMatchesBinding(
       ? currentMetadata.executionAgentId
       : undefined;
   if (requestedAgent !== bound.id || requestedExecution !== boundExecution)
-    return false;
+    return undefined;
   const workspace = resumedWorkspaceBinding(
     metadata,
     record(rootDetail.session).cwd,
   ).workspace;
   const requested = target.workspace;
-  if (!requested) return workspace === undefined;
-  if (requested.kind === 'project')
-    return (
+  const matched =
+    currentDetail.session.threadId === currentSessionId
+      ? {}
+      : { expectedInboxSessionId: currentSessionId };
+  if (!requested) {
+    if (!workspace) return matched;
+    if (
+      workspace.kind === 'directory' &&
+      rootDetail.session.cwdManagedWorkspace === true &&
+      currentDetail.session.cwd === workspace.cwd
+    )
+      return { expectedInboxSessionId: currentSessionId };
+    return undefined;
+  }
+  if (
+    (requested.kind === 'project' &&
       workspace?.kind === 'project' &&
       workspace.projectSlug === requested.projectSlug &&
       requested.cwd === undefined &&
-      requested.workspaceIsolation === undefined
-    );
-  if (requested.kind === 'directory')
-    return workspace?.kind === 'directory' && workspace.cwd === requested.cwd;
-  return false;
+      requested.workspaceIsolation === undefined) ||
+    (requested.kind === 'directory' &&
+      workspace?.kind === 'directory' &&
+      workspace.cwd === requested.cwd)
+  )
+    return matched;
+  return undefined;
 }
 
 export async function continueExecutionTargetMessage(
@@ -7984,6 +8060,11 @@ export async function continueExecutionTargetMessage(
   const currentSessionId = orchestrationService.currentConversationSessionId(
     input.conversationId,
   );
+  if (
+    context?.expectedInboxSessionId !== undefined &&
+    currentSessionId !== context.expectedInboxSessionId
+  )
+    throw new Error('The conversation changed while this message was waiting.');
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,

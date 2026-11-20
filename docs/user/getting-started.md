@@ -622,11 +622,17 @@ channels. React to a message with an emoji, and tap a reaction to add or take
 back yours. You can edit or delete your own messages (press ↑ in an empty
 composer to edit your last one); a deleted message leaves "Message deleted" so
 replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
-to the channel. Direct Agent conversations stay in the chat
+to the channel. With the **Coordinator in #general** preview on, the Agent you
+ask in `#general` answers, proposes Tasks you start from a card, or passes your
+message to a running Task, and posts each Task's result back
+([Coordinator in #general](settings.md#coordinator-in-general)). Direct Agent conversations stay in the chat
 dock. **Tasks** shows a board of what each Task needs now, or a list of current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
+
+The Project conversation list shows its channels and Task rooms. If one of those
+lists is temporarily unavailable, retry that list from the Project page.
 
 With the **Project Overview** [feature preview](settings.md#feature-previews)
 on, Overview lists the Project's Tasks under what each needs next:
@@ -810,6 +816,10 @@ shows the same panel beside the transcript, and a narrower one puts it behind
 a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
+
+On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
+Project **Tasks** list. Release when the ring fills. The actions menu offers
+the same refresh. A floating status pill shows what’s refreshing.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay

@@ -10,6 +10,7 @@ import {
   applyServerUpdateStateEvent,
   serverUpdateStateQueryKey,
 } from '@kontourai/station-sdk';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import {
@@ -63,19 +64,17 @@ export const NOTIFICATION_TOAST_DISPLAY_MS = 8000;
 const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
 
 /**
- * NOTIFICATION_DELIVERED data handler. Every delivery plays its category's
- * sound — turn ends included, even for the chat the user is watching (owner
- * decision: always chime). It then shows a toast, except for an
- * `approval-request` (its own approval UI) and a turn-completion record (the
- * client's own end-of-turn toast owns it), either of which would otherwise
- * double-surface. Exported so it's directly unit-testable without standing
- * up the full SSE hook.
+ * Silent envelopes remain in History without an interrupt. Other delivered
+ * turn ends still chime, including in the foreground chat. Their visual
+ * notification and the approval UI have separate owners.
  */
 export function handleNotificationDeliveredToast(
   data: Record<string, unknown>,
   isCurrent: () => boolean = () => true,
 ): void {
   if (!isCurrent()) return;
+  const metadata = data.metadata as Record<string, unknown> | undefined;
+  if (readNotificationEnvelope({ metadata })?.interrupt === 'silent') return;
   const category = data.category;
   if (typeof category === 'string') {
     playDeliveredNotificationSound(
@@ -84,7 +83,7 @@ export function handleNotificationDeliveredToast(
     );
   }
   if (
-    data.category === 'approval-request' ||
+    category === 'approval-request' ||
     data.source === TURN_COMPLETION_SOURCE
   ) {
     return;
@@ -92,7 +91,6 @@ export function handleNotificationDeliveredToast(
   const title = data.title as string | undefined;
   if (!title) return;
   const body = data.body as string | undefined;
-  const metadata = data.metadata as Record<string, unknown> | undefined;
   const showPlainToast = () => {
     if (!isCurrent()) return;
     toastStore.show(
@@ -104,9 +102,6 @@ export function handleNotificationDeliveredToast(
     );
   };
   if (metadata?.envelope) {
-    // #2587: attribution + Open, loaded on first enveloped delivery. A chunk
-    // that fails to load (offline, a deploy replaced it) must not cost the
-    // user the toast itself.
     void import('../lib/notification-envelope-toast')
       .then((module) =>
         module.showEnvelopeNotificationToast(

@@ -2583,6 +2583,10 @@ export class BuiltinScheduler implements ISchedulerProvider {
     return this.requireRead(this.ledger.stats());
   }
 
+  readRowIssues() {
+    return this.requireRead(this.ledger.rowIssues());
+  }
+
   async getStatus(): Promise<SchedulerProviderStatus> {
     const tickAge = this.lastTickAt ? Date.now() - this.lastTickAt : null;
     return {

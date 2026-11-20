@@ -100,6 +100,7 @@ import { ChatTurnDedupStore } from './chat-turn-dedup.js';
  * pre-existing behavior (no honesty check, same as before this fix).
  */
 type ChatRuntimeContext = RuntimeContext & {
+  fileConversationOwnerId?: (request: Request) => string | undefined;
   connectionService?: Pick<ConnectionService, 'listRuntimeConnections'>;
   listAgents?: () => Promise<
     Array<{
@@ -422,6 +423,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         ambientContext,
         skillExperienceContext,
         restOptions,
+        fileConversationOwnerId: relayThread
+          ? undefined
+          : ctx.fileConversationOwnerId?.(c.req.raw),
         injectContext,
         ragContext,
         contextInjection,

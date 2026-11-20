@@ -123,7 +123,7 @@ describe('MobileInboxPanel answerability basis', () => {
         open
         tasks={[]}
         loadError
-        onRetryLoad={retry}
+        refresh={{ run: retry, phase: 'idle', recovering: false }}
         activeChatSessionId={null}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}

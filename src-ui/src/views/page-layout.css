@@ -145,6 +145,18 @@
   padding: 1.25rem;
 }
 
+.page-section-group {
+  padding-block-start: var(--k-space-5);
+}
+
+.page-section__body > .page-section-group:first-child {
+  padding-block-start: 0;
+}
+
+.page-section-group__heading {
+  padding-block-end: var(--k-space-3);
+}
+
 .page-section--danger .page-section__eyebrow,
 .page-section--danger .page-section__title {
   color: var(--error-text);

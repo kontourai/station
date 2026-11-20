@@ -35,16 +35,15 @@ import {
 /**
  * Whether this engine's adapter maps `approvalMode` to a native knob.
  *
- * #3290: ACP is one provider for many engines, so its answer is the
- * connection's (`acpApprovalControl`): only a connection whose approval rules
- * Station sets at launch has the knob. Without that answer an ACP thread has
- * none, so a posture is never sent to an engine that decides for itself.
+ * Station can configure OpenCode at launch and answer standard permission
+ * requests from other ACP engines.
  */
 export function approvalKnobSupported(
   provider: EngineId,
   acpControl?: AcpApprovalControl,
 ): boolean {
-  if (provider === PROVIDER_ACP) return acpControl === 'station';
+  if (provider === PROVIDER_ACP)
+    return acpControl === 'station' || acpControl === 'requests';
   return (
     PROVIDER_MODEL_OPTION_SUPPORT[provider]?.includes('approvalMode') === true
   );

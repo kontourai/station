@@ -61,7 +61,7 @@ const CONTEXT_OCCUPANCY_ONLY_REASON =
  * the rows `EventStore.listUsageEventPayloads` selects, or
  * {@link foldThreadUsage}. A checkpoint under another version rebuilds once.
  */
-const USAGE_PROJECTION_VERSION = 'usage-projection-v1';
+const USAGE_PROJECTION_VERSION = 'usage-projection-v2';
 /** How long one synchronous slice of a pass may hold the event loop. */
 const USAGE_PROJECTION_SLICE_MS = 16;
 /** Refolded entries are committed in batches of about this many bytes. */

@@ -420,6 +420,26 @@ export function NotificationContainer() {
   // withheld on a coarse primary pointer rather than shown as dead text.
   const coarsePointer = useCoarsePointer();
   const { navigate } = useNavigationActions();
+  const measureStack = useCallback((container: HTMLDivElement | null) => {
+    if (!container) return;
+    const { style } = container.ownerDocument.documentElement;
+    const property = '--notification-stack-clearance';
+    const update = () =>
+      style.setProperty(
+        property,
+        `calc(${container.offsetHeight}px + var(--k-space-2))`,
+      );
+    update();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(update);
+    observer?.observe(container);
+    return () => {
+      observer?.disconnect();
+      style.removeProperty(property);
+    };
+  }, []);
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);
@@ -598,7 +618,11 @@ export function NotificationContainer() {
   const approvalCountLabel = `${approvals.length} pending approval${approvals.length === 1 ? '' : 's'}`;
 
   return (
-    <div className="notification-container" aria-live="polite">
+    <div
+      ref={measureStack}
+      className="notification-container"
+      aria-live="polite"
+    >
       {approvals.length > 0 && (
         <div className="notification-approval-queue" ref={approvalQueueRef}>
           <button
