@@ -2010,7 +2010,7 @@ function addedClaude(baseline, current) {
 /**
  * Two separate delegated sessions at the same ordinal. Keep the control
  * warm by starting its seed only after the other engine has parked.
- * @param {{api: any, cwd: string, stub: any, markers: any, turns: {prompt: string, reply: string}[], treeNow: () => ProcessRow[], releaseMaxMs: number, parkedFirst: boolean}} context
+ * @param {{api: any, cwd: string, stub: any, markers: any, turns: Record<'warm' | 'parked', {prompt: string, reply: string}[]>, treeNow: () => ProcessRow[], releaseMaxMs: number, parkedFirst: boolean}} context
  */
 async function measureDelegatedPair({
   api,
@@ -2023,17 +2023,17 @@ async function measureDelegatedPair({
   parkedFirst,
 }) {
   const baseline = scopedClaude(treeNow);
-  const analyze = (from, index) =>
+  const analyze = (from, index, arm) =>
     analyzeConversationTurn({
       calls: stub.requests.slice(from),
-      turns,
+      turns: turns[arm],
       index,
       markers,
     }).report;
-  const seed = async () => {
+  const seed = async (arm) => {
     const from = stub.requests.length;
-    const task = await delegateHi(api, cwd, turns[0]);
-    return { ...task, request: analyze(from, 0) };
+    const task = await delegateHi(api, cwd, turns[arm][0]);
+    return { ...task, request: analyze(from, 0, arm) };
   };
   const follow = async (task, arm) => {
     const from = stub.requests.length;
@@ -2041,10 +2041,10 @@ async function measureDelegatedPair({
       api,
       task.taskId,
       task.sessionId,
-      turns[1],
+      turns[arm][1],
     );
     assert(turnId !== task.turnId, `${arm}: accepted turn was replayed`);
-    const report = analyze(from, 1);
+    const report = analyze(from, 1, arm);
     assert(
       report.model === task.request.model &&
         report.claudeCodeVersion === task.request.claudeCodeVersion,
@@ -2053,7 +2053,7 @@ async function measureDelegatedPair({
     return { elapsedMs, report };
   };
 
-  const parked = await seed();
+  const parked = await seed('parked');
   const parkedEngine = addedClaude(baseline, scopedClaude(treeNow));
   const parkedKey = identityKey(parkedEngine);
   const memory = withMemory([parkedEngine])[0]?.memoryBytes;
@@ -2074,7 +2074,7 @@ async function measureDelegatedPair({
     'unexpected engine count after parking',
   );
 
-  const warm = await seed();
+  const warm = await seed('warm');
   assert(
     warm.sessionId !== parked.sessionId,
     'warm and parked arms reused a session',
@@ -2939,10 +2939,16 @@ export async function runStationWeight({
   };
   const conversationTurns = multiTurn ? requestConversationTurns(runNonce) : [];
   const pairTurns = settings.delegatedPair
-    ? requestConversationTurns(runNonce).slice(0, 2)
-    : [];
+    ? {
+        parked: requestConversationTurns(`${runNonce}-p`).slice(0, 2),
+        warm: requestConversationTurns(`${runNonce}-w`).slice(0, 2),
+      }
+    : null;
   const stub = await startStubAnthropic({
-    turns: [...conversationTurns, ...pairTurns],
+    turns: [
+      ...conversationTurns,
+      ...(pairTurns ? [...pairTurns.parked, ...pairTurns.warm] : []),
+    ],
   });
   const claudeExecutable = bundledClaudeExecutable();
   const env = scrubbedEnvironment(
@@ -3190,7 +3196,7 @@ export async function runStationWeight({
         }
       }
 
-      if (settings.delegatedPair) {
+      if (pairTurns) {
         progress(
           'comparing first follow-ups in matched warm and parked delegated sessions',
         );
