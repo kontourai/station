@@ -896,6 +896,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Goose | `goose acp` | Agent Client Protocol |
 | Qwen Code | `qwen --acp` | Agent Client Protocol |
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
+| GitHub Copilot (SDK) | `copilot` | Native adapter through the Copilot SDK; only with the `copilot-sdk-engine` [Feature Preview](../user/settings.md#feature-previews) on, adopted at startup |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
 | Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
@@ -1003,7 +1004,12 @@ engine, which opens the sign-in described in [Sign an engine in](#sign-an-engine
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
-persist their default Agents. Automatic adoption respects an engine's recorded
+persist their default Agents. With the `copilot-sdk-engine` Feature Preview on,
+it also registers the GitHub Copilot (SDK) engine when `copilot` is on `PATH`;
+turning the preview on takes effect at the next start. That engine runs your
+own Copilot CLI and its sign-in, and is separate from the ACP `copilot`
+connection; see [the decision](../decisions/copilot-sdk-engine.md) for what it
+binds and what it does not. Automatic adoption respects an engine's recorded
 removal and refuses an identity already bound to another connection. It does
 not sign the engine in. During shutdown, adoption stops waiting for a
 contended registry or Agent lock. Committed connections stay registered, and

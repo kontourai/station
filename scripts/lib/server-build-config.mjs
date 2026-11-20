@@ -13,6 +13,14 @@ export const STATION_SERVER_EXTERNALS = [
   // @koromix/koffi-<os>-<arch> package beside it, so it must stay a package.
   'koffi',
   '@anthropic-ai/claude-agent-sdk',
+  // The Copilot SDK engine (docs/decisions/copilot-sdk-engine.md). Its only
+  // koffi import is in the experimental in-process transport, which its
+  // client loads with a lazy `import()` Station never reaches. Inlined, that
+  // lazy module's `import koffi` becomes a static import at the top of the
+  // ESM bundle, so a packaged server off Windows (where koffi ships no
+  // loadable code) fails at startup. Kept external, the SDK loads from its
+  // package on the first Copilot SDK session and koffi is never imported.
+  '@github/copilot-sdk',
   // Flow resolves its Hachure schemas through require.resolve() from the
   // installed package. Bundling moves that lookup to Station's output and
   // bypasses Flow's package-local dependency tree.

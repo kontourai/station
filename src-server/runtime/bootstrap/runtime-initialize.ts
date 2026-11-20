@@ -33,6 +33,7 @@ import {
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import type { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import { OpenCodeAdapter } from '../../providers/adapters/opencode-adapter.js';
@@ -333,6 +334,7 @@ export interface InitializeRuntimeDeps {
   claudeAdapter: ClaudeAdapter;
   codexAdapter: CodexAdapter;
   museAdapter: MuseAdapter;
+  copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
@@ -453,6 +455,7 @@ export async function initializeRuntime(
     claudeAdapter,
     codexAdapter,
     museAdapter,
+    copilotSdkAdapter,
     ollamaAdapter,
     createVoltAgentInstance,
     configureRoutes,
@@ -633,11 +636,15 @@ export async function initializeRuntime(
       ? { stationControlCallerRecords: deps.stationControlCallerRecords }
       : {}),
   });
+  // `copilotSdkAdapter` is always registered; it selects the
+  // `copilot-sdk-engine` preview at every entry point that starts work
+  // (copilot-sdk-adapter.ts).
   registerProviderAdapters(
     [
       claudeAdapter,
       codexAdapter,
       museAdapter,
+      copilotSdkAdapter,
       acpAdapter,
       openCodeAdapter,
       stationAgentAdapter,
