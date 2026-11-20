@@ -123,8 +123,8 @@ function testLabel(test) {
 
 /**
  * Every job manifest under a download directory: actions/download-artifact
- * extracts each artifact into its own subdirectory. Unreadable or invalid
- * manifests are kept as errors so the job they claim to describe alerts.
+ * extracts a single match into the download root and multiple matches into
+ * artifact subdirectories. Unreadable or invalid manifests still alert.
  */
 export function readJobManifests(directory) {
   const found = [];
@@ -136,12 +136,17 @@ export function readJobManifests(directory) {
     return found;
   }
   for (const entry of names) {
-    if (!entry.isDirectory()) continue;
+    const isRootManifest = entry.name === JOB_MANIFEST_FILE && entry.isFile();
+    if (!isRootManifest && !entry.isDirectory()) continue;
     if (found.length >= MAX_MANIFESTS) {
       found.push({ artifact: entry.name, error: 'too many manifests' });
       break;
     }
-    const file = resolve(directory, entry.name, JOB_MANIFEST_FILE);
+    const file = resolve(
+      directory,
+      isRootManifest ? '' : entry.name,
+      JOB_MANIFEST_FILE,
+    );
     try {
       found.push({
         artifact: entry.name,
