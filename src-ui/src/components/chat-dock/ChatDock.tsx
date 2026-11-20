@@ -274,6 +274,7 @@ import { useCoordinatorDockActions } from './useCoordinatorDockActions';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
+import { useStagedAgentChange } from './useStagedAgentChange';
 import { useTaskStartedNotice } from './useTaskStartedNotice';
 
 /**
@@ -2411,6 +2412,42 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Get updateChat from context
   const { updateChat } = useActiveChatActions();
+
+  const stagedAgentChange = useStagedAgentChange({
+    apiBase,
+    chat: hostConversation ? activeSession : null,
+    composer: chatInput,
+    scope: requestAuthority,
+    scopeIsCurrent: requestAuthority?.isCurrent,
+    blockedReason: !conversationCanMutate
+      ? 'The current conversation cannot send.'
+      : handoffDisabledReason,
+    onAccepted: () => {
+      invalidate(orchestrationQueries.sessions().queryKey);
+      invalidate(conversationQueries.inventory().queryKey);
+    },
+    report: (message) => showToast(message, 'error'),
+  });
+  const stagedSelection = stagedAgentChange.selected;
+  const stagedBinding =
+    stagedSelection?.executionAgent ?? stagedSelection?.agent;
+  const stagedComposer =
+    stagedSelection || stagedAgentChange.pending
+      ? {
+          ...stagedAgentChange,
+          selection: stagedSelection,
+          models: stagedBinding
+            ? executionSelection
+                .modelsForAgent(stagedBinding)
+                .filter(
+                  (model) =>
+                    model.available !== false &&
+                    (!stagedSelection?.connectionId ||
+                      model.providerId === stagedSelection.connectionId),
+                )
+            : [],
+        }
+      : undefined;
 
   // Stable identity for the memoized ChatDockContentArea subtree (see the
   // other stable callbacks above) — declared here since it depends on
@@ -4998,7 +5035,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   }
                                   toolPolicyDelivery={toolPolicyDelivery}
                                   availableModels={effectiveModels}
-                                  executionModels={executionRoutes}
+                                  stagedAgentChange={stagedComposer}
+                                  executionModels={
+                                    stagedAgentChange.enabled &&
+                                    executionProfile?.executionDefault &&
+                                    executionProfile.execution
+                                      ?.agentConnectionId
+                                      ? executionRoutes.filter(
+                                          (route) =>
+                                            route.executionAgentId ===
+                                            currentExecutionAgentId,
+                                        )
+                                      : executionRoutes
+                                  }
                                   onExecutionModelSelect={
                                     conversationCanMutate
                                       ? conversationBoundaryDialogs.openExecutionHandoff
@@ -5247,6 +5296,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   showToast,
                   refetchOrchestrationSessions,
                   continueOnStation,
+                  onStageAgentChange: stagedAgentChange.enabled
+                    ? stagedAgentChange.stage
+                    : undefined,
                 }}
                 pending={null}
               />

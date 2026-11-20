@@ -54,6 +54,7 @@ function composer(
     model = 'claude-sonnet-4-5-20250929',
     to = 'OpenCode Zen gateway (work)',
     reopenFreshContext = false,
+    staged = false,
   } = {},
 ) {
   return `
@@ -69,6 +70,7 @@ function composer(
       const [open, setOpen] = useState(undefined);
       const [text, setText] = useState('');
       const [sent, setSent] = useState('');
+      const [pending, setPending] = useState(${staged});
       useEffect(() => {
         if (fresh) resolveConversationOpen('fixture-conversation', 'http://station.test').then(setOpen);
       }, []);
@@ -90,6 +92,10 @@ function composer(
               canContinue: true, nextTurnStartsSession: ${nextTurn ? 'true' : 'undefined'},
             },
           })}}
+          stagedAgentNotice={pending ? {
+            label: 'Next message: Agent B · OpenCode · glm-5.3-flash',
+            onUndo: () => setPending(false),
+          } : undefined}
           currentModel="${model}"
           executionMode="external"
           acpSessionModes={[{id:'build',name:'build'},{id:'plan',name:'plan'}]} acpCurrentModeId="build" onAcpSessionModeChange={noop}
@@ -489,6 +495,28 @@ test('a freshly reopened context reservation enables a real composer submission'
     expect(await page.locator('#sent-continuation').textContent()).toBe(
       'Continue with a fresh context',
     );
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('a staged Agent notice can be undone without clearing the composer', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(
+    composer(false, { staged: true }),
+    [controls],
+    { viewport: { width: 390, height: 844 } },
+  );
+  try {
+    const draft = page.locator('textarea');
+    await draft.fill('Keep this draft');
+    const notice = page.getByText(
+      'Next message: Agent B · OpenCode · glm-5.3-flash',
+    );
+    expect(await notice.count()).toBe(1);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    expect(await notice.count()).toBe(0);
+    expect(await draft.inputValue()).toBe('Keep this draft');
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

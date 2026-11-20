@@ -1,6 +1,9 @@
 import {
+  type ClientRequestOptions,
   continueExecutionMessage,
+  getConversationHandoffStatus,
   getTurnDelivery,
+  handoffExecutionMessage,
   inspectAttentionRequest,
   interruptTurn,
   respondToRequest,
@@ -90,6 +93,32 @@ export function createConversationTransport(
         conversationId,
         key,
         optionsFor('deliveryLookup', options?.signal),
+      ),
+  };
+}
+
+/** The local handoff route is addressed by its original Station authority. */
+export function createStagedHandoffTransport(
+  apiBase: string,
+  requestScope: NonNullable<ClientRequestOptions['requestScope']>,
+  isCurrent: () => boolean,
+) {
+  const options = () => {
+    if (!isCurrent() || requestScope.apiBase !== apiBase)
+      throw new StationRequestAuthorityError();
+    return { requestScope };
+  };
+  return {
+    send: (
+      conversationId: string,
+      input: Parameters<typeof handoffExecutionMessage>[2],
+    ) => handoffExecutionMessage(apiBase, conversationId, input, options()),
+    read: (conversationId: string, idempotencyKey: string) =>
+      getConversationHandoffStatus(
+        apiBase,
+        conversationId,
+        idempotencyKey,
+        options(),
       ),
   };
 }

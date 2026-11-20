@@ -1058,6 +1058,7 @@ export class ConversationLineage {
     if (!store)
       throw new Error('Conversation handoff requires durable storage');
     const hasTarget = (marker: {
+      predecessorSessionId: string;
       targetAgentId: string;
       targetExecutionAgentId?: string;
       targetEnvironmentId: string;

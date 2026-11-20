@@ -115,6 +115,12 @@ interface ConversationHandoffDialogProps {
   onContinuedOnStation?: (result: ContinuedOnStation) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
+  onStage?: (
+    agent: AgentData,
+    executionAgent?: AgentData,
+    modelId?: string,
+    resetEngine?: boolean,
+  ) => void;
   onClose: () => void;
 }
 
@@ -286,6 +292,7 @@ export function ConversationHandoffDialog({
   onContinuedOnStation,
   onDispatchStarted,
   onDefiniteFailure,
+  onStage,
   onClose,
 }: ConversationHandoffDialogProps) {
   const restoredIntent = useRef(
@@ -326,12 +333,13 @@ export function ConversationHandoffDialog({
       }).filter((agent) =>
         executionPreset
           ? agent.slug === currentAgentId
-          : agent.slug !== currentAgentId,
+          : Boolean(onStage) || agent.slug !== currentAgentId,
       ),
     [
       agents,
       currentAgentId,
       executionPreset,
+      onStage,
       projectSlug,
       selection.agentConnections,
       selection.selectedProjectConfig?.agents,
@@ -442,8 +450,8 @@ export function ConversationHandoffDialog({
   );
   const effectiveBlockedReason = ownTurnBusy ? undefined : blockedReason;
   const preconditionReason =
-    effectiveBlockedReason ??
-    (attachments.length > 0 && !retained
+    (onStage && !retained ? undefined : effectiveBlockedReason) ??
+    (!onStage && attachments.length > 0 && !retained
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
         ? 'This request’s agent, engine or model isn’t available here. Restore that setup to retry.'
@@ -486,6 +494,18 @@ export function ConversationHandoffDialog({
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
+    if (onStage && !retainedIntent.current) {
+      if (target && executionTarget && retryEligible) {
+        onStage(
+          target,
+          executionAgentId ? executionTarget : undefined,
+          modelId,
+          Boolean(executionPreset && !executionAgentId),
+        );
+        onClose();
+      }
+      return;
+    }
     if (effectiveBlockedReason) {
       setState('error');
       setFeedback(effectiveBlockedReason);
@@ -849,7 +869,7 @@ export function ConversationHandoffDialog({
 
       {where === 'current' && targetId && (
         <div className="conversation-handoff-dialog__confirmation">
-          {targetModels.length > 0 && (
+          {(!onStage || retained) && targetModels.length > 0 && (
             <div className="conversation-handoff-dialog__model">
               <span className="editor-label" id={modelFieldId}>
                 Model
@@ -901,13 +921,15 @@ export function ConversationHandoffDialog({
           )}
           <div className="conversation-handoff-dialog__note">
             <span>
-              {displacesDraft
-                ? 'Retries the earlier request. Your new draft stays in the composer.'
-                : retained
-                  ? 'Retries the earlier request.'
-                  : composerHasDraft
-                    ? 'Your draft is sent as the first message.'
-                    : 'Starts with a short catch-up turn.'}
+              {onStage && !retained
+                ? 'Send starts a fresh Session with recent conversation text.'
+                : displacesDraft
+                  ? 'Retries the earlier request. Your new draft stays in the composer.'
+                  : retained
+                    ? 'Retries the earlier request.'
+                    : composerHasDraft
+                      ? 'Your draft is sent as the first message.'
+                      : 'Starts with a short catch-up turn.'}
             </span>
             <DisclosureToggle
               expanded={disclosureOpen}
@@ -922,14 +944,22 @@ export function ConversationHandoffDialog({
               id={disclosureId}
               className="conversation-handoff-dialog__disclosure"
             >
-              <dt>First message</dt>
-              <dd>
-                {retained || !composerHasDraft
-                  ? message
-                  : 'Your draft from the composer'}
-              </dd>
+              {(!onStage || retained) && (
+                <>
+                  <dt>First message</dt>
+                  <dd>
+                    {retained || !composerHasDraft
+                      ? message
+                      : 'Your draft from the composer'}
+                  </dd>
+                </>
+              )}
               <dt>Keeps</dt>
-              <dd>{HANDOFF_KEEPS_SUMMARY}</dd>
+              <dd>
+                {onStage && !retained
+                  ? 'Recent authorized text, the workspace, and the selected Agent and model.'
+                  : HANDOFF_KEEPS_SUMMARY}
+              </dd>
               <dt>Starts fresh</dt>
               <dd>{HANDOFF_STARTS_FRESH_SUMMARY}</dd>
             </dl>
@@ -960,15 +990,19 @@ export function ConversationHandoffDialog({
               aria-describedby={preconditionReason ? preconditionId : undefined}
               onClick={() => void runHandoff()}
             >
-              {state === 'pending'
-                ? executionPreset
-                  ? 'Switching…'
-                  : 'Continuing…'
-                : state === 'indeterminate'
-                  ? 'Retry safely'
-                  : executionPreset
-                    ? `Switch to ${engineLabel ?? 'default engine'}`
-                    : `Continue with ${targetName}`}
+              {onStage && !retained
+                ? targetId === currentAgentId && !executionPreset
+                  ? 'Keep current Agent'
+                  : `Use ${targetName} on Send`
+                : state === 'pending'
+                  ? executionPreset
+                    ? 'Switching…'
+                    : 'Continuing…'
+                  : state === 'indeterminate'
+                    ? 'Retry safely'
+                    : executionPreset
+                      ? `Switch to ${engineLabel ?? 'default engine'}`
+                      : `Continue with ${targetName}`}
             </Button>
           </ResponsiveSurfaceActions>
         </div>

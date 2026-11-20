@@ -248,6 +248,26 @@ known brands. Selecting a model closes the picker; runtime changes keep it open.
 Home and New Chat share its menu
 controller; `/model` shares filtering, availability and choice memory with the popup.
 
+With **Stage chat Agent changes** enabled, choose an Agent and review what
+will carry over. The composer shows the destination engine and requested model
+for the next message. The Model picker uses the staged Agent's connection.
+Choose the original Agent or **Undo** to restore the current composer settings.
+The transcript and current Session remain in place until Send.
+
+Send starts a fresh Session with recent authorized conversation text and the
+draft as its first message. The selected connection and source Session are
+checked again at dispatch. Busy or queued work is resolved before switching.
+A refused send leaves the draft and attachments in the composer. If delivery is
+unconfirmed, **Retry Send** uses the same request while it is retained in this
+tab. After reload, **Check status** looks up that attempt before allowing another
+send. Attachments whose bytes are unavailable can be reattached to the draft.
+
+A dedicated engine-default coding Agent offers the models on its own connection.
+Use **Agent** to switch coding engines. Compatible engine overrides remain
+available for general-purpose Agent profiles.
+
+When this preview is off, the immediate handoff works as described below.
+
 Choosing another engine is a conversation override of the selected Agent's
 execution binding. It retains the authored profile rather than substituting the
 coding app's default profile, and does not edit saved Agent defaults. Known

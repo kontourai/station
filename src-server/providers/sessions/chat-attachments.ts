@@ -7,7 +7,7 @@ import {
 
 export function assertProviderChatAttachments(
   provider: { displayName: string; capabilities: readonly string[] },
-  attachments: readonly ChatAttachmentInput[],
+  attachments: ChatAttachmentInput[],
 ): void {
   const error = validateChatAttachments(attachments);
   if (error) throw new Error(error);

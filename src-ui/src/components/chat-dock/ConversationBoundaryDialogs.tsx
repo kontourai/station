@@ -58,6 +58,7 @@ export function ConversationBoundaryDialogs({
   showToast,
   refetchOrchestrationSessions,
   continueOnStation,
+  onStageAgentChange,
 }: {
   dialogs: ConversationBoundaryDialogsState;
   apiBase: string;
@@ -83,6 +84,9 @@ export function ConversationBoundaryDialogs({
   refetchOrchestrationSessions: ReturnType<
     typeof useOrchestrationSessionsQuery
   >['refetch'];
+  onStageAgentChange?: React.ComponentProps<
+    typeof ConversationHandoffDialog
+  >['onStage'];
   /** Opens the paired Station's new chat and sends its first turn there. */
   continueOnStation?: (
     result: ContinuedOnStation,
@@ -118,6 +122,7 @@ export function ConversationBoundaryDialogs({
           conversationId={handoffSession.conversationId}
           sessionId={handoffSession.id}
           currentAgentId={handoffSession.agentSlug}
+          onStage={handoffIsActive ? onStageAgentChange : undefined}
           executionPreset={handoffSource.executionPreset}
           prepareDraft={
             handoffIsActive ? chatInput.prepareOutgoingText : undefined
