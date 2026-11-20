@@ -191,7 +191,7 @@ function renderHeader(
           onTurnIntoTask: overrides.onTurnIntoTask,
           onOpenInventory: overrides.onOpenInventory,
           onOpenConversation: vi.fn(),
-          onToggleHistory: vi.fn(),
+          onOpenInbox: vi.fn(),
           onOpenChatSettings: vi.fn(),
           onOpenProject: overrides.onOpenProject ?? null,
           openProjectName: overrides.openProjectName ?? null,

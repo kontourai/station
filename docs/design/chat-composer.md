@@ -1515,12 +1515,10 @@ change an existing conversation's binding. The future-project switcher is absent
 from every dock header, including empty and Inbox states. This reflects the October 30 product
 decision to remove a competing project hierarchy, while retaining project
 context in the conversation's session details.
-The **Chats and tasks** picker keeps the shared **New chat** action at the lower
-right, outside the scrolling list. Its accessible name and hover label are
-**New chat**; the mobile header uses its icon-only chat-bubble-plus form.
-It uses the same direct-chat or agent-choice flow as Chat actions;
-opening it sends no message. Rows lead with the marks of the engines that ran
-the conversation (up to three, overlapping, then "+N"; the Agent's own mark
+The mobile **Inbox** is embedded in Chat. The header's Inbox icon and the
+**Inbox** row in Chat actions open it. The header keeps the shared **New chat**
+action outside the scrolling list. Opening the start composer sends no message.
+Rows lead with the marks of the engines that ran the conversation (up to three, overlapping, then "+N"; the Agent's own mark
 when no engine with a mark is recorded) beside the Agent's name, then the
 conversation title, the Project with its icon (or a folder when it has none),
 a pencil when this device holds an unsent draft for it, and a right-aligned
@@ -1550,7 +1548,9 @@ and links the source Session without assigning an Agent or execution Session. Th
 the person's idea as the visible message. The answer/input **Add to Task**
 picker offers **New Task from this** even with an empty Task catalog.
 
-Chat actions retains conversation history, background tasks, connection
+In a chat, **Browse all conversations** opens the saved conversation list
+with rename and delete actions. **History** opens the current conversation's
+read-only timeline. Chat actions also keeps background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
 or **Exit full screen**; the open phone bar also shows the same switch as a
 44px **Full screen chat** / **Restore chat size** control (#4391). Collapse
