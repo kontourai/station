@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PERMISSION_TIERS } from '@kontourai/station-contracts/plugin';
 import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-pane';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import {
@@ -14,10 +15,10 @@ import {
   createStationDocsMcpServer,
   findStationDocsTopic,
   listStationDocsTopics,
-  STATION_DOCS_VERSION,
   type StationDocsTopic,
   searchStationDocs,
 } from '../station-docs-mcp-server.js';
+import { STATION_DOCS_VERSION } from '../station-docs-tools.js';
 
 // Every topic as get_station_docs_topic serves it: the bundle mapped back to
 // the fields the tools have always returned.
@@ -50,17 +51,32 @@ function registeredTools(): Record<string, RegisteredTool> {
   )._registeredTools;
 }
 
-async function callTool(name: string, args: unknown): Promise<any> {
-  const tool = registeredTools()[name];
-  expect(tool, `tool '${name}' is not registered`).toBeDefined();
-  const result = await tool.handler(args, {} as any);
-  return JSON.parse(result.content[0].text);
+async function callTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<any> {
+  const server = createStationDocsMcpServer();
+  const client = new Client({ name: 'docs-test', version: '1' });
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverSide);
+  try {
+    await client.connect(clientSide);
+    const result = await client.callTool({ name, arguments: args });
+    const content = result.content[0];
+    if (content?.type !== 'text')
+      throw new Error('Expected a documentation text result.');
+    return JSON.parse(content.text);
+  } finally {
+    await client.close();
+    await server.close();
+  }
 }
 
 const SOURCE_FILES = [
   'station-docs-content.ts',
   'station-docs-mcp-server.ts',
   'station-docs-server.ts',
+  'station-docs-tools.ts',
 ] as const;
 
 function readSource(file: string): string {
@@ -739,6 +755,7 @@ describe('station-docs structural properties (AC2)', () => {
       '../../package.json',
       './station-docs-content.js',
       './station-docs-mcp-server.js',
+      './station-docs-tools.js',
     ]);
     for (const file of SOURCE_FILES) {
       const source = readSource(file);

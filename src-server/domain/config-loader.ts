@@ -4,6 +4,7 @@ import {
   parseRequiredSlotAssignments,
 } from '@kontourai/station-contracts/required-slots';
 import type { PluginActivationComposition } from '../services/plugins/plugin-activation-composition.js';
+import { markRuntimeStationDocs } from '../tools/station-docs-binding.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
   pluginAgentInstallationBinding,
@@ -842,6 +843,7 @@ export class ConfigLoader {
     // hand-edited transport or endpoint on disk must not redirect it.
     projected.transport = 'stdio';
     delete projected.endpoint;
+    markRuntimeStationDocs(projected, def);
     return projected;
   }
 
