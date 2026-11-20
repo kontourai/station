@@ -9,6 +9,7 @@ import {
   type BrowserContext,
   expect as browserExpect,
   chromium,
+  type Page,
 } from '@playwright/test';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -410,17 +411,21 @@ test.each([390, 1440])(
 );
 
 test('skill metadata stays searchable while the browser uses the body title and outline', async () => {
-  const manifest = Promise.withResolvers<void>();
-  const page = await pageAt(1440, '', (context) =>
-    context.route(`${origin}/atlas-data.json`, async (route) => {
-      await manifest.promise;
-      await route.continue();
-    }),
-  );
+  let releaseManifest!: () => void;
+  const manifest = new Promise<void>((resolve) => {
+    releaseManifest = resolve;
+  });
+  let page: Page;
   try {
+    page = await pageAt(1440, '', async (context) => {
+      await context.route(`${origin}/atlas-data.json`, async (route) => {
+        await manifest;
+        await route.continue();
+      });
+    });
     await page.getByRole('searchbox').fill('name: deslop');
   } finally {
-    manifest.resolve();
+    releaseManifest();
   }
   const result = page
     .getByRole('navigation', { name: 'Search results' })
