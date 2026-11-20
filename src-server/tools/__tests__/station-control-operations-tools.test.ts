@@ -1,3 +1,4 @@
+import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
 import { REVIEW_EVIDENCE_OPERATOR_SURFACE } from '@kontourai/station-contracts/review-evidence';
 import { SCHEDULER_OPERATOR_SURFACE } from '@kontourai/station-contracts/scheduler';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -149,6 +150,25 @@ describe('station-control operations tools (characterization)', () => {
         Object.values(SCHEDULER_OPERATOR_SURFACE).map(({ mcp }) => mcp),
       ),
     );
+  });
+
+  test('registers exactly the Automation read verbs and no Automation mutation (#4513)', async () => {
+    const tools = await registerTools();
+    const reads = Object.values(AUTOMATION_OPERATOR_SURFACE)
+      .map(({ mcp }) => mcp)
+      .filter((name): name is string => name !== null);
+    expect(reads.sort()).toEqual([
+      'list_automation_deliveries',
+      'list_automation_episodes',
+      'list_automation_rules',
+      'list_automation_sources',
+    ]);
+    expect(Object.keys(tools)).toEqual(expect.arrayContaining(reads));
+    expect(
+      Object.keys(tools).filter(
+        (name) => name.includes('automation') && !reads.includes(name),
+      ),
+    ).toEqual([]);
   });
 
   test('registers every canonical independent-review operator operation', async () => {

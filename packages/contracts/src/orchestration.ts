@@ -12,6 +12,7 @@ import type {
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
+  EngineApprovalReviewer,
   ModelLaunchPlan,
   ProviderDurabilityProfile,
   ProviderSendTurnInput,
@@ -1242,6 +1243,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * inherited default until the next report.
    */
   appliedApprovalMode?: ApprovalMode;
+  /** The latest engine-confirmed mode on this execution Session. */
+  currentModeId?: string;
+  /** Reviewer reported by the engine for this binding. Unknown if omitted or unrecognized. */
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;
@@ -1602,6 +1607,19 @@ export interface OrchestrationConversationEventWindow
   handoffs: ConversationHandoffProjection[];
   /** Consumed-only context-boundary facts rendered into the durable transcript. */
   contextBoundaries: import('./conversation-context-boundary.js').ConversationContextBoundaryTranscriptMarker[];
+}
+
+export const STAGED_CONVERSATION_HANDOFF_PREVIEW = Object.freeze({
+  id: 'staged-agent-changes',
+  label: 'Stage chat Agent changes',
+  description:
+    'Choose the Agent and model for the next message. Sending starts a fresh Session with bounded conversation text.',
+});
+
+/** Send-time approval for a fresh Session seeded with bounded conversation text. */
+export interface StagedConversationHandoff {
+  expectedCurrentSessionId: string;
+  contextPolicy: 'continue-from-history';
 }
 
 export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([

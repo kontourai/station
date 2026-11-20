@@ -4,6 +4,7 @@ import type {
   ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
+import type { EngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -27,6 +28,7 @@ import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
+  nonAcpApprovalEngine,
   type SessionApprovalOverride,
 } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
@@ -269,6 +271,7 @@ interface ChatInputAreaProps {
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * The session approval override: the pending pick, else the confirmed one
    * (`sessionApprovalOverride`, #2334). Not read from `modelRuntimeOptions`,
@@ -277,6 +280,7 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  acpRequestedModeId?: string;
   /**
    * #3290: an ACP session's approval control, from its connection
    * (`acpApprovalControl`). `engineId` is the engine identity the approval
@@ -327,6 +331,12 @@ interface ChatInputAreaProps {
   sendFailureNotice?: string;
   /** A quiet line above the draft about what the next send also does. */
   composerNotice?: string;
+  stagedAgentNotice?: {
+    label: string;
+    onUndo?: () => void;
+    onCheck?: () => void;
+    checkLabel?: string;
+  };
   /**
    * A send queued to retry by itself, with its Discard. The controls row shows
    * the button only when the dock is too short to show the transcript that
@@ -541,10 +551,12 @@ export function ChatInputArea({
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  reportedApprovalReviewer,
   approvalModeOverride,
   acpSessionModes = [],
   acpApproval,
   acpCurrentModeId,
+  acpRequestedModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -556,6 +568,7 @@ export function ChatInputArea({
   attachmentNotice,
   sendFailureNotice,
   composerNotice,
+  stagedAgentNotice,
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
@@ -639,7 +652,7 @@ export function ChatInputArea({
   // command, never the connection id.
   const approvalEngineId = acpApproval
     ? acpApproval.engineId
-    : (agentConnectionId ?? null);
+    : nonAcpApprovalEngine(agentConnectionId);
   // Steering takes text only (`steerTurn` carries an input string). A host
   // with `followUpAttachments` queues a draft's files with it; on any other
   // the mid-turn queue holds text only, so a draft with files cannot join a
@@ -1245,7 +1258,7 @@ export function ChatInputArea({
 
       {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
-        {agentEngineMove?.nextTurn && (
+        {!stagedAgentNotice && agentEngineMove?.nextTurn && (
           // The closed Run setup trigger has no room for a destination name,
           // so the one fact that changes what the next send does gets its own
           // line at every width (the open panel's caption repeats it).
@@ -1254,6 +1267,19 @@ export function ChatInputArea({
             <span className="chat-input__next-turn-destination">
               {agentEngineMove.to}
             </span>
+          </p>
+        )}
+        {stagedAgentNotice && (
+          <p className="chat-input__next-turn-notice">
+            {stagedAgentNotice.label}{' '}
+            {stagedAgentNotice.onCheck && (
+              <Button onClick={stagedAgentNotice.onCheck}>
+                {stagedAgentNotice.checkLabel}
+              </Button>
+            )}
+            {stagedAgentNotice.onUndo && (
+              <Button onClick={stagedAgentNotice.onUndo}>Undo</Button>
+            )}
           </p>
         )}
         {composerNotice && (
@@ -2050,11 +2076,8 @@ export function ChatInputArea({
                   <AcpSessionModeChip
                     key={sessionId}
                     modes={modeChoices}
-                    currentModeId={
-                      typeof modelRuntimeOptions?.mode === 'string'
-                        ? modelRuntimeOptions.mode
-                        : acpCurrentModeId
-                    }
+                    currentModeId={acpCurrentModeId}
+                    requestedModeId={acpRequestedModeId}
                     onChange={onAcpSessionModeChange}
                   />
                 </React.Suspense>
@@ -2072,7 +2095,10 @@ export function ChatInputArea({
                 />
               ) : (
                 executionMode === EXECUTION_MODE.EXTERNAL &&
-                approvalModeKnobSupported(approvalEngineId) && (
+                approvalModeKnobSupported(
+                  approvalEngineId,
+                  acpApproval?.control,
+                ) && (
                   <ApprovalModeChip
                     // Structural reset (not blur-dependent) for the chip's local
                     // confirm state when the active session changes — this
@@ -2080,6 +2106,7 @@ export function ChatInputArea({
                     // remount otherwise (archive#727 3).
                     key={sessionId}
                     engineConnectionId={approvalEngineId}
+                    acpControl={acpApproval?.control}
                     toolPolicyDelivery={toolPolicyDelivery}
                     sessionOverride={approvalModeOverride?.mode}
                     sessionOverrideState={approvalModeOverride?.state}
@@ -2096,6 +2123,7 @@ export function ChatInputArea({
                     }
                     stationDefault={approvalModeStationDefault}
                     lastAppliedApprovalMode={lastAppliedApprovalMode}
+                    reportedApprovalReviewer={reportedApprovalReviewer}
                     onChange={onApprovalModeChange}
                   />
                 )

@@ -1,3 +1,6 @@
+import { ActionRow } from '../ActionRow';
+import { Button } from '../Button';
+
 export interface ConversationOpenRecoveryNoticeProps {
   title: string;
   /**
@@ -17,6 +20,7 @@ export interface ConversationOpenRecoveryNoticeProps {
    * which.
    */
   state?:
+    | 'engine-disconnected'
     | 'missing-session'
     | 'resolved'
     | 'fork-ready'
@@ -24,6 +28,7 @@ export interface ConversationOpenRecoveryNoticeProps {
     | 'unavailable'
     | 'error'
     | 'unverified';
+  onContinue?: () => void;
   onRetry?: () => void;
   onStartNew?: () => void;
 }
@@ -35,24 +40,28 @@ export interface ConversationOpenRecoveryNoticeProps {
 export function ConversationOpenRecoveryNotice({
   title,
   state,
+  onContinue,
   onRetry,
   onStartNew,
 }: ConversationOpenRecoveryNoticeProps) {
   const verdict =
+    state === 'engine-disconnected' ||
     state === 'missing-session' ||
     state === 'resolved' ||
     state === 'fork-ready' ||
     state === 'fresh-context-ready';
   const detail =
-    state === 'missing-session'
-      ? 'Its execution session is no longer available.'
-      : verdict
-        ? 'Station could not prove this chat can continue.'
-        : // Names Retry only when Retry is on screen: a caller that cannot
-          // re-check passes no `onRetry`, and the sentence must not point at it.
-          onRetry
-          ? 'Sending is paused. Retry to check again.'
-          : 'Sending is paused.';
+    state === 'engine-disconnected'
+      ? 'Its engine is disconnected.'
+      : state === 'missing-session'
+        ? 'Its execution session is no longer available.'
+        : verdict
+          ? 'Station could not prove this chat can continue.'
+          : // Names Retry only when Retry is on screen: a caller that cannot
+            // re-check passes no `onRetry`, and the sentence must not point at it.
+            onRetry
+            ? 'Sending is paused. Retry to check again.'
+            : 'Sending is paused.';
 
   return (
     <div className="conversation-open-recovery" role="status">
@@ -62,28 +71,31 @@ export function ConversationOpenRecoveryNotice({
         </strong>{' '}
         {detail}
       </span>
-      {onRetry || onStartNew ? (
-        <span className="conversation-open-recovery__actions">
-          {onRetry ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onRetry}
-            >
-              Retry
-            </button>
-          ) : null}
-          {onStartNew ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={onStartNew}
-            >
-              Start new chat
-            </button>
-          ) : null}
-        </span>
-      ) : null}
+      <ActionRow
+        className="conversation-open-recovery__actions"
+        overflowLabel="More recovery actions"
+        primary={
+          onContinue ? (
+            <Button onClick={onContinue}>Continue with another agent</Button>
+          ) : onStartNew ? (
+            <Button onClick={onStartNew}>Start new chat</Button>
+          ) : undefined
+        }
+        secondary={
+          onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined
+        }
+        overflow={
+          onContinue && onStartNew
+            ? [
+                {
+                  key: 'start-new',
+                  label: 'Start new chat',
+                  onSelect: onStartNew,
+                },
+              ]
+            : undefined
+        }
+      />
     </div>
   );
 }

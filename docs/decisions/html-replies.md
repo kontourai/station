@@ -73,8 +73,10 @@ still exists and atomically enforces the conversation's 32-page/32-MiB quota.
 A delayed publish cannot recreate pages after the Session was deleted.
 
 The small `{version, pageId, sessionId}` reference travels in the ordinary MCP
-tool result and therefore in canonical tool-completed history. Both live and
-replayed transcript paths recognize it at the tool position. The display
+tool result. During an active ACP turn, Station commits the visual reply's
+transcript entry with the page and suppresses any later engine echo of the same
+reference. Repeating an identical render within that turn reuses the page. The preview stays visible if ACP truncates or omits the tool output.
+Both live and replayed transcript paths recognize the publication. The display
 reference is not authority: the read route checks the same `canUserReadSession`
 predicate used by other history reads, then looks up that Session/page pair.
 Incoming `htmlReply` and `mcpAppResourceUri` metadata claims are discarded at

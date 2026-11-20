@@ -33,6 +33,7 @@ import type {
   WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import type { StagedConversationHandoff } from '@kontourai/station-contracts/orchestration';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
@@ -426,6 +427,9 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  appearanceProposal?: boolean;
+  /** Composed from the verified parent at the local route. */
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -5865,6 +5869,13 @@ export async function delegateTask(
     readAuthority,
     orchestrationService,
   );
+  if (
+    input.appearanceProposal &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
+    throw new Error(
+      'Appearance proposals can be delegated only on this Station.',
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
@@ -5925,6 +5936,7 @@ export async function delegateTask(
               environment: relayEnvironment(selectedTarget),
             },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
             ...forwarded,
           },
           'The selected Station could not start the delegated task',
@@ -6628,8 +6640,20 @@ export async function delegateTask(
       // a second dispatch for the same claim.
       retainFiles = true;
       await markCreateRequestStarting(sessionId);
-      const attemptTurnDispatch =
-        await orchestrationService.dispatchWithReceipt(
+      const initialClientTurnId =
+        attemptClaim?.initialClientTurnId ??
+        (input.stagedFiles ? fileBinding.clientTurnId : undefined) ??
+        input.taskRoomInvocationAdmission?.clientTurnId ??
+        input.clientTurnId ??
+        randomUUID();
+      const revokeAppearance = input.delegatedAppearance
+        ? orchestrationService.grantDelegatedAppearance(sessionId, {
+            ...input.delegatedAppearance,
+            clientTurnId: initialClientTurnId,
+          })
+        : undefined;
+      const attemptTurnDispatch = await orchestrationService
+        .dispatchWithReceipt(
           {
             type: 'sendTurn',
             input: {
@@ -6646,16 +6670,7 @@ export async function delegateTask(
               ...(resolved.modelOptions
                 ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
-              clientTurnId:
-                input.taskRoomInvocationAdmission?.clientTurnId ??
-                input.clientTurnId ??
-                randomUUID(),
-              ...(input.stagedFiles
-                ? { clientTurnId: fileBinding.clientTurnId }
-                : {}),
-              ...(attemptClaim
-                ? { clientTurnId: attemptClaim.initialClientTurnId }
-                : {}),
+              clientTurnId: initialClientTurnId,
             },
           },
           dispatchContextForAuthority(
@@ -6692,7 +6707,17 @@ export async function delegateTask(
                 }
               : {}),
           },
-        );
+        )
+        .catch((error: unknown) => {
+          revokeAppearance?.();
+          throw error;
+        });
+      if (
+        revokeAppearance &&
+        attemptTurnDispatch.receipt.status !== 'accepted' &&
+        !attemptTurnDispatch.receiptStatus
+      )
+        revokeAppearance();
       input.stagedFiles?.accept(fileBinding);
       // The dispatch returning means the turn was durably accepted by the
       // adapter (the dedup-hit path returns the SAME already-accepted turn
@@ -7368,6 +7393,7 @@ export async function executeExecutionTargetMessage(
           ...(handoff.modelId ? { modelId: handoff.modelId } : {}),
           idempotencyKey: handoff.idempotencyKey,
           messageDigest: handoff.messageDigest,
+          stagedHandoff: handoff.stagedHandoff,
         },
       );
       return {
@@ -7780,7 +7806,10 @@ export async function executeExecutionTargetMessage(
  * foreground chat has no equivalent field or route.
  */
 export async function handoffExecutionTargetMessage(
-  input: AuthorityBearingForegroundMessageInput & { idempotencyKey: string },
+  input: AuthorityBearingForegroundMessageInput & {
+    idempotencyKey: string;
+    stagedHandoff?: StagedConversationHandoff;
+  },
   orchestrationService?: OrchestrationService,
 ): Promise<ForegroundMessageHandle> {
   if (input.target.environment.kind !== 'current') {
@@ -7791,7 +7820,10 @@ export async function handoffExecutionTargetMessage(
   return executeExecutionTargetMessage(
     {
       ...input,
-      handoffIntent: createConversationHandoffIntent(input.idempotencyKey),
+      handoffIntent: createConversationHandoffIntent(
+        input.idempotencyKey,
+        input.stagedHandoff,
+      ),
     },
     orchestrationService,
   );

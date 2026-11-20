@@ -4,6 +4,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
+  isAcpFamilyEngine,
   isSteerConflictCode,
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -347,6 +348,26 @@ export interface ConversationBodyProps {
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   availableModels: SelectableModel[];
+  stagedAgentChange?: Pick<
+    ReturnType<
+      typeof import('../chat-dock/useStagedAgentChange').useStagedAgentChange
+    >,
+    | 'pending'
+    | 'canRetry'
+    | 'canWithdraw'
+    | 'withdraw'
+    | 'changeModel'
+    | 'changeOption'
+    | 'send'
+    | 'undo'
+  > & {
+    selection?: NonNullable<
+      ReturnType<
+        typeof import('../chat-dock/useStagedAgentChange').useStagedAgentChange
+      >['selected']
+    >;
+    models: SelectableModel[];
+  };
   executionModels?: SelectableModel[];
   onExecutionModelSelect?: (model?: SelectableModel) => void;
   modelsLoading?: boolean;
@@ -596,6 +617,7 @@ function LiveConversationBody({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  stagedAgentChange,
   executionModels,
   onExecutionModelSelect,
   modelsLoading = false,
@@ -716,9 +738,8 @@ function LiveConversationBody({
           credentialState: mentionCredentialEvidence.credentialState,
         })
       : null;
-  const { data: acpConnections = [] } = useACPConnections(
-    !station || station.routeKind === 'host',
-  );
+  const { data: acpConnections = [], isSuccess: acpConnectionsVerified } =
+    useACPConnections(!station || station.routeKind === 'host');
   const activeAcpConnection = useMemo(
     () =>
       acpConnections.find(
@@ -756,7 +777,15 @@ function LiveConversationBody({
   // #2424: `unverified` refuses writes and shows the same recovery notice, but
   // is a failed check rather than a verdict — only `read-only` may say so.
   const unverifiedOpen = openPhase === 'unverified';
-  const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
+  const removedEngine =
+    (!station || station.routeKind === 'host') &&
+    acpConnectionsVerified &&
+    isAcpFamilyEngine(activeOrchestrationSession?.provider) &&
+    Boolean(activeSession.agentConnectionId) &&
+    !activeAcpConnection &&
+    !turnInFlight;
+  const recoveryOpen =
+    openPhase === 'read-only' || unverifiedOpen || removedEngine;
   const busyOpen = openPhase === 'busy';
   // A chat reopened mid-turn resolves `busy`: it cannot start a continuation,
   // but its open turn still takes Steer or Queue, as it does in the tab that
@@ -1217,6 +1246,7 @@ function LiveConversationBody({
     ),
   });
 
+  const stagedSelection = stagedAgentChange?.selection;
   const handleSendWithContext = useCallback(
     (intent?: 'steer'): Promise<void> => {
       // Ambient context travels OUT-OF-BAND (#685): the server composes it into
@@ -1228,6 +1258,7 @@ function LiveConversationBody({
         getComposedContext(),
         chatInput.input,
       );
+      if (stagedAgentChange) return stagedAgentChange.send(ambientContext);
       return chatInput.handleSend(undefined, undefined, {
         ambientContext,
         ...(intent === 'steer'
@@ -1235,7 +1266,7 @@ function LiveConversationBody({
           : { queueOnBusy: true, queueFilesOnBusy: queueTakesFiles }),
       });
     },
-    [getComposedContext, chatInput, queueTakesFiles],
+    [getComposedContext, chatInput, queueTakesFiles, stagedAgentChange],
   );
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
@@ -2800,9 +2831,20 @@ function LiveConversationBody({
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state: unverifiedOpen
-              ? 'unverified'
-              : activeSession.conversationOpenState?.status,
+            state: removedEngine
+              ? 'engine-disconnected'
+              : unverifiedOpen
+                ? 'unverified'
+                : activeSession.conversationOpenState?.status,
+            onContinue:
+              !unverifiedOpen &&
+              !turnInFlight &&
+              !busyOpen &&
+              !secondaryActions?.handoffDisabled &&
+              callerMayContinue &&
+              (!station || station.routeKind === 'host')
+                ? (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
+                : undefined,
             // Retry re-reads the open (`GET /api/conversations/:id/open`),
             // the read this client already makes to see the chat. Start new
             // chat follows the server's `callerAccess.startChat` (`onNewChat`
@@ -2992,6 +3034,33 @@ function LiveConversationBody({
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
             composerNotice={settled ? SETTLED_COMPOSER_NOTICE : undefined}
+            stagedAgentNotice={
+              stagedAgentChange
+                ? {
+                    label: stagedAgentChange.pending
+                      ? stagedAgentChange.pending.sending
+                        ? 'Sending Agent change…'
+                        : 'Agent change unconfirmed'
+                      : `Next message: ${stagedSelection?.agent.name} · ${stagedSelection?.executionAgent?.engineDisplayName ?? stagedSelection?.agent.engineDisplayName ?? stagedSelection?.connectionId ?? 'Station'} · ${stagedSelection?.modelId ?? 'Agent default'}`,
+                    onCheck:
+                      stagedAgentChange.pending &&
+                      !stagedAgentChange.pending.sending
+                        ? () =>
+                            void (stagedAgentChange.canWithdraw
+                              ? stagedAgentChange.withdraw()
+                              : stagedAgentChange.send())
+                        : undefined,
+                    checkLabel: stagedAgentChange.canWithdraw
+                      ? 'Withdraw Send'
+                      : stagedAgentChange.canRetry
+                        ? 'Retry Send'
+                        : 'Check status',
+                    onUndo: stagedAgentChange.pending
+                      ? undefined
+                      : stagedAgentChange.undo,
+                  }
+                : undefined
+            }
             queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
@@ -3028,7 +3097,12 @@ function LiveConversationBody({
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}
             fileAttachmentsSupported={fileAttachmentsSupported}
-            modelProviderLabel={modelProviderLabel}
+            modelProviderLabel={
+              stagedSelection
+                ? (stagedSelection.executionAgent ?? stagedSelection.agent)
+                    .engineDisplayName
+                : modelProviderLabel
+            }
             executionEngineLabel={executionEngineLabel}
             executionEngineId={
               engineIdentity.configurationNamesEngine
@@ -3037,32 +3111,61 @@ function LiveConversationBody({
             }
             agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
-            currentProviderId={activeSession.providerId}
+            currentProviderId={
+              stagedSelection
+                ? stagedSelection.connectionId
+                : activeSession.providerId
+            }
             fontSize={chatFontSize}
             dockHeight={dockHeight}
-            currentModel={chatInput.currentModel}
+            currentModel={
+              stagedAgentChange
+                ? stagedSelection?.modelId
+                : chatInput.currentModel
+            }
             currentModelSource={
-              activeSession.requestedModel === null
-                ? (activeSession.defaultModelSource ?? 'agent default')
-                : (activeSession.requestedModelSource ??
-                  activeSession.modelSource)
+              stagedSelection
+                ? stagedSelection.modelId
+                  ? 'session override'
+                  : 'agent default'
+                : activeSession.requestedModel === null
+                  ? (activeSession.defaultModelSource ?? 'agent default')
+                  : (activeSession.requestedModelSource ??
+                    activeSession.modelSource)
             }
             canModelSelect={
-              chatInput.canModelSelect || hasExecutionAlternatives
+              stagedAgentChange
+                ? !stagedAgentChange.pending &&
+                  stagedAgentChange.models.length > 0
+                : chatInput.canModelSelect || hasExecutionAlternatives
             }
             modelSelectionReason={chatInput.modelSelectionReason}
             modelsStale={
-              hasExecutionAlternatives ? false : chatInput.modelsStale
+              stagedAgentChange || hasExecutionAlternatives
+                ? false
+                : chatInput.modelsStale
             }
             modelsLoading={modelsLoading}
-            agentDefaultModel={agentDefaultModelId}
+            agentDefaultModel={
+              stagedAgentChange
+                ? ((stagedSelection?.executionAgent ?? stagedSelection?.agent)
+                    ?.execution?.modelId ?? undefined)
+                : (agentDefaultModelId ?? undefined)
+            }
             defaultModelSource={activeSession.defaultModelSource}
-            availableModels={availableModels}
-            pickerModels={pickerModels}
-            currentExecutionAgentId={activeSession.executionAgentId}
+            availableModels={stagedAgentChange?.models ?? availableModels}
+            pickerModels={stagedAgentChange?.models ?? pickerModels}
+            currentExecutionAgentId={
+              stagedAgentChange ? undefined : activeSession.executionAgentId
+            }
             modelQuery={chatInput.modelQuery}
-            agentConnectionId={activeSession.agentConnectionId}
+            agentConnectionId={
+              stagedSelection
+                ? stagedSelection.connectionId
+                : activeSession.agentConnectionId
+            }
             modelRuntimeOptions={
+              stagedSelection?.options ??
               activeSession.requestedProviderOptions ??
               activeSession.providerOptions
             }
@@ -3073,7 +3176,10 @@ function LiveConversationBody({
             }
             agentIcon={agent && <AgentIcon agent={agent} size="small" />}
             agentLabel={
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+              stagedSelection?.agent.name ??
+              agent?.name ??
+              activeSession.agentName ??
+              activeSession.agentSlug
             }
             agentRoute={
               activeOrchestrationSession?.modelRoute
@@ -3083,10 +3189,15 @@ function LiveConversationBody({
             onOpenAgentHandoff={
               station && station.routeKind !== 'host'
                 ? undefined
-                : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
+                : stagedAgentChange?.pending
+                  ? undefined
+                  : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
             }
             agentHandoffTriggerRef={agentHandoffTriggerRef}
-            agentHandoffDisabled={secondaryActions?.handoffDisabled}
+            agentHandoffDisabled={
+              Boolean(stagedAgentChange?.pending) ||
+              secondaryActions?.handoffDisabled
+            }
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
             approvalModeIsNewSession={approvalModeIsNewSession}
@@ -3102,11 +3213,15 @@ function LiveConversationBody({
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            reportedApprovalReviewer={activeSession.reportedApprovalReviewer}
             approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpApproval={acpApproval}
-            acpCurrentModeId={
-              activeSession.currentModeId ?? advertisedAcpSession.currentModeId
+            acpCurrentModeId={activeSession.currentModeId ?? undefined}
+            acpRequestedModeId={
+              typeof activeSession.requestedProviderOptions?.mode === 'string'
+                ? activeSession.requestedProviderOptions.mode
+                : undefined
             }
             commandQuery={chatInput.commandQuery}
             slashCommands={chatInput.slashCommands}
@@ -3154,6 +3269,10 @@ function LiveConversationBody({
             onRemoveAttachment={chatInput.handleRemoveAttachment}
             onClearAttachments={chatInput.handleClearAttachments}
             onModelSelect={(model) => {
+              if (stagedAgentChange) {
+                stagedAgentChange.changeModel(model.id);
+                return;
+              }
               if (
                 model.executionAgentId !== activeSession.executionAgentId &&
                 onExecutionModelSelect
@@ -3165,6 +3284,10 @@ function LiveConversationBody({
               }
             }}
             onModelReset={() => {
+              if (stagedAgentChange) {
+                stagedAgentChange.changeModel();
+                return;
+              }
               if (activeSession.executionAgentId) {
                 if (engineResetBlockedReason || !onExecutionModelSelect) return;
                 chatInput.handleModelClose();
@@ -3181,11 +3304,12 @@ function LiveConversationBody({
             }
             onModelClose={chatInput.handleModelClose}
             onModelOpen={
-              hasExecutionAlternatives
+              stagedAgentChange || hasExecutionAlternatives
                 ? chatInput.openModelForExecution
                 : chatInput.handleModelOpen
             }
             onModelRuntimeOptionChange={
+              stagedAgentChange?.changeOption ??
               chatInput.handleModelRuntimeOptionChange
             }
             onApprovalModeChange={chatInput.handleApprovalModeChange}

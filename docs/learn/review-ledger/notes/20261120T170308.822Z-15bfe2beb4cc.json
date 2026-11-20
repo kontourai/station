@@ -1,0 +1,7 @@
+{
+  "revision": "98cea4b18c4d5c8bfb43fdda359638e78851351d",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Verified the documented build and separate upload jobs both select the reviewed hosted Xcode pool. Upload still consumes the retained source-bound IPA and repeats the target app identity check before sending bytes.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}

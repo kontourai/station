@@ -588,7 +588,7 @@ into one.
 | `firstRun` | Means | Home |
 | --- | --- | --- |
 | absent | This home's config predates the field — it has already been in use | Nothing |
-| `pending` | The home was created and nobody has answered yet | Chapter opens; card present |
+| `pending` | The home was created and nobody has answered yet | Card opens setup on request |
 | `skipped` | Offered, and deferred with "Not now" | Card only |
 | `completed` | Answered | Nothing |
 
@@ -611,13 +611,10 @@ the raw OS checkboxes are gone. A row Station cannot act on renders as a state
 and a reason rather than as a disabled control, so the reason stays in the
 document instead of behind a skipped tab stop.
 
-**Ordering.** The connect launcher still goes first: while it covers the screen
-the chapter does not auto-open (the same suppression `ProjectNewViewGate`
-applies to the New Project modal). That decides only **when**, within one page
-load, an already-decided run opens — never **whether** — and because the
-auto-open is a one-shot latch it can only ever delay an open, never close a
-chapter that is already up. So a flapping status probe changes what the
-chapter's list says and nothing else.
+**Ordering.** Home leaves setup and usage sharing available as separate
+actions. The connect launcher offers help when the Station needs an engine
+connection. Opening setup or dismissing usage sharing leaves the saved
+connection and Home layout intact.
 
 **Enabling the engines.** Every ticked row goes through the one server path the
 New Chat picker's per-row Enable uses: `POST /api/agents/materialize-engine`

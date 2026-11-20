@@ -158,10 +158,13 @@ export function createPullRequestFeedbackRoutes(
     if (!readable(c, conversationId)) return unavailable(c);
     return c.json({
       success: true,
-      data: await ownership.view(
-        conversationId,
-        viewerOf(c, access.operator(c.req.raw) ?? ''),
-      ),
+      data: {
+        ...(await ownership.view(
+          conversationId,
+          viewerOf(c, access.operator(c.req.raw) ?? ''),
+        )),
+        viewerMayChange: !!writer(c, conversationId),
+      },
     });
   });
 

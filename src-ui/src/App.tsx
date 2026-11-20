@@ -130,6 +130,7 @@ const loadServerEventsMount = () =>
     default: module.ServerEventsMount,
   }));
 
+import { useActiveStationName } from './hooks/useActiveStationName';
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
 import { useFoldSplit } from './hooks/useFoldSplit';
@@ -191,7 +192,7 @@ function App({
   // `connectionFailureCopy`'s contract wants the short name the user saved,
   // with the URL as the address it actually tried (archive#3713).
   const { activeConnection } = useConnections();
-  const activeConnectionName = activeConnection?.name;
+  const activeConnectionName = useActiveStationName();
   const activeConnectionUrl = activeConnection?.url;
   const availableModels = useModels();
   const agents = useAgents();

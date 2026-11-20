@@ -156,18 +156,54 @@
     "personal-board-projects-unavailable-mobile": [
       "src-ui/src/views/PersonalBoardView.tsx"
     ],
-    "telemetry-dialog-default-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-default-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-mixed-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-mixed-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-dnt-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-endpoint-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-endpoint-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-detailed-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-detailed-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-light-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-light-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-default-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-default-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-mixed-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-mixed-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-dnt-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-dnt-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-endpoint-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-endpoint-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-detailed-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-detailed-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-light-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-light-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
     "telemetry-settings-desktop": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-settings-mobile": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-settings-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
@@ -653,6 +689,26 @@
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/components/room/RoomAgentActivity.tsx"
     ],
+    "room-coordinator-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
     "notifications-for-you-dark-desktop": [
       "src-ui/src/pages/NotificationsPage.tsx",
       "src-ui/src/components/notifications/PersonMentionsSection.tsx",
@@ -1098,6 +1154,18 @@
     ],
     "task-pr-watch-dark-desktop": ["src-ui/src/views/TaskWorkspaceView.tsx"],
     "project-pull-requests-dark-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-dark-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-dark-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-light-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-light-mobile": [
       "src-ui/src/views/ProjectSettingsView.tsx"
     ],
     "task-pr-watch-dark-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],

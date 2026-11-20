@@ -97,6 +97,14 @@ vi.mock('@kontourai/station-sdk', async () => {
       isPending: false,
     }),
     usePairedDevicesQuery: () => ({ data: [] }),
+    useAutomationSources: () => ({
+      data: { configurationFingerprint: 'f'.repeat(64), sources: [] },
+    }),
+    useAutomationRules: () => ({
+      data: { configurationFingerprint: 'f'.repeat(64), rules: [] },
+    }),
+    useAutomationEpisodes: () => ({ data: { episodes: [] } }),
+    useAutomationDeliveries: () => ({ data: { deliveries: [], polls: [] } }),
     // Exercise the catalog with a server that supports staged updates.
     useCoreUpdateStatusQuery: () => ({
       data: {

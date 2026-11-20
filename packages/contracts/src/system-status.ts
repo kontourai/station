@@ -73,6 +73,14 @@ export interface DevicePresentation {
   hostName: string;
 }
 
+/** Last measured CLI presence, separate from permission to launch an engine. */
+export interface CliPresenceEvidence {
+  state: 'present' | 'absent' | 'unknown';
+  freshness: 'observed' | 'retained' | 'unknown';
+  observedAt: string | null;
+  source: 'path' | null;
+}
+
 /**
  * The answering server's process/build identity: which Station instance, which
  * boot of it, built from which commit. All three fields are required for the

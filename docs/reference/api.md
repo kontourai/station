@@ -754,6 +754,12 @@ memory access. With the preview off, direct memory requests return the standard
 
 ## Project knowledge source identity
 
+The operator's `GET /api/projects` response includes `hasKnowledge` when Station
+can observe a regular document metadata file in the Project's local knowledge
+namespaces or its legacy documents directory. The Project **Sources** list
+reports registered stores. **Project knowledge** reports document and index
+status.
+
 New Project root registrations require `expectedProjectId`, compared with the
 server-owned Project. A missing or mismatched precondition returns409. The
 stored `projectId` is resolved on the server, not accepted from a caller. Managed storage uses that ID in its path.
@@ -858,7 +864,8 @@ or `standard` preset device, gets `403` with
 covers exactly these routes:
 
 - `POST /api/orchestration/delegations`, `/chat`, `/chat/delegated`,
-  `/chat/background` and `/conversations/:conversationId/handoff`, when
+  `/chat/background`, `/conversations/:conversationId/handoff` and
+  `/conversations/:conversationId/staged-handoff`, when
   `target.workspace` is `{ kind: 'directory', cwd }`;
 - `POST /api/tasks/:taskId/dispatch` and `POST /api/starter-work/launch`
   (`start-task`), when `runtimeConfig.cwd` is not the Task Project's own
@@ -1195,6 +1202,15 @@ routes, so an agent's request is refused (`403`,
 A promoted record is searchable once its store is reindexed
 (`POST /api/knowledge/index/rebuild`); promotion does not index it.
 
+## Legacy Project conversation list
+
+`GET /api/projects/:slug/conversations` returns HTTP 503 with code
+`project_conversations_unavailable` when the Project read is admitted. The
+legacy file-memory inventory lacks an authoritative Project binding; admission
+to the selected Project cannot establish which records belong to it.
+Existing transport and Project admission refusals still apply. The Project UI
+uses the scoped Project Room and Task room endpoints for its conversation list.
+
 ## Shared Project Room
 
 Project Rooms use `/api/projects/:slug/room`. Their identity binds the Station,
@@ -1460,6 +1476,50 @@ durable checkpoint; clients recover content from ordered history rather than
 treating the notification stream as a durable message log. Presence expires and
 is not resurrected after restart. Slow readers are closed after the bounded
 write deadline. See the [transport decision](../decisions/project-room-realtime.md).
+
+### The coordinator in #general
+
+Behind the `project-room-coordinator` Feature Preview and the
+`projectRoomCoordinator` capability flag (personal Stations with Project sharing and
+deployment sign-in disabled), an Agent
+request in a Project's default channel is answered by the Project's
+coordinator. Its answer ends with a `<station_routing>` block that Station
+parses (`parseCoordinatorReply`) and replaces with a line saying where the
+message went: answered in place, proposed Tasks (a card), or sent to a
+coordinator Task's chat. The leaves exist under `/:slug/room` only. Each
+answers 404 with `code: 'feature_preview_disabled'` while the preview is off.
+
+- `GET /api/projects/:slug/room/coordinator` (the room's view action) returns
+  `ProjectRoomCoordinatorView`: the Project's effective
+  `ProjectRoomCoordinatorSettings`, how many coordinator Tasks are working and
+  waiting, and the newest 20 cards, each with its message id and rows.
+  Card refusals give a recovery step. Detailed Task diagnostics stay in the
+  private coordinator journal.
+- `POST …/room/coordinator/proposals/:proposalId/start` (execute), body the
+  room guards plus optional `rowIds` (absent is **Start all**), moves the
+  card's proposed rows to waiting as the caller, starts as many as the
+  Project's limit allows, and returns the view. Repeating it changes nothing.
+- `POST …/room/coordinator/sweep` (execute), body the room guards, posts one
+  message in `#general` with a line per open coordinator Task. Each line
+  links the Task, reports whether a written answer exists, and says what it
+  waits on. The route returns `{ messageId, tasks }`.
+- `PUT /api/projects/:slug/room-coordinator`, body
+  `{ startWithoutAsking, maxConcurrentTasks (1–10), pullRequests:
+  'when-asked' | 'allowed' }`, sets `ProjectConfig.roomCoordinator`. The
+  runtime Project guard admits only the Project's owner.
+
+Station enforces the limits itself: rows claim slots in one SQLite
+transaction against `maxConcurrentTasks`, Tasks are created only on Start
+(or at once when `startWithoutAsking`), and a coordinator Task whose person
+did not ask for a pull request has recognized opener calls refused when they
+pass through Station's pre-tool policy. This includes supported `gh`, `glab`
+and forge MCP forms. Each row keys its Task, first turn and room result. A
+successful turn holds its slot until the Task is Done. Restart resumes durable
+work without repeating these effects. Station posts a linked settlement only
+while the starter may still start work in the same Project incarnation.
+The Task entry point owns access to the Task's actual answer and failure details.
+Earlier preview result text that differs from the link-only message stays in
+the private coordinator journal and is withheld from replay into Room history.
 
 ## Task deliverables and linked work chats
 
@@ -3291,6 +3351,15 @@ does not establish that no Model connections exist. Provider-reported
 `/api/connections/runtimes` spelling is not registered here.
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
+The ordinary combined and Agent App listings have a five-second deadline and
+propagate caller cancellation. On deadline they return HTTP 504 with
+`connection_inventory_timed_out` and no inventory payload. Within the
+deadline, unavailable observations remain distinct from live catalogs. A later
+read reports unavailable evidence for an abandoned adapter operation still
+settling. It neither starts a duplicate nor reuses its result.
+An ACP row exposes its current `config.acpProbeStatus` when observed and
+`lastCheckedAt` is the measured handshake time or null.
+
 Rows can include `runtimeCatalog` model observations and readiness evidence.
 Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
 OpenAI-compatible Model connection; its current address/key are resolved at
@@ -4749,8 +4818,10 @@ or bytes returns 404; a provider fetch failure returns 502.
 ### Search Users
 
 `GET /api/users/search?q=<query>` returns the directory provider's result array.
-An empty query returns `[]`. A caught provider failure also returns `[]` with
-200, so this legacy response cannot distinguish a failed search from no matches.
+An empty query or a successful search with no matches returns `[]` with HTTP
+200. An unavailable provider returns HTTP 503 with `success: false`, code
+`user_directory_unavailable`, and a correlation ID. Station keeps the provider
+failure in its server log.
 
 ### Lookup User by Alias
 
@@ -5906,7 +5977,16 @@ exist). Provider status job counts are scoped to readable jobs.
 
 `GET /scheduler/status` returns `{success: true, data: {providers}}`. Each entry
 contains the provider's status plus its ID and display name; this is not one
-universal `{running, provider}` object.
+universal `{running, provider}` object. The Station operator may also receive
+`rowIssues` for built-in jobs that cannot be decoded or have invalid required
+fields. Each diagnostic contains only the stored job name, immutable job ID,
+and reason. Healthy jobs continue to appear and can still be run or edited.
+SQLite file integrity failures keep their separate recovery outcome.
+
+The Schedule calendar uses the same authorized job list. An optional
+`weekStart=YYYY-MM-DD` Monday and optional `displayZone` add a per-day bounded `weekOccurrences` forecast in UTC
+to each returned job. The display time zone only groups and formats these
+instants. The scheduler's stored time zone continues to govern execution.
 
 ### Preview Cron Schedule
 
@@ -6092,16 +6172,16 @@ Confirm also needs the Station operator in person (403
 `automation_proposal_operator_required`).
 
 Confirm decides the proposing chat's scope again, for its recorded caller.
-Each Agent must still be the one it named: the same slug, its own Project,
-and a digest of its definition. Confirm checks this before claiming the
-proposal, then again inside the configuration store's lock for creation and
-for enabling. A moved, deleted, reused-slug or unreadable binding answers
-409 `automation_proposal_binding_changed` and creates nothing. If the check
-fails only inside the enabling lock, the object is created but not enabled
-(`enabled: false`).
+Each Agent must still match the recorded slug, its Project, its definition
+digest and its incarnation. Confirm checks before claiming the proposal and
+rechecks under the Agent identity and configuration locks for creation and
+activation. A changed or unreadable binding, including an older Agent
+binding without an incarnation, answers 409
+`automation_proposal_binding_changed` before creating anything. A binding
+refusal during activation returns the saved object's id and `enabled: false`.
 
-Confirm creates the source disabled, or the rule in `observe`, unless
-`enable` is true. The id is derived from the proposal, so a Confirm retried
+Confirm creates a disabled source or an observing rule, then attempts to turn
+it on when `enable` is true. The id is derived from the proposal, so a Confirm retried
 after an interrupted one adopts what it created instead of creating a
 second. Startup marks an interrupted Confirm `confirmed` if its object
 exists, and `open` otherwise.
@@ -6113,6 +6193,8 @@ Other Confirm refusals:
 - 409 `automation_proposal_settled`: the proposal was already answered.
 
 Confirm answers `{proposal, createdId, enabled, untrustedContentAtConfirm}`.
+When the object was saved and requested activation failed, the response
+includes a bounded explanation in `message`.
 The chat schedule read adds `untrustedContentNow` to each open proposal: the
 conversation's untrusted-content mark as it is now, beside the
 `untrustedContent` recorded when the agent proposed it.
@@ -6260,9 +6342,43 @@ refused with 400 rather than clamped, an unavailable ledger answers 503 with
 Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
 `previewId` and `settingsPath`, before opening the ledger. The `polls` projection
 reports last-poll time, cursor and coverage/failure outcome; `partial` means the
-GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
-scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
-or `station automation deliveries`.
+GitHub page omitted additional runs and did not advance the cursor. A delivery
+whose action is held by a limit reads `suppressed` with that reason. Use the
+[SDK client](../../packages/sdk/src/client/automations.ts) or
+`station automation deliveries`.
+
+### Automation Operator Routes
+
+The rest of `AUTOMATION_OPERATOR_SURFACE` (#4513) is served from the same
+[source](../../src-server/routes/operations/automations.ts), all `no-store`,
+404 in hosted mode, and under the `access:manage` pairing scope for every
+method. Every mutation also requires the operator in person (the same proof as
+`/api/isolated-repairs`); anything else answers 403 `operator_required`.
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /automations/sources` | `{configurationFingerprint, sources}`; sources never carry a webhook secret. |
+| `POST /automations/sources` | Creates a disabled `github-poll` source (201). |
+| `PUT /automations/sources/:target/enable` | `{expectedFingerprint}`; 409 `repair_surface_required` for a source granting `isolated-repair` or `publish-branch`. |
+| `PUT /automations/sources/:target/disable` | Optional `{expectedFingerprint}`. |
+| `DELETE /automations/sources/:target` | Only once no rule names the source. |
+| `GET /automations/rules` | `{configurationFingerprint, rules}`. |
+| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). |
+| `PUT /automations/rules/:target` | Replaces a `dispatch-task` rule's name, matcher, episode, action and rate limit at `expectedFingerprint`; never its source or mode. |
+| `PUT /automations/rules/:target/enable` | `{expectedFingerprint}`; sets `live` (`dispatch-task` only). |
+| `PUT /automations/rules/:target/disable` | Sets `off`; optional `{expectedFingerprint}`. |
+| `DELETE /automations/rules/:target` | A `dispatch-task` rule. |
+| `GET /automations/episodes?limit=<1-200>` | `{episodes}`: unclosed episodes, newest first, without their internal key. |
+| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode; `{ruleId, episodeId, retry}`. |
+
+Everything except disable and delete also needs the
+`github-automation-observations` Feature Preview (404
+`feature_preview_disabled` otherwise). A missing source, rule or episode
+answers 404 `automation_not_found`; a stale fingerprint or invalid change 409
+`invalid_automation`; an unreadable policy 503 `policy_unavailable`. A retry
+refusal answers 409 with `not-exhausted`, `indeterminate`, `active`,
+`no-intent`, `stale` or `policy-unavailable`. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Open File with System Handler
 
@@ -6375,10 +6491,13 @@ and `prerequisitesState`, configured/detected providers, CLI observations,
 external-engine readiness, capability summaries, recommendation, build/server
 identity when available, and device presentation.
 
-Prerequisite discovery is cached for 60 seconds and refreshed asynchronously under
-a 2-second budget. `pending`, `ready`, and `stale` describe that cache. Some
-legacy boolean probes collapse failure/timeout to false, so false alone is not
-always an observed absence. The broad top-level `ready` is an OR of detected or
+Prerequisite discovery refreshes asynchronously under a two-second budget.
+`pending`, `ready`, and `stale` describe that cache. The `cliPresence` rows
+report observed presence or absence, retained evidence, or unknown presence.
+Retained rows keep their original PATH observation time. An incomplete CLI
+refresh does not renew the 60-second freshness period. The legacy `clis`
+boolean is true for a measured presence. False alone does not establish
+absence. The broad top-level `ready` is an OR of detected or
 configured paths; it is not proof that the user's chosen Agent/model can finish
 a chat turn. Use the more specific readiness and model evidence.
 
@@ -7692,9 +7811,9 @@ People `GET` is admitted by the pairing family's operator/local-grant boundary;
 `access:devices` and operator sessions do not admit it. The passkey-session
 browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
 credential (host CLI), or an operator passkey session followed by per-action
-step-up. The current refusal status for other callers, including Desktop/host
-grants, is tracked in [#4109](https://github.com/kontourai/station/issues/4109);
-the SDK currently treats that `401` as a dead credential and removes it.
+step-up. A current Desktop or other admitted Device without operator write
+authority receives `403 operator_credential_required`. An invalid or revoked
+credential receives `401`.
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access
@@ -7744,9 +7863,9 @@ person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
 by their devices. Only the operator credential (host CLI) or an operator passkey
-session with step-up can mint or revoke another person's tokens. The desktop's
-local grant lists them; its current write refusal status is tracked in
-[#4109](https://github.com/kontourai/station/issues/4109). A token is refused
+session with step-up can mint or revoke another person's tokens. The Desktop's
+current local grant can list them and receives `403 operator_credential_required`
+on writes. A token is refused
 (`403`) on a Project’s member-administration
 routes (`GET /api/projects/:slug/access`, `GET .../access/enablement` and `POST
 /api/projects/:slug/access/**`).

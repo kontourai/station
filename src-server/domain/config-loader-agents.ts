@@ -12,6 +12,7 @@ import {
   isStationAgentIdentity,
 } from '@kontourai/station-contracts/agent-identity';
 import type { WorkflowMetadata } from '@kontourai/station-contracts/runtime';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { assertSafeContextText } from '../services/orchestration/context-safety.js';
@@ -34,6 +35,7 @@ import {
 import { readRegularFileNoFollow } from './home-schema-gate.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentInstallationBinding,
   pluginAgentOwner,
 } from './plugin-agent-ownership.js';
 import { validator } from './validator.js';
@@ -41,6 +43,46 @@ import { validator } from './validator.js';
 const logger = createLogger({ name: 'config-loader' });
 
 const WORKFLOW_EXTENSIONS = ['.ts', '.js', '.mjs', '.cjs'];
+
+const AGENT_INCARNATION_FILE = '.station-agent-incarnation.json';
+const AGENT_INCARNATION_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** Read after loading the definition, under the Agent identity mutation lock. */
+export function agentIncarnationUnderLock(
+  homeDir: string,
+  slug: string,
+  initialize: boolean,
+): string | undefined {
+  const agentsDir = join(homeDir, 'agents');
+  const agentDir = join(agentsDir, agentId(slug));
+  if (!lstatSync(agentsDir).isDirectory() || !lstatSync(agentDir).isDirectory())
+    return undefined;
+  if (
+    lstatSync(join(agentDir, PLUGIN_AGENT_OWNER_FILE), {
+      throwIfNoEntry: false,
+    })
+  ) {
+    const owner = pluginAgentInstallationBinding(agentDir);
+    return owner?.generation
+      ? JSON.stringify(['plugin', owner.plugin, owner.generation])
+      : undefined;
+  }
+  const marker = join(agentDir, AGENT_INCARNATION_FILE);
+  if (lstatSync(marker, { throwIfNoEntry: false })) {
+    const incarnation: unknown = JSON.parse(
+      readRegularFileNoFollow(homeDir, marker, { maxBytes: 64 }),
+    );
+    return typeof incarnation === 'string' &&
+      AGENT_INCARNATION_PATTERN.test(incarnation)
+      ? incarnation
+      : undefined;
+  }
+  if (!initialize) return undefined;
+  const incarnation = randomUUID();
+  writeJsonDurably(marker, incarnation);
+  return incarnation;
+}
 
 function agentPersistenceLockPath(
   projectHomeDir: string,

@@ -74,6 +74,11 @@ const DECISION_2_OPERATOR_READS = [
   'check_plugin_updates',
   'list_delegation_environments',
   'read_pull_request_guide',
+  // #4513: Station-wide sources, rules and execution ledger.
+  'list_automation_sources',
+  'list_automation_rules',
+  'list_automation_deliveries',
+  'list_automation_episodes',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
@@ -270,7 +275,7 @@ describe('station-control authority table: the owner decisions', () => {
     );
   });
 
-  test('no other tool requires the operator: the operator set is exactly decision 1', () => {
+  test('the operator set matches the owner decisions for reads and mutations', () => {
     const operator = TABLE.filter(([, p]) => p.role === 'operator').map(
       ([n]) => n,
     );
@@ -1159,6 +1164,10 @@ describe('#4769: the tools a restricted session keeps', () => {
     'uninstall_skill',
     'update_skill',
     'run_independent_review',
+    'list_automation_sources',
+    'list_automation_rules',
+    'list_automation_deliveries',
+    'list_automation_episodes',
     'add_job',
     'update_job',
     'run_job',

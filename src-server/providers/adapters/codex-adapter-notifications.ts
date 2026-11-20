@@ -40,6 +40,7 @@ import {
   codexTurnAlreadyTerminal,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import { mapCodexApprovalReviewer } from './codex-approval-mode.js';
 import {
   codexUsageLimitDetails,
   observeCodexRateLimits,
@@ -194,6 +195,32 @@ export function handleCodexNotification(
   }
 
   switch (notification.method) {
+    case 'thread/settings/updated': {
+      const payload = notification.params;
+      if (
+        record.stopped ||
+        !record.codexThreadId ||
+        !isRecord(payload) ||
+        payload.threadId !== record.codexThreadId ||
+        !isRecord(payload.threadSettings) ||
+        !Object.hasOwn(payload.threadSettings, 'approvalsReviewer')
+      )
+        return;
+      const reviewer = mapCodexApprovalReviewer(
+        payload.threadSettings.approvalsReviewer,
+      );
+      if (record.reportedApprovalReviewer === reviewer) return;
+      record.reportedApprovalReviewer = reviewer;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'session.approval-reviewer-observed',
+        reviewer,
+      });
+      return;
+    }
     case 'thread/status/changed': {
       if (!isRecord(notification.params)) return;
       const nextState = mapThreadStatusToState(notification.params.status);

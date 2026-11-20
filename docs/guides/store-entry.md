@@ -261,6 +261,12 @@ Before approving this operation:
   acknowledged upload from that candidate; a reconciled existing build with
   unknown provider SHA/digest is insufficient. Apple does not expose a byte
   download readback here, so upload lineage must not be described as one.
+  After a successful Play upload, Stage obtains a fresh observation token.
+  If the readback or edit cleanup fails, use the separate
+  `station-android-play-observation-<version-code>` journal to reconcile the
+  existing upload. Its operation outcomes and available HTTP status codes
+  provide diagnostic evidence. Promotion still requires a verified authority
+  receipt, and a failed observation does not justify uploading again.
 - Select `android_rollout_fraction=1` for a first production launch. Later
   updates may stage below 1. Existing completed rollout is a no-op, an active
   rollout cannot shrink, unrelated/newer rollouts refuse, and country-targeted

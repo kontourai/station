@@ -1,0 +1,11 @@
+{
+  "revision": "c34ad2b917b5f8549ec6247cf1acc098b8603704",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the disposable Linux service fixture against workload-scoped PTY launch, terminal-session close and scope cleanup. The focused Ubuntu arm64 run passed all 19 cases, including close of a shell that ignores hangup, PID exit, the scope cleanup receipt and a separate SIGHUP flush. The suite still runs with real systemd and native PTY prerequisites.","inputs":["src-server/services/infra/__tests__/workload-resources.process.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the disposable Linux service fixture against workload-scoped PTY launch, terminal-session close and scope cleanup. The focused Ubuntu arm64 run passed all 19 cases, including close of a shell that ignores hangup, PID exit, the scope cleanup receipt and a separate SIGHUP flush. The suite still runs with real systemd and native PTY prerequisites.","inputs":["src-server/services/infra/__tests__/workload-resources.process.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the disposable Linux service fixture against workload-scoped PTY launch, terminal-session close and scope cleanup. The focused Ubuntu arm64 run passed all 19 cases, including close of a shell that ignores hangup, PID exit, the scope cleanup receipt and a separate SIGHUP flush. The suite still runs with real systemd and native PTY prerequisites.","inputs":["src-server/services/infra/__tests__/workload-resources.process.test.ts"]}
+  ]
+}

@@ -56,6 +56,88 @@ describe('ConnectionHealthCoordinator', () => {
     unsubscribe();
   });
 
+  it.each([
+    {
+      evidence: {
+        kind: 'http',
+        phase: 'authenticated',
+        status: 429,
+        code: 'authentication_rate_limited',
+      },
+      reason: 'authentication-rate-limited',
+      blocked: false,
+    },
+    {
+      evidence: {
+        kind: 'http',
+        phase: 'authenticated',
+        status: 403,
+        code: 'insufficient_scope',
+      },
+      reason: 'access-scope-refused',
+      blocked: false,
+    },
+    {
+      evidence: {
+        kind: 'local-authority',
+        code: 'station_application_authority_invalid',
+      },
+      reason: 'relay-authority-unavailable',
+      blocked: false,
+    },
+    {
+      evidence: { kind: 'http', phase: 'handshake', status: 401 },
+      reason: 'access-check-unavailable',
+      blocked: false,
+    },
+    {
+      evidence: { kind: 'http', phase: 'authenticated', status: 401 },
+      reason: 'authentication-failed',
+      blocked: true,
+    },
+  ] as const)(
+    'publishes $reason with automatic probing blocked: $blocked',
+    async ({ evidence, reason, blocked }) => {
+      vi.useFakeTimers();
+      const endpoint = createAccessEndpoint('https://station.example.test');
+      const check = vi
+        .fn<() => Promise<ConnectionHealthCheckResult>>()
+        .mockResolvedValueOnce({
+          ok: false,
+          reason: 'authentication-failed',
+          evidence,
+        })
+        .mockResolvedValue(true);
+      const onFailure = vi.fn();
+      const coordinator = new ConnectionHealthCoordinator({
+        endpoints: () => [endpoint],
+        compatibility: () => ({ clientProtocol: 'https:', online: true }),
+        check,
+        onFailure,
+        baseRetryMs: 500,
+        jitterRatio: 0,
+      });
+      const unsubscribe = coordinator.subscribe(vi.fn());
+      try {
+        await vi.advanceTimersByTimeAsync(0);
+        expect(onFailure).toHaveBeenCalledWith(reason);
+        expect(coordinator.getSnapshot()).toMatchObject({
+          status: 'error',
+          reason,
+          blocked,
+          routes: [{ endpointId: endpoint.id, state: 'failed', reason }],
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        expect(check).toHaveBeenCalledTimes(blocked ? 1 : 2);
+        expect(coordinator.getSnapshot().status).toBe(
+          blocked ? 'error' : 'connected',
+        );
+      } finally {
+        unsubscribe();
+      }
+    },
+  );
+
   it('stamps when each completed check finished, success or failure, and not while one runs', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);

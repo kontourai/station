@@ -1066,6 +1066,11 @@ and reading no record, so the host chunk gains no layout renderer. Until the
 list resolves, and for an id the list no longer carries, the tab shows the
 prefix fallback ("Board" / "Layout").
 
+The trusted plugin pane host uses
+[`PluginWorkspacePaneSDKBoundary`](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx)
+for its Layout navigation context. Clearing its active tab removes the saved
+state and cancels pending hash restoration before a switch or remount.
+
 **Which kinds render.** The renderer (`LayoutWorkspacePane`, lazy) is
 `PersonalBoardView`'s: the one `LayoutRenderer` through the one
 `layoutWorkspaceShape` derivation, `SDKAdapter` with `boundProjectSlug` for

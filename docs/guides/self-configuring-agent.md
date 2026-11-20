@@ -1198,9 +1198,11 @@ to Sessions started afterwards.
 
 Use this as an attended Station-engine Agent after configuring a usable Model
 connection and default model in [Connections](connections.md). No engine binding
-is declared, so it uses Station's engine. Only the four listed reads are
-auto-approved; mutations and delegation remain subject to the normal approval
-and authority checks. Start with an existing writable skill and a ready worker.
+is declared, so it uses Station's engine. The example declares delegation in
+`tools.available`. Whether a Session can delegate depends on the caller's
+authority, recorded depth, and inherited tool policy. Only the four listed
+reads are auto-approved. Mutations and delegation still require approval.
+Start with an existing writable skill and a ready worker.
 
 Use the example `agent.json` as a starting point:
 
@@ -1221,6 +1223,7 @@ Use the example `agent.json` as a starting point:
       "station-control_list_delegation_environments",
       "station-control_list_delegation_targets",
       "station-control_list_delegated_tasks",
+      "station-control_delegate_task",
       "station-control_get_task",
       "station-control_get_task_events",
       "station-control_continue_task",

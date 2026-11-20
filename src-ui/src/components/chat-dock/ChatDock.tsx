@@ -13,6 +13,8 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { SessionReaderBindingProvider } from '../conversation/SessionReaderBinding';
+import { RefreshGlyph } from '../icons/Glyph';
+import { refreshListQueries, useListRefresh } from '../refresh/ListRefresh';
 import { ChildChatNavigation } from './ChildChatNavigation';
 import type {
   ChildChatController,
@@ -47,6 +49,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
 import { resolveViewFromPath } from '../../app-shell/routing';
@@ -98,6 +101,10 @@ import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
 } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import {
+  getStreamConnectionState,
+  subscribeStreamConnectionState,
+} from '../../hooks/orchestration/streamConnectionState';
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { TranscriptPrefetchTargetProvider } from '../../hooks/orchestration/useTranscriptWindowPrefetch';
 import { useACPConnections } from '../../hooks/useACPConnections';
@@ -147,7 +154,11 @@ import {
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
-import { stationViewReadQueryOptions } from '../../lib/queryDefaults';
+import {
+  isRemoteInventoryUnavailable,
+  optionalRemoteInventoryRefetch,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
@@ -263,6 +274,7 @@ import { useCoordinatorDockActions } from './useCoordinatorDockActions';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
+import { useStagedAgentChange } from './useStagedAgentChange';
 import { useTaskStartedNotice } from './useTaskStartedNotice';
 
 /**
@@ -811,12 +823,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const remoteInboxSessions = useRemoteSessionsQuery(
     stationViewReadQueryOptions,
   );
+  const remoteInboxUnavailable = isRemoteInventoryUnavailable(
+    remoteInboxSessions.error,
+  );
   const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,
     resolveModelLabel,
     durableTasks.data,
-    remoteInboxSessions.data?.environments,
+    remoteInboxUnavailable ? undefined : remoteInboxSessions.data?.environments,
   );
   const inventory = useConversationInventoryQuery();
   useConversationActivityFeed({
@@ -829,41 +844,71 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus === 'pending' ||
     durableTasks.isPending ||
     inventory.isPending ||
+    remoteInboxSessions.isLoading ||
     !agentsLoaded;
   const taskItemsFailed =
-    orchestrationSessionsFailed || inventory.isError || durableTasks.isError;
+    orchestrationSessionsFailed ||
+    inventory.isError ||
+    durableTasks.isError ||
+    (remoteInboxSessions.isError && !remoteInboxUnavailable);
   const refetchInventory = inventory.refetch;
   const refetchTasks = durableTasks.refetch;
   const refetchRemote = remoteInboxSessions.refetch;
-  // Only the user's own resync shows as "Refreshing": the background reads a
-  // busy Station triggers every second must not flicker the control.
-  const [inboxResyncPending, setInboxResyncPending] = useState(false);
-  // The inbox's explicit resync: reconnect the stream (its snapshot or replay
-  // re-derives every chat this Station holds, including one started on
-  // another device) and re-read both lists the rows come from.
-  const resyncInbox = useCallback(() => {
-    resyncOrchestrationEventStream(apiBase);
-    setInboxResyncPending(true);
-    void Promise.allSettled([
-      refetchOrchestrationSessions(),
-      refetchInventory(),
-      refetchTasks(),
-      refetchRemote(),
-    ]).then(() => setInboxResyncPending(false));
-  }, [
-    apiBase,
-    refetchOrchestrationSessions,
-    refetchInventory,
-    refetchTasks,
-    refetchRemote,
-  ]);
+  const refreshInbox = useCallback(
+    async (recover: boolean) => {
+      if (!requestAuthority?.isCurrent()) {
+        throw new Error('Inbox connection changed');
+      }
+      if (recover) resyncOrchestrationEventStream(apiBase);
+      await refreshListQueries(
+        refetchOrchestrationSessions,
+        refetchInventory,
+        refetchTasks,
+        ...(remoteInboxUnavailable
+          ? []
+          : [optionalRemoteInventoryRefetch(refetchRemote)]),
+      );
+    },
+    [
+      apiBase,
+      requestAuthority,
+      refetchOrchestrationSessions,
+      refetchInventory,
+      refetchTasks,
+      refetchRemote,
+      remoteInboxUnavailable,
+    ],
+  );
+  const inboxRefresh = useListRefresh({
+    scope: JSON.stringify([apiBase, requestAuthority?.authorityKey]),
+    enabled: Boolean(requestAuthority),
+    refresh: refreshInbox,
+  });
+  const streamReceiving = useSyncExternalStore(
+    subscribeStreamConnectionState,
+    () => getStreamConnectionState(apiBase).phase === 'receiving',
+    () => false,
+  );
+  const inboxUpdating =
+    streamReceiving ||
+    orchestrationSessionsFetching ||
+    inventory.isFetching ||
+    durableTasks.isFetching ||
+    remoteInboxSessions.isFetching;
   const inboxSync = useMemo(
     () => ({
       failed: taskItemsFailed,
-      refreshing: inboxResyncPending,
-      onRefresh: resyncInbox,
+      pending: taskItemsPending,
+      updating: inboxUpdating,
+      refresh: requestAuthority ? inboxRefresh : undefined,
     }),
-    [taskItemsFailed, inboxResyncPending, resyncInbox],
+    [
+      taskItemsFailed,
+      taskItemsPending,
+      inboxUpdating,
+      inboxRefresh,
+      requestAuthority,
+    ],
   );
   const acknowledgeConversation = useAcknowledgeConversationMutation();
   const inventoryById = useMemo(
@@ -1113,7 +1158,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
-    toggleHistory,
     openInboxHistory,
     closeHistory,
     isInboxOpen,
@@ -2108,7 +2152,25 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           },
         ]
       : [];
+  const desktopInboxAvailable = inboxPanelMounts({
+    isMobile,
+    dockMode: effectiveDockSlotPlacement,
+    isFullscreenPlacement,
+  });
+  const refreshInboxActions: DockMoreAction[] =
+    desktopInboxAvailable && workspaceShown && isInboxOpen && requestAuthority
+      ? [
+          {
+            key: 'refresh-inbox',
+            group: 'switch',
+            label: 'Refresh inbox',
+            glyph: <RefreshGlyph />,
+            onSelect: () => inboxRefresh.run(),
+          },
+        ]
+      : [];
   const dockMoreActions: DockMoreAction[] = [
+    ...refreshInboxActions,
     ...(turnIntoTask
       ? [
           {
@@ -2349,6 +2411,55 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Get updateChat from context
   const { updateChat } = useActiveChatActions();
+
+  const stagedAgentChange = useStagedAgentChange({
+    apiBase,
+    chat: hostConversation ? activeSession : null,
+    composer: chatInput,
+    scope: requestAuthority,
+    scopeIsCurrent: requestAuthority?.isCurrent,
+    recoveryAuthority:
+      authorityStatus === 'verified' &&
+      authorityNamespace &&
+      authorityObservation &&
+      requestAuthority?.draftRecoveryKey
+        ? JSON.stringify([
+            authorityNamespace,
+            authorityObservation.principal.id,
+            requestAuthority.draftRecoveryKey,
+          ])
+        : undefined,
+    agents: conversationAgents,
+    blockedReason: !conversationCanMutate
+      ? 'The current conversation cannot send.'
+      : handoffDisabledReason,
+    onAccepted: () => {
+      invalidate(orchestrationQueries.sessions().queryKey);
+      invalidate(conversationQueries.inventory().queryKey);
+    },
+    report: (message) => showToast(message, 'error'),
+  });
+  const stagedSelection = stagedAgentChange.selected;
+  const stagedBinding =
+    stagedSelection?.executionAgent ?? stagedSelection?.agent;
+  const stagedModelConnection = stagedSelection?.connectionId;
+  const stagedComposer =
+    stagedSelection || stagedAgentChange.pending
+      ? {
+          ...stagedAgentChange,
+          selection: stagedSelection,
+          models:
+            stagedBinding && stagedModelConnection
+              ? executionSelection
+                  .modelsForAgent(stagedBinding)
+                  .filter(
+                    (model) =>
+                      model.available !== false &&
+                      model.providerId === stagedModelConnection,
+                  )
+              : [],
+        }
+      : undefined;
 
   // Stable identity for the memoized ChatDockContentArea subtree (see the
   // other stable callbacks above) — declared here since it depends on
@@ -3077,6 +3188,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const showOpeningIdentity =
     coveringStaleChat && !showNewChatModal && !importedSessionId;
   const openingLabel = openingConversationLabel(openingChat);
+  const showChatContent =
+    workspaceShown && !conversationOpenRecovery && !importedSessionId;
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -4099,7 +4212,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 'Stop shaping this Task'
                         : 'New Task from this',
                       onOpenConversation: () => setShowSessionPicker(true),
-                      onToggleHistory: toggleHistory,
+                      onOpenInbox: mobileInboxShown
+                        ? undefined
+                        : toggleMobileInbox,
+                      onBrowseConversations:
+                        showChatContent &&
+                        !readerCovered &&
+                        !coveringStaleChat &&
+                        hostConversation
+                          ? openInboxHistory
+                          : undefined,
                       onOpenChatSettings: openChatSettings,
                       onOpenConversationHistory:
                         activeSession?.conversationId && !activeSession.replay
@@ -4306,7 +4428,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
                     moreActions={
                       importedSessionId
-                        ? []
+                        ? refreshInboxActions
                         : sessionContextOwnsRows
                           ? dockMoreActions.filter(
                               (action) =>
@@ -4326,11 +4448,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             // rather than restating it — a third independent copy
                             // is how the toggle ends up advertising a panel that
                             // never appears (#3314 review SF-1, again).
-                            showInboxToggle: inboxPanelMounts({
-                              isMobile,
-                              dockMode: effectiveDockSlotPlacement,
-                              isFullscreenPlacement,
-                            }),
+                            showInboxToggle: desktopInboxAvailable,
                             isInboxOpen,
                             inboxNeedsYouCount: inboxNeedsYou,
                             inboxWorkingCount: inboxWorking,
@@ -4376,7 +4494,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             authority: requestAuthority,
                             pending: taskItemsPending,
                             loadError: taskItemsFailed,
-                            onRetryLoad: resyncInbox,
+                            updating: inboxUpdating,
+                            refresh: inboxSync.refresh,
                             agents,
                             workFacts,
                             gitLocationByThreadId,
@@ -4414,11 +4533,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     (the "Collapse/Expand chat list" row of the header's More
                     menu since #1536 F, the single control for this now). */}
                       {workspaceShown &&
-                        inboxPanelMounts({
-                          isMobile,
-                          dockMode: effectiveDockSlotPlacement,
-                          isFullscreenPlacement,
-                        }) &&
+                        desktopInboxAvailable &&
                         inboxPresence.mounted && (
                           <LazyBoundary
                             load={loadChatDockInboxPanel}
@@ -4858,9 +4973,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             {/* The chat the draft opened over stays mounted under it,
                       hidden and inert, so its form answers, reply text and
                       scroll survive a draft that is dismissed. */}
-                            {workspaceShown &&
-                            !conversationOpenRecovery &&
-                            !importedSessionId ? (
+                            {showChatContent ? (
                               <div
                                 className="chat-dock__covered-chat"
                                 hidden={showNewChatModal || coveringStaleChat}
@@ -4943,9 +5056,23 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   }
                                   toolPolicyDelivery={toolPolicyDelivery}
                                   availableModels={effectiveModels}
-                                  executionModels={executionRoutes}
+                                  stagedAgentChange={stagedComposer}
+                                  executionModels={
+                                    stagedAgentChange.enabled &&
+                                    executionProfile?.executionDefault &&
+                                    executionProfile.execution
+                                      ?.agentConnectionId
+                                      ? executionRoutes.filter(
+                                          (route) =>
+                                            route.executionAgentId ===
+                                            currentExecutionAgentId,
+                                        )
+                                      : executionRoutes
+                                  }
                                   onExecutionModelSelect={
-                                    conversationCanMutate
+                                    conversationCanMutate &&
+                                    !stagedAgentChange.previewChecking &&
+                                    !stagedAgentChange.pending
                                       ? conversationBoundaryDialogs.openExecutionHandoff
                                       : undefined
                                   }
@@ -4957,11 +5084,30 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   sendQueuedForUploads={
                                     startSendWaitsForUploads
                                   }
-                                  secondaryActions={secondaryActions}
-                                  onOpenAgentHandoff={() =>
-                                    openConversationHandoff(
-                                      composerAgentTriggerRef.current,
-                                    )
+                                  secondaryActions={
+                                    secondaryActions &&
+                                    (stagedAgentChange.previewChecking ||
+                                      stagedAgentChange.pending)
+                                      ? {
+                                          ...secondaryActions,
+                                          onOpenHandoff: undefined,
+                                          handoffDisabled: true,
+                                          handoffDisabledReason:
+                                            stagedAgentChange.pending
+                                              ? 'Check the pending Agent change first.'
+                                              : 'Checking Agent change settings…',
+                                        }
+                                      : secondaryActions
+                                  }
+                                  onOpenAgentHandoff={
+                                    handoffDisabledReason ||
+                                    stagedAgentChange.previewChecking ||
+                                    stagedAgentChange.pending
+                                      ? undefined
+                                      : () =>
+                                          openConversationHandoff(
+                                            composerAgentTriggerRef.current,
+                                          )
                                   }
                                   agentHandoffTriggerRef={
                                     composerAgentTriggerRef
@@ -5170,7 +5316,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               />
             )}
 
-            {(handoffSource || contextResetSource) && (
+            {((handoffSource &&
+              !stagedAgentChange.previewChecking &&
+              !stagedAgentChange.pending) ||
+              contextResetSource) && (
               <LazyBoundary
                 load={loadConversationBoundaryDialogs}
                 componentProps={{
@@ -5189,6 +5338,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   showToast,
                   refetchOrchestrationSessions,
                   continueOnStation,
+                  handoffAvailable:
+                    !stagedAgentChange.previewChecking &&
+                    !stagedAgentChange.pending,
+                  onStageAgentChange: stagedAgentChange.enabled
+                    ? stagedAgentChange.stage
+                    : undefined,
                 }}
                 pending={null}
               />

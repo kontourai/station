@@ -77,6 +77,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `GET …/members` in src-server/routes/projects/project-room-routes.ts.
   // Served wherever Project rooms are; each room's own read check decides.
   projectRoomLive: true,
+  // #5063: the `#general` coordinator's routes (`…/room/coordinator…` in
+  // project-room-routes.ts, `PUT /:slug/room-coordinator` in projects.ts).
+  // Served wherever Project rooms are; the preview decides if they answer.
+  projectRoomCoordinator: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -186,6 +190,7 @@ export interface StationCapabilityDeployment {
   /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
   hosted: boolean;
   peerChatEnabled?: boolean;
+  sharedProjectRooms?: boolean;
 }
 
 /**
@@ -235,6 +240,13 @@ function servesScheduledConversationTarget(
   deployment: StationCapabilityDeployment,
 ): boolean {
   return !deployment.hosted;
+}
+
+/** Coordinator results may include output from a private Task Session. */
+export function servesProjectRoomCoordinator(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted && !deployment.sharedProjectRooms;
 }
 
 /** Hosted Stations have no conversation inbox through which to wake a coordinator. */
@@ -309,6 +321,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
   projectSchedules: servesScheduledConversationTarget,
+  projectRoomCoordinator: servesProjectRoomCoordinator,
   remoteSessionHistory: servesRemoteSessionReads,
   projectLibrary: servesProjectLibrary,
 };

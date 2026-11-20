@@ -53,6 +53,10 @@ import {
   summarizeSideCall,
 } from './station-weight-request.mjs';
 import { STUB_REPLY_TEXT, startStubAnthropic } from './station-weight-stub.mjs';
+import {
+  createDarwinWakeupReader,
+  darwinWakeupMetric,
+} from './station-weight-wakeups.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
@@ -1816,15 +1820,16 @@ async function awaitNewTurnReply(
   known,
   label,
   intervalMs = 500,
+  expectedReply = STUB_REPLY_TEXT,
 ) {
-  await poll(
+  return poll(
     label,
     120_000,
     async () => {
       const { events, turnIds } = await sessionTurns(api, sessionId);
       const turnId = turnIds.find((id) => !known.includes(id));
-      return turnId
-        ? acceptedTurnReply(events, turnId, STUB_REPLY_TEXT)
+      return turnId && acceptedTurnReply(events, turnId, expectedReply)
+        ? turnId
         : false;
     },
     intervalMs,
@@ -1837,7 +1842,11 @@ const FOLLOW_UP_POLL_MS = 50;
 const FOLLOW_UP_ROUNDS = 3;
 
 /** One task delegated as the operator; resolves once its turn completed. */
-async function delegateHi(api, cwd) {
+async function delegateHi(
+  api,
+  cwd,
+  turn = { prompt: PROMPT, reply: STUB_REPLY_TEXT },
+) {
   const { json } = await poll(
     'the delegation to be accepted',
     90_000,
@@ -1851,7 +1860,7 @@ async function delegateHi(api, cwd) {
             agent: 'claude',
             workspace: { kind: 'directory', cwd },
           },
-          prompt: PROMPT,
+          prompt: turn.prompt,
           clientTurnId: randomUUID(),
         },
       );
@@ -1869,33 +1878,43 @@ async function delegateHi(api, cwd) {
   );
   const { sessionId, taskId } = json.data ?? {};
   assert(sessionId && taskId, 'delegation named no session/task');
-  await awaitNewTurnReply(
+  const turnId = await awaitNewTurnReply(
     api,
     sessionId,
     [],
     'the delegated stub-answered turn to complete',
+    500,
+    turn.reply,
   );
-  return { sessionId, taskId };
+  return { sessionId, taskId, turnId };
 }
 
-async function continueDelegatedHi(api, taskId, sessionId) {
+async function continueDelegatedHi(
+  api,
+  taskId,
+  sessionId,
+  turn = { prompt: PROMPT, reply: STUB_REPLY_TEXT },
+) {
   const { turnIds } = await sessionTurns(api, sessionId);
+  const started = performance.now();
   const response = await api.call(
     'POST',
     `/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
-    { message: PROMPT, clientTurnId: randomUUID() },
+    { message: turn.prompt, clientTurnId: randomUUID() },
   );
   assert(
     response.status < 400 && response.json?.success !== false,
     `delegation follow-up: HTTP ${response.status} ${response.text.slice(0, 400)}`,
   );
-  await awaitNewTurnReply(
+  const turnId = await awaitNewTurnReply(
     api,
     sessionId,
     turnIds,
     'the delegated follow-up to complete',
     FOLLOW_UP_POLL_MS,
+    turn.reply,
   );
+  return { turnId, elapsedMs: performance.now() - started };
 }
 
 /**
@@ -1968,6 +1987,157 @@ async function measureDelegatedRun(api, cwd, context) {
     releasedFollowUpMs: releasedSamples.length ? median(releasedSamples) : null,
     rounds,
     note: `engine processes are counted by executable name (claude); a follow-up is one stub-answered turn through /delegations/:taskId/continue, timed from the request to its reply (polled every ${FOLLOW_UP_POLL_MS} ms), median over ${FOLLOW_UP_ROUNDS} delegated tasks`,
+  };
+}
+
+/** @param {() => ProcessRow[]} treeNow */
+function scopedClaude(treeNow) {
+  return treeNow().filter((row) => ENGINE_COMMAND.test(row.command));
+}
+
+/** @param {ProcessRow[]} baseline @param {ProcessRow[]} current */
+function addedClaude(baseline, current) {
+  const previous = new Set(baseline.map(identityKey));
+  const added = current.filter((row) => !previous.has(identityKey(row)));
+  assert(added.length === 1, 'expected exactly one new scoped Claude engine');
+  assert(
+    current.length === baseline.length + 1,
+    'pre-existing scoped engines changed',
+  );
+  return added[0];
+}
+
+/**
+ * Two separate delegated sessions at the same ordinal. Keep the control
+ * warm by starting its seed only after the other engine has parked.
+ * @param {{api: any, cwd: string, stub: any, markers: any, turns: Record<'warm' | 'parked', {prompt: string, reply: string}[]>, treeNow: () => ProcessRow[], releaseMaxMs: number, parkedFirst: boolean}} context
+ */
+async function measureDelegatedPair({
+  api,
+  cwd,
+  stub,
+  markers,
+  turns,
+  treeNow,
+  releaseMaxMs,
+  parkedFirst,
+}) {
+  const engineKeys = () => scopedClaude(treeNow).map(identityKey).sort();
+  const baseline = scopedClaude(treeNow);
+  const analyze = (from, index, arm) => {
+    const { report } = analyzeConversationTurn({
+      calls: stub.requests.slice(from),
+      turns: turns[arm],
+      index,
+      markers,
+    });
+    assert(
+      report.model && report.claudeCodeVersion,
+      `${arm}: model or engine version was not observed`,
+    );
+    return report;
+  };
+  const seed = async (arm) => {
+    const from = stub.requests.length;
+    const task = await delegateHi(api, cwd, turns[arm][0]);
+    return { ...task, request: analyze(from, 0, arm) };
+  };
+  const follow = async (task, arm) => {
+    const from = stub.requests.length;
+    const { turnId, elapsedMs } = await continueDelegatedHi(
+      api,
+      task.taskId,
+      task.sessionId,
+      turns[arm][1],
+    );
+    assert(turnId !== task.turnId, `${arm}: accepted turn was replayed`);
+    const report = analyze(from, 1, arm);
+    assert(
+      report.model === task.request.model &&
+        report.claudeCodeVersion === task.request.claudeCodeVersion,
+      `${arm}: model or engine version changed`,
+    );
+    return { elapsedMs, report };
+  };
+
+  const parked = await seed('parked');
+  const parkedEngine = addedClaude(baseline, scopedClaude(treeNow));
+  const parkedKey = identityKey(parkedEngine);
+  const memory = withMemory([parkedEngine])[0]?.memoryBytes;
+  assert(
+    Number.isFinite(memory) && memory > 0,
+    'parked engine memory was not observed',
+  );
+  const waitStart = performance.now();
+  await poll(
+    'the original delegated engine to exit',
+    releaseMaxMs,
+    () => !processTable().some((row) => identityKey(row) === parkedKey),
+    250,
+  );
+  const releasedAfterMs = performance.now() - waitStart;
+  assert.deepEqual(
+    engineKeys(),
+    baseline.map(identityKey).sort(),
+    'engine cohort changed after the seeded exit',
+  );
+
+  const warm = await seed('warm');
+  assert(
+    warm.sessionId !== parked.sessionId,
+    'warm and parked arms reused a session',
+  );
+  const warmEngine = addedClaude(baseline, scopedClaude(treeNow));
+  const warmKey = identityKey(warmEngine);
+  const followWarm = async () => {
+    const before = engineKeys();
+    assert(
+      before.includes(warmKey),
+      'the warm engine exited before its follow-up',
+    );
+    const report = await follow(warm, 'warm');
+    assert.deepEqual(
+      engineKeys(),
+      before,
+      'engine cohort changed during warm follow-up',
+    );
+    return report;
+  };
+  const followParked = async () => {
+    const beforeResume = scopedClaude(treeNow);
+    assert(
+      !beforeResume.some((row) => identityKey(row) === parkedKey),
+      'the original engine is present before resume',
+    );
+    const report = await follow(parked, 'parked');
+    const resumed = addedClaude(beforeResume, scopedClaude(treeNow));
+    assert(identityKey(resumed) !== parkedKey, 'parked engine did not restart');
+    return report;
+  };
+  const parkedEarly = parkedFirst ? await followParked() : undefined;
+  const warmFollow = await followWarm();
+  const parkedFollow = parkedEarly ?? (await followParked());
+  assert(
+    parkedFollow.report.model === warmFollow.report.model &&
+      parkedFollow.report.claudeCodeVersion ===
+        warmFollow.report.claudeCodeVersion,
+    'arms differed in model or engine version',
+  );
+  return {
+    status: 'measured',
+    reportOnly: true,
+    followUpOrder: parkedFirst ? 'parked-first' : 'warm-first',
+    model: warmFollow.report.model,
+    claudeCodeVersion: warmFollow.report.claudeCodeVersion,
+    releasedEngineMemoryBytes: memory,
+    releasedAfterMs,
+    warmFollowUpMs: warmFollow.elapsedMs,
+    parkedFollowUpMs: parkedFollow.elapsedMs,
+    memoryBasis: MEMORY_BASIS,
+    history:
+      'both arms carried the ordered seed prompt, seed reply and first follow-up, including repository instructions',
+    processIdentity:
+      'the seeded engine exited, the warm engine remained, and a new engine appeared on resume',
   };
 }
 
@@ -2597,11 +2767,28 @@ export const DEFAULT_SETTINGS = Object.freeze({
   idleSessions: 3,
   // 1 adds the report-only delegated-run measurement (`--delegated-run`).
   delegatedRun: 0,
+  delegatedPair: 0,
   delegatedReleaseMaxMs: 90_000,
   stopGraceMs: 5_000,
   sideCallWindowMs: 5_000,
   readyLaunches: 1,
 });
+
+function completeDelegatedPair(pair) {
+  return (
+    pair?.status === 'measured' &&
+    ['warm-first', 'parked-first'].includes(pair.followUpOrder) &&
+    ['phys_footprint', 'rss'].includes(pair.memoryBasis) &&
+    [pair.model, pair.claudeCodeVersion].every(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) &&
+    Number.isSafeInteger(pair.releasedEngineMemoryBytes) &&
+    pair.releasedEngineMemoryBytes > 0 &&
+    [pair.releasedAfterMs, pair.warmFollowUpMs, pair.parkedFollowUpMs].every(
+      (value) => Number.isFinite(value) && value >= 0,
+    )
+  );
+}
 
 /**
  * Applies the baseline to a result: records it when asked (refusing an
@@ -2618,6 +2805,12 @@ export function evaluateRun(
 ) {
   result.reportOnly = reportOnly;
   try {
+    const hasDelegatedPair =
+      result.settings?.delegatedPair || result.delegatedPair;
+    assert(
+      !hasDelegatedPair || (reportOnly && !record),
+      'delegated pair results require --report-only and cannot record a baseline',
+    );
     // Report-only never reads the baseline: it compares nothing.
     const baseline =
       !reportOnly && existsSync(baselinePath)
@@ -2637,6 +2830,12 @@ export function evaluateRun(
       result.gate.passed = false;
       result.gate.reasons.push(
         `request conversation NOT_MEASURED: ${result.requestConversation?.reason ?? 'incomplete paired turns'}`,
+      );
+    }
+    if (hasDelegatedPair && !completeDelegatedPair(result.delegatedPair)) {
+      result.gate.passed = false;
+      result.gate.reasons.push(
+        `delegated pair NOT_MEASURED: ${result.delegatedPair?.reason ?? 'missing or invalid paired observations'}`,
       );
     }
     if (!existsSync(baselinePath) && !reportOnly)
@@ -2681,7 +2880,16 @@ export async function runStationWeight({
   hooks = {},
 } = {}) {
   assert(!multiTurn || !record, '--multi-turn cannot record a baseline');
+  assert(
+    !overrides.delegatedPair ||
+      (reportOnly && !record && !multiTurn && !overrides.delegatedRun),
+    '--delegated-pair requires --report-only and runs without the other diagnostics',
+  );
   const settings = { ...DEFAULT_SETTINGS, ...overrides };
+  assert(
+    [0, 1, 2].includes(settings.delegatedPair),
+    'invalid delegated pair order',
+  );
   for (const [name, value] of Object.entries(settings))
     assert(Number.isSafeInteger(value) && value >= 0, `invalid ${name}`);
   assert(settings.idleSessions >= 1, 'idleSessions must be at least 1');
@@ -2753,7 +2961,18 @@ export async function runStationWeight({
     agentsMd: `station-weight-agents-md-${runId}`,
   };
   const conversationTurns = multiTurn ? requestConversationTurns(runNonce) : [];
-  const stub = await startStubAnthropic({ turns: conversationTurns });
+  const pairTurns = settings.delegatedPair
+    ? {
+        parked: requestConversationTurns(`${runNonce}-p`).slice(0, 2),
+        warm: requestConversationTurns(`${runNonce}-w`).slice(0, 2),
+      }
+    : null;
+  const stub = await startStubAnthropic({
+    turns: [
+      ...conversationTurns,
+      ...(pairTurns ? [...pairTurns.parked, ...pairTurns.warm] : []),
+    ],
+  });
   const claudeExecutable = bundledClaudeExecutable();
   const env = scrubbedEnvironment(
     scratch,
@@ -2883,6 +3102,12 @@ export async function runStationWeight({
     // closes, not from the rows afterwards (both would then read the end).
     let switchesStart;
     let switchesEnd;
+    const darwin = process.platform === 'darwin';
+    const readWakeups = darwin ? createDarwinWakeupReader() : null;
+    /** @type {import('./station-weight-wakeups.mjs').WakeupSnapshot | undefined} */
+    let wakeupsStart;
+    /** @type {import('./station-weight-wakeups.mjs').WakeupSnapshot | undefined} */
+    let wakeupsEnd;
     const sampled = await sampleTreeCpu(
       (final) => {
         const table = ownership.readTable();
@@ -2891,6 +3116,13 @@ export async function runStationWeight({
           : ownership.ancestry(table, taggedAtStart);
         if (linux && !switchesStart) switchesStart = contextSwitches(rows);
         if (linux && final) switchesEnd = contextSwitches(rows);
+        if (readWakeups && (!wakeupsStart || final)) {
+          const wakeups = new Map(
+            rows.map(({ pid }) => [pid, readWakeups(pid)]),
+          );
+          if (final) wakeupsEnd = wakeups;
+          else wakeupsStart = wakeups;
+        }
         return rows;
       },
       {
@@ -2902,12 +3134,15 @@ export async function runStationWeight({
       sampled,
       settings.cpuSampleIntervalMs,
     );
-    result.metrics.idleWakeups = notMeasured(
-      process.platform === 'darwin'
-        ? 'macOS exposes per-process wakeups only through powermetrics (root) or libproc; top IDLEW did not advance between samples'
-        : 'Linux has no per-process wakeup counter; see idleContextSwitches',
-      'count',
-    );
+    result.metrics.idleWakeups = darwin
+      ? {
+          ...darwinWakeupMetric(wakeupsStart, wakeupsEnd),
+          windowSeconds: sampled.windowSeconds,
+        }
+      : notMeasured(
+          'Linux has no per-process wakeup counter; see idleContextSwitches',
+          'count',
+        );
     result.metrics.idleContextSwitches = linux
       ? measured(contextSwitchDelta(switchesStart, switchesEnd), 'count', {
           note: 'voluntary + involuntary context switches of the processes alive at both ends of the window; a proxy, not wakeups',
@@ -2977,6 +3212,30 @@ export async function runStationWeight({
           });
         } catch (error) {
           result.delegatedRun = {
+            status: 'not_measured',
+            reportOnly: true,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+
+      if (pairTurns) {
+        progress(
+          'comparing first follow-ups in matched warm and parked delegated sessions',
+        );
+        try {
+          result.delegatedPair = await measureDelegatedPair({
+            api,
+            cwd: repo,
+            stub,
+            markers,
+            turns: pairTurns,
+            treeNow,
+            releaseMaxMs: settings.delegatedReleaseMaxMs,
+            parkedFirst: settings.delegatedPair === 2,
+          });
+        } catch (error) {
+          result.delegatedPair = {
             status: 'not_measured',
             reportOnly: true,
             reason: error instanceof Error ? error.message : String(error),
@@ -3328,6 +3587,8 @@ function printSummary(result) {
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
   if (result.delegatedRun) line(delegatedRunSummary(result.delegatedRun));
+  if (result.delegatedPair)
+    line(`REPORT delegatedPair ${JSON.stringify(result.delegatedPair)}`);
   if (result.requestConversation) {
     for (const turn of result.requestConversation.turns)
       line(
@@ -3369,6 +3630,14 @@ if (invokedDirectly(import.meta.url)) {
   );
   const number = (name) =>
     args[name] === undefined ? undefined : Number(args[name]);
+  assert(
+    args.evaluate === undefined || args['delegated-pair'] === undefined,
+    '--delegated-pair starts a new experiment and cannot be combined with --evaluate',
+  );
+  assert(
+    [undefined, true, 'parked-first'].includes(args['delegated-pair']),
+    '--delegated-pair accepts only parked-first',
+  );
   const settings = Object.fromEntries(
     Object.entries({
       settleMs: number('settle-ms'),
@@ -3376,6 +3645,12 @@ if (invokedDirectly(import.meta.url)) {
       cpuWindowMs: number('cpu-window-ms'),
       idleSessions: number('sessions'),
       delegatedRun: args['delegated-run'] === true ? 1 : undefined,
+      delegatedPair:
+        args['delegated-pair'] === 'parked-first'
+          ? 2
+          : args['delegated-pair'] === true
+            ? 1
+            : undefined,
       delegatedReleaseMaxMs: number('delegated-release-max-ms'),
       stopGraceMs: number('stop-grace-ms'),
       readyLaunches: number('ready-launches'),

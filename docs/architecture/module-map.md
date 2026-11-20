@@ -1973,12 +1973,15 @@ connection. It creates nothing. The chat schedule read lists open proposals
 as `automationProposals`, with the conversation's current untrusted mark
 (`untrustedContentNow`). A person's Confirm also needs the operator in
 person. It reruns the scope rule for the recorded proposer and requires each
-recorded Agent binding (slug, Project, definition digest) to be unchanged,
-before claiming and again inside the store's creation and enabling locks.
-It creates through `AutomationStore` under an id derived from the proposal
-(`automationIdForProposal`), so retries and startup reconciliation adopt
-rather than duplicate. It creates disabled or `observe` unless the
-confirmation sets `enable`, and records the mark at confirm. The
+recorded Agent binding (slug, Project, definition digest and incarnation) to
+match. The Agent identity lock holds across the store's creation and activation
+writes. Confirm refuses an older proposal whose target lacks the incarnation
+binding. It creates through `AutomationStore` under an id derived from the
+proposal (`automationIdForProposal`), so retries and startup reconciliation
+adopt rather than duplicate. It creates sources disabled and rules observing,
+then attempts activation if the confirmation sets `enable`. The chat displays
+the distinct save and activation outcomes after the open list refreshes.
+Confirm also records the untrusted-content mark. The
 [authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
 drives the composition through the real boundary, guard, `EventStore`,
 `AutomationStore` and untrusted-content ledger.
@@ -2464,7 +2467,9 @@ does not redact engine history or establish engine acknowledgement.
 Each `turn.started` a send produces records who caused the turn
 (`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
 `automation` or `unknown`. Station classifies it when it admits the
-`sendTurn`, never from a request body or an engine. A server caller passes
+`sendTurn`, never from a request body or an engine. The same classification is
+passed to server-owned turn admission observers, which is how the Automation
+runtime admits a person's own turn into an automation Session (#4511). A server caller passes
 its own classification in the dispatch's internal options
 (`dispatchOrigin`); without one, `classifyTurnDispatchOrigin` in the
 [orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
@@ -2745,17 +2750,17 @@ A retained explicit prepared settlement makes both `claim` and `inspect` throw `
 - **Transition latch.** A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected.
 - **Retry window and tombstones.** Each resolved key is replayable for at least seven days after resolution, measured by Station's wall clock; other threads' pressure does not evict it. The next dedup write expires older resolved rows and leaves key-only tombstones. Legacy resolved rows with no recorded resolution time begin a fresh window on first observation. A malformed resolution time is retained rather than treated as expired. Unresolved claims are never pruned. Thread tombstones last until `deleteThread`; direct `chat:` tombstones have no thread cleanup and remain indefinitely. Resolved rows within their window, unresolved rows and chat tombstones can grow without a count bound. A SQLite deletion fence blocks legacy count-based deletion of resolved rows; the current kernel issues short-lived permits in the same transaction for expiry and explicit thread deletion. This is not a general fence against arbitrary older writes, and a forward wall-clock jump can shorten the elapsed window.
 
-**Bounded input-conflict contract (#3567).** Existing keyed orchestration sends capture a versioned SHA-256 digest after authorization, before transcript, first-turn instructions, ambient prompt composition or model-option preparation. The foreground executor captures exact submitted text and ambient context, requested model/options, target (Environment, Agent, workspace and engine preconditions), privacy and approval picks, selected Skill identity/effect inputs, and ordered authorized attachment metadata/content digests. Attachment staging grants, expiry, ids and base64 representation are excluded; credentials are never inputs. Direct dispatch captures its submitted text/model/context/attachments and thread scope before preparation; nonempty server metadata is explicitly refused as `client_turn_input_unsupported` because that bag's effects are outside this bounded contract. Keyless direct dispatch retains its prior behavior; the foreground, delegated, background and continuation routes refuse an omitted key.
+**Bounded input-conflict contract (#3567).** Existing keyed orchestration sends capture a versioned SHA-256 digest after authorization, before transcript, first-turn instructions, ambient prompt composition or model-option preparation. The foreground executor captures exact submitted text and ambient context, requested model/options, target (Environment, Agent, workspace and engine preconditions), privacy and approval picks, selected Skill identity/effect inputs, and ordered authorized attachment metadata/content digests. The content digest excludes staging grants, expiry, stage IDs and base64 representation. A staged send also binds a digest of the authenticated owner and the exact ordered stage identities to the durable claim. Credentials never enter either digest. Direct dispatch captures its submitted text/model/context/attachments and thread scope before preparation; nonempty server metadata is explicitly refused as `client_turn_input_unsupported` because that bag's effects are outside this bounded contract. Keyless direct dispatch retains its prior behavior; the foreground, delegated, background and continuation routes refuse an omitted key.
 
 Keyed owners copy submitted JSON intent before their first asynchronous resolution or session read and use those owned values for both identity and execution, including nested model options, targets and Skill inputs. Authorized attachment hydration is copied immediately on return. Cancellation signals and server-branded authority remain separate live references; the copy neither freezes caller objects nor replaces fresh authorization/binding checks.
 
-Conversation-wide replay and live-key joins compare known original submission digests before returning a turn or reserving a successor Session. The foreground owner checks the existing authorized inbox entry before a live send: different known input conflicts, while identical input returns its existing FIFO receipt without sending. Only trusted placement context lets the inbox deliver its own entry. The durable inbox compares known proof before accepting a queued retry, carries only the server-generated digest alongside its existing payload, and checks it during placement and abandoned-start recovery. A queued start forwards that identity through trusted server context, so reconstructing its bound target cannot replace the original submitted identity. Older inbox entries without that digest retain unknown compatibility. The route's active-placement guard can first return retryable `client_turn_in_flight`; this refusal accepts and replays nothing. Staged retries retain the authorized original claim's Session for digest inspection even when it is indeterminate or reclaimable. Inspection validates owner, reference and existing binding without binding fresh uploads; a permitted start/replay binds them to its actual Session. No holder or proof is invented for a bare tombstone. The production foreground ports carry the request's read authority across the full materialized lineage, and an unavailable lookup refuses the send before any key inspection or staged callback; it never becomes an empty lookup or falls back to internal read authority. Queue admission refuses the same scoped null before submit; the inbox passes its recorded actor ID through its inspection port, and runtime binds current read authority for submit, placement and abandoned-start recovery before any retained proof comparison. Null or unavailable inspection cannot accept a queue entry or authorize replay.
+Conversation-wide replay and live-key joins compare known original submission digests before returning a turn or reserving a successor Session. The foreground owner checks the existing authorized inbox entry before a live send: different known input conflicts, while identical input returns its existing FIFO receipt without sending. Only trusted placement context lets the inbox deliver its own entry. The durable inbox compares known proof before accepting a queued retry, carries only the server-generated digest alongside its existing payload, and checks it during placement and abandoned-start recovery. A queued start forwards that identity through trusted server context, so reconstructing its bound target cannot replace the original submitted identity. Older inbox entries without that digest retain unknown compatibility. The route's active-placement guard can first return retryable `client_turn_in_flight`; this refusal accepts and replays nothing. A matching staged retry returns the retained turn or authorized queued entry without hydrating or accepting the files again. A different stage under the same key conflicts even when its bytes match. The owner validates and binds staged bytes for a fresh provider send or first queue submission. No holder or proof is invented for a bare tombstone. The production foreground ports carry the request's read authority across the full materialized lineage, and an unavailable lookup refuses the send before any key inspection or staged callback; it never becomes an empty lookup or falls back to internal read authority. Queue admission refuses the same scoped null before submit; the inbox passes its recorded actor ID through its inspection port, and runtime binds current read authority for submit, placement and abandoned-start recovery before any retained proof comparison. Null or unavailable inspection cannot accept a queue entry or authorize replay.
 
 Accepted handoff replay checks the retained turn row's known submitted digest read-only before returning its provider turn or evaluating the older handoff marker digest. This does not restart the terminal Session, claim a turn, resend, or stamp retry input as original proof. When the row has no original digest (or only a key tombstone remains), the older marker's prepared-effect comparison still governs replay; it binds trimmed text and does not prove original raw submission identity. No new marker version or migration is introduced by this replay check.
 
 Canonical JSON sorts object keys, preserves array order and text exactly, and rejects unsupported values (including nested `undefined`, nonfinite numbers, accessors, sparse arrays and cycles) instead of silently omitting them. No whitespace or Unicode normalization occurs. A known digest mismatch returns `client_turn_input_conflict`, with no new adapter send or accepted result. The foreground, background, continue and explicit handoff transports return HTTP 409; SDK execution callers retain the code in `ChatHttpError`. Submission identity is distinct from the prepared model payload or durable turn intent (#3566); this digest slice adds no retrievable input body or resumable intent; the inbox retains its existing queued payload.
 
-Legacy rows without original digest proof remain unknown, even after reclaim: a retry never supplies their original digest. SQLite mirrors the digest in the current owner JSON and the digest column, and trusts it only when they agree. An older writer replacing the owner JSON drops that marker, so a leftover column is unknown. Mixed-version operation therefore cannot guarantee conflict enforcement; missing-digest callers and legacy rows retain legacy replay behavior. Tombstone expiry and unresolved-claim safety remain unchanged. This is only the existing-key conflict slice of #3567: mandatory/generated keys, `/chat`'s independent stream ledger, CLI coverage and retention-policy expansion remain outside it.
+Legacy rows without original digest proof remain unknown, even after reclaim. SQLite mirrors the content digest in the current owner JSON and the digest column, and trusts it only when they agree. A staged retry cannot use a legacy resolved row as proof of its exact references. A matching reservation that provably never began invoking can be reclaimed, with the new witness recorded atomically for the new owner while the historical content digest stays intact. An older writer replacing the owner JSON drops that marker, so a leftover column is unknown. Mixed-version operation therefore cannot guarantee conflict enforcement; missing-digest callers and legacy rows retain legacy replay behavior. Tombstone expiry and unresolved-claim safety remain unchanged. This is only the existing-key conflict slice of #3567: mandatory/generated keys, `/chat`'s independent stream ledger, CLI coverage and retention-policy expansion remain outside it.
 
 **Code and evidence.** `EventStore` composes Monument's turn-dedup owner and SQLite commands directly with Station-owned table bindings; orchestration callers receive the Monument Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. Additive migrations supply nullable `input_digest` and `resolved_at`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. Additive encoding compatibility does not qualify legacy writers for prepared intent; those need host-enforced fencing. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the persistent `chat:` tombstones, private prepared-claim custody, process-identity probing, and the metrics. The one-way owner handle lives in Monument. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call.
 
@@ -2934,8 +2939,14 @@ and result projection. Cancellation and a deadline come from the optional caller
 the inspector does not start its own timeout. It distinguishes a `TimeoutError` abort
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
-launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+ordinary engine inventory routes supply a five-second deadline and propagate client
+cancellation through the model and engine reads. A deadline refuses the incomplete
+inventory without publishing fresh rows. An abandoned adapter operation remains owned
+until actual settlement. Later reads report that operation as unavailable. Healthy
+overlapping reads retain separate results. A sibling that fails within budget keeps its own unavailable catalog
+and does not overwrite live observations from other engines.
+ACP rows carry the last measured handshake time and the current probe state. Command,
+model-catalog and prerequisite inclusion and discovery policy are
 explicit inputs. The boot-time built-in agent binding excludes model discovery and
 commands, because either can start an engine's program and readiness comes from
 prerequisites alone.
@@ -4063,6 +4074,50 @@ captured request without relaunching it. Request/reconcile routes register the o
 restart or lease expiry requires fresh authorized recovery. Room checkpoint changes
 refresh the UI request handle.
 
+**Coordinator in #general (#5063, preview `project-room-coordinator`).** With the
+preview on, a request in a Project's default channel carries a `coordinator` frame
+(routing instructions and a report per coordinator Task) and its answer is routed
+by [ProjectRoomCoordinator](../../src-server/services/projects/project-room-coordinator.ts)
+before publication: an answer in place, a card of proposed Tasks bound to the posted
+message, or a framed inbox turn to a coordinator Task's chat. The coordinator's
+brief and memory arrive through its Session start (`composeProjectSessionContext`,
+#5132), and each request rebuilds its picture from the
+[store](../../src-server/services/projects/project-room-coordinator-store.ts)'s rows
+and the room, so a replacement coordinator Session loses nothing (#3513).
+The private `security/project-room-coordinator.sqlite` store is Station home
+state. Home backups check and checkpoint the database before copying it.
+Rows move
+proposed → waiting → starting → working → done, failed or refused by compare-and-set,
+and slots are claimed in one SQLite transaction against the Project's
+`roomCoordinator.maxConcurrentTasks`. A starting row creates its Task with
+`createTaskIdempotent` keyed by the row, dispatches it through the canonical
+`TaskDispatcher` as the person who pressed Start, and queues the first turn through
+the conversation inbox under a row key; boot, a turn-terminal subscription and a
+60-second fallback resume rows without repeating an effect. A successful turn
+leaves its slot held until the Task is Done. Cancellation or an unsuccessful
+initial dispatch reports a stopped status. Before publishing, the coordinator
+commits the exact linked status, which it reuses on transient room-write
+failure or restart. Private answer text, prompts and engine diagnostics stay
+out of settlement and sweep messages. Refusal cards project reviewed public
+messages or fixed guidance. Detailed start and dispatch diagnostics stay in
+the private coordinator journal. The sweep checks whether the Task has a
+stored answer and links the independently authorized Task read. Earlier
+preview text already in the private prepared journal is retained and withheld
+from replay. The coordinator posts under a stable room intent via
+[`coordinatorRoomPublisher`](../../src-server/runtime/routes/project-room-coordinator-runtime.ts),
+which rechecks the Project incarnation, the room and the starter's `execute`
+permission inside the room store's write transaction. `matchPullRequestOpen` in
+`pull-request-watch-guard.ts` feeds the coordinator's stage of the
+`pullRequestWatchPolicy` slot, refusing matching tool calls when a person did
+not ask for a pull request. Coordinator routes and handshake capability are
+available on personal hosts with Project sharing and deployment sign-in
+disabled. Shared publication needs its own recipient authorization and
+qualification.
+Evidence: `project-room-coordinator.test.ts` (restart, cap and exactly-once, with
+fault injection), `project-room-coordinator-module.test.ts` (the real agent module
+and room store), `project-room-coordinator-runtime.test.ts`,
+`project-room-coordinator.routes.test.ts` and `ProjectRoomCoordinator.test.tsx`.
+
 The Room's **Recap Project** action prepares an editable scoped prompt without
 dispatch. The normal Agent picker and explicit request remain the execution
 owner; the prompt asks for citations, observed freshness, coverage and gaps.
@@ -5063,9 +5118,12 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
-start retain the workspace. A start invocation whose reply throws or lacks a
-confirmed Session does not classify its checkout as safe to remove.
+A definitive start refusal with an exact persisted rejection receipt can release
+the workspace. If the start was accepted but the receipt is unavailable, the
+executor attempts bounded Stop only for the exact Session returned by the
+dispatch owner. Confirmed Stop permits release. Unknown Session identity,
+failed shutdown and a Stop that exceeds the cleanup deadline retain the
+workspace. A repeated review request returns its original recorded cleanup.
 
 **Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
 projects the submission owner's server-derived Task/Project incarnation binding.
@@ -5618,7 +5676,11 @@ claims or attempts
 ([observe mode](../design/automations.md#per-rule-observe-mode)). Separately enabled native Task actions and
 isolated repairs consume retained intents after source/rule/grant and `live`-mode checks; the
 scheduler invokes both consumers and awaits their shutdown before closing the
-shared ledger.
+shared ledger. Both compare an authority-only policy fingerprint, and the native
+runtime adopts an instructions/budget amendment or stops a revoked action with
+a reason on its Session and Task ([policy changes](../design/automations.md#policy-changes-and-the-start-mandate)).
+The [operator routes](../../src-server/routes/operations/automations.ts) serve
+`AUTOMATION_OPERATOR_SURFACE` ([operator surface](../design/automations.md#operator-surface)).
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),

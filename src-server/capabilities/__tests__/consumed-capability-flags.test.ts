@@ -7,6 +7,7 @@ import {
   STATION_ENVELOPE_HEADER_VALUE,
 } from '@kontourai/station-contracts/http';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { DEFAULT_PROJECT_ROOM_COORDINATOR_SETTINGS } from '@kontourai/station-contracts/project-room-coordinator';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -494,6 +495,61 @@ const CONSUMED_FLAGS: Record<
       runtime.close();
     }
   },
+  // #5063: GET /:slug/room/coordinator answers where the runtime composes the
+  // coordinator, which needs the conversation inbox hosted Stations lack.
+  projectRoomCoordinator: async ({ hosted }) => {
+    const runtime = createProjectRoomRuntime(
+      makeTempDir('room-coordinator-flag-'),
+    );
+    try {
+      const scope = {
+        stationId: 'station',
+        localProjectId: 'project-id',
+        portableProjectId: 'portable',
+        localProjectSlug: 'project',
+      };
+      const actor = { id: 'ada', displayName: 'Ada', kind: 'person' as const };
+      const caps = { view: true, discuss: true, edit: true, execute: true };
+      const service = new ProjectRoomService(runtime.store, {
+        withAction: async (_request, _slug, _action, _actorId, operation) =>
+          operation(scope, actor, caps, () => {}),
+        current: async () => true,
+      });
+      const { roomId } = runtime.store.ensureRoom(scope, () => {});
+      const routes = createProjectRoomRoutes(service, {
+        module: {} as never,
+        withAuthority: async (_request, _slug, _action, _guard, operation) =>
+          operation({
+            scope,
+            requester: actor,
+            executionRoot: '',
+            assertCurrent: () => {},
+          }),
+        ...(hosted
+          ? {}
+          : {
+              coordinator: {
+                enabled: () => true,
+                service: {
+                  view: () => ({
+                    projectSlug: 'project',
+                    settings: { ...DEFAULT_PROJECT_ROOM_COORDINATOR_SETTINGS },
+                    working: 0,
+                    waiting: 0,
+                    proposals: [],
+                  }),
+                } as never,
+                roomId: () => roomId,
+                post: () => 'message',
+              },
+            }),
+      });
+      const response = await routes.request('/project/room/coordinator');
+      return response.status === 200;
+    } finally {
+      runtime.close();
+    }
+  },
   // GET /:slug/rooms/live streams the room; typing and members answer too.
   projectRoomLive: async () => {
     const runtime = createProjectRoomRuntime(makeTempDir('room-live-flag-'));
@@ -959,6 +1015,7 @@ describe('consumed capability flags match what their routes serve', () => {
     privateOperationalOutcomes: { personal: true, hosted: true },
     projectRoomMessageActions: { personal: true, hosted: true },
     projectRoomLive: { personal: true, hosted: true },
+    projectRoomCoordinator: { personal: true, hosted: false },
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     projectSchedules: { personal: true, hosted: false },

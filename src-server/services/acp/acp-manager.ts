@@ -28,6 +28,9 @@ import type { AcpSessionListing } from './acp-session-listing.js';
 export class ACPManager {
   private probes = new Map<string, ACPProbe>();
   private configs = new Map<string, ACPConnectionConfig>();
+  private periodicProbesStarted = false;
+  private probeLifecycle = 0;
+  private shutdownsInFlight = 0;
   private probeTimer: ReturnType<typeof setInterval> | null = null;
   private firstHandshakeListener?: ACPFirstHandshakeListener;
   /** Connections whose cold first-contact continuation is still running. */
@@ -58,13 +61,27 @@ export class ACPManager {
     configs: ACPConnectionConfig[],
     initiator: ACPProbeInitiator = 'request',
   ): Promise<void> {
+    const lifecycle = this.shutdownsInFlight === 0 ? this.probeLifecycle : null;
     await Promise.all(
       configs.map((config) => this.addConnection(config, initiator)),
     );
-    // startAll runs again on every registry refresh; a stale timer would keep
-    // sweeping alongside the new one.
+    if (lifecycle !== this.probeLifecycle) return;
+    this.periodicProbesStarted = true;
+    this.clearProbeTimer();
+    this.reconcileProbeTimer();
+  }
+
+  private clearProbeTimer(): void {
     if (this.probeTimer) clearInterval(this.probeTimer);
-    this.probeTimer = setInterval(() => void this.runProbes(), 60_000);
+    this.probeTimer = null;
+  }
+
+  private reconcileProbeTimer(): void {
+    if (!this.periodicProbesStarted || this.probes.size === 0) {
+      this.clearProbeTimer();
+    } else {
+      this.probeTimer ??= setInterval(() => void this.runProbes(), 60_000);
+    }
   }
 
   /**
@@ -120,17 +137,21 @@ export class ACPManager {
       return false;
     }
     this.continuing.delete(config.id);
-    return addACPManagerConnection({
-      config,
-      initiator,
-      probes: this.probes,
-      configs: this.configs,
-      logger: this.logger,
-      ...(this.createProbe ? { createProbe: this.createProbe } : {}),
-      managedWorkspaceHomeDir: this.managedWorkspaceHomeDir,
-      eventBus: this.eventBus,
-      removeConnection: (id) => this.removeConnection(id),
-    });
+    try {
+      return await addACPManagerConnection({
+        config,
+        initiator,
+        probes: this.probes,
+        configs: this.configs,
+        logger: this.logger,
+        ...(this.createProbe ? { createProbe: this.createProbe } : {}),
+        managedWorkspaceHomeDir: this.managedWorkspaceHomeDir,
+        eventBus: this.eventBus,
+        removeConnection: (id) => this.removeConnection(id),
+      });
+    } finally {
+      this.reconcileProbeTimer();
+    }
   }
 
   async removeConnection(id: string): Promise<void> {
@@ -140,6 +161,7 @@ export class ACPManager {
       probes: this.probes,
       configs: this.configs,
     });
+    this.reconcileProbeTimer();
   }
 
   async reconnect(id: string): Promise<boolean> {
@@ -173,15 +195,21 @@ export class ACPManager {
   }
 
   async shutdown(): Promise<void> {
+    this.probeLifecycle++;
+    this.shutdownsInFlight++;
+    this.periodicProbesStarted = false;
     const probeTimer = this.probeTimer;
     this.probeTimer = null;
-    const timers = await shutdownACPManager({
-      probeTimer,
-      cullTimer: null,
-      probes: this.probes,
-      configs: this.configs,
-    });
-    this.probeTimer = timers.probeTimer;
+    try {
+      await shutdownACPManager({
+        probeTimer,
+        cullTimer: null,
+        probes: this.probes,
+        configs: this.configs,
+      });
+    } finally {
+      this.shutdownsInFlight--;
+    }
   }
 
   isConnected(): boolean {

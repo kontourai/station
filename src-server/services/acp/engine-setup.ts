@@ -5,12 +5,51 @@ import {
   type ACPEngineSetupEntry,
   ACPStatus,
   installRecipeForPlatform,
+  normalizeACPArgs,
 } from '@kontourai/station-contracts/acp';
 import {
   listValidatedACPRegistryEntries,
   namesSameExecutable,
 } from './acp-engine-descriptors.js';
 import type { getACPManagerStatus } from './acp-manager-view.js';
+
+/** Match a saved launch to a built-in variant without changing its connection ID. */
+export function builtInAcpEntryFor(
+  connection: Pick<ACPConnectionConfig, 'id' | 'command' | 'args'>,
+  entries: readonly ACPConnectionRegistryEntry[],
+): ACPConnectionRegistryEntry | undefined {
+  if (!connection.command) return undefined;
+  const args = normalizeACPArgs(connection.args ?? []);
+  const matches = entries.filter((entry) => {
+    if (!namesSameExecutable(connection.command, entry.command)) return false;
+    return (
+      isDeepStrictEqual(args, normalizeACPArgs(entry.args ?? [])) ||
+      (entry.id === 'kiro' && isDeepStrictEqual(args, ['acp']))
+    );
+  });
+  return (
+    matches.find((entry) => entry.id === connection.id) ??
+    (matches.length === 1 ? matches[0] : undefined)
+  );
+}
+
+export function builtInAcpEntries(): ACPConnectionRegistryEntry[] {
+  return listValidatedACPRegistryEntries({ detect: false })
+    .filter(({ builtin }) => builtin)
+    .map(({ entry }) => entry);
+}
+
+export function acpConnectionIcon(
+  icon: string | undefined,
+  entry: ACPConnectionRegistryEntry | undefined,
+): string | undefined {
+  const formerBuiltInIcon =
+    (entry?.id === 'grok-build' && icon === 'GK') ||
+    (entry?.id === 'antigravity' && icon === 'AG');
+  return icon && icon !== '🔌' && !formerBuiltInIcon
+    ? icon
+    : (entry?.icon ?? icon);
+}
 
 /** Project only setup facts; executable configuration stays with the human pane. */
 export function engineSetupEntries(

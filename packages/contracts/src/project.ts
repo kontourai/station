@@ -7,6 +7,7 @@ import type {
 } from './project-chat-defaults.js';
 import type { ProjectLifecycle } from './project-lifecycle.js';
 import type { ProjectMemberAction } from './project-membership.js';
+import type { ProjectRoomCoordinatorSettings } from './project-room-coordinator.js';
 import type { ProjectPullRequestWatchSettings } from './pull-request-watch.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
@@ -221,6 +222,13 @@ export interface ProjectConfig {
    */
   pullRequestWatch?: ProjectPullRequestWatchSettings;
   /**
+   * #5063: the `#general` coordinator's limits, which Station enforces:
+   * start without asking, Tasks working at once, and pull requests only
+   * when asked. Absent: the defaults. Written only through
+   * `PUT /api/projects/:slug/room-coordinator`.
+   */
+  roomCoordinator?: ProjectRoomCoordinatorSettings;
+  /**
    * Server-owned explicit sidebar position (station#3315). Assigned by the
    * reorder operation; projects without one list after positioned ones, in
    * name order, so an unordered workspace stays deterministic.
@@ -265,6 +273,7 @@ export interface ProjectMetadata {
   hasWorkingDirectory: boolean;
   workingDirectory?: string;
   layoutCount: number;
+  /** A local document metadata file exists in the current or legacy layout. */
   hasKnowledge: boolean;
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */

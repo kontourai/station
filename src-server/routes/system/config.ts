@@ -985,6 +985,11 @@ export function createConfigRoutes(
       const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(
         (key) => Object.hasOwn(body as object, key),
       );
+      const telemetryChoiceOnly =
+        writesTelemetryChoice &&
+        Object.keys(accepted).every(
+          (key) => key === 'telemetryTier' || key === 'telemetryEnabled',
+        );
       // Shared with the disclosure read's `capabilities.raise`, so the
       // choice a client offers and the raise this refuses cannot drift.
       const mayRaiseTelemetry = mayRaiseTelemetryChoice(
@@ -1135,11 +1140,12 @@ export function createConfigRoutes(
         });
         // Telemetry withdrawal must not wait for unrelated Agent activation.
         onAppConfigPersisted?.(updated);
-        await lanDiscoveryFor(configLoader).configure(updated);
+        if (!telemetryChoiceOnly)
+          await lanDiscoveryFor(configLoader).configure(updated);
         return updated;
       };
       const mutation = await captureConfigurationMutation(
-        applyConfigurationMutation,
+        telemetryChoiceOnly ? undefined : applyConfigurationMutation,
         update,
       );
       const updated = mutation.value;
@@ -1160,7 +1166,10 @@ export function createConfigRoutes(
       if (rebindsBuiltinEngine) {
         await rebindBuiltinAgents?.();
       }
-      eventBus?.emit(SERVER_EVENTS.SYSTEM_STATUS_CHANGED, { source: 'config' });
+      if (!telemetryChoiceOnly)
+        eventBus?.emit(SERVER_EVENTS.SYSTEM_STATUS_CHANGED, {
+          source: 'config',
+        });
       if (rebindsBuiltinEngine) {
         // archive#1194 review round 2 (HIGH): without this, the browser's
         // cached agent list (engine chip, routing) stays stale until some

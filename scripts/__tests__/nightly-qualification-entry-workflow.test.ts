@@ -164,7 +164,7 @@ it('passes Actions read permission through both publisher callers', () => {
     expect(cohort.jobs[name].permissions?.actions).toBe('read');
 });
 
-it('starts all four native platform builds together from the plan alone', () => {
+it('requests one hosted macOS runner at a time while staging the native cohort', () => {
   const stage = read('nightly-native-stage.yml');
   const needsOf = (job: Job) =>
     Array.isArray(job.needs) ? job.needs : job.needs ? [job.needs] : [];
@@ -191,12 +191,19 @@ it('starts all four native platform builds together from the plan alone', () => 
   const guard = expr(
     "github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true'",
   );
-  for (const id of builds) {
+  for (const id of ['stage-android', 'stage-macos', 'stage-windows']) {
     expect([...ancestors(id)], id).toEqual(['plan-cohort']);
-    // One guard for all four: none waits on, or reads, another platform.
     expect(stage.jobs[id].if, id).toBe(guard);
   }
-  // The only join is the desktop manifest, which needs both desktop builds.
+  expect([...ancestors('stage-ios')]).toEqual(['plan-cohort', 'stage-macos']);
+  // Treat macOS as a scheduling dependency. The successful plan still owns
+  // iOS admission even if the macOS job failed.
+  expect(stage.jobs['stage-ios'].if).toBe(
+    expr(
+      "!cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true'",
+    ),
+  );
+  // The desktop manifest still needs both desktop builds.
   expect(needsOf(stage.jobs['assemble-desktop']).sort()).toEqual([
     'plan-cohort',
     'stage-macos',

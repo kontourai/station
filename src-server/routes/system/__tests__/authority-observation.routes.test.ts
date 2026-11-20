@@ -44,13 +44,16 @@ vi.mock('../../../providers/registries/registry.js', () => ({
     getIdentity: async () => ({ alias: 'testuser', name: 'Test User' }),
   }),
   getUserDirectoryProvider: () => ({
-    searchPeople: async (q: string) => [{ alias: q, name: q }],
+    searchPeople: async (q: string) => {
+      if (q === 'unavailable') throw new Error('synthetic directory outage');
+      return q === 'no-match' ? [] : [{ alias: q, name: q }];
+    },
     lookupPerson: (alias: string) => ({ alias, name: alias }),
   }),
   getCachedUser: () => ({ alias: 'testuser' }),
 }));
 
-const { createAuthRoutes } = await import('../auth.js');
+const { createAuthRoutes, createUserRoutes } = await import('../auth.js');
 
 const ORIGIN = 'https://station.example.test';
 const STATION_ID = 'authority-observation-fixture';
@@ -229,6 +232,7 @@ async function createHarness(options?: {
       isInternal: () => false,
     }),
   );
+  app.route('/api/users', createUserRoutes());
   // Test endpoints allow the real gate's method/path decisions to be observed.
   app.get('/api/me/notifications', (c) => c.json({ ok: true }));
   app.post('/api/me/notifications/:id/read', (c) => c.json({ ok: true }));
@@ -367,6 +371,40 @@ describe('GET /api/auth/authority through the production composition', () => {
     expect(await readJson(response)).toEqual({
       error: { code: 'authentication_required' },
     });
+  });
+
+  test('mounted people directory reports provider failure apart from empty search results', async () => {
+    const h = await createHarness();
+    const search = (query: string) =>
+      h.request(`/api/users/search?q=${query}`, h.bearer(h.operatorCredential));
+
+    for (const query of ['', 'no-match', 'person']) {
+      const response = await search(query);
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual(
+        query === 'person' ? [{ alias: 'person', name: 'person' }] : [],
+      );
+    }
+
+    const response = await search('unavailable');
+    expect(response.status).toBe(503);
+    const body = await readJson(response);
+    expect(body).toEqual({
+      success: false,
+      error: 'People directory is unavailable',
+      code: 'user_directory_unavailable',
+      correlationId: expect.any(String),
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'Route error',
+      expect.objectContaining({
+        code: 'user_directory_unavailable',
+        correlationId: body.correlationId,
+        error: expect.objectContaining({
+          message: 'synthetic directory outage',
+        }),
+      }),
+    );
   });
 
   test('operator bearer observes the closed operator authority', async () => {

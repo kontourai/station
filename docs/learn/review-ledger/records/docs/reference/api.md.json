@@ -674,7 +674,13 @@
 
     "src-server/routes/evidence/flow-runs.ts",
 
-    "src-server/routes/chat/conversation-work-search.ts"
+    "packages/contracts/src/project-room-coordinator.ts",
+
+    "src-server/runtime/routes/project-room-coordinator-runtime.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts",
+
+    "src-server/services/knowledge/knowledge-storage.ts"
   ],
 
   "checks": [

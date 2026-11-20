@@ -122,7 +122,7 @@ describe('gallery screen sources', () => {
   });
 
   it('keeps every room conversation scene, each loading the shared room list and composer', () => {
-    // Pinned independently of the map (#4791): twenty scenes at 390 and
+    // Pinned independently of the map (#4791): 21 scenes at 390 and
     // 1440 in both themes; `room-channels` is the channel switcher (#4792);
     // reactions, edits, deletes and channel files follow (#4796, #4797,
     // #4812), then the live stream's mention, Agent working and Agent
@@ -149,13 +149,14 @@ describe('gallery screen sources', () => {
       'room-agent-outcome',
       'room-task-thread',
       'room-task-working',
+      'room-coordinator',
     ];
     const names = scenes.flatMap((scene) =>
       ['dark', 'light'].flatMap((theme) =>
         ['desktop', 'mobile'].map((width) => `${scene}-${theme}-${width}`),
       ),
     );
-    expect(names).toHaveLength(80);
+    expect(names).toHaveLength(84);
     const declared = Object.keys(GALLERY_SCREEN_ENTRIES).filter((name) =>
       name.startsWith('room-'),
     );

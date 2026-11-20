@@ -302,7 +302,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     description: "xAI's Grok Build coding agent CLI.",
     command: 'grok',
     args: ['agent', 'stdio'],
-    icon: 'GK',
+    icon: 'brand:grok-build',
     tags: ['acp', 'grok'],
     homepageUrl: 'https://docs.x.ai/build/cli/headless-scripting',
     install: {
@@ -381,7 +381,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     // Station's own tools need. Station runs one process per session anyway.
     command: 'agy',
     args: ['acp', '--process-per-session'],
-    icon: 'AG',
+    icon: 'brand:antigravity',
     tags: ['acp', 'antigravity', 'google'],
     homepageUrl: 'https://antigravity.google/docs/cli/acp',
     install: {

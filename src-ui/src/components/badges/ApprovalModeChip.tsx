@@ -1,3 +1,4 @@
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ToolPolicyDelivery,
   toolPolicyDeliveryExplanation,
@@ -8,8 +9,11 @@ import {
   managedApprovalCeiling,
 } from '@kontourai/station-contracts/managed-policy-controls';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
-import { isApprovalMode } from '@kontourai/station-contracts/provider';
-import { useRef, useState } from 'react';
+import {
+  type EngineApprovalReviewer,
+  isApprovalMode,
+} from '@kontourai/station-contracts/provider';
+import { useContext, useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
 import {
@@ -22,6 +26,7 @@ import {
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { ComposerRunSetupClose } from '../ComposerChoiceSummary';
 import {
   ConversationManagedPolicyProvider,
   useOptionalConversationConnection,
@@ -45,6 +50,7 @@ const loadComposerModeSheet = () =>
 interface ApprovalModeChipProps {
   /** The session's clean engine-connection identity (for example `codex`). */
   engineConnectionId?: string | null;
+  acpControl?: AcpApprovalControl;
   isNewSession?: boolean;
   /**
    * Resolved from the bound connection's authoritative engine capability
@@ -80,6 +86,7 @@ interface ApprovalModeChipProps {
    * server-side" (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * How far the engine has shown `sessionOverride` applied (#2436,
    * `SessionApprovalOverride.state`). Absent keeps the pre-#2334 behaviour.
@@ -123,6 +130,7 @@ interface ApprovalModeChipProps {
  */
 function ApprovalModeChipContent({
   engineConnectionId,
+  acpControl,
   isNewSession = false,
   toolPolicyDelivery,
   sessionOverride,
@@ -131,15 +139,17 @@ function ApprovalModeChipContent({
   projectDefaultUnavailable,
   stationDefault,
   lastAppliedApprovalMode,
+  reportedApprovalReviewer,
   sessionOverrideState,
   onChange,
 }: ApprovalModeChipProps) {
   const account = useAccountPreferences();
+  const closeRunSetup = useContext(ComposerRunSetupClose);
   const target = useOptionalConversationConnection();
   const policySummary = useManagedPolicySummary();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  if (!approvalModeKnobSupported(engineConnectionId)) {
+  if (!approvalModeKnobSupported(engineConnectionId, acpControl)) {
     return null;
   }
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
@@ -157,6 +167,7 @@ function ApprovalModeChipContent({
   const notApplied = sessionOverrideState === 'not-applied';
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,
+    acpControl,
     sessionOverride: notApplied ? undefined : sessionOverride,
     agentDefault: notApplied ? undefined : agentDefault,
     projectDefault: !notApplied && isNewSession ? projectDefault : undefined,
@@ -195,11 +206,14 @@ function ApprovalModeChipContent({
         effective.mode,
         managedApprovalCeiling(policySummary),
       ));
-  const reviewerDisclosure =
+  const reviewerNote =
     engineConnectionId === 'codex' &&
-    (displayedMode === 'ask' || displayedMode === 'auto')
-      ? ' Codex reviewer not reported here; sandbox escalations may be approved automatically.'
-      : '';
+    (reportedApprovalReviewer ||
+      displayedMode === 'ask' ||
+      displayedMode === 'auto')
+      ? `Codex approval reviewer: ${reportedApprovalReviewer === 'user' ? 'You.' : reportedApprovalReviewer === 'automatic' ? 'Automatic.' : 'Unknown. Sandbox escalations may be reviewed automatically.'}`
+      : undefined;
+  const reviewerDisclosure = reviewerNote ? ` ${reviewerNote}` : '';
   // #2436: the server applies the recorded posture at every turn start, on
   // every send path, so "takes effect next turn" is true of any requested
   // pick. The exception is a full access Claude refused because the session
@@ -350,9 +364,13 @@ function ApprovalModeChipContent({
             effectiveMode: displayedMode,
             engineConnectionId,
             onClose: () => setIsSheetOpen(false),
-            onSelect: onChange,
+            onSelect: (mode) => {
+              if (mode === 'never') closeRunSetup?.();
+              onChange(mode);
+            },
             sourceNote,
             policyNote: policyExplanation,
+            reviewerNote,
             pendingNote,
             chatOverride: isOverride,
             activeMode: appliedMode

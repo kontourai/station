@@ -36,6 +36,7 @@ import type {
   PullRequestHeadReviewFinding,
   PullRequestHeadReviewWaiting,
 } from '@kontourai/station-contracts/pull-request-feedback';
+import type { TaskPullRequestWatchReviewHold } from '@kontourai/station-contracts/pull-request-watch';
 import type {
   IndependentReviewReceipt,
   IndependentReviewRequest,
@@ -299,7 +300,7 @@ export class PullRequestHeadReviewer {
           !(lastTurn !== undefined && lastTurn > first)
         )
           continue;
-        if (!this.agentIdle(store, conversationId)) continue;
+        if (!this.agentIdle(store, claim)) continue;
         await this.start(store, claim, observation, existing);
       }
     } catch (error) {
@@ -311,11 +312,76 @@ export class PullRequestHeadReviewer {
   }
 
   /** Idle, not waiting on a person, and nothing sent or waiting to be. */
-  private agentIdle(store: PullRequestFeedbackStore, conversationId: string) {
+  private agentIdle(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+  ) {
+    const { conversationId, prKey } = claim;
     return (
       this.ports.session(conversationId).state === 'idle' &&
       !store.openBatch(conversationId) &&
-      store.pendingDeliveries(conversationId).length === 0
+      !store
+        .pendingDeliveries(conversationId)
+        .some((delivery) => delivery.prKey === prKey)
+    );
+  }
+
+  /** A watch never reports an unreviewed head or unresolved findings ready. */
+  watchHold(prKey: string): TaskPullRequestWatchReviewHold | undefined {
+    if (!this.ports.enabled()) return undefined;
+    const store = this.ports.store();
+    const claim = store?.claim(prKey);
+    const headSha = store?.observation(prKey)?.observation.headSha;
+    if (!store || !claim?.settings.reviewEachHead || !headSha) return undefined;
+    const hold = (
+      state: TaskPullRequestWatchReviewHold['state'],
+      detail: string,
+    ): TaskPullRequestWatchReviewHold => ({ state, headSha, detail });
+    const chat = this.ports.chat(claim.conversationId);
+    if (
+      !chat.ownerUserId ||
+      !this.ports.mayContinue(claim.conversationId, chat.ownerUserId) ||
+      !this.ports.mayContinue(claim.conversationId, claim.enabledBy)
+    )
+      return hold(
+        'review-needed',
+        'Review permission changed. Turn review off and on in the chat.',
+      );
+    if (claim.condition?.state === 'paused')
+      return hold(
+        'review-needed',
+        'Feedback is paused. Choose Send again in the chat.',
+      );
+    const review = store.headReview(prKey, headSha);
+    if (!review) return hold('reviewing', 'Waiting to review this push.');
+    if (review.state === 'running')
+      return hold(
+        'reviewing',
+        'Reviewing this push before reporting it ready.',
+      );
+    if (review.state !== 'reviewed')
+      return hold(
+        'review-needed',
+        `${review.failureReason ?? 'Station does not know how this review ended.'} Open the pull request in its chat to review again.`,
+      );
+    if (!review.requiredIds.length) return undefined;
+    const signature = reviewFindingsSignature(headSha, review.requiredIds);
+    const delivery = store
+      .deliveriesForPullRequest(prKey, 200)
+      .find(
+        (row) =>
+          row.category === 'review-findings' &&
+          row.signature === signature &&
+          row.state !== 'superseded',
+      );
+    if (delivery?.state === 'dismissed')
+      return hold(
+        'review-needed',
+        'Required findings were dismissed. Choose Review again.',
+      );
+    return hold(
+      'review-needed',
+      'Required findings remain. Send them to the agent or review again.',
     );
   }
 
@@ -475,7 +541,9 @@ export class PullRequestHeadReviewer {
     if (session === 'stopped') return waiting('agent-stopped');
     if (
       store.openBatch(claim.conversationId) ||
-      store.pendingDeliveries(claim.conversationId).length
+      store
+        .pendingDeliveries(claim.conversationId)
+        .some((delivery) => delivery.prKey === prKey)
     )
       return waiting('feedback-waiting');
     const projectSlug = this.ports.chat(claim.conversationId).projectSlug;

@@ -165,6 +165,7 @@
     "./project": "./src/project.ts",
     "./project-membership": "./src/project-membership.ts",
     "./project-room": "./src/project-room.ts",
+    "./project-room-coordinator": "./src/project-room-coordinator.ts",
     "./project-shared-task": "./src/project-shared-task.ts",
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",

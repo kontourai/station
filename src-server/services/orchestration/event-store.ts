@@ -65,14 +65,15 @@ import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-ti
 import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
-import type {
-  ConversationHandoffProjection,
-  InterruptTurnResult,
-  OrchestrationCommandReceipt,
-  OrchestrationSessionEventWindow,
-  OwnedSessionActivity,
-  RuntimeEventElisionReason,
-  SteerTurnResult,
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  type ConversationHandoffProjection,
+  type InterruptTurnResult,
+  type OrchestrationCommandReceipt,
+  type OrchestrationSessionEventWindow,
+  type OwnedSessionActivity,
+  type RuntimeEventElisionReason,
+  type SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
   isAcpFamilyEngine,
@@ -105,7 +106,10 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
-import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
+import {
+  parseStationControlRefusal,
+  stationControlToolName,
+} from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
@@ -2048,8 +2052,6 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
 /** Station's own HTML render tool, under every name it is exposed as. */
-const HTML_RENDER_TOOL_NAME =
-  /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/;
 /**
  * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
  * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
@@ -2433,7 +2435,7 @@ function snapshotEvent(
     // Keep them outside the ordinary 84-character tool-output excerpt.
     const pageReference =
       typeof payload.toolName === 'string' &&
-      HTML_RENDER_TOOL_NAME.test(payload.toolName)
+      stationControlToolName(payload.toolName) === 'html_render'
         ? htmlReplyReference(payload.output)
         : undefined;
     // A station-control refusal is the tool's whole result, as JSON: the
@@ -4872,6 +4874,19 @@ export class EventStore {
     if (projectedEvent.method === 'tool.completed') {
       delete projectedEvent.htmlReply;
       delete projectedEvent.mcpAppResourceUri;
+      if (
+        projectedEvent.provider === 'acp' &&
+        stationControlToolName(projectedEvent.toolName) === 'html_render'
+      ) {
+        const reference = htmlReplyReference(projectedEvent.output);
+        if (
+          reference?.sessionId === projectedEvent.threadId &&
+          reference.pageId !== projectedEvent.eventId &&
+          this.hasEventId(reference.pageId) &&
+          this.htmlReplyPages().contains(reference)
+        )
+          projectedEvent.output = { success: true };
+      }
       const replay = this.db
         .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
         .get(projectedEvent.eventId) as { payload: string } | undefined;
@@ -4917,7 +4932,7 @@ export class EventStore {
       const toolName =
         typeof stamped.toolName === 'string' ? stamped.toolName : undefined;
       const pageReference =
-        toolName && HTML_RENDER_TOOL_NAME.test(toolName)
+        stationControlToolName(toolName) === 'html_render'
           ? htmlReplyReference(raw.output)
           : undefined;
       if (pageReference) stamped.htmlReply = pageReference;
@@ -10985,13 +11000,16 @@ export class EventStore {
     // #4992: the read model folds every readable thread on each list, and it
     // is listed several times a second while any session streams. Only the
     // threads whose mark moved are folded again.
-    const stale = uniqueThreadIds.filter(
-      (threadId) =>
-        this.cachedSessionProjection(threadId, marks)?.events === undefined,
-    );
+    const cached = new Map<string, readonly PersistedRuntimeEvent[]>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      const events = this.cachedSessionProjection(threadId, marks)?.events;
+      if (events === undefined) stale.push(threadId);
+      else cached.set(threadId, events);
+    }
     observe?.({
       refreshed: stale.length,
-      reused: uniqueThreadIds.length - stale.length,
+      reused: cached.size,
     });
     let folded = new Map<string, PersistedRuntimeEvent[]>();
     if (stale.length > 0) {
@@ -11001,19 +11019,15 @@ export class EventStore {
       } finally {
         this.deferAttachmentHydration = false;
       }
+      const oversized = marks.size > SESSION_PROJECTION_CACHE_MAX;
       for (const threadId of stale) {
         const events = folded.get(threadId) ?? [];
-        this.storeSessionProjection(threadId, marks, {
-          events: events.map(deepFreezeEvent),
-        });
+        this.storeSessionProjection(threadId, marks, { events }, oversized);
       }
     }
     const result = new Map<string, PersistedRuntimeEvent[]>();
     for (const threadId of uniqueThreadIds) {
-      const events =
-        folded.get(threadId) ??
-        this.cachedSessionProjection(threadId, marks)?.events ??
-        [];
+      const events = folded.get(threadId) ?? cached.get(threadId) ?? [];
       result.set(
         threadId,
         events.map((event) => this.hydrateAttachments(event)),
@@ -11067,13 +11081,27 @@ export class EventStore {
     threadId: string,
     marks: ReadonlyMap<string, number>,
     facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+    oversized: boolean,
   ): void {
     const highWater = marks.get(threadId);
     if (highWater === undefined) return;
     const current = this.sessionProjectionCache.get(threadId);
+    // A scan that cannot fit should refresh entries it already owns and fill
+    // spare slots. Admitting the rest evicts the warm set, including the
+    // projections just populated by the other half of the same read model.
+    if (
+      oversized &&
+      current === undefined &&
+      this.sessionProjectionCache.size >= SESSION_PROJECTION_CACHE_MAX
+    )
+      return;
     const kept = current?.highWater === highWater ? current : { highWater };
     this.sessionProjectionCache.delete(threadId);
-    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    this.sessionProjectionCache.set(threadId, {
+      ...kept,
+      ...facts,
+      ...(facts.events ? { events: facts.events.map(deepFreezeEvent) } : {}),
+    });
     while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
       const oldest = this.sessionProjectionCache.keys().next().value;
       if (oldest === undefined) break;
@@ -12746,9 +12774,10 @@ export class EventStore {
     // A thread without a mark has no events and needs no query: neither.
     observe?.({ refreshed: stale.length, reused: counts.size });
     const counted = this.queryEventCountsByThreads(stale);
+    const oversized = marks.size > SESSION_PROJECTION_CACHE_MAX;
     for (const threadId of stale) {
       const eventCount = counted.get(threadId) ?? 0;
-      this.storeSessionProjection(threadId, marks, { eventCount });
+      this.storeSessionProjection(threadId, marks, { eventCount }, oversized);
       if (eventCount > 0) counts.set(threadId, eventCount);
     }
     return counts;
@@ -14748,14 +14777,35 @@ export class EventStore {
     );
   }
 
+  /** Seal a key before any handoff reservation can claim it. */
+  withdrawUnreservedConversationHandoff(
+    conversationId: string,
+    idempotencyKey: string,
+  ): boolean {
+    const result = this.db
+      .prepare(`
+      INSERT INTO orchestration_handoff_withdrawals (conversation_id, idempotency_key)
+      SELECT ?, ? WHERE NOT EXISTS (
+        SELECT 1 FROM orchestration_conversation_handoffs
+        WHERE conversation_id = ? AND idempotency_key = ?
+      )
+      ON CONFLICT (conversation_id, idempotency_key)
+      DO UPDATE SET idempotency_key = excluded.idempotency_key
+      RETURNING idempotency_key
+    `)
+      .get(conversationId, idempotencyKey, conversationId, idempotencyKey);
+    return result !== undefined;
+  }
+
   /**
    * Persist the Station-owned marker for an explicit Agent/engine handoff.
    * This is intentionally unavailable to ordinary continuation callers.
    */
   reserveConversationHandoff(
     input: ConversationHandoffMarker,
+    staged?: boolean,
   ): ReturnType<ConversationHandoffModule['reserve']> {
-    return this.conversationHandoffs.reserve(input);
+    return this.conversationHandoffs.reserve(input, staged);
   }
 
   assertNativeSessionMutable(sessionId: string): void {
@@ -15592,9 +15642,34 @@ export class EventStore {
       persistence: {
         listByConversation: (conversationId) =>
           (byConversation.all(conversationId) as any[]).map(read),
-        reserve: (input) => {
+        reserve: (input, staged) => {
+          const inbox =
+            staged &&
+            (this.threadInbox ||
+              this.db
+                .prepare(
+                  "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monument_inbox_entries'",
+                )
+                .get())
+              ? this.threadInboxStore()
+              : undefined;
           this.db.exec('BEGIN IMMEDIATE');
           try {
+            if (
+              this.db
+                .prepare(`
+              SELECT 1 FROM orchestration_handoff_withdrawals
+              WHERE conversation_id = ? AND idempotency_key = ?
+            `)
+                .get(input.conversationId, input.idempotencyKey)
+            ) {
+              throw Object.assign(
+                new Error('This Agent change was withdrawn.'),
+                {
+                  code: 'conversation_handoff_withdrawn',
+                },
+              );
+            }
             const existingForKey = byKey.get(
               input.conversationId,
               input.idempotencyKey,
@@ -15608,6 +15683,12 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            if (inbox?.hasWaitingFollowUp(input.conversationId, true)) {
+              throw Object.assign(
+                new Error('Wait for queued messages before switching Agents.'),
+                { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
+              );
             }
             // The cutoffs precede projection. Under the write transaction,
             // reject any intervening append rather than acknowledge text
@@ -18159,6 +18240,9 @@ export class EventStore {
    */
   deleteConversationLineageRows(sessionIds: readonly string[]): void {
     const statements = [
+      `DELETE FROM orchestration_handoff_withdrawals WHERE conversation_id IN (
+        SELECT conversation_id FROM orchestration_conversation_sessions WHERE session_id = ?
+      )`,
       'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
       `DELETE FROM orchestration_conversation_handoffs
        WHERE session_id = ?1 OR predecessor_session_id = ?1`,

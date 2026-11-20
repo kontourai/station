@@ -1,0 +1,21 @@
+{
+  "revision": "786e87b9fdff6456cec6523e9cd37c068913e319",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Checked Project settings navigation and its agent-feedback alias against the unified Pull requests owner, repository and capability states, and its separate preview-gated Coordinator panel. The settings guide distinguishes Task-linked Room status, answer availability and short start refusals from independently authorized Task reads and private diagnostics.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced coordinator status publication and start-card refusal projection through the route, journal and shared Room types. Public refusal text is limited to reviewed reasons and fixed recovery copy. Private start and dispatch diagnostics stay journal-only. The merged Project settings keep a distinct coordinator panel alongside upstream Project pull request controls.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked section navigation, old agent-feedback link resolution, Sources routing and preview gating in the merged settings view. The unified upstream Pull requests panel and separate Coordinator settings coexist. The surrounding layout, preview ownership and Project authorization claims still apply.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Checked section navigation, old agent-feedback link resolution, Sources routing and preview gating in the merged settings view. The unified upstream Pull requests panel and separate Coordinator settings coexist. The surrounding layout, preview ownership and Project authorization claims still apply.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked section navigation, old agent-feedback link resolution, Sources routing and preview gating in the merged settings view. The unified upstream Pull requests panel and separate Coordinator settings coexist. The surrounding layout, preview ownership and Project authorization claims still apply.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the inbound settings page and Feature Preview links. The preview ID, availability, Project context and settings anchors are retained. The separate Project pull request heading reflects the upstream unified section.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the inbound settings page and Feature Preview links. The preview ID, availability, Project context and settings anchors are retained. The separate Project pull request heading reflects the upstream unified section.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped module-map topics and compared the Project Room topic with its canonical text. The public Task link, status and refusal projection exclude private diagnostic text.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

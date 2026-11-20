@@ -22,6 +22,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.turnAttention.settled', // Bounded (500) memory of turns whose finish already toasted, so a reload does not re-toast them (#4396); notification bookkeeping, not a setting.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
+  'station.staged-handoff-recovery.v1', // Authority-partitioned pointers to exact staged Send attempts. Payloads remain in IndexedDB.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
   'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.

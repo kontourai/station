@@ -7,6 +7,7 @@ import {
 import { notificationCategoryLabel } from '../../utils/notificationLabels';
 import {
   formatNotificationTime,
+  notificationBody,
   notificationDetail,
 } from '../../utils/notifications';
 import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
@@ -52,6 +53,7 @@ export function NotificationHistoryItem({
   menuItems?: readonly RowMenuItem[];
 }) {
   const detail = notificationDetail(notification);
+  const body = notificationBody(notification);
   // Only an OBSERVED negative disables anything. `unknown` renders its gap
   // and leaves the buttons alone: a surface that could not look has no
   // standing to gate an action, and enforcement is server-side regardless.
@@ -99,11 +101,7 @@ export function NotificationHistoryItem({
         <div className="notification-history__item-title">
           {notification.title}
         </div>
-        {notification.body && (
-          <div className="notification-history__detail">
-            {notification.body}
-          </div>
-        )}
+        {body && <div className="notification-history__detail">{body}</div>}
         {detail && <div className="notification-history__detail">{detail}</div>}
         <NotificationEnvelopeControls
           notification={notification}

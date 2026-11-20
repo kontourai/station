@@ -628,6 +628,12 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  {
+    pattern: 'tests/gallery-screen-sources.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/gallery-screen-coverage.test.ts'],
+    reason: 'the Gallery source module reads this JSON at runtime',
+  },
   ...[
     'src-ui/src/pages/AppearancePage.tsx',
     'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
@@ -657,6 +663,39 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     tests: ['src-ui/src/__tests__/project-settings.browser.test.tsx'],
     reason:
       'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
+  })),
+  ...[
+    'src-ui/src/components/refresh/ListRefresh.css',
+    'src-ui/src/components/refresh/ListRefresh.tsx',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/inbox-swipe.browser.test.tsx'],
+    reason:
+      'the Inbox browser fixture loads refresh styles and bundles the component outside the import graph',
+  })),
+  ...[
+    'src-server/adapters/node-pty-adapter.ts',
+    'src-server/services/infra/workload-resources.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    reason:
+      'the workload proof launches a separate fixture server that imports these runtime owners',
+  })),
+  ...[
+    'docs/learn/atlas.js',
+    'docs/learn/index.html',
+    'scripts/lib/learning-markdown.mjs',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/learning-atlas.browser.test.ts'],
+    reason:
+      'the Atlas browser fixture serves these runtime assets and generates the search data across a dynamic renderer boundary',
   })),
   {
     pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',

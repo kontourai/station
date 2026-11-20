@@ -53,6 +53,7 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
+  STAGED_CONVERSATION_HANDOFF_PREVIEW,
 } from '@kontourai/station-contracts/orchestration';
 import {
   humanPrincipal,
@@ -153,6 +154,7 @@ function isPersonRequest(request: Request): boolean {
 }
 
 import { TurnIdempotencySettledError } from '@kontourai/monument';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -169,6 +171,8 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
@@ -177,7 +181,10 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
-import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
+import {
+  AttachmentStageError,
+  type AttachmentTurnBinding,
+} from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -218,7 +225,10 @@ import {
   type ThreadInboxDelivery,
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
-import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import {
+  foregroundTurnSubmissionDigest,
+  type StagedTurnSubmission,
+} from '../../services/orchestration/turn-submission-digest.js';
 import { verifyMcpPromptOrigin } from '../../services/plugins/mcp-prompt-origin-receipt.js';
 import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
@@ -876,6 +886,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
+  appearanceProposal: z.boolean().optional(),
   clientTurnId: z.string().min(1).max(200),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
@@ -1208,8 +1219,24 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
     attachmentRefs: z.never().optional(),
     mcpPromptOrigin: z.never().optional(),
     idempotencyKey: z.string().min(1).max(200),
+    stagedHandoff: z
+      .object({
+        expectedCurrentSessionId: z.string().min(1).max(512),
+        contextPolicy: z.literal('continue-from-history'),
+      })
+      .strict()
+      .optional(),
   })
-  .superRefine(requireApprovalPickBasis);
+  .superRefine(requireApprovalPickBasis)
+  .superRefine((body, ctx) => {
+    if (body.stagedHandoff && !body.target.expectedEngine) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['target', 'expectedEngine'],
+        message: 'A staged Agent change requires the selected engine binding.',
+      });
+    }
+  });
 
 const conversationContextBoundarySchema = z.object({
   attachmentRefs: z.never().optional(),
@@ -1321,6 +1348,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
   /** Human-authored room title, before the provider brief is appended. */
@@ -1396,6 +1424,7 @@ interface ForegroundMessageRequest {
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   resolveAttachments?: (binding: {
     threadId: string;
     clientTurnId: string;
@@ -2157,7 +2186,7 @@ export function createOrchestrationRoutes(
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
+      binding: AttachmentTurnBinding,
       options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
@@ -2169,8 +2198,9 @@ export function createOrchestrationRoutes(
     releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
+      binding: AttachmentTurnBinding,
     ) => void;
+    stagedHandoffEnabled?: () => boolean;
     handoffConversation?: (
       input: ConversationHandoffRequest,
     ) => Promise<unknown>;
@@ -2859,9 +2889,7 @@ export function createOrchestrationRoutes(
     let stagedAttachmentsForRelease:
       | readonly StagedAttachmentReference[]
       | undefined;
-    let stagedBindingForRelease:
-      | { threadId: string; clientTurnId: string }
-      | undefined;
+    let stagedBindingForRelease: AttachmentTurnBinding | undefined;
     let releasePrincipal: PrincipalRef | undefined;
     let releaseDeliveryReceipt: (() => void) | undefined;
     // #3568: set once this send may wait in its conversation's inbox; a
@@ -3087,6 +3115,9 @@ export function createOrchestrationRoutes(
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
+      const stagedAttemptId = stagedAttachments?.length
+        ? randomUUID()
+        : undefined;
       if (stagedAttachments?.length && !principal) {
         throw new PrincipalUnresolvedError(
           'Attachment staging requires a resolved request principal.',
@@ -3118,7 +3149,7 @@ export function createOrchestrationRoutes(
       );
       const delegation = resolvedDelegation?.context;
       assertInheritedDelegationToolPolicy(delegation);
-      let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
+      let stagedBinding: AttachmentTurnBinding | undefined;
       const foregroundRequest = {
         ...body,
         ...(verifiedMcpPromptOrigin
@@ -3146,6 +3177,10 @@ export function createOrchestrationRoutes(
             : undefined,
         ...(stagedAttachments?.length
           ? {
+              stagedSubmission: {
+                ownerId: principal!.id,
+                references: stagedAttachments,
+              },
               resolveAttachments: (
                 binding: { threadId: string; clientTurnId: string },
                 options?: { inspectOnly?: true },
@@ -3158,14 +3193,14 @@ export function createOrchestrationRoutes(
                       binding,
                       options,
                     );
-                  stagedBinding = binding;
-                  stagedBindingForRelease = binding;
+                  stagedBinding = { ...binding, attemptId: stagedAttemptId };
+                  stagedBindingForRelease = stagedBinding;
                   stagedAttachmentsForRelease = stagedAttachments;
                   releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
-                    binding,
+                    stagedBinding,
                   );
                 })(),
             }
@@ -3259,14 +3294,13 @@ export function createOrchestrationRoutes(
           : undefined;
       if (followUp && followUpBinding) {
         const inbox = deps.threadInbox!;
-        if (
-          orchestrationService.inspectTurnDelivery(
-            followUp.conversationId,
-            followUp.clientTurnId,
-            readAuthorityFor(c),
-            inputDigest,
-          ) === null
-        )
+        const delivery = orchestrationService.inspectTurnDelivery(
+          followUp.conversationId,
+          followUp.clientTurnId,
+          readAuthorityFor(c),
+          inputDigest,
+        );
+        if (delivery === null)
           throw new Error('The requested conversation is unavailable.');
         queueOnBusyRefusal = () => {
           // Files wait in the blob store, not in the entry. A stage the live
@@ -3277,18 +3311,42 @@ export function createOrchestrationRoutes(
             ? (stagedBinding ?? {
                 threadId: followUp.conversationId,
                 clientTurnId: followUp.clientTurnId,
+                attemptId: stagedAttemptId,
               })
             : undefined;
           const settleStage = (queued: boolean) => {
             if (!filesBinding || !stagedAttachments?.length) return;
-            (queued
-              ? deps.acceptStagedAttachments
-              : deps.releaseStagedAttachments)?.(
-              principal!,
-              stagedAttachments,
-              filesBinding,
-            );
+            if (queued)
+              deps.acceptStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
+            else
+              deps.releaseStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
           };
+          if (stagedAttachments?.length) {
+            const pending =
+              orchestrationService.readPendingConversationSubmission(
+                followUp.conversationId,
+                followUp.clientTurnId,
+                readAuthorityFor(c),
+                userId,
+              );
+            if (pending) {
+              if (pending.inputDigest !== inputDigest)
+                throw new ClientTurnInputConflictError();
+              return queuedFollowUpResponse(
+                c,
+                { outcome: 'queued', entry: pending.entry },
+                followUp,
+              );
+            }
+          }
           let attachments: ThreadInboxAttachment[] | undefined;
           if (body.attachments?.length || stagedAttachments?.length) {
             const inputs = filesBinding
@@ -3319,37 +3377,44 @@ export function createOrchestrationRoutes(
               });
             }
           }
-          const submitted = inbox.submit({
-            conversationId: followUp.conversationId,
-            clientTurnId: followUp.clientTurnId,
-            payload: {
-              message: followUp.message,
-              ...followUpBinding,
-              ...(attachments ? { attachments } : {}),
-              ...(followUp.automaticBackground
-                ? { automaticBackground: true as const }
-                : {}),
-              inputDigest,
-              ...(followUp.ambientContext
-                ? { ambientContext: followUp.ambientContext }
-                : {}),
-              ...(followUp.model ? { model: followUp.model } : {}),
-              actor: {
-                userId,
-                ...(principal ? { principal } : {}),
-                ...(ownerAttribution ? { ownerAttribution } : {}),
+          let submitted: ReturnType<ThreadInboxDelivery['submit']> | undefined;
+          try {
+            submitted = inbox.submit({
+              conversationId: followUp.conversationId,
+              clientTurnId: followUp.clientTurnId,
+              payload: {
+                message: followUp.message,
+                ...followUpBinding,
+                ...(attachments ? { attachments } : {}),
+                ...(followUp.automaticBackground
+                  ? { automaticBackground: true as const }
+                  : {}),
+                inputDigest,
+                ...(followUp.ambientContext
+                  ? { ambientContext: followUp.ambientContext }
+                  : {}),
+                ...(followUp.model ? { model: followUp.model } : {}),
+                actor: {
+                  userId,
+                  ...(principal ? { principal } : {}),
+                  ...(ownerAttribution ? { ownerAttribution } : {}),
+                },
+                clientOrigin: foregroundRequest.clientOrigin,
+                ...(foregroundRequest.personAuthored
+                  ? { authoredBy: 'person' as const }
+                  : {}),
               },
-              clientOrigin: foregroundRequest.clientOrigin,
-              ...(foregroundRequest.personAuthored
-                ? { authoredBy: 'person' as const }
-                : {}),
-            },
-          });
-          settleStage(submitted.outcome === 'queued');
+            });
+          } finally {
+            settleStage(submitted?.outcome === 'queued');
+          }
           if (submitted.outcome === 'queued') reopenForSender();
           return queuedFollowUpResponse(c, submitted, followUp);
         };
-        if (inbox.mustQueue(followUp.conversationId)) {
+        if (
+          (!stagedAttachments?.length || delivery.outcome === 'not-received') &&
+          inbox.mustQueue(followUp.conversationId)
+        ) {
           const held = queueOnBusyRefusal();
           if (held) return held;
           // Placement would refuse this sender: the live send answers it.
@@ -3412,7 +3477,8 @@ export function createOrchestrationRoutes(
         });
       }
       return c.json({ success: true, data });
-    } catch (error) {
+    } catch (failure) {
+      let error = failure;
       const ceilingFailure = managedApprovalCeilingFailure(c, error);
       if (ceilingFailure) return ceilingFailure;
       if (error instanceof CreateRequestCapacityError)
@@ -3473,7 +3539,9 @@ export function createOrchestrationRoutes(
           } catch (queueError) {
             const closed = settledRefusal(queueError);
             if (closed) return closed;
-            throw queueError;
+            if (!(queueError instanceof ClientTurnInputConflictError))
+              throw queueError;
+            error = queueError;
           }
         }
       }
@@ -3547,11 +3615,11 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
-      // The engine refused these attachments before anything reached it, so
-      // their binding to this turn proves nothing: release it, or a resend
-      // of the same (restored) chips anywhere else is refused as bound.
+      // This attempt provably sent no files. Release only its lease in case
+      // the winner is still sending a shared stage under the same key.
       if (
-        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        (errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE ||
+          errorCode(error) === 'client_turn_input_conflict') &&
         stagedAttachmentsForRelease?.length &&
         stagedBindingForRelease &&
         releasePrincipal
@@ -3622,140 +3690,160 @@ export function createOrchestrationRoutes(
     return await handleForegroundMessage(c);
   });
 
-  app.post(
-    '/conversations/:conversationId/handoff',
-    validateFiles(conversationHandoffSchema),
-    async (c) => {
-      if (!deps.handoffConversation) {
-        return c.json(
-          { success: false, error: 'Agent/engine handoff is unavailable' },
-          503,
-        );
-      }
-      try {
-        const body = getBody(c);
-        // #2377 slice C3b: no station-control tool reaches this route today;
-        // if one ever does, it hands off without an approval posture.
-        const postureRefused = refuseCarriedPosture(c, [
-          {
-            path: 'setApprovalMode',
-            value: (body as { setApprovalMode?: unknown }).setApprovalMode,
-            kind: 'pick',
-          },
-          {
-            path: 'personalApprovalDefault',
-            value: (body as { personalApprovalDefault?: unknown })
-              .personalApprovalDefault,
-            kind: 'pick',
-          },
-          {
-            path: 'target.model.options',
-            value: body.target.model?.options,
-            kind: 'options',
-          },
-        ]);
-        if (postureRefused) return postureRefused;
-        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
-        const ceilingRefused = refuseAboveManagedCeiling(c, [
-          (body as { setApprovalMode?: unknown }).setApprovalMode,
-        ]);
-        if (ceilingRefused) return ceilingRefused;
-        const fullAccessRefused =
-          refuseUngrantedFullAccess(c, [
-            (body as { setApprovalMode?: unknown }).setApprovalMode,
-          ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
-        if (fullAccessRefused) return fullAccessRefused;
-        const directoryRefused = refuseUngrantedDirectoryWorkspace(
-          c,
-          body.target,
-        );
-        if (directoryRefused) return directoryRefused;
-        const { principal, userId, ownerAttribution, fullAccessGrant } =
-          resolveDispatchActor(deps, c);
-        const data = await deps.handoffConversation({
-          ...body,
-          target: normalizeExecutionTarget(body.target),
-          ...(body.attachments
-            ? { attachments: body.attachments as ChatAttachmentInput[] }
-            : {}),
-          conversationId: param(c, 'conversationId'),
-          userId,
-          // archive#4075 stage 2 review round 1 (F1): dropped here originally
-          // — threaded exactly like /chat above, through
-          // executeForegroundMessage/executeExecutionTargetMessage's existing
-          // `input.principal` seam, so an explicit engine/Agent handoff's
-          // turn.started is attributed at emit time too.
-          principal,
-          ownerAttribution,
-          fullAccessGrant,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
-        if (!isCreateRequestHandle(data)) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error:
-                'Agent/engine handoff may have started but did not return a provider turn id',
-              code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-              outcome: 'indeterminate',
-            },
-            409,
-          );
-        }
-        return c.json({ success: true, data });
-      } catch (error) {
-        const fullAccessRefused = fullAccessRefusalFor(c, error);
-        if (fullAccessRefused) return fullAccessRefused;
-        if (error instanceof ForegroundMessageIndeterminateError) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
-              code: error.code,
-              outcome: error.outcome,
-              receipt: error.detail.receipt,
-              receiptStatus: error.detail.receiptStatus,
-              session: error.detail.session,
-            },
-            409,
-          );
-        }
-        if (
-          error instanceof ForegroundMessageTurnIdentityUnavailableError ||
-          isForegroundIndeterminateShape(error)
-        ) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
-              code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-              outcome: 'indeterminate',
-            },
-            409,
-          );
-        }
+  const handleConversationHandoff = async (c: Context, staged: boolean) => {
+    if (staged && !deps.stagedHandoffEnabled?.()) {
+      const { id, label } = STAGED_CONVERSATION_HANDOFF_PREVIEW;
+      return c.json(new FeaturePreviewDisabledError(id, label).refusal, 404);
+    }
+    if (!deps.handoffConversation) {
+      return c.json(
+        { success: false, error: 'Agent/engine handoff is unavailable' },
+        503,
+      );
+    }
+    try {
+      const body = getBody(c);
+      if (staged !== Boolean(body.stagedHandoff)) {
         return c.json(
           {
             success: false,
-            error: errorMessage(error),
-            ...(errorCode(error) ? { code: errorCode(error) } : {}),
-            ...(error instanceof OrchestrationCommandDispatchError &&
-            error.kind !== undefined
-              ? {
-                  kind: error.kind,
-                  retryable: error.retryable,
-                  failurePhase: error.failurePhase,
-                }
-              : {}),
+            error: 'The handoff route and context policy do not match.',
           },
-          // #4520: the managed policy does not allow the engine.
-          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
+          400,
         );
       }
-    },
+      // #2377 slice C3b: no station-control tool reaches this route today;
+      // if one ever does, it hands off without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        {
+          path: 'setApprovalMode',
+          value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+          kind: 'pick',
+        },
+        {
+          path: 'personalApprovalDefault',
+          value: (body as { personalApprovalDefault?: unknown })
+            .personalApprovalDefault,
+          kind: 'pick',
+        },
+        {
+          path: 'target.model.options',
+          value: body.target.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
+      // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+      const ceilingRefused = refuseAboveManagedCeiling(c, [
+        (body as { setApprovalMode?: unknown }).setApprovalMode,
+      ]);
+      if (ceilingRefused) return ceilingRefused;
+      const fullAccessRefused =
+        refuseUngrantedFullAccess(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+        ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
+      if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
+      const conversationId = param(c, 'conversationId');
+      const data = await deps.handoffConversation({
+        ...body,
+        target: normalizeExecutionTarget(body.target),
+        ...(body.attachments
+          ? { attachments: body.attachments as ChatAttachmentInput[] }
+          : {}),
+        conversationId,
+        userId,
+        // archive#4075 stage 2 review round 1 (F1): dropped here originally
+        // — threaded exactly like /chat above, through
+        // executeForegroundMessage/executeExecutionTargetMessage's existing
+        // `input.principal` seam, so an explicit engine/Agent handoff's
+        // turn.started is attributed at emit time too.
+        principal,
+        ownerAttribution,
+        fullAccessGrant,
+        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+      });
+      if (!isCreateRequestHandle(data)) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error:
+              'Agent/engine handoff may have started but did not return a provider turn id',
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+          },
+          409,
+        );
+      }
+      return c.json({ success: true, data });
+    } catch (error) {
+      const fullAccessRefused = fullAccessRefusalFor(c, error);
+      if (fullAccessRefused) return fullAccessRefused;
+      if (error instanceof ForegroundMessageIndeterminateError) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
+            code: error.code,
+            outcome: error.outcome,
+            receipt: error.detail.receipt,
+            receiptStatus: error.detail.receiptStatus,
+            session: error.detail.session,
+          },
+          409,
+        );
+      }
+      if (
+        error instanceof ForegroundMessageTurnIdentityUnavailableError ||
+        isForegroundIndeterminateShape(error)
+      ) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+          },
+          409,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          error: errorMessage(error),
+          ...(errorCode(error) ? { code: errorCode(error) } : {}),
+          ...(error instanceof OrchestrationCommandDispatchError &&
+          error.kind !== undefined
+            ? {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              }
+            : {}),
+        },
+        // #4520: the managed policy does not allow the engine.
+        errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
+      );
+    }
+  };
+  app.post(
+    '/conversations/:conversationId/handoff',
+    validateFiles(conversationHandoffSchema),
+    (c) => handleConversationHandoff(c, false),
+  );
+  app.post(
+    '/conversations/:conversationId/staged-handoff',
+    validateFiles(conversationHandoffSchema),
+    (c) => handleConversationHandoff(c, true),
   );
 
   /**
@@ -4120,6 +4208,49 @@ export function createOrchestrationRoutes(
         );
       const entry = deps.threadInbox.entry(conversationId, clientTurnId);
       return entry ? c.json({ success: true, data: { entry } }) : notFound();
+    },
+  );
+
+  app.delete(
+    '/conversations/:conversationId/handoffs/:idempotencyKey',
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const idempotencyKey = param(c, 'idempotencyKey');
+      if (conversationId.length > 512 || idempotencyKey.length > 200)
+        return c.json(
+          { success: false, error: 'Invalid conversation or handoff key.' },
+          400,
+        );
+      if (requestMayBeAnAgent(c.req.raw))
+        return c.json(
+          {
+            success: false,
+            error: 'Only the conversation owner can withdraw this request.',
+          },
+          403,
+        );
+      const { userId } = resolveDispatchActor(deps, c);
+      const outcome =
+        await orchestrationService.withdrawUnreservedConversationHandoff(
+          conversationId,
+          idempotencyKey,
+          userId,
+          readAuthorityFor(c),
+        );
+      if (outcome === 'unavailable')
+        return c.json(
+          { success: false, error: 'Conversation handoff not found' },
+          404,
+        );
+      if (outcome === 'reserved')
+        return c.json(
+          {
+            success: false,
+            error: 'Station has already reserved this Agent change.',
+          },
+          409,
+        );
+      return c.json({ success: true, data: { outcome } });
     },
   );
 
@@ -4628,6 +4759,41 @@ export function createOrchestrationRoutes(
           );
         }
       }
+      const authority = stationControlRequestAuthority(c.req.raw);
+      const caller =
+        authority?.kind === 'caller' ? authority.caller : undefined;
+      let delegatedAppearance: DelegateTaskRequest['delegatedAppearance'];
+      if (body.appearanceProposal) {
+        if (
+          !caller?.principal?.elevationEligible ||
+          caller.assurance === 'bearer-exposed' ||
+          caller.principal.id !== userId ||
+          !connectedAccountOwnerIdForTurnAccount(caller.principal.id) ||
+          tenantExecutionContextForRequest(c.req.raw) ||
+          resolvedDelegation?.provenance !== 'caller-derived' ||
+          delegation?.depth !== 1 ||
+          delegation.parentSessionId !== caller.sessionId ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind === 'project-portable' ||
+          body.target.workspace?.kind === 'project-portable-prepared' ||
+          body.sessionId ||
+          body.taskRoomRequest
+        ) {
+          return c.json(
+            {
+              success: false,
+              code: 'delegation_appearance_scope_required',
+              error:
+                'An appearance proposal needs a new task on this Station, started by a chat acting for the person.',
+            },
+            403,
+          );
+        }
+        delegatedAppearance = {
+          ownerId: caller.principal.id,
+          parentSessionId: caller.sessionId,
+        };
+      }
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       if (roomRequest && body.clientTurnId !== roomRequest.operationId)
@@ -4655,6 +4821,7 @@ export function createOrchestrationRoutes(
         return delegate({
           ...request,
           createRequestIntent: body,
+          ...(delegatedAppearance ? { delegatedAppearance } : {}),
           createRequestCallerSessionId: await createRequestCallerSession(
             c.req.raw,
           ),

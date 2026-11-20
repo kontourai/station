@@ -96,7 +96,7 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
 
 9. **Project defaults and Task-branch pull requests.** This Station's
    owner, in person, turns feedback on once for a Project (its settings'
-   Agent feedback; never Station's internal principal or a delegation
+   Pull requests; never Station's internal principal or a delegation
    credential). Station then looks for an open pull request whose head is
    exactly a live Task's own recorded worktree branch
    (`TaskWorktreeStore`, for that Task incarnation; never a branch-name
@@ -184,10 +184,13 @@ chat than they may read:
   own run and its open turn is the one Station started to send that pull
   request's failing checks (an In review card the facts say is fixing reads
   "fixing checks"). Another Task keeping the same pull request, or a run
-  doing other work, is never fixing. The note never changes the
-  card's lane, rung, tone or certainty, and shows only while the feedback is
+  doing other work, is never fixing. Delivery notes do not change the
+  card's lane, rung, tone or certainty, and show only while the feedback is
   about the head the provider reported. It is read for a reader of the
   owning chat only.
+  With head review enabled, a pending review or required findings keep a
+  clean forge head In review. A newer forge head also waits until Station
+  has observed and reviewed it; an earlier head's review cannot make it ready.
 - `GET /api/pull-request-feedback/by-pull-request` answers all of this for
   one pull request, whichever chat is open. The 409 for turning feedback on
   in a second chat, and a chat's own feedback read, name the owning chat
@@ -256,8 +259,7 @@ Choices the decisions left open, and departures from the plan:
   with a derived link); the head is not checked against the Task
   worktree's commits (`headRefOid` reachability, defense in depth); the
   by-head read ignores its abort signal (gh offers no cancellation);
-  the row offers "Remove from this chat" to a reader the route then
-  refuses (it is not hidden for one who may not change the chat); and Task-branch pull requests are not yet on
+  Task-branch pull requests are not yet on
   Task board cards (the board's facts read kept pull requests only). A
   paired host from before Project defaults that has the preview but not the
   defaults route shows the section's error state ("Project unavailable").
@@ -327,29 +329,28 @@ existing independent review (`ReviewEvidenceModule`) once per head.
 
 With a Task watching the pull request ([task-owned pull requests](task-owned-pull-requests.md)):
 
-- A Task's watch claim and "Review each new head" do not combine today. A
-  watch claim turns on the two sending switches only. Turning review on in
-  the chat makes it a person's claim, which ends the Task's watch for that
-  pull request (its Ready for you report and fix budget; the merge refusals
-  still apply while the Task watches). Turning both sending switches off in
-  the chat ends it the same way, so the watch does not turn it back on.
+- Turning "Review each new head" on in the chat keeps the Task's watch,
+  fix budget and Ready for you report. Turning both sending switches off
+  ends the watch for that pull request, so the watch does not turn them
+  back on. Moving the claim to another chat also ends its Task ownership.
 - Required findings are not failing checks, so a message carrying them is
   not a fix attempt (the budget counts only messages that carried failing
   checks). They share the 3-rounds-per-head and 10-a-day caps.
 - A watch that stops or moves a claim releases or rewrites it through the
   same store paths, so the review epoch goes up with it; the watch adds no
   other way to drop a claim's reviews.
-- Project settings keep two sections: Pull requests (a Task watches the pull
-  requests kept on it) and Agent feedback (defaults for a pull request a
-  Task opens from its branch and does not watch). Folding both into one
-  section is a follow-up.
-- Follow-up: compose a Task's watch with review of each head (review on
-  watch claims, and Ready for you waiting for the head's review). Whoever
-  builds it must handle four cases that would otherwise hold Ready for
-  good: a findings delivery a person dismissed; feedback waiting on another
-  pull request of the same chat, which keeps the agent from counting as
-  idle and so blocks this head's review; a fix-budget pause; and the person
-  who turned review on losing permission to continue the chat.
+- Project settings has one Pull requests section: watch and fix budget first,
+  then defaults for unclaimed pull requests from Task branches. Both save
+  automatically to their existing stores; neither setting is migrated or
+  reset. Existing Agent feedback links open this section. A reader sees
+  Remove from this chat only when the host confirms they may change it.
+- When head review is enabled, Ready for you waits for this head's completed
+  review with no required findings. Pending review and recovery reasons show
+  on the Task watch panel. Dismissed findings remain dismissed and direct
+  the person to Review again; a pause directs them to Send again; lost
+  permission asks a current person to turn review off and on. Pending
+  feedback for another pull request does not block this head's review,
+  although an active inbox message or a busy agent still does.
 
 Departures from the plan:
 

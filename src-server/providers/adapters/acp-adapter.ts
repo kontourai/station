@@ -1872,10 +1872,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: nothing requested leaves OpenCode on its own configuration; a
     // mode puts it on Station's floor for that mode.
     const startApprovalMode =
+      approvalControl === 'engine'
+        ? undefined
+        : acpAppliedApprovalMode(requestedApprovalMode, input.confinement);
+    const startApprovalFloor =
       approvalControl === 'station'
-        ? acpAppliedApprovalMode(requestedApprovalMode, input.confinement)
+        ? acpApprovalFloor(startApprovalMode)
         : undefined;
-    const startApprovalFloor = acpApprovalFloor(startApprovalMode);
     if (startApprovalFloor) {
       const preflight = this.startPreflights.get(input.threadId);
       this.startPreflights.delete(input.threadId);
@@ -3205,6 +3208,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    const configured = (await this.connections()).some(
+      (connection) => connection.id === record.connectionId,
+    );
+    if (
+      !configured ||
+      this.sessions.get(input.threadId) !== record ||
+      record.stopping
+    ) {
+      throw new SendTurnRefusedError(
+        'This engine is disconnected. Continue with another agent.',
+        'session_gone',
+      );
+    }
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
     // retryably rather than racing the start.
@@ -3261,7 +3277,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const turnApprovalMode = readApprovalMode(input.modelOptions);
     let approvalTakeoverFailed = false;
     if (turnApprovalMode) {
-      if (record.approvalControl !== 'station') {
+      if (record.approvalControl === 'engine') {
         throw new SendTurnRefusedError(
           ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
           'input_unsupported',
@@ -3273,7 +3289,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
       // Station takes over from the engine's own configuration, or moves
       // between floors: relaunch on the floor and resume the same session.
-      const floor = acpApprovalFloor(applied);
+      const floor =
+        record.approvalControl === 'station'
+          ? acpApprovalFloor(applied)
+          : undefined;
       const switched: { ok: true } | { ok: false; reason: string } =
         floor === record.approvalFloor
           ? { ok: true }
@@ -3344,26 +3363,33 @@ export class AcpAdapter implements ProviderAdapterShape {
         governedModeRefusal(requestedMode),
       );
     }
-    if (requestedMode && requestedMode !== record.currentModeId) {
-      const catalog = turnCatalog;
-      if (catalog.modes.length === 0) {
-        throw new Error(
-          `ACP mode option unavailable: this session did not advertise a session mode.`,
+    if (requestedMode && requestedMode !== turnCatalog.currentModeId) {
+      if (turnCatalog.modes.length === 0) {
+        throw new SendTurnRefusedError(
+          'ACP mode option unavailable: this session did not advertise a session mode.',
+          'input_unsupported',
         );
       }
-      const appliedMode = await applyAdvertisedAcpSessionMode(
-        record.process,
-        { ...catalog, currentModeId: record.currentModeId },
-        requestedMode,
-        record.connectionId,
-      );
-      record.currentModeId = appliedMode.currentModeId;
-      record.acpModeCatalog = {
-        ...catalog,
-        currentModeId: appliedMode.currentModeId,
-      };
-      if (appliedMode.configOptions) {
-        record.configOptions = appliedMode.configOptions;
+      try {
+        const appliedMode = await applyAdvertisedAcpSessionMode(
+          record.process,
+          turnCatalog,
+          requestedMode,
+          record.connectionId,
+        );
+        record.currentModeId = appliedMode.currentModeId;
+        record.acpModeCatalog = {
+          ...turnCatalog,
+          currentModeId: appliedMode.currentModeId,
+        };
+        if (appliedMode.configOptions) {
+          record.configOptions = appliedMode.configOptions;
+        }
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          errorMessage(error),
+          'input_unsupported',
+        );
       }
     }
     const turnEffort = requestedAcpEffort(input.modelOptions);
@@ -3420,6 +3446,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.turnErrorNotificationsSuppressed =
       (record.quarantinedTurnIds?.size ?? 0) > 0;
 
+    const observedMode = record.acpModeCatalog?.currentModeId;
+    if (requestedMode && observedMode) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.engine-mode-observed',
+        modeId: observedMode,
+      });
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -5031,10 +5068,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       // offers no allow option falls through to the prompt.
       if (
         !needsPerson &&
+        !record.delegation?.denyApprovals &&
         acpApprovalModeAllows(record.approvalMode, toolKind)
       ) {
-        const allowed = mapAcpDecisionToOutcome('accept', answerOptions);
-        if (allowed.outcome !== 'cancelled') return { outcome: allowed };
+        const once = answerOptions.find(
+          (option) => option.kind === 'allow_once',
+        );
+        if (once)
+          return { outcome: { outcome: 'selected', optionId: once.optionId } };
       }
 
       // Tool-level session grant: "Allow for this session" covers every later
@@ -5319,6 +5360,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         error,
       );
     });
+    // Mode observations belong to the process that reported them.
+    if (record.acpModeCatalog)
+      record.acpModeCatalog = {
+        ...record.acpModeCatalog,
+        currentModeId: undefined,
+      };
     if (configOptions) {
       record.configOptions = configOptions;
       try {
@@ -5326,6 +5373,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // governs, it runs build unless the chat chose plan.
         if (floor && !record.currentModeId) record.currentModeId = 'build';
         const catalog = advertisedAcpSessionModes({ configOptions });
+        if (catalog.modes.length > 0) record.acpModeCatalog = catalog;
         if (
           record.currentModeId &&
           catalog.currentModeId !== record.currentModeId &&
@@ -5337,6 +5385,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             record.currentModeId,
             record.connectionId,
           );
+          record.acpModeCatalog = {
+            ...catalog,
+            currentModeId: applied.currentModeId,
+          };
           if (applied.configOptions)
             record.configOptions = applied.configOptions;
         }

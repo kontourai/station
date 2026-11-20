@@ -5,6 +5,7 @@
  */
 
 import {
+  nextOccurrence,
   nextOccurrences,
   type Schedule,
   validateSchedule,
@@ -160,6 +161,92 @@ export class SchedulerService {
           : 0,
       },
     };
+  }
+
+  /** Forecast each displayed day independently, using the stored schedule to find instants. */
+  projectWeek(
+    jobs: SchedulerJob[],
+    weekStart: string,
+    displayZone = 'UTC',
+  ): SchedulerJob[] {
+    const monday = Date.parse(weekStart + 'T00:00:00.000Z');
+    if (
+      !Number.isFinite(monday) ||
+      new Date(monday).toISOString().slice(0, 10) !== weekStart ||
+      new Date(monday).getUTCDay() !== 1
+    )
+      throw new SchedulerScheduleInvalidError(
+        'Schedule week must start on a Monday (YYYY-MM-DD).',
+      );
+    let dates: Intl.DateTimeFormat;
+    try {
+      dates = new Intl.DateTimeFormat('en', {
+        timeZone: displayZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+    } catch {
+      throw new SchedulerScheduleInvalidError('Display time zone is invalid.');
+    }
+    const dayMs = 86_400_000;
+    const boundaries = Array.from({ length: 8 }, (_, index) => {
+      const day = monday + index * dayMs;
+      const key = new Date(day).toISOString().slice(0, 10);
+      let lower = day - dayMs;
+      let upper = day + dayMs;
+      while (upper - lower > 1) {
+        const midpoint = lower + Math.floor((upper - lower) / 2);
+        const fields = dates.formatToParts(midpoint);
+        const field = (type: string) =>
+          fields.find((part) => part.type === type)?.value;
+        const localDate = [field('year'), field('month'), field('day')].join(
+          '-',
+        );
+        if (localDate < key) lower = midpoint;
+        else upper = midpoint;
+      }
+      return upper;
+    });
+    return jobs.map((job) => {
+      const schedule =
+        job.schedule ??
+        (job.cron ? { kind: 'cron' as const, expr: job.cron } : undefined);
+      const times: string[] = [];
+      let truncated = false;
+      if (!job.enabled || !schedule || validateSchedule(schedule))
+        return { ...job, weekOccurrences: { times, truncated } };
+      for (let day = 0; day < 7; day += 1) {
+        const start = boundaries[day]!;
+        const end = boundaries[day + 1]!;
+        let next: number | null;
+        if (schedule.kind === 'every') {
+          const anchor = Date.parse(job.nextRun ?? '');
+          next = Number.isFinite(anchor)
+            ? anchor +
+              Math.max(0, Math.ceil((start - anchor) / schedule.everyMs)) *
+                schedule.everyMs
+            : null;
+        } else {
+          next = nextOccurrence(schedule, start - 1);
+        }
+        for (
+          let count = 0;
+          next !== null && next < end && count < 8;
+          count += 1
+        ) {
+          times.push(new Date(next).toISOString());
+          const subsequent = nextOccurrence(schedule, next);
+          next = subsequent !== null && subsequent > next ? subsequent : null;
+        }
+        truncated ||= next !== null && next < end;
+      }
+      return { ...job, weekOccurrences: { times, truncated } };
+    });
+  }
+
+  readBuiltinRowIssues() {
+    return this.builtin.readRowIssues();
   }
 
   async getStatus(): Promise<{

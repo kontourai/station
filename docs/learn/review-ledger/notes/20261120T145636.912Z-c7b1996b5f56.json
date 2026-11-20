@@ -1,0 +1,21 @@
+{
+  "revision": "f347f235a9bba843490da4606e3689b71f3739aa",
+
+  "notes": [
+    {"path":"docs/design/private-cloud-environment.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Traced the hosted-lane change through the actual container and ingress smoke entry points. Docker preflight, pairing, authenticated workspace operations, storage persistence, provenance, teardown and public-ingress checks remain required. The GitHub-hosted VM owns its Docker daemon and needs no desktop-win reservation.","inputs":[".github/workflows/container-smoke.yml"]}
+  ]
+}

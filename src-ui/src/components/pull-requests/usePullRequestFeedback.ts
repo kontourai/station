@@ -137,6 +137,12 @@ export function usePullRequestFeedback(conversationId: string) {
 
   return {
     available,
+    viewerMayChange:
+      available &&
+      scope?.isCurrent() === true &&
+      !feedback.isError &&
+      !feedback.isFetching &&
+      feedback.data?.viewerMayChange === true,
     /** Station's review of each head is offered (its preview is on). */
     headReview,
     feedback,

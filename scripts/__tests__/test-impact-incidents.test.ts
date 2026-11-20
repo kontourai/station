@@ -104,6 +104,10 @@ describe('dispatch-scope contract dependencies (#3335)', () => {
 describe('Nightly regressions outside the import graph', () => {
   test.each([
     [
+      'tests/gallery-screen-sources.json',
+      'scripts/__tests__/gallery-screen-coverage.test.ts',
+    ],
+    [
       'src-ui/src/pages/AppearancePage.tsx',
       'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
     ],
@@ -138,6 +142,31 @@ describe('Nightly regressions outside the import graph', () => {
     [
       'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
       'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.css',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.tsx',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-server/adapters/node-pty-adapter.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    [
+      'src-server/services/infra/workload-resources.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    ['docs/learn/atlas.js', 'scripts/__tests__/learning-atlas.browser.test.ts'],
+    [
+      'docs/learn/index.html',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
+    [
+      'scripts/lib/learning-markdown.mjs',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
     ],
     [
       'tests/interactive-workspace-performance-bridge.spec.ts',

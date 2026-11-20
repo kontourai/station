@@ -1,4 +1,10 @@
-import { mkdirSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import Anthropic from '@anthropic-ai/sdk';
@@ -55,6 +61,7 @@ import {
   STUB_REPLY_TEXT,
   startStubAnthropic,
 } from '../bench/station-weight-stub.mjs';
+import { darwinWakeupMetric } from '../bench/station-weight-wakeups.mjs';
 
 const stubs: Array<{ close: () => Promise<void> }> = [];
 afterEach(async () => {
@@ -604,6 +611,72 @@ const verdictOf = (
   verdicts: Array<{ id: string; verdict: string }>,
   id: string,
 ) => verdicts.find((entry) => entry.id === id)?.verdict;
+
+describe('matched delegated benchmark evidence', () => {
+  test('saved pairs cannot replace the baseline or qualify an incomplete pair', () => {
+    const baselinePath = join(
+      makeTempDir('station-weight-pair-'),
+      'baseline.json',
+    );
+    const before = JSON.stringify(FIXTURE_BASELINE);
+    writeFileSync(baselinePath, before);
+    const result = {
+      ...resultAtBaseline(),
+      settings: { delegatedPair: 1 },
+      delegatedPair: {
+        status: 'measured',
+        followUpOrder: 'warm-first',
+        model: 'fixture-model',
+        claudeCodeVersion: '2.1.322',
+        memoryBasis: 'phys_footprint',
+        releasedEngineMemoryBytes: 147_000_000,
+        releasedAfterMs: 15_100,
+        warmFollowUpMs: 175,
+        parkedFollowUpMs: 320,
+      },
+    };
+
+    expect(
+      evaluateRun({ ...result }, { baselinePath, record: true }).gate,
+    ).toMatchObject({
+      passed: false,
+      reasons: [expect.stringContaining('cannot record a baseline')],
+    });
+    expect(readFileSync(baselinePath, 'utf8')).toBe(before);
+    expect(evaluateRun({ ...result }, { baselinePath }).gate.passed).toBe(
+      false,
+    );
+    expect(
+      evaluateRun({ ...result }, { baselinePath, reportOnly: true }).gate,
+    ).toMatchObject({ passed: true, comparedCount: 0 });
+    expect(
+      evaluateRun(
+        { ...result, delegatedPair: { status: 'measured' } },
+        { baselinePath, reportOnly: true },
+      ).gate,
+    ).toMatchObject({
+      passed: false,
+      reasons: [
+        expect.stringContaining('missing or invalid paired observations'),
+      ],
+    });
+    expect(
+      evaluateRun(
+        {
+          ...result,
+          delegatedPair: {
+            status: 'not_measured',
+            reason: 'engine did not exit',
+          },
+        },
+        { baselinePath, reportOnly: true },
+      ).gate,
+    ).toMatchObject({
+      passed: false,
+      reasons: ['delegated pair NOT_MEASURED: engine did not exit'],
+    });
+  });
+});
 
 describe('station-weight control engine signals (rule C)', () => {
   /** A child as Node's spawn returns it, recording each signal it is sent. */
@@ -1590,6 +1663,44 @@ describe('station-weight process identity', () => {
         },
       }),
     ).toThrow('cannot read process environments exactly');
+  });
+
+  test('macOS wakeups count matched births and disclose endpoint-only processes', () => {
+    const start = new Map([
+      [1, { birth: 10n, interrupt: 100n, packageIdle: 7n }],
+      [2, { birth: 20n, interrupt: 200n, packageIdle: 30n }],
+    ]);
+    const end = new Map([
+      [1, { birth: 10n, interrupt: 123n, packageIdle: 9n }],
+      [3, { birth: 30n, interrupt: 900n, packageIdle: 400n }],
+    ]);
+    expect(darwinWakeupMetric(start, end)).toMatchObject({
+      status: 'measured',
+      value: 23,
+      packageIdleWakeups: 2,
+      comparedProcesses: 1,
+      endpointOnlyProcesses: 2,
+    });
+  });
+
+  test('macOS wakeups report a gap rather than zero for untrusted endpoints', () => {
+    const counter = { birth: 10n, interrupt: 100n, packageIdle: 7n };
+    const start = new Map([[1, counter]]);
+    for (const [end, reason] of [
+      [new Map([[2, counter]]), 'no process matched'],
+      [new Map([[1, null]]), 'unreadable'],
+      [new Map([[1, { ...counter, birth: 11n }]]), 'identity changed'],
+      [new Map([[1, { ...counter, interrupt: 99n }]]), 'decreased'],
+    ] as const) {
+      expect(darwinWakeupMetric(start, end)).toMatchObject({
+        status: 'not_measured',
+        reason: expect.stringContaining(reason),
+      });
+    }
+    expect(darwinWakeupMetric(start, new Map([[1, counter]]))).toMatchObject({
+      status: 'measured',
+      value: 0,
+    });
   });
 
   test('context switches count only processes read at both ends of the window', () => {

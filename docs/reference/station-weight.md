@@ -53,7 +53,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `restMemoryBytes` | Summed memory of the instance's tree with no sessions, once two consecutive samples 5 s apart agree within 5% (after at least 30 s, at most 300 s). |
 | `idleSessionsMemoryBytes` | The same, after three sessions each created by one stub-answered turn. Each Claude session keeps an engine process alive. |
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
-| `idleWakeups` | Not measured: see [Gaps](#gaps). |
+| `idleWakeups` | macOS, report only. Libproc interrupt wakeups over the idle CPU window. The result also carries package-idle wakeups and the process counts at the endpoints. |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
 | `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: any process seen in the instance's tree during the run, and any process carrying the run's environment, however it detached. Only the kill-eligible ones are then killed; the rest are reported as left running (see [Ownership](#ownership-kill-eligible-and-report-only)). What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). A read of the tree that failed while following it makes the value `NOT_MEASURED`. |
 | `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
@@ -338,6 +338,33 @@ turn, which keeps that engine for the ordinary idle park afterwards.
 A failed step is written as `delegatedRun.status: not_measured` with its
 reason. It does not fail the run.
 
+### Matched delegated follow-ups (optional, report-only)
+
+`npm run perf:station-weight -- --report-only --delegated-pair` compares
+the first operator follow-up in two separate Claude delegations. Both use
+the same seed, canned reply and follow-up shape, with distinct markers
+for each arm to keep delayed requests from being paired across sessions.
+The first delegation is
+eligible for Station's existing finished-session park policy. The harness
+waits for its engine to exit before seeding the warm comparison. The
+process observation establishes exit and replacement, without a separate
+receipt for the cause of the exit. Use
+`--delegated-pair=parked-first` to reverse the follow-up order.
+
+The report requires the same model and Claude Code version. Each outgoing
+follow-up must carry its own seed prompt and reply in order, the follow-up
+prompt, and the repository instruction markers. It also requires the warm
+engine to survive its follow-up and a new engine to appear on resume. The
+recorded process identities use the benchmark's existing process table.
+Follow-up latency is dispatch to the successful reply, observed by
+polling every 50 ms. The memory value is the parked engine's observed
+footprint before release, not a whole-app footprint delta. The result
+does not establish live-model recall or an interactive idle timeout.
+
+The flag runs without the other optional diagnostics. A missing or
+ambiguous arm fails the diagnostic. A saved pair also requires
+`--report-only` on evaluation and cannot record a baseline.
+
 ## Budgets and baseline
 
 A budget fails only when `value > baseline × (1 + ratio) + floor`. Shrinking
@@ -400,8 +427,12 @@ revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
 
 ## Gaps
 
-- **Wakeups on macOS.** Per-process wakeup counts need `powermetrics` (root)
-  or libproc, and `top`'s `IDLEW` did not advance between samples.
+- **Wakeups on macOS.** The [sampler](../../scripts/bench/station-weight-wakeups.mjs) counts only processes with matching kernel
+  birth identities at both ends of the idle window. Processes present at only
+  one endpoint are counted separately and omitted from the wakeup sum. An
+  unreadable counter, mismatched birth, or decreasing count on a shared PID
+  makes the result `NOT_MEASURED`. Processes that live entirely between the
+  endpoints are missed. Wakeup counts do not measure energy consumption.
 - **Windows.** The launcher is a bash script and the tree is read with POSIX
   `ps`, so the whole run reports `not_measured`.
 - **Unready engine.** A memory sample that never settles, an engine that never

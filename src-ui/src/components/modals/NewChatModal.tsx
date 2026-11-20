@@ -553,6 +553,7 @@ export function NewChatModal({
     : 0;
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
+    collapseDockForSetup: true,
     readyToResume:
       startWithDefault &&
       !runtimeFetching &&
@@ -1452,6 +1453,7 @@ export function NewChatModal({
           approvalProjectDefaultUnavailable:
             selectionModel.projectChatDefaultsUnavailable,
           approvalPick,
+          approvalConnections: acpConnections,
           onApprovalPick: setApprovalPick,
         };
   const projectChip: StartProjectChip = targetStart.active

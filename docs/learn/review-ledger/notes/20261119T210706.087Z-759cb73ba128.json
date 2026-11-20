@@ -1,0 +1,13 @@
+{
+  "revision": "d9bea077a76a3bae369b81ea432eba6c3466a3cf",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the SplitPaneLayout action entry against the shared touch gesture and Chromium reveal and tap assertions. The new row uses the existing Button and confirmation paths. The inventory guidance and theme and backend boundaries still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the SplitPaneLayout action entry against the shared touch gesture and Chromium reveal and tap assertions. The new row uses the existing Button and confirmation paths. The inventory guidance and theme and backend boundaries still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the SplitPaneLayout action entry against the shared touch gesture and Chromium reveal and tap assertions. The new row uses the existing Button and confirmation paths. The inventory guidance and theme and backend boundaries still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the SplitPaneLayout action entry against the shared touch gesture and Chromium reveal and tap assertions. The new row uses the existing Button and confirmation paths. The inventory guidance and theme and backend boundaries still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

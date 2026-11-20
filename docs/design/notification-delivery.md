@@ -36,15 +36,24 @@ visibility; it does not detect an overlapping dialog or another occluding surfac
 Actions that transfer from Station details close that dialog before reporting their
 outcome in a toast. Failed actions stay available to retry; an action can name
 why it failed instead of the generic line. A toast's dismissal callback runs once
-when it leaves the screen, which
+when the toast is dismissed. A dismissed transient card stays inert while its
+exit animation finishes. A card displaced by stack overflow returns to the queue
+immediately so its reading timer pauses. The dismissal callback is what
 [General Undo](../../src-ui/src/components/undo/undoable-actions.tsx) uses to
 commit a deferred write, or to drop it when Station changes.
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
 adds **Troubleshoot** to an error-tone toast that has fewer than two actions
 and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);
 see [troubleshoot with an agent](troubleshoot-in-app.md).
-On touch, a sideways swipe dismisses a transient toast; approval and pairing
-cards keep their explicit dismiss.
+On touch, a sideways swipe dismisses a transient toast. Approval and pairing
+cards keep their explicit dismiss. When the phone Inbox is open, it reserves
+space for the displayed notification stack so the scope and search controls
+stay reachable. Taller stacks and the Inbox list scroll independently.
+
+Server-backed silent notifications remain in History and do not play a
+browser sound or show a transient toast. An otherwise audible turn completion
+keeps its category sound. The existing foreground check suppresses the toast
+for the chat the person is reading.
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through
@@ -93,6 +102,11 @@ completion joins the episode and its turn id names the record. So a user turn
 followed by Claude's own reply after a background
 child settles is one "finished", not "finished" then "replied". An episode
 made only of engine-opened turns reads "replied".
+
+Completion, failure and stop notices name the chat when Station has its
+title and explain what to review there. The link uses the Session ID.
+Provider response text and raw errors are kept in the chat. Device settings
+that hide notification previews still apply.
 
 What holds it ([finished-alert-hold.ts](../../src-server/services/orchestration/finished-alert-hold.ts),
 read by `OrchestrationService.readFinishedAlertHold`, plus the inbox's

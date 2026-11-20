@@ -84,6 +84,7 @@ export type StationControlRoleRequirement =
   | 'operator'
   | 'project'
   | 'self'
+  | 'appearance'
   | 'none';
 
 /** The approval class the auto-approve and platform-mutation gates read. */
@@ -499,10 +500,14 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // ── appearance ─────────────────────────────────────────────────────────
   // The person's own custom appearance. An agent reads and proposes; the
   // route refuses it every other step (keep, save, dismiss, report).
-  get_appearance: { ...SELF_READ, routes: [get('/api/me/appearance')] },
+  get_appearance: {
+    ...SELF_READ,
+    role: 'appearance',
+    routes: [get('/api/me/appearance')],
+  },
   propose_appearance: {
     assurance: 'any',
-    role: 'self',
+    role: 'appearance',
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [post('/api/me/appearance/proposal')],
@@ -570,6 +575,27 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'project',
     projectAction: 'view',
     routes: [get('/api/projects/:projectSlug/reviews/:receiptId')],
+  },
+
+  // ── operations: automations (#4513) ───────────────────────────────────
+  // Station-wide operator configuration and its ledger: operator-wide reads.
+  // No Automation mutation has a tool (the contract's `mcp` is null), so an
+  // agent can never create, widen, enable or retry its own triggers.
+  list_automation_sources: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/sources')],
+  },
+  list_automation_rules: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/rules')],
+  },
+  list_automation_deliveries: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/deliveries')],
+  },
+  list_automation_episodes: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/episodes')],
   },
 
   // ── operations: scheduler ──────────────────────────────────────────────
@@ -1467,6 +1493,7 @@ export interface StationControlPolicyCaller {
   /** Its own session, and that session's conversation when it has one. */
   readonly sessionId?: string;
   readonly conversationId?: string;
+  readonly appearanceOwnerId?: string;
   readonly principal?: {
     readonly id: string;
     readonly elevationEligible: boolean;
@@ -1740,10 +1767,16 @@ function evaluatePolicyRequirements(
   // Decision 2: a principal-scoped action reads or writes as the principal
   // the session acts for; a session with no recorded owner acts for no one.
   if (
-    (policy.role === 'self' || policy.role === 'project') &&
-    !caller.principal
+    !caller.principal &&
+    (policy.role === 'self' ||
+      policy.role === 'project' ||
+      (policy.role === 'appearance' && !caller.appearanceOwnerId))
   )
-    return stationControlRefusal('station_control_role_required');
+    return {
+      code: 'station_control_role_required',
+      message:
+        'This session has no verified person to act for. Ask from the original chat or have the person complete the action in Station.',
+    };
   if (policy.role === 'operator') {
     const principal = caller.principal;
     const isOperator =

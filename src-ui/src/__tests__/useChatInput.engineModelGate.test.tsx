@@ -175,6 +175,25 @@ describe('useChatInput engine capability model gate', () => {
     vi.clearAllMocks();
   });
 
+  test('stages the ACP mode without changing the confirmed session mode', () => {
+    mockAgent = opencodeAgent;
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Mode',
+    });
+    activeChatsStore.updateChat(SESSION_ID, { currentModeId: 'build' });
+    const { result } = renderChatInput({
+      runtimeConnection: opencodeConnection,
+    });
+
+    act(() => result.current.handleAcpSessionModeChange('plan'));
+    expect(activeChatsStore.getSnapshot()[SESSION_ID]).toMatchObject({
+      currentModeId: 'build',
+      requestedProviderOptions: { mode: 'plan' },
+    });
+  });
+
   test('changes and clears a speed tier without retaining the legacy Fast override', () => {
     mockAgent = null;
     activeChatsStore.initChat(SESSION_ID, {

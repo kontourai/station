@@ -1,0 +1,7 @@
+{
+  "revision": "d77858e33a62ffd47c700917b0e1a283106d4160",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Checked the native sampler and durable warning at the bootstrap owner. The guide distinguishes the OTel reporting timer, the 100 ms sample population, sampling phase and reset limits, 10 s windows and late GC attribution. The focused default-factory test passed and rejected a 20 ms factory reversion.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

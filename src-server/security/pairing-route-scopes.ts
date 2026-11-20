@@ -849,12 +849,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
-  // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
-  // return bounded projections — hashed transport keys, outcome codes and
-  // ids, never a payload or secret. The shared ledger is operator management,
+  // Epic #3439: Automation reads return bounded projections — hashed
+  // transport keys, outcome codes, ids and secret-free sources, never a
+  // payload or secret. The shared ledger is operator management.
   // Deliberately NOT a family: `/automations` mutations create and enable
-  // triggers that start agent work, so every mutating method stays unmapped
-  // (refused) until a later slice classifies it on purpose.
+  // triggers that start agent work. #4513 classifies them on purpose as
+  // access management, and the routes additionally require the operator in
+  // person (`operator(request)`), so a paired device's scope alone is never
+  // enough.
   {
     id: '/api/isolated-repairs:operator',
     method: '*',
@@ -869,6 +871,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: `/automations:${method.toLowerCase()}`,
+      method,
+      prefix: '/automations',
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -3984,6 +3995,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // writes one Project setting; the runtime Project guard admits only the
     // owner, and no station-control tool names it.
     { method: 'PUT', path: '/api/projects/:slug/pull-request-watch' },
+    // #5063 the `#general` coordinator's limits. One Project setting with
+    // the same admission as the watch above: owner only, no tool names it.
+    { method: 'PUT', path: '/api/projects/:slug/room-coordinator' },
     // #488 Explicitly shared Task reads retain the Project family's read tier;
     // exact membership/share/Task checks own resource visibility. Administration
     // retains the family's operate tier and separately requires Station operator.
@@ -4736,6 +4750,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/conversations/:conversationId/handoff',
     },
     {
+      method: 'POST',
+      path: '/api/orchestration/conversations/:conversationId/staged-handoff',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
+    },
+    {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
     },
@@ -5198,6 +5220,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/projects/:slug/room/agents/:requestId/reconcile',
     },
+    // The `#general` coordinator (#5063), so a paired phone can review its
+    // cards. Start and the status sweep compose the room's execute tier,
+    // exactly as an agent request does; the view is the room's read.
+    { method: 'GET', path: '/api/projects/:slug/room/coordinator' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/coordinator/proposals/:proposalId/start',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/coordinator/sweep' },
     // Named channels (#4792): the same per-room actions, addressed per channel.
     // Create, rename, topic and archive compose the room's `edit` tier.
     { method: 'GET', path: '/api/projects/:slug/channels' },

@@ -157,6 +157,13 @@ export {
   useRevokeAnswerShareMutation,
 } from './query-domains/answerShares';
 export {
+  useAutomationDeliveries,
+  useAutomationEpisodes,
+  useAutomationRules,
+  useAutomationSources,
+  useRetryAutomationEpisode,
+} from './query-domains/automations';
+export {
   canMaterializeKitProjectLayout,
   type IntegrationLifecycleResult,
   type IntegrationViewModel,

@@ -280,6 +280,7 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
     store: () => store,
     enabled: () => true,
     headReviewEnabled: () => true,
+    headReviewHold: (prKey) => reviewer.watchHold(prKey),
     session,
     mayContinue: (conversationId, userId) =>
       h.inbox.mayContinue(conversationId, userId),
@@ -455,6 +456,169 @@ const expectedRequestId = (headSha: string) =>
   `prh-${createHash('sha256').update(`${PR_KEY}\u0000${headSha}`).digest('hex').slice(0, 40)}`;
 
 describe('Station reviews each new pull request head once', () => {
+  it('a watched green head reports ready only after its own review finishes without required findings', async () => {
+    const t = await setup(REVIEW_AND_SEND);
+    t.store.setWatch(PR_KEY, {
+      taskId: 'task-1',
+      maxFixAttempts: 3,
+      extra: 0,
+      since: new Date().toISOString(),
+    });
+    const onReady = vi.fn();
+    t.setDelivery({ onReady });
+    const release = t.reviews.hold();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+    expect(onReady).not.toHaveBeenCalled();
+    expect(t.reviewer().watchHold(PR_KEY)).toMatchObject({
+      state: 'reviewing',
+      headSha: t.repo.first,
+    });
+    release();
+    await t.reviewer().settled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(t.reviewer().watchHold(PR_KEY)).toBeUndefined();
+    await t.tick();
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('another PR’s pending feedback does not prevent this green head from being reviewed', async () => {
+    const t = await setup(REVIEW_ONLY);
+    t.store.recordDelivery({
+      id: 'other-pr',
+      prKey: 'github:other',
+      conversationId: CONVERSATION,
+      headSha: t.repo.first,
+      category: 'failing-checks',
+      signature: 'other-failure',
+      summary: { count: 1, failing: ['ci'] },
+      now: new Date().toISOString(),
+    });
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(t.store.pendingDeliveries(CONVERSATION)).toHaveLength(1);
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('required findings and a feedback pause keep a watched head from reporting ready', async () => {
+    const t = await setup(REVIEW_AND_SEND);
+    t.store.setWatch(PR_KEY, {
+      taskId: 'task-1',
+      maxFixAttempts: 3,
+      extra: 0,
+      since: new Date().toISOString(),
+    });
+    const onReady = vi.fn();
+    t.setDelivery({ onReady, inbox: () => undefined });
+    t.reviews.answer.findings = [finding('required', 'high', 'high')];
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(onReady).not.toHaveBeenCalled();
+    expect(t.reviewer().watchHold(PR_KEY)).toMatchObject({
+      state: 'review-needed',
+      headSha: t.repo.first,
+    });
+    const pending = t.store.pendingDeliveries(CONVERSATION)[0]!;
+    t.store.beginBatch(
+      {
+        key: 'dismissed-findings',
+        conversationId: CONVERSATION,
+        generation: 1,
+        state: 'submitting',
+        message: 'Findings',
+        actor: { userId: OWNER },
+        createdAt: new Date().toISOString(),
+        summary: [
+          {
+            prKey: PR_KEY,
+            headSha: t.repo.first,
+            generation: 1,
+            categories: [{ category: 'review-findings', count: 1 }],
+          },
+        ],
+      },
+      [pending.id],
+    );
+    t.store.settleBatch(
+      'dismissed-findings',
+      'cancelled',
+      new Date().toISOString(),
+    );
+    expect(t.reviewer().watchHold(PR_KEY)?.detail).toContain('dismissed');
+    await t.delivery().deliver(CONVERSATION);
+    expect(onReady).not.toHaveBeenCalled();
+    t.store.setCondition(PR_KEY, {
+      state: 'paused',
+      reason: 'fix-budget',
+      headSha: t.repo.first,
+      failing: ['ci'],
+    });
+    expect(t.reviewer().watchHold(PR_KEY)?.detail).toContain('Send again');
+    await t.delivery().deliver(CONVERSATION);
+    expect(onReady).not.toHaveBeenCalled();
+    await t.delivery().sendAgain(PR_KEY);
+    expect(t.store.claim(PR_KEY)?.condition).toBeUndefined();
+    t.reviews.answer.findings = [];
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(t.reviewer().watchHold(PR_KEY)).toBeUndefined();
+  });
+
+  it('a watch whose review setter lost permission needs a current person instead of reporting ready', async () => {
+    const t = await setup(REVIEW_AND_SEND);
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: CONVERSATION,
+      settings: REVIEW_AND_SEND,
+      enabledBy: STRANGER,
+      now: new Date().toISOString(),
+      watch: {
+        taskId: 'task-1',
+        maxFixAttempts: 3,
+        extra: 0,
+        since: new Date().toISOString(),
+      },
+    });
+    const onReady = vi.fn();
+    t.setDelivery({ onReady });
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(t.reviews.run).not.toHaveBeenCalled();
+    expect(onReady).not.toHaveBeenCalled();
+    expect(t.reviewer().watchHold(PR_KEY)?.detail).toContain(
+      'permission changed',
+    );
+    const ownership = new PullRequestFeedbackOwnership({
+      store: () => t.store,
+      readStore: () => t.store,
+      linkedIdentities: async () => [IDENTITY],
+      session: () => ({ state: 'idle', ownerUserId: OWNER }),
+      mayContinue: (id, userId) => t.h.inbox.mayContinue(id, userId),
+      title: () => 'Chat',
+      headReviewEnabled: () => true,
+    });
+    expect(
+      (
+        await ownership.write({
+          conversationId: CONVERSATION,
+          identity: IDENTITY,
+          settings: REVIEW_AND_SEND,
+          viewer: { userId: OWNER, canRead: () => true },
+        })
+      ).kind,
+    ).toBe('ok');
+    await t.tick();
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
   it('runs once a head held still, once per head across reads and a restart, and never writes to the forge', async () => {
     const t = await setup();
     t.observe(t.repo.first);

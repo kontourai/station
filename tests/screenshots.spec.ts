@@ -1999,13 +1999,16 @@ function telemetryConsentScreens(): Screen[] {
         mode === 'dialog-dnt' ||
         mode === 'settings-dnt-after-fix' ||
         mode === 'settings-detailed-expanded';
+      const additionalEndpoint = endpoint
+        ? new URL('https://counts.example.test/events')
+        : undefined;
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       return {
         name: `telemetry-${mode}-${device}`,
         title: `Usage sharing — ${mode} (${device})`,
-        path: '/settings?view=telemetry',
+        path: dialogVisible ? '/' : '/settings?view=telemetry',
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
@@ -2063,9 +2066,8 @@ function telemetryConsentScreens(): Screen[] {
               async (route) => {
                 const body = structuredClone(configSnapshot);
                 body.data.telemetryTier = choices;
-                body.data.productTelemetryEndpoint = endpoint
-                  ? 'https://counts.example.test/events'
-                  : '';
+                body.data.productTelemetryEndpoint =
+                  additionalEndpoint?.href ?? '';
                 delete body.data.telemetryEnabled;
                 delete body.data.firstRun;
                 await route.fulfill({ json: body });
@@ -2079,6 +2081,7 @@ function telemetryConsentScreens(): Screen[] {
                   acknowledged: !dialogVisible,
                   telemetryEnabled: false,
                   endpointConfigured: endpoint,
+                  additionalHost: additionalEndpoint?.host,
                   publishers,
                 });
                 await route.fulfill({ json: body });
@@ -2154,6 +2157,9 @@ function telemetryConsentScreens(): Screen[] {
         },
         afterGoto: async (page) => {
           if (dialogVisible) {
+            await page
+              .getByRole('button', { name: 'Review choices', exact: true })
+              .click();
             const dialog = page.getByRole('dialog', {
               name: 'Usage sharing',
             });
@@ -2255,15 +2261,6 @@ function telemetryConsentScreens(): Screen[] {
               await button.click({ trial: true });
             }
             return;
-          }
-          if (dnt && endpoint) {
-            const dialog = page.getByRole('dialog', {
-              name: 'Usage sharing',
-            });
-            await dialog
-              .getByRole('button', { name: 'Not now', exact: true })
-              .click();
-            await expect(dialog).toHaveCount(0);
           }
           const choice = page
             .getByRole('region', { name: 'Usage sharing choices' })
@@ -2960,6 +2957,18 @@ function pullRequestWatchScreens(): Screen[] {
                   fixAttempts: 3,
                   maxFixAttempts: 3,
                 },
+                {
+                  identity: identity('63'),
+                  url: 'https://github.com/acme/widgets/pull/63',
+                  watch: {
+                    state: 'review-needed',
+                    headSha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
+                    detail:
+                      'Required findings were dismissed. Choose Review again.',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
               ],
               refusals: [
                 {
@@ -3030,6 +3039,7 @@ function pullRequestWatchScreens(): Screen[] {
           });
           await expect(panel).toBeVisible();
           await expect(panel.getByText('Ready for you')).toBeVisible();
+          await expect(panel.getByText('Review needs you')).toBeVisible();
           await expect(
             panel.getByText('Still failing: ci / unit-tests, ci / lint'),
           ).toBeVisible();
@@ -3064,6 +3074,7 @@ function pullRequestWatchScreens(): Screen[] {
       const projectSlug = `gallery-pr-setting-${theme}-${viewport.width}`;
       let projectFixture: ReturnType<typeof preview> | undefined;
       let projectCreated = false;
+      let previousHeadReview = false;
       const projectScreen: Screen = {
         name: `project-pull-requests-${theme}-${form}`,
         title: `Project pull request setting — ${theme}, ${viewport.width}px`,
@@ -3073,9 +3084,29 @@ function pullRequestWatchScreens(): Screen[] {
         async beforeGoto(page) {
           projectFixture = preview(page);
           await projectFixture.enable();
+          const flags = await projectFixture.request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          previousHeadReview = (await flags.json()).data.find(
+            (entry: { id: string }) => entry.id === 'pull-request-head-review',
+          ).enabled;
+          expect(
+            (
+              await projectFixture.request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                { data: { enabled: true } },
+              )
+            ).ok(),
+          ).toBe(true);
           const project = await projectFixture.request.post(
             `${resolveE2EApiBase()}/api/projects`,
-            { data: { name: projectSlug, slug: projectSlug } },
+            {
+              data: {
+                name: projectSlug,
+                slug: projectSlug,
+                workingDirectory: process.cwd(),
+              },
+            },
           );
           expect(project.ok()).toBe(true);
           projectCreated = true;
@@ -3084,6 +3115,19 @@ function pullRequestWatchScreens(): Screen[] {
             { data: { enabled: true, maxFixAttempts: 3 } },
           );
           expect(set.ok()).toBe(true);
+          const defaults = await projectFixture.request.put(
+            `${resolveE2EApiBase()}/api/pull-request-feedback/projects/${projectSlug}/defaults`,
+            {
+              data: {
+                settings: {
+                  fixFailingChecks: true,
+                  addressReviewComments: true,
+                  reviewEachHead: true,
+                },
+              },
+            },
+          );
+          expect(defaults.ok(), await defaults.text()).toBe(true);
         },
         async afterGoto(page) {
           const toggle = page.getByRole('switch', {
@@ -3095,6 +3139,27 @@ function pullRequestWatchScreens(): Screen[] {
           await expect(
             page.getByRole('combobox', { name: 'Fix attempts' }),
           ).toHaveValue('3');
+          await expect(
+            page.getByRole('heading', { name: 'Other Task pull requests' }),
+          ).toBeVisible();
+          const groupHeading = page.getByRole('heading', {
+            name: 'Other Task pull requests',
+          });
+          const headingBox = await groupHeading.boundingBox();
+          expect(headingBox).not.toBeNull();
+          const rowBottom = await page
+            .getByRole('combobox', { name: 'Fix attempts' })
+            .evaluate(
+              (element) =>
+                element.closest('.page-row')!.getBoundingClientRect().bottom,
+            );
+          expect(headingBox!.y - rowBottom).toBeGreaterThanOrEqual(16);
+          await expect(
+            page.getByRole('switch', { name: 'Review each new head' }),
+          ).toBeChecked();
+          await expect(
+            page.getByRole('link', { name: 'Agent feedback', exact: true }),
+          ).toHaveCount(0);
         },
         async cleanup() {
           try {
@@ -3105,11 +3170,67 @@ function pullRequestWatchScreens(): Screen[] {
               expect(deleted.ok()).toBe(true);
             }
           } finally {
+            expect(
+              (
+                await projectFixture!.request.put(
+                  `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                  { data: { enabled: previousHeadReview } },
+                )
+              ).ok(),
+            ).toBe(true);
             await projectFixture?.restore();
           }
         },
       };
-      return [taskScreen, projectScreen];
+      const noRepositorySlug = `gallery-pr-no-repo-${theme}-${viewport.width}`;
+      let noRepositoryFixture: ReturnType<typeof preview> | undefined;
+      let noRepositoryCreated = false;
+      const noRepositoryScreen: Screen = {
+        name: `project-pull-requests-no-repository-${theme}-${form}`,
+        title: `Project pull requests setup — ${theme}, ${viewport.width}px`,
+        path: `/projects/${noRepositorySlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          noRepositoryFixture = preview(page);
+          await noRepositoryFixture.enable();
+          const created = await noRepositoryFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Design notes', slug: noRepositorySlug } },
+          );
+          expect(created.ok(), await created.text()).toBe(true);
+          noRepositoryCreated = true;
+        },
+        async afterGoto(page) {
+          await expect(
+            page.getByText('Add a repository to use pull requests'),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Open Sources' }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('switch', { name: 'Watch Task pull requests' }),
+          ).toHaveCount(0);
+          await expect(
+            page.getByRole('button', { name: 'Save', exact: true }),
+          ).toHaveCount(0);
+        },
+        async cleanup() {
+          try {
+            if (noRepositoryCreated)
+              expect(
+                (
+                  await noRepositoryFixture!.request.delete(
+                    `${resolveE2EApiBase()}/api/projects/${noRepositorySlug}`,
+                  )
+                ).ok(),
+              ).toBe(true);
+          } finally {
+            await noRepositoryFixture?.restore();
+          }
+        },
+      };
+      return [taskScreen, projectScreen, noRepositoryScreen];
     }),
   );
 }
@@ -5004,6 +5125,132 @@ function roomConversationScreens(): Screen[] {
 }
 
 /**
+ * #5063: `#general` with its coordinator, at 1440 and 390 in both themes: a
+ * routed reply with its suggested-Tasks card (one Task done, two to start,
+ * so Start all shows), a settled Task's result and the coordinator bar. The
+ * `project-room-coordinator` preview is turned on on the e2e Station and the
+ * handshake advertises `projectRoomCoordinator`; the room and its card come
+ * from the room fixture.
+ */
+function roomCoordinatorScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      const slug = `gallery-coordinator-${theme}-${viewport.width}`;
+      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+      let created = false;
+      let previousPreview: boolean | undefined;
+      let fixture:
+        | Awaited<ReturnType<typeof installProjectRoomFixture>>
+        | undefined;
+      let restoreHandshake: (() => Promise<void>) | undefined;
+      return {
+        name: `room-coordinator-${theme}-${width}`,
+        title: `Project room coordinator — ${theme}, ${viewport.width}px`,
+        path: `/projects/${slug}?section=room`,
+        viewport,
+        async beforeGoto(page) {
+          request = createAuthenticatedE2ERequest(page.request);
+          const previews = await request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          expect(previews.ok()).toBe(true);
+          const preview = (await previews.json()).data.find(
+            (item: { id: string }) => item.id === 'project-room-coordinator',
+          );
+          expect(preview).toBeDefined();
+          previousPreview = preview.enabled;
+          const enabled = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+            { data: { enabled: true } },
+          );
+          expect(enabled.ok()).toBe(true);
+          const response = await request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Onboarding revamp', slug } },
+          );
+          expect(response.ok()).toBe(true);
+          created = true;
+          const project = (await response.json()).data;
+          restoreHandshake = await withRoute(
+            page,
+            '**/.well-known/station/v1',
+            (route) =>
+              fulfillGalleryStationHandshake(route, false, {
+                projectRoomMessageActions: true,
+                projectRoomCoordinator: true,
+              }),
+          );
+          fixture = await installProjectRoomFixture(page, {
+            slug,
+            projectId: project.id,
+            scene: 'coordinator',
+          });
+        },
+        async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const roomRegion = page.getByRole('region', {
+            name: 'Project room',
+            exact: true,
+          });
+          await expect(roomRegion).toBeVisible();
+          const card = roomRegion.getByRole('region', {
+            name: 'Suggested Tasks, 3',
+          });
+          await expect(card).toBeVisible();
+          await expect(card.getByText('Done')).toBeVisible();
+          await expect(
+            card.getByRole('button', {
+              name: 'Start Document the redirect flag',
+            }),
+          ).toBeVisible();
+          const startAll = card.getByRole('button', { name: 'Start all 2' });
+          await expect(startAll).toBeVisible();
+          await expect(
+            roomRegion.getByText('0 working · 0 waiting · up to 2 at once'),
+          ).toBeVisible();
+          const sweep = roomRegion.getByRole('button', {
+            name: 'Status sweep',
+          });
+          await expect(sweep).toBeVisible();
+          await expect(
+            roomRegion.getByText('Task finished:', { exact: false }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width) {
+            await expectTouchTarget(startAll, 'Start all');
+            await expectTouchTarget(sweep, 'Status sweep');
+          }
+          // The card's own row sits in view for the shot.
+          await card.scrollIntoViewIfNeeded();
+          await page.mouse.move(0, 0);
+        },
+        async cleanup() {
+          await fixture?.cleanup();
+          await restoreHandshake?.();
+          if (created) {
+            const removed = await request.delete(
+              `${resolveE2EApiBase()}/api/projects/${slug}`,
+            );
+            expect(removed.ok()).toBe(true);
+          }
+          if (previousPreview !== undefined) {
+            const restored = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+              { data: { enabled: previousPreview } },
+            );
+            expect(restored.ok()).toBe(true);
+          }
+        },
+      };
+    }),
+  );
+}
+
+/**
  * Channel navigation (#4794, #4795): the Project's channel list (the phone's
  * Project page; at 1440 the sidebar with one Project expanded and one
  * collapsed), a channel opened by its address, and a thread. Unread state
@@ -6231,6 +6478,7 @@ function projectCoordinationScreens(): Screen[] {
 const SCREENS: Screen[] = [
   ...projectCoordinationScreens(),
   ...roomConversationScreens(),
+  ...roomCoordinatorScreens(),
   ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...projectLibraryScreens(),

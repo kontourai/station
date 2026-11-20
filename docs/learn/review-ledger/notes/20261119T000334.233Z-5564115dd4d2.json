@@ -1,0 +1,21 @@
+{
+  "revision": "cddc2ba45ed2d2e5de1c7bc0f5dc52ffe50889bd",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Updated the Sessions example evidence with the independent isolated Station receipt in issue 2785. It covers paired Device empty result and revocation through MCP stdio. Voice and external UI host evidence retain their stated limits.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked the isolated Station receipt against the unchanged example reader and the instance-owned shared-child secret environment binding seam. The paired Device empty and revoked calls are verified. External-host panel rendering remains unverified.","inputs":["examples/station-sessions-mcp/README.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The Sessions report now identifies external MCP host rendering as the remaining runtime gap. Example inventory, file coverage, and all other runtime classifications are unchanged, and the conformance suite passed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/connections.md","note":"The Sessions report now identifies external MCP host rendering as the remaining runtime gap. Example inventory, file coverage, and all other runtime classifications are unchanged, and the conformance suite passed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The Sessions report now identifies external MCP host rendering as the remaining runtime gap. Example inventory, file coverage, and all other runtime classifications are unchanged, and the conformance suite passed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/README.md","note":"The Sessions report now identifies external MCP host rendering as the remaining runtime gap. Example inventory, file coverage, and all other runtime classifications are unchanged, and the conformance suite passed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/docs-snippets/README.md","note":"The Sessions report now identifies external MCP host rendering as the remaining runtime gap. Example inventory, file coverage, and all other runtime classifications are unchanged, and the conformance suite passed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The Sessions report now identifies external MCP host rendering as the remaining runtime gap. Example inventory, file coverage, and all other runtime classifications are unchanged, and the conformance suite passed.","inputs":["scripts/examples-conformance.mjs"]}
+  ]
+}

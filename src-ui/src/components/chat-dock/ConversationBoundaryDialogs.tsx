@@ -58,6 +58,8 @@ export function ConversationBoundaryDialogs({
   showToast,
   refetchOrchestrationSessions,
   continueOnStation,
+  onStageAgentChange,
+  handoffAvailable = true,
 }: {
   dialogs: ConversationBoundaryDialogsState;
   apiBase: string;
@@ -83,6 +85,10 @@ export function ConversationBoundaryDialogs({
   refetchOrchestrationSessions: ReturnType<
     typeof useOrchestrationSessionsQuery
   >['refetch'];
+  handoffAvailable?: boolean;
+  onStageAgentChange?: React.ComponentProps<
+    typeof ConversationHandoffDialog
+  >['onStage'];
   /** Opens the paired Station's new chat and sends its first turn there. */
   continueOnStation?: (
     result: ContinuedOnStation,
@@ -110,7 +116,7 @@ export function ConversationBoundaryDialogs({
   );
   return (
     <>
-      {handoffSource && handoffSession?.conversationId && (
+      {handoffAvailable && handoffSource && handoffSession?.conversationId && (
         <ConversationHandoffDialog
           // A new dialog per open: request state never crosses chats.
           key={`${handoffSource.id}\0${handoffSource.nonce}`}
@@ -118,6 +124,7 @@ export function ConversationBoundaryDialogs({
           conversationId={handoffSession.conversationId}
           sessionId={handoffSession.id}
           currentAgentId={handoffSession.agentSlug}
+          onStage={handoffIsActive ? onStageAgentChange : undefined}
           executionPreset={handoffSource.executionPreset}
           prepareDraft={
             handoffIsActive ? chatInput.prepareOutgoingText : undefined

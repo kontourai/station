@@ -104,8 +104,9 @@ ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
-invoke the callback is the engine's own configuration. For verified OpenCode
-1.x over ACP, Station sets its launch configuration from the approval mode.
+invoke the callback is the engine's own configuration. Station's approval
+mode can answer those requests without changing that configuration. For
+verified OpenCode 1.x over ACP, Station also sets the launch configuration.
 For OpenCode 2.x over ACP, host Never ask answers the engine's own requests
 without a launch overlay; confined modes remain refused
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
@@ -132,8 +133,10 @@ own allowlist. An empty group permits no tool. Station preserves the groups
 in delegated requests and binds them to the runtime attestation. Station
 refuses execution of requests or recorded sessions carrying inherited groups,
 including managed Station execution and forwarding to a peer or SSH target.
-Enabling that execution requires binding the policy to conversation reuse and
-durable intent, then proving enforcement at the actual tool effect.
+When reusing a Session, Station checks that the recorded policy retains the
+requested tool allowlist, blocked tools, and approval denial before sending a
+turn. Inherited groups still require durable intent binding and proof of
+enforcement at the actual tool effect before execution can be enabled.
 
 Station Control derives the dispatch caller from its verified session.
 A child can start another child only on this Station in the caller's own
@@ -167,11 +170,12 @@ approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
 escalations of a `host` session automatically without opening a Station
-approval card. The Ask
-chip confirms the approval-policy mapping only; Station does not currently
-report the effective reviewer. Its picker option and the chip's accessible name
-name that gap; the chip's hover tooltip carries only the policy boundary.
-Ask alone is not evidence that a person must approve every sandbox escalation.
+approval card. The approval sheet shows the reviewer Codex reported for the
+current native thread as You, Automatic, or Unknown. Station records startup,
+resume, fork, and subsequent settings reports independently of the approval
+mode. The last report is restored on reconnect. An explicit workspace start
+is refused if Codex reports an automatic reviewer in conflict with the
+human-reviewer configuration.
 See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 
 This mapping was checked against Codex CLI 0.162.1's generated app-server

@@ -113,6 +113,16 @@ refresh on focus/remount; a hook opts one read back in with
 placeholder content from the answer for the new key. Preserve loading, empty,
 unavailable and error as different states.
 
+For a list that can be refreshed by its reader, use
+[`ListRefresh`](../../src-ui/src/components/refresh/ListRefresh.tsx). The view
+supplies its current scope, the existing queries it needs to re-read, and its
+background activity. Use the same action for menu and touch. Mount
+`ListRefreshStatus` at the bottom of the visible list and supply a label that
+names the work being refreshed. The pill delays automatic feedback and leaves
+rows in place. `ListRefreshPull` wraps the reading surface.
+Repeated manual requests join the one in progress. Connection recovery and
+provider mutations keep their existing action owners.
+
 Engine availability events refresh active reads of the Agents catalog and cached
 connection lists, details and ACP discovery through
 [useServerEvents](../../src-ui/src/hooks/useServerEvents.ts). Connection caches
@@ -166,6 +176,9 @@ with its feature. A new rule should have real consumers and one style owner.
   and [PageRow](../../src-ui/src/components/PageRow.tsx). The row owns its
   label, density-sensitive description and internal spacing. Compare the
   description at both densities before adding a feature override.
+- Use `PageSectionGroup` for a named group inside a settings section. It owns
+  the space above the group, heading size, and gap before its controls.
+  Avoid browser-default heading margins and nested cards inside a settings card.
 - `StatusSummary` (`src-ui/src/components/StatusSummary.tsx`) groups a resource
   name, version, status badge, and subdued check time. Desktop and server
   updates use it in both Updates and System settings. Pass the badge from

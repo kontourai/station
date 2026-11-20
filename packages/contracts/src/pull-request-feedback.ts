@@ -399,6 +399,8 @@ export interface PullRequestFeedbackView {
 
 export interface ConversationPullRequestFeedback {
   conversationId: string;
+  /** The host's current person/read/continue rule; absent on older hosts. */
+  viewerMayChange?: boolean;
   pullRequests: PullRequestFeedbackView[];
 }
 

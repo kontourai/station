@@ -949,6 +949,12 @@ which consumers drive its rate (#4992). Each read records:
   thread again or reused it: `projection_refolded`, `projection_reused`,
   `count_refreshed` and `count_reused`.
 
+The projection and count cache keeps up to 2,048 marked threads. A wider
+read holds reusable entries until it assembles its response. It refreshes
+existing cache entries and fills spare slots. Other results from that
+request stay request-local. Expect some refolds for a set larger than the
+cache even when the event log is idle.
+
 A purpose outside the vocabulary is recorded as `invalid`. No session, user or
 thread identity is ever a dimension. Without a collector, the diagnostics
 bundle's `sessionReadModel` field carries the same per-purpose totals since the
@@ -1514,11 +1520,20 @@ a confirmed deferral.
 | `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
 | `station.json_store.write_bytes` | Bytes one durable JSON store write puts on disk. Only stores that name themselves record (currently the notification feeds and the notification dedupe tombstones); `previous` is the retained prior copy each durable write also rewrites | `store`: `notifications`, `notification-tombstones`, `principal-notifications`; `artifact`: `primary`, `previous` | By |
 
-The lag histogram only sees a stall that overlaps a timer wake, and it is
-exported only with an OTel endpoint. Independently of OTel, a window whose
-event-loop delay reached one second writes an `Event loop stalled` warning to
-the server log (`<STATION_HOME>/logs/server/`). The warning carries
-`maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
+The exported lag metric samples the wake of the 10-second reporting timer and
+requires an OTel endpoint. Independently of OTel, Node's native event-loop
+delay histogram samples at a nominal 100 ms cadence and resets at each
+10-second report. A window with a sampled maximum of one second or more writes
+an `Event loop stalled` warning to the server log (`<STATION_HOME>/logs/server/`).
+The warning carries `sampleResolutionMs` and the histogram's `maxDelayMs` and
+`p99DelayMs`, rounded to milliseconds. These values describe intervals between
+samples. Even when idle, intervals are typically around the sample cadence.
+Compared with 20 ms sampling, 100 ms sampling reduces idle timer wakeups and
+uses fewer observations per window. A block slightly shorter than one second
+can trigger a warning because its sample includes time before the block. Sample
+timing and window resets can also leave a block unreported.
+
+The warning also shows what the process did during `elapsedMs`:
 `cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
 `gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. Read them as
 leads. CPU time is the whole process's, across all of its threads, not only

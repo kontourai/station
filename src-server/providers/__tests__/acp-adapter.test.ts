@@ -4763,6 +4763,143 @@ describe('AcpAdapter', () => {
     }
   });
 
+  test.each(['agy', 'kiro-cli'])(
+    'Full access on %s answers regular ACP asks, then Ask takes effect without restarting',
+    async (command) => {
+      const { adapter, processes } = createAdapter({
+        connectionOverrides: [
+          { id: 'other', command: `/usr/bin/${command}`, args: ['acp'] },
+        ],
+      });
+      const threadId = 'antigravity-approval';
+      const events = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        await adapter.startSession({
+          provider: 'acp',
+          threadId,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'other' },
+          confinement: 'host',
+          modelOptions: { approvalMode: 'never' },
+        });
+        await nextEvent(events, 'session.started');
+        expect(await nextEvent(events, 'session.configured')).toMatchObject({
+          metadata: { approvalMode: 'never' },
+        });
+
+        const permission = (
+          id: string,
+          kind: 'other' | 'switch_mode',
+          options = [PERMISSION_OPTIONS[0]!, PERMISSION_OPTIONS[2]!],
+        ) =>
+          processes[0]!.client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: { toolCallId: id, title: id, name: id, kind },
+            options,
+          });
+        await expect(
+          permission('mcp_station-control_get_appearance', 'other'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        const persistent = permission('always-only', 'other', [
+          PERMISSION_OPTIONS[1]!,
+          PERMISSION_OPTIONS[2]!,
+        ]);
+        const persistentRequest = await nextEvent(events, 'request.opened');
+        expect(persistentRequest).toMatchObject({ title: 'always-only' });
+        await adapter.respondToRequest(
+          threadId,
+          String(persistentRequest.requestId),
+          'decline',
+        );
+        await expect(persistent).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        await nextEvent(events, 'request.resolved');
+
+        const plan = permission('plan-exit', 'switch_mode');
+        const planRequest = await nextEvent(events, 'request.opened');
+        expect(planRequest).toMatchObject({
+          method: 'request.opened',
+          title: 'plan-exit',
+        });
+        await adapter.respondToRequest(
+          threadId,
+          String(planRequest.requestId),
+          'decline',
+        );
+        await plan;
+        await nextEvent(events, 'request.resolved');
+
+        await adapter.sendTurn({
+          threadId,
+          input: 'Continue',
+          confinement: 'host',
+          modelOptions: { approvalMode: 'ask' },
+        });
+        await nextEvent(events, 'turn.started');
+        processes[0]!.resolvePrompt('end_turn');
+        await nextEvent(events, 'turn.completed');
+        expect(processes).toHaveLength(1);
+
+        const ask = permission('mcp_station-control_get_appearance', 'other');
+        const opened = await nextEvent(events, 'request.opened');
+        expect(opened).toMatchObject({
+          method: 'request.opened',
+          title: 'mcp_station-control_get_appearance',
+        });
+        await adapter.respondToRequest(
+          threadId,
+          String(opened.requestId),
+          'decline',
+        );
+        await expect(ask).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test('a delegated child cannot auto-approve a nameless ACP edit through the parent defaults', async () => {
+    const { adapter, processes } = createAdapter();
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    try {
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'approval-forbidden-child',
+        cwd: '/tmp/project',
+        metadata: {
+          connectionId: 'kiro',
+          delegation: {
+            mode: 'isolated-child',
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: 'parent',
+            rootAgentSlug: 'parent',
+            denyApprovals: true,
+          },
+        },
+        modelOptions: { approvalMode: 'auto' },
+      });
+      await nextEvent(events, 'session.started');
+      await nextEvent(events, 'session.configured');
+      await expect(
+        processes[0]!.client.requestPermission({
+          sessionId: 'ignored-by-adapter',
+          toolCall: { toolCallId: 'nameless', title: 'Edit', kind: 'edit' },
+          options: PERMISSION_OPTIONS,
+        }),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
   test('acceptForSession grants the whole tool: a later call auto-allows with no prompt', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -6765,11 +6902,19 @@ describe('station#1182: runtime-reported model', () => {
       },
     });
 
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'acp',
       threadId: 'thread-mode-turn',
       cwd: '/tmp/project',
       metadata: { connectionId: 'kiro' },
+    });
+    expect((await nextEvent(iterator, 'session.started')).method).toBe(
+      'session.started',
+    );
+    expect(await nextEvent(iterator, 'initial mode')).toMatchObject({
+      method: 'session.configured',
+      metadata: { acpSessionMode: 'ask' },
     });
     expect(processes[0].setModeCalls).toEqual([]);
 
@@ -6779,6 +6924,10 @@ describe('station#1182: runtime-reported model', () => {
       modelOptions: { mode: 'code' },
     });
     expect(processes[0].setModeCalls).toEqual(['code']);
+    expect(await nextEvent(iterator, 'engine mode')).toMatchObject({
+      method: 'session.engine-mode-observed',
+      modeId: 'code',
+    });
     processes[0].resolvePrompt('end_turn');
 
     await adapter.stopAll();

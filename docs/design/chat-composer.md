@@ -248,6 +248,31 @@ known brands. Selecting a model closes the picker; runtime changes keep it open.
 Home and New Chat share its menu
 controller; `/model` shares filtering, availability and choice memory with the popup.
 
+With **Stage chat Agent changes** enabled, choose an Agent and review what
+will carry over. The composer shows the destination engine and requested model
+for the next message. The Model picker uses the staged Agent's bound engine connection. A Station
+Agent uses its configured model defaults for this Send.
+Choose the original Agent or **Undo** to restore the current composer settings.
+The transcript and current Session remain in place until Send.
+
+Send starts a fresh Session with recent authorized conversation text and the
+draft as its first message. The selected connection and source Session are
+checked again at dispatch. Busy or queued work is resolved before switching.
+A refused send leaves the draft and attachments in the composer. If delivery is
+unconfirmed, **Retry Send** uses the same request. After reload, **Check status**
+looks up that attempt before offering a retry. Station retains the exact request
+in browser storage under the verified Station and person. If the retained
+request expires before Station reserves it, **Withdraw Send** fences that request
+and leaves the draft in the composer.
+Attachments whose bytes are unavailable can be reattached to the draft.
+A queued approval choice must settle before switching Agents.
+
+A dedicated engine-default coding Agent offers the models on its own connection.
+Use **Agent** to switch coding engines. Compatible engine overrides remain
+available for general-purpose Agent profiles.
+
+When this preview is off, the immediate handoff works as described below.
+
 Choosing another engine is a conversation override of the selected Agent's
 execution binding. It retains the authored profile rather than substituting the
 coding app's default profile, and does not edit saved Agent defaults. Known
@@ -270,6 +295,14 @@ turn, queued message or pending check blocks the switch; the handoff's
 **Switch to …** action is disabled for the same reasons ([entry
 point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
 [dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+An idle chat whose saved engine was removed keeps its transcript readable and
+offers **Continue with another agent** to callers allowed to continue. A first
+handoff to a different Agent starts a fresh Session in the same Conversation
+with a bounded excerpt from the transcript, even if both Agents use the same
+connection. Returning to an earlier Session of the selected Agent can resume
+its engine context when Station verifies the original binding and engine
+support.
+
 New chat, the active composer and the handoff dialog use the shared model picker.
 Their catalogs prefer the executing engine's models; another engine's profile
 aliases are not offered. Handoff runtime settings are retained with the exact
@@ -745,7 +778,8 @@ for not sent and may-have-reached, and caution-coloured for a send with no
 answer. An assistant row with nothing to draw renders no bubble: the streaming
 row appears with its first text, reasoning or tool row (the pill carries the
 starting state before that) and eases in, and a settled row whose only content
-is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
+is reasoning keeps a collapsed **Reasoning · N words** disclosure. On a
+phone, live reasoning disclosures also start collapsed. A turn that
 ended with nothing to draw (no text, tool or file rows, or only reasoning the
 reader hides) keeps its row as one line, **No reply**, or **Stopped** when it
 was stopped, with the turn's actions at the end of that line, so both are the
@@ -1117,9 +1151,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   Station has taken over. A pick the engine could not be switched to is never
   shown as applied: the chip shows what still runs, marked pending, with text
   that differs from Default ("Own settings", or "Ask · kept"), and its name
-  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
-  shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. Codex's Default likewise names the engine's own settings
+  says the pick was not applied. A newly recorded decision clears that.
+  Other ACP engines, including Antigravity, use Station's approval modes for
+  the requests they send while keeping their own tool rules. If the host
+  has no request-mode support, the chip shows **Approval: Set by engine**.
+  Signed-in users can save personal approval defaults for Codex, Claude, and
+  Muse where the selected Station permits personal defaults.
+  Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.
@@ -1130,10 +1168,17 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   writable, for a trusted host folder and under Station's `station-workspace`
   profile).
   An engine's advertised Mode (OpenCode's build or plan agent)
-  is a separate picker beside it, never a replacement for it. While Station
+  is a separate picker beside it. In an existing chat, the picker stages the
+  request for the next send even when the model is engine-selected. The chip
+  shows it as pending until the engine reports the mode. If the model picker
+  is available only at start, the composer offers the model and its advertised
+  thinking effort when starting a new chat. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot
   apply names the OpenCode setting and the next step, and offers no Retry.
+  Confirming Full access closes Run Setup. If Station refuses, the notice shows
+  the outcome first and keeps the operator's instructions under **Full access
+  recovery**.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
@@ -1153,6 +1198,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   model, and there is no engine history to carry over. The session list that
   says so is re-read after every send that did not take, and a turn in flight
   outranks it, so a running first turn never reopens Model.
+
+- An ACP mode pick stays pending until the engine confirms it. Station records
+  confirmed ACP and native OpenCode modes as Session observations without
+  changing the Session's model, directory or lifecycle. The Session summary
+  restores the last confirmed mode after reconnecting.
 
 ### Turn activity and follow-up delivery
 
@@ -1465,12 +1515,10 @@ change an existing conversation's binding. The future-project switcher is absent
 from every dock header, including empty and Inbox states. This reflects the October 30 product
 decision to remove a competing project hierarchy, while retaining project
 context in the conversation's session details.
-The **Chats and tasks** picker keeps the shared **New chat** action at the lower
-right, outside the scrolling list. Its accessible name and hover label are
-**New chat**; the mobile header uses its icon-only chat-bubble-plus form.
-It uses the same direct-chat or agent-choice flow as Chat actions;
-opening it sends no message. Rows lead with the marks of the engines that ran
-the conversation (up to three, overlapping, then "+N"; the Agent's own mark
+The mobile **Inbox** is embedded in Chat. The header's Inbox icon and the
+**Inbox** row in Chat actions open it. The header keeps the shared **New chat**
+action outside the scrolling list. Opening the start composer sends no message.
+Rows lead with the marks of the engines that ran the conversation (up to three, overlapping, then "+N"; the Agent's own mark
 when no engine with a mark is recorded) beside the Agent's name, then the
 conversation title, the Project with its icon (or a folder when it has none),
 a pencil when this device holds an unsent draft for it, and a right-aligned
@@ -1500,7 +1548,9 @@ and links the source Session without assigning an Agent or execution Session. Th
 the person's idea as the visible message. The answer/input **Add to Task**
 picker offers **New Task from this** even with an empty Task catalog.
 
-Chat actions retains conversation history, background tasks, connection
+In a chat, **Browse all conversations** opens the saved conversation list
+with rename and delete actions. **History** opens the current conversation's
+read-only timeline. Chat actions also keeps background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
 or **Exit full screen**; the open phone bar also shows the same switch as a
 44px **Full screen chat** / **Restore chat size** control (#4391). Collapse
