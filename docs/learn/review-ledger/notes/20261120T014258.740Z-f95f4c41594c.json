@@ -1,0 +1,7 @@
+{
+  "revision": "731e36957fd4e73a59360f99acaae6cb2e8e6768",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the mounted ChatDock responsive and engine-switch test. The writable fixture supplies verified host authority and a settled preview. The new pending-preview case confirms the switch stays unavailable. All three focused suites passed.","inputs":["src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx"]}
+  ]
+}
