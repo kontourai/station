@@ -1213,6 +1213,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
   const productionFiles = [
     'package.json',
     'scripts/run-biome.mjs',
+    'scripts/lib/biome-cli.mjs',
     'scripts/lib/slot-holder-exec.mjs',
     'scripts/lib/typecheck-host-slots.mjs',
     'scripts/lib/owned-process.mjs',
