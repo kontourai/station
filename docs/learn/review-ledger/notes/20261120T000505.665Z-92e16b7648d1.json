@@ -1,0 +1,7 @@
+{
+  "revision": "2703450e4fa719d150a5820bbf5f5668150594d2",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"The generated host matrix changes only the Strands SDK version to 1.25.0. The owning generator check passes, and the recorded lifecycle fidelity, callback boundaries and limitations are unchanged.","inputs":["docs/design/conduit-runtime-integration.md","docs/conformance/station-runtime-conformance.json"]}
+  ]
+}

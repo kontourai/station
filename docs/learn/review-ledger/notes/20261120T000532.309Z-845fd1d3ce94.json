@@ -1,0 +1,7 @@
+{
+  "revision": "2703450e4fa719d150a5820bbf5f5668150594d2",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"The broker manifest changes only Hono and the Node server adapter. The broker and Lite rate limiter suites pass all 48 cases with those installed versions, including local HTTP admission and method restrictions. The documented broker contracts and deployment limits remain applicable.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/package.json"]}
+  ]
+}
