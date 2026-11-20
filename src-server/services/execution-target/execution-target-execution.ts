@@ -20,6 +20,7 @@ import type {
   ResolvedWorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  type ConversationHandoffEffectStatus,
   type ConversationInboxEntry,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
@@ -686,6 +687,7 @@ export interface ExecutionTargetExecutionDependencies
     },
   ) => Promise<{
     providerTurnId?: string;
+    status?: ConversationHandoffEffectStatus;
     marker?: { sessionId: string };
   } | null>;
   /** Private captured caller guard at the existing provisioning effect. */
@@ -1025,6 +1027,14 @@ export async function executeForegroundMessage(
         inputDigest: submissionDigest,
       },
     );
+    if (
+      input.handoffIntent?.stagedHandoff &&
+      existingEffect?.status === 'indeterminate'
+    ) {
+      throw new ForegroundMessageTurnIdentityUnavailableError(
+        'The earlier Agent change may have started. Check its status before sending again.',
+      );
+    }
     if (existingEffect?.providerTurnId) {
       return {
         conversationId,

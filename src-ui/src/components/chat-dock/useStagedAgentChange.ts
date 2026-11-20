@@ -124,7 +124,7 @@ export function useStagedAgentChange({
         : undefined;
   const clearAttempt = () => {
     sessionStorage.removeItem(storageKey);
-    attempt.current = undefined;
+    if (attempt.current?.key === key) attempt.current = undefined;
   };
 
   const stage = (
@@ -134,6 +134,7 @@ export function useStagedAgentChange({
     resetEngine = false,
   ) => {
     if (
+      sending.current ||
       !chat?.currentSessionId ||
       !chat.conversationId ||
       !scopeIsCurrent?.() ||
@@ -331,6 +332,11 @@ export function useStagedAgentChange({
         () => {
           if (!scopeIsCurrent())
             throw new Error('The Station connection changed.');
+          const earlier = retainedSendKey(storageKey);
+          if (earlier && earlier !== exact.request.idempotencyKey)
+            throw new Error(
+              'Check the earlier Agent change before sending another one.',
+            );
           sessionStorage.setItem(storageKey, exact.request.idempotencyKey);
           attempt.current = exact;
           dispatched = true;

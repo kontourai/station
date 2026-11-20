@@ -1002,6 +1002,55 @@ describe('executeForegroundMessage', () => {
     expect(reordered).toBe(first);
     expect(changed).not.toBe(first);
   });
+  test('a staged handoff with an indeterminate earlier effect cannot repeat the provider start', async () => {
+    const deps = dependencies();
+    deps.getAgent = vi.fn(async (_access, id) => ({
+      slug: id,
+      available: true,
+    }));
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'agent-a',
+    }));
+    const sessionId = 'conversation:test:session:b';
+    deps.prepareConversationHandoff = vi.fn(async () => ({
+      marker: {
+        predecessorSessionId: 'conversation:test',
+        sessionId,
+        targetAgentId: 'agent-b',
+        targetEnvironmentId: 'environment-kontour',
+      },
+      outcome: 'existing',
+      carried: ['authorizedTranscript'],
+      reset: ['providerNativeCursor'],
+    }));
+    deps.readConversationHandoffEffect = vi.fn(async () => ({
+      marker: { sessionId },
+      status: 'indeterminate',
+    }));
+    await expect(
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          conversationId: 'conversation:test',
+          message: 'First turn',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('agent-b'),
+            expectedEngine: { kind: 'station' },
+          },
+          handoffIntent: createConversationHandoffIntent('handoff-key', {
+            expectedCurrentSessionId: 'conversation:test',
+            contextPolicy: 'continue-from-history',
+          }),
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    expect(deps.startSession).not.toHaveBeenCalled();
+    expect(deps.sendTurn).not.toHaveBeenCalled();
+  });
+
   test('retries an accepted handoff with one stable provider-turn claim', async () => {
     const deps = dependencies();
     deps.getAgent = vi.fn(async (_access, id) => ({
