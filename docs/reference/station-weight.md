@@ -342,9 +342,11 @@ reason. It does not fail the run.
 
 `npm run perf:station-weight -- --report-only --delegated-pair` compares
 the first operator follow-up in two separate Claude delegations. Both use
-the same seed prompt, canned reply and follow-up. The first delegation's
-engine must exit under Station's existing finished-session park policy.
-Only then does the harness seed the warm comparison. Use
+the same seed prompt, canned reply and follow-up. The first delegation is
+eligible for Station's existing finished-session park policy. The harness
+waits for its engine to exit before seeding the warm comparison. The
+process observation establishes exit and replacement, without a separate
+receipt for the cause of the exit. Use
 `--delegated-pair=parked-first` to reverse the follow-up order.
 
 The report requires the same model and Claude Code version. Each outgoing

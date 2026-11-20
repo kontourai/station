@@ -623,7 +623,15 @@ describe('matched delegated benchmark evidence', () => {
     const result = {
       ...resultAtBaseline(),
       settings: { delegatedPair: 1 },
-      delegatedPair: { status: 'measured' },
+      delegatedPair: {
+        status: 'measured',
+        followUpOrder: 'warm-first',
+        memoryBasis: 'phys_footprint',
+        releasedEngineMemoryBytes: 147_000_000,
+        releasedAfterMs: 15_100,
+        warmFollowUpMs: 175,
+        parkedFollowUpMs: 320,
+      },
     };
 
     expect(
@@ -639,6 +647,17 @@ describe('matched delegated benchmark evidence', () => {
     expect(
       evaluateRun({ ...result }, { baselinePath, reportOnly: true }).gate,
     ).toMatchObject({ passed: true, comparedCount: 0 });
+    expect(
+      evaluateRun(
+        { ...result, delegatedPair: { status: 'measured' } },
+        { baselinePath, reportOnly: true },
+      ).gate,
+    ).toMatchObject({
+      passed: false,
+      reasons: [
+        expect.stringContaining('missing or invalid paired observations'),
+      ],
+    });
     expect(
       evaluateRun(
         {

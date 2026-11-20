@@ -2117,7 +2117,7 @@ async function measureDelegatedPair({
     history:
       'both arms carried the ordered seed prompt, seed reply and first follow-up, including repository instructions',
     processIdentity:
-      'old parked engine exited, warm engine retained, new engine observed after resume',
+      'the seeded engine exited, the warm engine remained, and a new engine appeared on resume',
   };
 }
 
@@ -2754,6 +2754,19 @@ export const DEFAULT_SETTINGS = Object.freeze({
   readyLaunches: 1,
 });
 
+function completeDelegatedPair(pair) {
+  return (
+    pair?.status === 'measured' &&
+    ['warm-first', 'parked-first'].includes(pair.followUpOrder) &&
+    ['phys_footprint', 'rss'].includes(pair.memoryBasis) &&
+    Number.isSafeInteger(pair.releasedEngineMemoryBytes) &&
+    pair.releasedEngineMemoryBytes > 0 &&
+    [pair.releasedAfterMs, pair.warmFollowUpMs, pair.parkedFollowUpMs].every(
+      (value) => Number.isFinite(value) && value >= 0,
+    )
+  );
+}
+
 /**
  * Applies the baseline to a result: records it when asked (refusing an
  * incomplete one), evaluates the budgets, and decides the gate.
@@ -2796,10 +2809,10 @@ export function evaluateRun(
         `request conversation NOT_MEASURED: ${result.requestConversation?.reason ?? 'incomplete paired turns'}`,
       );
     }
-    if (hasDelegatedPair && result.delegatedPair?.status !== 'measured') {
+    if (hasDelegatedPair && !completeDelegatedPair(result.delegatedPair)) {
       result.gate.passed = false;
       result.gate.reasons.push(
-        `delegated pair NOT_MEASURED: ${result.delegatedPair?.reason ?? 'did not run'}`,
+        `delegated pair NOT_MEASURED: ${result.delegatedPair?.reason ?? 'missing or invalid paired observations'}`,
       );
     }
     if (!existsSync(baselinePath) && !reportOnly)
@@ -3588,6 +3601,10 @@ if (invokedDirectly(import.meta.url)) {
   );
   const number = (name) =>
     args[name] === undefined ? undefined : Number(args[name]);
+  assert(
+    args.evaluate === undefined || args['delegated-pair'] === undefined,
+    '--delegated-pair starts a new experiment and cannot be combined with --evaluate',
+  );
   assert(
     [undefined, true, 'parked-first'].includes(args['delegated-pair']),
     '--delegated-pair accepts only parked-first',
