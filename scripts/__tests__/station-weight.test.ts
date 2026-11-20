@@ -1,4 +1,10 @@
-import { mkdirSync, readFileSync, realpathSync, symlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import Anthropic from '@anthropic-ai/sdk';
@@ -605,6 +611,51 @@ const verdictOf = (
   verdicts: Array<{ id: string; verdict: string }>,
   id: string,
 ) => verdicts.find((entry) => entry.id === id)?.verdict;
+
+describe('matched delegated benchmark evidence', () => {
+  test('saved pairs cannot replace the baseline or qualify an incomplete pair', () => {
+    const baselinePath = join(
+      makeTempDir('station-weight-pair-'),
+      'baseline.json',
+    );
+    const before = JSON.stringify(FIXTURE_BASELINE);
+    writeFileSync(baselinePath, before);
+    const result = {
+      ...resultAtBaseline(),
+      settings: { delegatedPair: 1 },
+      delegatedPair: { status: 'measured' },
+    };
+
+    expect(
+      evaluateRun({ ...result }, { baselinePath, record: true }).gate,
+    ).toMatchObject({
+      passed: false,
+      reasons: [expect.stringContaining('cannot record a baseline')],
+    });
+    expect(readFileSync(baselinePath, 'utf8')).toBe(before);
+    expect(evaluateRun({ ...result }, { baselinePath }).gate.passed).toBe(
+      false,
+    );
+    expect(
+      evaluateRun({ ...result }, { baselinePath, reportOnly: true }).gate,
+    ).toMatchObject({ passed: true, comparedCount: 0 });
+    expect(
+      evaluateRun(
+        {
+          ...result,
+          delegatedPair: {
+            status: 'not_measured',
+            reason: 'engine did not exit',
+          },
+        },
+        { baselinePath, reportOnly: true },
+      ).gate,
+    ).toMatchObject({
+      passed: false,
+      reasons: ['delegated pair NOT_MEASURED: engine did not exit'],
+    });
+  });
+});
 
 describe('station-weight control engine signals (rule C)', () => {
   /** A child as Node's spawn returns it, recording each signal it is sent. */

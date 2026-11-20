@@ -2769,6 +2769,12 @@ export function evaluateRun(
 ) {
   result.reportOnly = reportOnly;
   try {
+    const hasDelegatedPair =
+      result.settings?.delegatedPair || result.delegatedPair;
+    assert(
+      !hasDelegatedPair || (reportOnly && !record),
+      'delegated pair results require --report-only and cannot record a baseline',
+    );
     // Report-only never reads the baseline: it compares nothing.
     const baseline =
       !reportOnly && existsSync(baselinePath)
@@ -2790,10 +2796,7 @@ export function evaluateRun(
         `request conversation NOT_MEASURED: ${result.requestConversation?.reason ?? 'incomplete paired turns'}`,
       );
     }
-    if (
-      result.settings?.delegatedPair &&
-      result.delegatedPair?.status !== 'measured'
-    ) {
+    if (hasDelegatedPair && result.delegatedPair?.status !== 'measured') {
       result.gate.passed = false;
       result.gate.reasons.push(
         `delegated pair NOT_MEASURED: ${result.delegatedPair?.reason ?? 'did not run'}`,

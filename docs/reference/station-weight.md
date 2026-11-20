@@ -338,6 +338,29 @@ turn, which keeps that engine for the ordinary idle park afterwards.
 A failed step is written as `delegatedRun.status: not_measured` with its
 reason. It does not fail the run.
 
+### Matched delegated follow-ups (optional, report-only)
+
+`npm run perf:station-weight -- --report-only --delegated-pair` compares
+the first operator follow-up in two separate Claude delegations. Both use
+the same seed prompt, canned reply and follow-up. The first delegation's
+engine must exit under Station's existing finished-session park policy.
+Only then does the harness seed the warm comparison. Use
+`--delegated-pair=parked-first` to reverse the follow-up order.
+
+The report requires the same model and Claude Code version. Each outgoing
+follow-up must carry its own seed prompt and reply in order, the follow-up
+prompt, and the repository instruction markers. It also requires the warm
+engine to survive its follow-up and a new engine to appear on resume. The
+recorded process identities use the benchmark's existing process table.
+Follow-up latency is dispatch to the successful reply, observed by
+polling every 50 ms. The memory value is the parked engine's observed
+footprint before release, not a whole-app footprint delta. The result
+does not establish live-model recall or an interactive idle timeout.
+
+The flag runs without the other optional diagnostics. A missing or
+ambiguous arm fails the diagnostic. A saved pair also requires
+`--report-only` on evaluation and cannot record a baseline.
+
 ## Budgets and baseline
 
 A budget fails only when `value > baseline × (1 + ratio) + floor`. Shrinking
