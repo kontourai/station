@@ -1614,6 +1614,20 @@ test('shows the engine-start capacity wait while Station holds a send, and clear
         }),
       }),
   );
+  await page.route(
+    `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/event-window**`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'This capacity fixture does not emit provider events',
+            }),
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
   let releaseSend!: () => void;
   const sendHeld = new Promise<void>((resolve) => {
     releaseSend = resolve;
