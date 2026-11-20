@@ -155,6 +155,58 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
     expect(streamText).toHaveBeenCalledTimes(1);
   });
 
+  test.each([
+    {
+      name: 'missing blocked tool',
+      required: { blockedTools: ['repo_write'] },
+      recorded: {},
+      accepted: false,
+    },
+    {
+      name: 'missing approval denial',
+      required: { denyApprovals: true },
+      recorded: { denyApprovals: false },
+      accepted: false,
+    },
+    {
+      name: 'retained blocked tool and approval denial',
+      required: { blockedTools: ['repo_write'], denyApprovals: true },
+      recorded: { blockedTools: ['repo_write'], denyApprovals: true },
+      accepted: true,
+    },
+  ])(
+    'persisted chat policy retains $name',
+    async ({ required, recorded, accepted }) => {
+      const lineage = {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: 'parent',
+        rootAgentSlug: 'root',
+      };
+      memoryAdapter.getConversation = vi.fn(async () => ({
+        id: 'policy-chat',
+        metadata: { delegation: { ...lineage, ...recorded } },
+      }));
+      const streamText = vi.fn(async () => ({
+        fullStream: emptyStream(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+      }));
+      const { wire } = await run(streamText, {
+        conversationId: 'policy-chat',
+        userId: 'owner',
+        delegation: { ...lineage, ...required },
+      });
+      if (accepted) expect(streamText).toHaveBeenCalledTimes(1);
+      else {
+        expect(streamText).not.toHaveBeenCalled();
+        expect(wire).toContain('"type":"error"');
+      }
+    },
+  );
+
   test('step frames exclude provider requests, responses and nested errors while text still streams', async () => {
     const canary = 'private-model-request-canary';
     const { wire } = await run(
