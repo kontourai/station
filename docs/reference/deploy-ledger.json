@@ -1,5 +1,86 @@
 [
   {
+    "timestampUtc": "2026-11-20T09:48:38Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261120.1",
+    "sha": "80934eac1474eccd7267cbb681eec7f2bddb01b1",
+    "artifactBuiltAt": "2026-11-20T08:58:23.572Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44705853565",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 44705853565)",
+      "android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:44705853565:play-upload-or-query (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "50f62275055756a905d706c389ab7fe2c7f4bc3a",
+      "groups": {
+        "feat": [
+          "[#5267](https://github.com/kontourai/station/pull/5267) feat(chat): stage Agent changes until Send"
+        ],
+        "fix": [
+          "[#5346](https://github.com/kontourai/station/pull/5346) fix(qualification): prove terminal and workload scope cleanup",
+          "[#5345](https://github.com/kontourai/station/pull/5345) fix(qualification): read a single failure manifest at the download root",
+          "[#5344](https://github.com/kontourai/station/pull/5344) fix(qualification): wait for Inbox refresh geometry to settle",
+          "[#5340](https://github.com/kontourai/station/pull/5340) fix(onboarding): make first-run usage sharing optional",
+          "[#5343](https://github.com/kontourai/station/pull/5343) fix(qualification): cover coordinator scenes and freeze terminal export dates",
+          "[#5336](https://github.com/kontourai/station/pull/5336) fix: improve Nightly update recovery, clipboard, and notification actions",
+          "[#5342](https://github.com/kontourai/station/pull/5342) fix(orchestration): preserve projections across wide session reads",
+          "[#5341](https://github.com/kontourai/station/pull/5341) fix: retain tool restrictions when reusing child Sessions"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5011](https://github.com/kontourai/station/pull/5011) perf(projects): defer bundled S3 SDK evaluation until first use"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-11-20T08:58:36Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261120.44705853565",
+    "sha": "80934eac1474eccd7267cbb681eec7f2bddb01b1",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44705853565",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261120.44705853565 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "50f62275055756a905d706c389ab7fe2c7f4bc3a",
+      "groups": {
+        "feat": [
+          "[#5267](https://github.com/kontourai/station/pull/5267) feat(chat): stage Agent changes until Send"
+        ],
+        "fix": [
+          "[#5346](https://github.com/kontourai/station/pull/5346) fix(qualification): prove terminal and workload scope cleanup",
+          "[#5345](https://github.com/kontourai/station/pull/5345) fix(qualification): read a single failure manifest at the download root",
+          "[#5344](https://github.com/kontourai/station/pull/5344) fix(qualification): wait for Inbox refresh geometry to settle",
+          "[#5340](https://github.com/kontourai/station/pull/5340) fix(onboarding): make first-run usage sharing optional",
+          "[#5343](https://github.com/kontourai/station/pull/5343) fix(qualification): cover coordinator scenes and freeze terminal export dates",
+          "[#5336](https://github.com/kontourai/station/pull/5336) fix: improve Nightly update recovery, clipboard, and notification actions",
+          "[#5342](https://github.com/kontourai/station/pull/5342) fix(orchestration): preserve projections across wide session reads",
+          "[#5341](https://github.com/kontourai/station/pull/5341) fix: retain tool restrictions when reusing child Sessions"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5011](https://github.com/kontourai/station/pull/5011) perf(projects): defer bundled S3 SDK evaluation until first use"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
     "timestampUtc": "2026-11-20T01:59:03Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261120",
