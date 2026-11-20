@@ -63,117 +63,21 @@ function isDeviceSessionCookie({ name }: { name: string }): boolean {
 }
 
 async function openConnections(page: Page): Promise<Locator> {
+  // These contexts have a saved Station. Wait for its switcher to mount:
+  // the setup reminder can render first, and All connections opens Models.
+  const stationSwitcher = page
+    .getByTestId('app-toolbar-connection')
+    .and(page.getByRole('button', { name: /^Choose Station/ }));
+  await stationSwitcher.click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  await page
+    .getByRole('menu', { name: 'Choose Station', exact: true })
+    .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+    .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+
   const dialog = page.getByRole('dialog');
-  const setupLauncher = page.getByTestId('setup-launcher');
-  // By test id, not by name: ChatDockMobileConnection derives its accessible
-  // name from the same connectionIndicatorLabel, so on a phone both it and the
-  // toolbar chip start with "Manage Stations" (archive#3297 + archive#3311).
-  const directConnections = page.getByTestId('app-toolbar-connection');
-  const moreActions = page.getByRole('button', { name: 'More actions' });
-  const addComputer = page.getByRole('button', {
-    name: 'Add computer',
-    exact: true,
-  });
-  const controlThisStation = page.getByRole('button', {
-    name: /Control this Station from another device/,
-  });
-  const managerControl = dialog.getByRole('button', {
-    name: /^(?:Request access|Add a Station address|Scan a QR code|Enter a pairing code|Paired devices)$/,
-  });
-
-  // A fresh container can have its HTTP endpoint ready before the lazy UI
-  // shell has rendered its first actionable control. Wait for a concrete path
-  // into Connections instead of choosing a fallback from an instantaneous
-  // visibility snapshot, which otherwise leaves Playwright's broad action
-  // timeout to hide the actual missing UI state.
-  await expect
-    .poll(
-      async () =>
-        (await dialog.isVisible()) ||
-        (await setupLauncher.isVisible()) ||
-        (await directConnections.isVisible()) ||
-        (await moreActions.isVisible()),
-      { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
-    )
-    .toBe(true);
-
-  if ((await dialog.isVisible()) && (await managerControl.first().isVisible()))
-    return dialog;
-  // #2278 sequences authority observation ahead of the App mount, so on a
-  // fresh home the setup-launcher (mounted above the provider) can win the
-  // entry race while the toolbar chip is still settling. The launcher
-  // navigates to the Connections hub, which has no manager entry — prefer
-  // the chip's in-place manager dialog, waiting boundedly for it when the
-  // launcher is already showing. If the chip never settles, fall through
-  // to the pre-existing launcher path below.
-  if (
-    !(await directConnections.isVisible()) &&
-    (await setupLauncher.isVisible())
-  ) {
-    try {
-      await expect
-        .poll(async () => await directConnections.isVisible(), {
-          timeout: CONNECTION_ENTRY_TIMEOUT_MS,
-        })
-        .toBe(true);
-    } catch {
-      // Authority never settled the chip; the launcher path below still
-      // applies and the manager poll gates the outcome either way.
-    }
-  }
-  if (await directConnections.isVisible()) {
-    await directConnections.click();
-    const stationSwitcher = page.getByRole('menu', { name: 'Choose Station' });
-    await expect
-      .poll(
-        async () =>
-          (await stationSwitcher.isVisible()) ||
-          (await managerControl.first().isVisible()) ||
-          (await addComputer.isVisible()) ||
-          (await controlThisStation.isVisible()),
-        { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
-      )
-      .toBe(true);
-    if (await stationSwitcher.isVisible()) {
-      await stationSwitcher
-        .getByRole('menuitem', { name: 'Manage Stations', exact: true })
-        .click();
-    }
-  } else if (await setupLauncher.isVisible()) {
-    await setupLauncher
-      .getByRole('button', { name: 'All connections' })
-      .click();
-    await page.waitForURL(/\/connections(?:\?|$)/);
-  } else {
-    await moreActions.click();
-    const menu = page.locator('.app-toolbar__overflow-menu');
-    await expect(menu).toBeVisible();
-    await menu
-      .getByRole('button', { name: 'Connections', exact: true })
-      .click();
-  }
-
-  // Connection entry points can either open the legacy manager or navigate to
-  // the Connections hub. The hub's "Open Connections" empty-state action is
-  // intentionally not a manager trigger; pairing now begins at Add computer.
-  // Do not admit that notice as readiness: it can appear behind a still-loading
-  // manager and send this helper into the wrong Add computer branch.
-  // Converge through the goal chooser and require a manager-specific control
-  // so the chooser dialog cannot be mistaken for the destination.
-  await expect
-    .poll(
-      async () =>
-        (await managerControl.first().isVisible()) ||
-        (await addComputer.isVisible()) ||
-        (await controlThisStation.isVisible()),
-      { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
-    )
-    .toBe(true);
-  if (!(await managerControl.first().isVisible())) {
-    if (!(await controlThisStation.isVisible())) await addComputer.click();
-    await controlThisStation.click();
-  }
-  await expect(managerControl.first()).toBeVisible({
+  await expect(
+    dialog.getByRole('button', { name: 'Enter a pairing code', exact: true }),
+  ).toBeVisible({
     timeout: CONNECTION_ENTRY_TIMEOUT_MS,
   });
   return dialog;
