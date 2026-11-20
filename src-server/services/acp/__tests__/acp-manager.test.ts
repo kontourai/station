@@ -25,6 +25,16 @@ vi.mock('../acp-probe.js', () => ({
 
 import { ACPManager } from '../acp-manager.js';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * archive#1908: end-to-end proof, through the real `ACPManager` and its
  * real 60-second `setInterval`, that the periodic probe loop no longer
@@ -87,7 +97,7 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
   test.each(['rejects', 'completes'] as const)(
     'waits for the remaining startup probe before enabling periodic sweeps when it %s',
     async (outcome) => {
-      const slow = Promise.withResolvers<boolean>();
+      const slow = deferred<boolean>();
       const fastProbe = {
         probe: vi.fn().mockResolvedValue(true),
         isAvailable: () => true,
@@ -137,7 +147,7 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
   );
 
   test('keeps sweeping when an add settles before the last old probe is removed', async () => {
-    const disposal = Promise.withResolvers<void>();
+    const disposal = deferred<void>();
     const old = {
       probe: vi.fn().mockResolvedValue(true),
       dispose: vi.fn(() => disposal.promise),
@@ -177,7 +187,7 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
   });
 
   test('an in-flight startup cannot rearm periodic sweeps after shutdown', async () => {
-    const handshake = Promise.withResolvers<boolean>();
+    const handshake = deferred<boolean>();
     const probe = {
       probe: vi.fn(() => handshake.promise),
       isAvailable: () => true,
@@ -199,7 +209,7 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
   test.each(['succeeds', 'rejects'] as const)(
     'a start during shutdown leaves no sweep timer when disposal %s',
     async (outcome) => {
-      const teardown = Promise.withResolvers<void>();
+      const teardown = deferred<void>();
       const old = {
         probe: vi.fn().mockResolvedValue(true),
         dispose: vi
