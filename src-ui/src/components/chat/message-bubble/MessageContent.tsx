@@ -66,6 +66,7 @@ interface MessageContentProps {
   callerAccess?: { continue?: boolean; startChat?: boolean };
   contentParts?: MessageContentPart[];
   messageKey?: string;
+  pagedHistoryRowKey?: string;
   textContent: string;
   chatFontSize: number;
   showReasoning: boolean;
@@ -90,6 +91,7 @@ function MessageContentComponent({
   callerAccess,
   contentParts,
   messageKey = 'message',
+  pagedHistoryRowKey,
   textContent,
   chatFontSize,
   showReasoning,
@@ -134,6 +136,19 @@ function MessageContentComponent({
   const blocks = useTranscriptChildBlocks(
     browserScope ? splitBrowserActivityRuns(baseBlocks) : baseBlocks,
   );
+  const uniqueResultIds = useMemo(() => {
+    const unique = new Set<string>();
+    if (!pagedHistoryRowKey || foldWork) return unique;
+    const seen = new Set<string>();
+    for (const part of contentParts ?? []) {
+      const id = part.sourceEventId;
+      if (!isToolCallPart(part) || !id?.trim()) continue;
+      if (seen.has(id)) unique.delete(id);
+      else if (part.state === 'result') unique.add(id);
+      seen.add(id);
+    }
+    return unique;
+  }, [contentParts, foldWork, pagedHistoryRowKey]);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -350,8 +365,25 @@ function MessageContentComponent({
             }
             // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.
+            // Paging prepends parts to this same row. When prose borders a
+            // single durable result, its Markdown can keep its mounted state
+            // even though the part's position changed.
+            const next = contentParts?.[index + 1];
+            const neighbor = next ?? contentParts?.[index - 1];
+            const resultId =
+              isToolCallPart(neighbor) && !part.runtimeError
+                ? neighbor?.sourceEventId
+                : undefined;
+            const pagedKey =
+              resultId && uniqueResultIds.has(resultId)
+                ? JSON.stringify([
+                    pagedHistoryRowKey,
+                    next ? 'before' : 'after',
+                    resultId,
+                  ])
+                : undefined;
             return (
-              <LazyMarkdown key={block.key ?? index}>
+              <LazyMarkdown key={block.key ?? pagedKey ?? index}>
                 {part.content}
               </LazyMarkdown>
             );
@@ -431,6 +463,7 @@ function areMessageContentPropsEqual(
     previous.showToolDetails === next.showToolDetails &&
     previous.isStreamingMessage === next.isStreamingMessage &&
     previous.foldWork === next.foldWork &&
+    previous.pagedHistoryRowKey === next.pagedHistoryRowKey &&
     previous.onToolApproval === next.onToolApproval &&
     // By value: an open read that lands later must refresh a reloaded error
     // part's hint, but a new object with the same answer must not re-render.

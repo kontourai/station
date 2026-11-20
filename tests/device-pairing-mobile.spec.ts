@@ -58,6 +58,10 @@ test.afterAll(async () => {
 
 const CONNECTION_ENTRY_TIMEOUT_MS = 15_000;
 
+function isDeviceSessionCookie({ name }: { name: string }): boolean {
+  return /^(?:__Host-)?station-device(?:-[a-f0-9]{16})?$/.test(name);
+}
+
 async function openConnections(page: Page): Promise<Locator> {
   const dialog = page.getByRole('dialog');
   const setupLauncher = page.getByTestId('setup-launcher');
@@ -330,31 +334,24 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
   await context.close();
 });
 
-/**
- * The surfaces an UNPAIRED device actually has, and only those.
- *
- * A device with a saved Station and no access never reaches the shell: it
- * lands on the onboarding gate ("Connect to your Station host"), and its
- * request, its wait and the host's refusal are all reported by the request
- * panel that gate opens. The shell's own connection manager offers the same
- * journey per-row as "Request access to <name>"
- * (`connectionNeedsAccessRequest`) — but that row is for a device that HAS a
- * shell and lost access, which is a different scenario, so this one does not
- * pretend it might be there. That confusion is what archive#3753 was: the
- * phone context silently inherited the suite-wide device session, so it was
- * never unpaired, the shell rendered, and the leg waited for a per-row button
- * the product had no reason to offer.
- *
- * The shell's own wording for these same two states lives in
- * `src-ui/src/components/OnboardingGate.tsx` and
- * `src-ui/src/components/PendingPairingReconciler.tsx`; the panel's is in
- * `packages/connect/src/react/DevicePairingPanel.tsx`. Two components own one
- * fact — noted here so the next reader does not read this file's single
- * spelling as the only one.
- */
 async function openPhoneAccessRequest(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('heading', { name: 'Connect your phone', exact: true }),
+  ).toBeVisible({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(
+    new URL(page.url()).hostname,
+  );
+  if (loopback) {
+    // GuidedConnect offers the loopback request inside the native disclosure.
+    await page
+      .getByText('Other ways to connect', { exact: true })
+      .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  }
   await page
-    .getByRole('button', { name: 'Request access', exact: true })
+    .getByRole('button', {
+      name: loopback ? 'Request access' : 'Request access to this Station',
+      exact: true,
+    })
     .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
   await expect(page.getByRole('dialog')).toBeVisible();
 }
@@ -461,9 +458,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await phone.goto(baseURL);
   const phoneSessionCookiesBeforeRequest = (
     await phoneContext.storageState()
-  ).cookies.filter((cookie) =>
-    ['__Host-station-device', 'station-device'].includes(cookie.name),
-  );
+  ).cookies.filter(isDeviceSessionCookie);
   expect(
     phoneSessionCookiesBeforeRequest,
     'the phone must reach this Station with no device session at all — see the note at the top of this test',
@@ -486,9 +481,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await denyButton.click();
   await expectPhoneDeclined(phone);
   expect(
-    (await phoneContext.storageState()).cookies.filter((cookie) =>
-      ['__Host-station-device', 'station-device'].includes(cookie.name),
-    ),
+    (await phoneContext.storageState()).cookies.filter(isDeviceSessionCookie),
   ).toEqual(phoneSessionCookiesBeforeRequest);
 
   await expectPhoneCanRequestAgain(phone);
@@ -542,14 +535,15 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
     )
     .toEqual({ hasPhoneStoredCredential: false, hasDeviceSession: true });
   const persisted = await phoneContext.storageState();
-  const deviceCookie = persisted.cookies.find((cookie) =>
-    ['__Host-station-device', 'station-device'].includes(cookie.name),
-  );
+  const deviceCookies = persisted.cookies.filter(isDeviceSessionCookie);
+  expect(deviceCookies).toHaveLength(1);
+  const [deviceCookie] = deviceCookies;
   expect(deviceCookie).toMatchObject({
+    name: expect.stringMatching(/^(?:__Host-)?station-device-[a-f0-9]{16}$/),
     httpOnly: true,
     sameSite: 'Strict',
   });
-  expect(deviceCookie!.expires).toBeGreaterThan(Date.now() / 1_000);
+  expect(deviceCookie.expires).toBeGreaterThan(Date.now() / 1_000);
   const replayStatus = await phone.evaluate(
     async ({ offerId, requestId, proof }) =>
       fetch('/.well-known/station/v1/pairing/exchange', {

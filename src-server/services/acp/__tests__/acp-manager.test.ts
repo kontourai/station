@@ -25,6 +25,16 @@ vi.mock('../acp-probe.js', () => ({
 
 import { ACPManager } from '../acp-manager.js';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * archive#1908: end-to-end proof, through the real `ACPManager` and its
  * real 60-second `setInterval`, that the periodic probe loop no longer
@@ -40,6 +50,212 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
     vi.useRealTimers();
     vi.clearAllMocks();
   });
+
+  test('sweeps only while it owns probes, including after a dynamic re-add', async () => {
+    const manager = new ACPManager(
+      { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+      '/tmp',
+    );
+    const config = {
+      id: 'opencode',
+      name: 'OpenCode',
+      command: 'opencode',
+      enabled: true,
+    };
+    const initialTimerCount = vi.getTimerCount();
+    try {
+      await manager.startAll([], 'background');
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect.soft(vi.getTimerCount()).toBe(initialTimerCount);
+
+      await manager.addConnection(config);
+      const first = probeInstances[0];
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(vi.getTimerCount()).toBe(initialTimerCount + 1);
+      expect(first.probe).toHaveBeenCalledExactlyOnceWith('request');
+
+      await manager.removeConnection(config.id);
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect.soft(vi.getTimerCount()).toBe(initialTimerCount);
+
+      await manager.addConnection(config);
+      const second = probeInstances[1];
+      second.lastProbeAt = 0;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(second.probe).toHaveBeenLastCalledWith('background');
+      expect(first.probe).toHaveBeenCalledTimes(1);
+
+      second.lastProbeAt = 0;
+      await manager.sweep();
+      expect(second.probe).toHaveBeenCalledTimes(3);
+      expect(second.probe).toHaveBeenLastCalledWith('background');
+    } finally {
+      await manager.shutdown();
+    }
+  });
+
+  test.each(['rejects', 'completes'] as const)(
+    'waits for the remaining startup probe before enabling periodic sweeps when it %s',
+    async (outcome) => {
+      const slow = deferred<boolean>();
+      const fastProbe = {
+        probe: vi.fn().mockResolvedValue(true),
+        isAvailable: () => true,
+      };
+      const slowProbe = {
+        probe: vi
+          .fn()
+          .mockReturnValueOnce(slow.promise)
+          .mockResolvedValue(true),
+        isAvailable: () => true,
+      };
+      const createProbe = vi
+        .fn()
+        .mockReturnValueOnce(fastProbe)
+        .mockReturnValue(slowProbe);
+      const manager = new ACPManager({}, '/tmp', undefined, createProbe);
+      const config = {
+        id: 'fast',
+        name: 'Test',
+        command: 'test-acp',
+        enabled: true,
+      };
+      try {
+        const startup = manager.startAll(
+          [config, { ...config, id: 'slow' }],
+          'background',
+        );
+        await vi.advanceTimersByTimeAsync(180_000);
+        expect(fastProbe.probe).toHaveBeenCalledExactlyOnceWith('background');
+        expect(slowProbe.probe).toHaveBeenCalledExactlyOnceWith('background');
+        if (outcome === 'rejects') {
+          slow.reject(new Error('startup probe failed'));
+          await expect(startup).rejects.toThrow('startup probe failed');
+        } else {
+          slow.resolve(true);
+          await startup;
+        }
+        await vi.advanceTimersByTimeAsync(60_000);
+        const expected = outcome === 'completes' ? 2 : 1;
+        expect(fastProbe.probe).toHaveBeenCalledTimes(expected);
+        expect(slowProbe.probe).toHaveBeenCalledTimes(expected);
+      } finally {
+        slow.resolve(false);
+        await manager.shutdown();
+      }
+    },
+  );
+
+  test('keeps sweeping when an add settles before the last old probe is removed', async () => {
+    const disposal = deferred<void>();
+    const old = {
+      probe: vi.fn().mockResolvedValue(true),
+      dispose: vi.fn(() => disposal.promise),
+      isAvailable: () => true,
+    };
+    const replacement = {
+      probe: vi.fn().mockResolvedValue(true),
+      isAvailable: () => true,
+    };
+    const createProbe = vi
+      .fn()
+      .mockReturnValueOnce(old)
+      .mockReturnValue(replacement);
+    const manager = new ACPManager({}, '/tmp', undefined, createProbe);
+    const config = {
+      id: 'old',
+      name: 'Test',
+      command: 'test-acp',
+      enabled: true,
+    };
+    try {
+      await manager.startAll([config]);
+      const removing = manager.removeConnection(config.id);
+      await manager.addConnection({ ...config, id: 'new' });
+      disposal.resolve();
+      await removing;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(replacement.probe.mock.calls).toEqual([
+        ['request'],
+        ['background'],
+      ]);
+      expect(old.probe).toHaveBeenCalledExactlyOnceWith('request');
+    } finally {
+      disposal.resolve();
+      await manager.shutdown();
+    }
+  });
+
+  test('an in-flight startup cannot rearm periodic sweeps after shutdown', async () => {
+    const handshake = deferred<boolean>();
+    const probe = {
+      probe: vi.fn(() => handshake.promise),
+      isAvailable: () => true,
+    };
+    const manager = new ACPManager({}, '/tmp', undefined, () => probe);
+    const config = {
+      id: 'test',
+      name: 'Test',
+      command: 'test-acp',
+      enabled: true,
+    };
+    const starting = manager.startAll([config]);
+    await manager.shutdown();
+    handshake.resolve(true);
+    await starting;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test.each(['succeeds', 'rejects'] as const)(
+    'a start during shutdown leaves no sweep timer when disposal %s',
+    async (outcome) => {
+      const teardown = deferred<void>();
+      const old = {
+        probe: vi.fn().mockResolvedValue(true),
+        dispose: vi
+          .fn()
+          .mockReturnValueOnce(teardown.promise)
+          .mockResolvedValue(undefined),
+        isAvailable: () => true,
+      };
+      const fresh = {
+        probe: vi.fn().mockResolvedValue(true),
+        isAvailable: () => true,
+      };
+      const manager = new ACPManager({}, '/tmp', undefined, (config) =>
+        config.id === 'old' ? old : fresh,
+      );
+      const config = {
+        id: 'old',
+        name: 'Test',
+        command: 'test-acp',
+        enabled: true,
+      };
+      const initialTimerCount = vi.getTimerCount();
+      try {
+        await manager.startAll([config]);
+        const stopping = manager.shutdown();
+        const stopped =
+          outcome === 'rejects'
+            ? expect(stopping).rejects.toThrow('ACP probe shutdown failed')
+            : expect(stopping).resolves.toBeUndefined();
+        await manager.startAll([{ ...config, id: 'new' }]);
+        if (outcome === 'rejects')
+          teardown.reject(new Error('disposal failed'));
+        else teardown.resolve();
+        await stopped;
+        await vi.advanceTimersByTimeAsync(180_000);
+        expect.soft(vi.getTimerCount()).toBe(initialTimerCount);
+        expect(fresh.probe).toHaveBeenCalledExactlyOnceWith('request');
+
+        await manager.startAll([{ ...config, id: 'next' }]);
+        expect(vi.getTimerCount()).toBe(initialTimerCount + 1);
+      } finally {
+        teardown.resolve();
+        await manager.shutdown();
+      }
+    },
+  );
 
   test('does not spawn the engine binary on every 60s tick forever', async () => {
     const manager = new ACPManager(
