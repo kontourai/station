@@ -2010,7 +2010,7 @@ function addedClaude(baseline, current) {
 /**
  * Two separate delegated sessions at the same ordinal. Keep the control
  * warm by starting its seed only after the other engine has parked.
- * @param {{api: any, cwd: string, stub: any, markers: any, turns: {prompt: string, reply: string}[], treeNow: () => ProcessRow[], releaseMaxMs: number}} context
+ * @param {{api: any, cwd: string, stub: any, markers: any, turns: {prompt: string, reply: string}[], treeNow: () => ProcessRow[], releaseMaxMs: number, parkedFirst: boolean}} context
  */
 async function measureDelegatedPair({
   api,
@@ -2020,6 +2020,7 @@ async function measureDelegatedPair({
   turns,
   treeNow,
   releaseMaxMs,
+  parkedFirst,
 }) {
   const baseline = scopedClaude(treeNow);
   const analyze = (from, index) =>
@@ -2080,16 +2081,24 @@ async function measureDelegatedPair({
   );
   const warmEngine = addedClaude(baseline, scopedClaude(treeNow));
   const warmKey = identityKey(warmEngine);
-  const warmFollow = await follow(warm, 'warm');
-  assert(
-    scopedClaude(treeNow).some((row) => identityKey(row) === warmKey),
-    'warm engine did not survive its follow-up',
-  );
-
-  const beforeResume = scopedClaude(treeNow);
-  const parkedFollow = await follow(parked, 'parked');
-  const resumed = addedClaude(beforeResume, scopedClaude(treeNow));
-  assert(identityKey(resumed) !== parkedKey, 'parked engine did not restart');
+  const followWarm = async () => {
+    const report = await follow(warm, 'warm');
+    assert(
+      scopedClaude(treeNow).some((row) => identityKey(row) === warmKey),
+      'warm engine did not survive its follow-up',
+    );
+    return report;
+  };
+  const followParked = async () => {
+    const beforeResume = scopedClaude(treeNow);
+    const report = await follow(parked, 'parked');
+    const resumed = addedClaude(beforeResume, scopedClaude(treeNow));
+    assert(identityKey(resumed) !== parkedKey, 'parked engine did not restart');
+    return report;
+  };
+  const parkedEarly = parkedFirst ? await followParked() : undefined;
+  const warmFollow = await followWarm();
+  const parkedFollow = parkedEarly ?? (await followParked());
   assert(
     parkedFollow.report.model === warmFollow.report.model &&
       parkedFollow.report.claudeCodeVersion ===
@@ -2099,6 +2108,7 @@ async function measureDelegatedPair({
   return {
     status: 'measured',
     reportOnly: true,
+    followUpOrder: parkedFirst ? 'parked-first' : 'warm-first',
     releasedEngineMemoryBytes: memory,
     releasedAfterMs,
     warmFollowUpMs: warmFollow.elapsedMs,
@@ -2837,6 +2847,10 @@ export async function runStationWeight({
     '--delegated-pair requires --report-only and runs without the other diagnostics',
   );
   const settings = { ...DEFAULT_SETTINGS, ...overrides };
+  assert(
+    [0, 1, 2].includes(settings.delegatedPair),
+    'invalid delegated pair order',
+  );
   for (const [name, value] of Object.entries(settings))
     assert(Number.isSafeInteger(value) && value >= 0, `invalid ${name}`);
   assert(settings.idleSessions >= 1, 'idleSessions must be at least 1');
@@ -3173,6 +3187,7 @@ export async function runStationWeight({
             turns: pairTurns,
             treeNow,
             releaseMaxMs: settings.delegatedReleaseMaxMs,
+            parkedFirst: settings.delegatedPair === 2,
           });
         } catch (error) {
           result.delegatedPair = {
@@ -3570,6 +3585,10 @@ if (invokedDirectly(import.meta.url)) {
   );
   const number = (name) =>
     args[name] === undefined ? undefined : Number(args[name]);
+  assert(
+    [undefined, true, 'parked-first'].includes(args['delegated-pair']),
+    '--delegated-pair accepts only parked-first',
+  );
   const settings = Object.fromEntries(
     Object.entries({
       settleMs: number('settle-ms'),
@@ -3577,7 +3596,12 @@ if (invokedDirectly(import.meta.url)) {
       cpuWindowMs: number('cpu-window-ms'),
       idleSessions: number('sessions'),
       delegatedRun: args['delegated-run'] === true ? 1 : undefined,
-      delegatedPair: args['delegated-pair'] === true ? 1 : undefined,
+      delegatedPair:
+        args['delegated-pair'] === 'parked-first'
+          ? 2
+          : args['delegated-pair'] === true
+            ? 1
+            : undefined,
       delegatedReleaseMaxMs: number('delegated-release-max-ms'),
       stopGraceMs: number('stop-grace-ms'),
       readyLaunches: number('ready-launches'),
