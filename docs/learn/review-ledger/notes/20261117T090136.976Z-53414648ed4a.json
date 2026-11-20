@@ -1,0 +1,7 @@
+{
+  "revision": "dedbc92f9f0655a741c08374c6274f9fd949b00b",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated with docs:mcp:generate: only the shipped SessionQueryModule architecture topic changed, carrying the #373 module-map sentence about the durable per-session usage fold. station-docs.md describes the bundle, its tools and digest semantics, none of which changed.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

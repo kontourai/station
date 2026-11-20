@@ -1,4 +1,3 @@
-import { isCanonicalWorkspaceActivityReviewPaneInstance } from '@kontourai/station-contracts/workspace-activity-review-pane';
 /**
  * The pane each dock-capable surface is rendered as inside a region's pane
  * host (#2045, slice 1 of the tabbed dock; #2047 adds the coding panes).
@@ -45,11 +44,6 @@ import { isCanonicalWorkspaceActivityReviewPaneInstance } from '@kontourai/stati
  * `builtinWorkspacePaneRegistry.tsx` (a cross-chunk cycle fails the build).
  */
 
-import {
-  isCanonicalWorkspaceActivityPaneInstance,
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
 import {
   isCanonicalWorkspaceAgentsPaneInstance,
   WORKSPACE_AGENTS_PANE_DESCRIPTOR,
@@ -105,13 +99,6 @@ import {
   isCanonicalWorkspaceTerminalPaneInstance,
   WORKSPACE_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-terminal-pane';
-import {
-  ACTIVITY_REVIEW_DESCRIPTOR_ID,
-  ACTIVITY_REVIEW_PANE_ID,
-  activityReviewInstance,
-  readActivityReviewPane,
-  removeActivityReviewPane,
-} from '../workspace-panes/activityReviewPane';
 import {
   createBrowserPreviewPaneInstance,
   isCanonicalBrowserPreviewPaneInstance,
@@ -266,16 +253,6 @@ export const REGION_SURFACE_PANES: ReadonlyMap<
     },
   ],
   [
-    'activity',
-    {
-      surfaceId: 'activity',
-      descriptorId: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
-      instanceId: WORKSPACE_ACTIVITY_PANE_INSTANCE.instanceId,
-      instance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
-      isCanonical: isCanonicalWorkspaceActivityPaneInstance,
-    },
-  ],
-  [
     'workspace-agents',
     {
       surfaceId: 'workspace-agents',
@@ -333,7 +310,6 @@ export const REGION_SURFACE_PANES: ReadonlyMap<
  */
 export const REGION_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
   chat: 'src-ui/src/components/chat-dock/ChatDock.tsx',
-  activity: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   'workspace-agents': 'src-ui/src/workspace-panes/AgentsWorkspacePane.tsx',
   home: 'src-ui/src/views/home/HomeSurface.tsx',
   device: 'src-ui/src/workspace-panes/DeviceWorkspacePane.tsx',
@@ -353,7 +329,6 @@ export const REGION_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
  * dropped from the build), where it cost every user one there (#90 D9).
  */
 export const INSTANCE_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
-  'activity-review:': 'src-ui/src/workspace-panes/RegionActivityReviewPane.tsx',
   'pr:': 'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx',
   'file-preview:': 'src-ui/src/workspace-panes/FilePreviewPane.tsx',
   'browser-preview:':
@@ -602,20 +577,6 @@ export function regionSurfacePane(
     return layoutSurfacePane(surfaceId);
   if (PLUGIN_PANE_ID.test(surfaceId)) return pluginSurfacePane(surfaceId);
   if (TERMINAL_PANE_ID.test(surfaceId)) return terminalSurfacePane(surfaceId);
-  if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId)) {
-    const state = filePreviewStorage();
-    const saved = state ? readActivityReviewPane(state, surfaceId) : null;
-    return {
-      surfaceId,
-      descriptorId: ACTIVITY_REVIEW_DESCRIPTOR_ID,
-      instanceId: toWorkspacePaneInstanceId(surfaceId),
-      ...(saved ? { title: saved.title } : {}),
-      instance: () => activityReviewInstance(surfaceId),
-      isCanonical: (instance) =>
-        String(instance.instanceId) === surfaceId &&
-        isCanonicalWorkspaceActivityReviewPaneInstance(instance),
-    };
-  }
   return undefined;
 }
 
@@ -638,8 +599,6 @@ export function forgetRegionPaneState(surfaceId: string): void {
       removePluginPaneState(storage, surfaceId);
     else if (TERMINAL_PANE_ID.test(surfaceId))
       removeTerminalPaneState(storage, surfaceId);
-    else if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId))
-      removeActivityReviewPane(storage, surfaceId);
   } catch {
     /* per-device storage is optional */
   }

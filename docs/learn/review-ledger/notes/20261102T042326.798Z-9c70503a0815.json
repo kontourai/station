@@ -1,7 +1,0 @@
-{
-  "revision": "a0cab7ae6baaf61de8b33ddae65c75554ce9498c",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Checked workspace-browser-pane session, network and picked-element views against the contract and route response; source and focused tests do not qualify packaged or platform behavior.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]}
-  ]
-}

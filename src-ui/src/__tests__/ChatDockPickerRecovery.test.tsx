@@ -9,9 +9,8 @@
  *
  * Mounts the real `ChatWorkspacePane` (so the `ChatDock` line that hands the
  * recovery to `ConversationPickerRecovery`, and its `lastCallerAccess`
- * wiring, are both in the path), with the same context stubs as
- * `ChatDockColdChatHydration.test.tsx`. An independent inbox failure keeps
- * its own Retry visible while the conversation recovery is exercised.
+ * wiring, are both in the path). The connected Station reports an unrelated
+ * Inbox read failure, so both surfaces offer Retry during the test.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -44,6 +43,12 @@ vi.mock('@kontourai/station-sdk/conversation-open', () => ({
 }));
 const fetchConversationById = vi.hoisted(() => vi.fn());
 const openConversationAction = vi.hoisted(() => vi.fn());
+const stationScope = vi.hoisted(() => ({
+  apiBase: 'http://test.local',
+  authorityKey: 'test-station-picker-recovery',
+  isCurrent: () => true,
+  requiresEnrolledCredential: false,
+}));
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -57,8 +62,8 @@ vi.mock('../contexts/useShowSurface', () => ({
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://test.local' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useApiBase: () => ({ apiBase: stationScope.apiBase }),
+  useHostRequestAuthorityScope: () => stationScope,
 }));
 
 vi.mock('../contexts/AgentsContext', () => {
@@ -124,7 +129,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 
 // The conversation fetch the cold open delegates to: it hands back the tab

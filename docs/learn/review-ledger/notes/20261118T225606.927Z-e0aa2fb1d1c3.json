@@ -1,0 +1,13 @@
+{
+  "revision": "ffad6a7840243ebdc93e3095ed17e7c81c7ff848",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the new repository toolbar and defaults review action row at 390px and 1440px in both themes. The controls use the shared actions or its touch-target floor and the direct responsive inventory gate passed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the new repository toolbar and defaults review action row at 390px and 1440px in both themes. The controls use the shared actions or its touch-target floor and the direct responsive inventory gate passed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the new repository toolbar and defaults review action row at 390px and 1440px in both themes. The controls use the shared actions or its touch-target floor and the direct responsive inventory gate passed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the new repository toolbar and defaults review action row at 390px and 1440px in both themes. The controls use the shared actions or its touch-target floor and the direct responsive inventory gate passed.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "0905f64eb4baf02f92b48761e2c21998705a5887",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-checked after the Agents pane spec made its dock-menu open retry until the pane shows; the spec's owner row, bucket and tier are unchanged and no cited claim changes.","inputs":["tests/agents-pane.spec.ts"]}
+  ]
+}

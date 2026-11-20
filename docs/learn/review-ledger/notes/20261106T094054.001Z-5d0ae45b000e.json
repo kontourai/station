@@ -1,7 +1,0 @@
-{
-  "revision": "751143758362625bfedda7d1e910a487884983f5",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Reviewed dialog-history publication through the pending native cleanup traversal, orphan-skip chain, host/URL cancellation, FIFO handoff and history-write refusal. Chromium owner regressions and clean-tree old-owner injection/restoration passed; all eight selected read/older-host inventory captures passed and were opened at 390/1440 in both themes. No full-gallery or physical-device qualification is claimed.","inputs":["docs/design/placement.md","src-ui/src/components/dialog-history.ts"]}
-  ]
-}

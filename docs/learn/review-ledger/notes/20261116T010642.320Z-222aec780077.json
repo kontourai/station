@@ -1,0 +1,7 @@
+{
+  "revision": "968bacab14fdd1d11f0da8ffa317c65880b9cc4c",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"session-api.md changed only in its Claude transcript discovery paragraph; this ADR's session API references are unaffected.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

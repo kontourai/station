@@ -62,6 +62,9 @@ vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => null }));
 vi.mock('../components/first-run/FirstRunHomeChapter', () => ({
   FirstRunHomeChapter: () => null,
 }));
+vi.mock('../components/UsageTelemetryDisclosure', () => ({
+  UsageTelemetryDisclosure: () => null,
+}));
 
 import { HomeView } from '../views/HomeView';
 

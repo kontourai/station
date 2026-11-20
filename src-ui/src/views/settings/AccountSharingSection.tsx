@@ -19,6 +19,7 @@ import { ErrorState, SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { isLoopbackOrigin } from '../../lib/accountSharingOrigin';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 /** How often to look again while the Station restarts into a change. */
@@ -79,6 +80,7 @@ function SharingControls({
 }: {
   authority: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 }) {
+  useDecisionSurface('account-sharing');
   const client = useQueryClient();
   const nameId = useId();
   const key = [
@@ -194,9 +196,7 @@ function SharingControls({
           <ErrorState
             title="Project sharing unavailable"
             description={userFacingErrorMessage(query.error)}
-            action={
-              <Button onClick={() => void query.refetch()}>Try again</Button>
-            }
+            action={<Button onClick={() => void query.refetch()}>Retry</Button>}
           />
         )}
       </PageSection>
@@ -368,8 +368,8 @@ function SharingControls({
       {view.pending && !restarting && (
         <p className="settings__field-hint" role="status">
           {view.pending.ready
-            ? 'A previous change remains pending. Restart Station to reconcile it.'
-            : 'A previous change remains pending. Try applying again to reconcile it.'}
+            ? 'A previous change is still pending. Restart Station to finish applying it.'
+            : 'A previous change is still pending. Apply again to finish it.'}
         </p>
       )}
       {confirmation && (

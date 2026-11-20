@@ -1,0 +1,61 @@
+{
+  "revision": "b9238c8095f556bea1fcd61dea310dcdaecda1d7",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#4852 fix round 2: the ProjectRoom section now says releasing never deletes bytes (shared store's retention reclaims them, #4942). ProjectRoom.tsx gained retirement of kept rows past the 500-message re-read span, below this map's granularity. Checked against task-room-attachments.ts.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#4852 fix round 2: the signature sentence now says it is a prefix check, not a full decode, which is what sniffChatImageMimeType does. task-room-attachments.ts release no longer deletes bytes; Task rooms never call release, and the retention sentence here (90 days, 512 MiB) still holds.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#4852 fix round 2: api.md changed only the Project room files bullet (bytes kept on release, prefix signature check). Nothing this design cites is affected; prose unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence. The glossary's Project Room entry does not describe file storage; unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4852 fix round 2: api.md and sdk.md changed only Project room file release, signature wording and the re-read span constant. This guide's integration claims do not cover those; prose unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#4852 fix round 2: vitest-resource-manifest.mjs gained one process-heavy file (a short-lived tsx child in the release race test), and the path-read pin boundary classified a temp-home walk (owner commit fdeb3978). The lane rules here (process-heavy workers, manifest as scheduling authority) are unchanged and still describe both; prose unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"#4852 fix round 2: the Project room files bullet now says releasing frees files and quota but never bytes (store retention 90 days and 512 MiB, #4942), and that image checks are a signature prefix, not a full decode; the Task attachments bullet says the same about signatures. Checked against task-room-attachments.ts and attachment-blob-store.ts defaults.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"#4852 fix round 2: task-room-attachments.ts release no longer deletes bytes. This page's chat attachment section covers the event-store attachment store (conversation deletion), a different store; no configuration key or default changed. Prose unchanged.","inputs":["docs/reference/config.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4852 fix round 2: ProjectRoom.tsx retires kept rows past the re-read span; client state only, no contract shape changed. Prose unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4852 fix round 2: useProjectRoomRetainedHistory paragraph now names PROJECT_ROOM_RETAINED_REREAD_MESSAGES (500) and that callers retire kept rows older than it. Checked against packages/sdk/src/query-domains/projectRooms.ts.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence (release frees bindings, never bytes; the shared store's retention reclaims them, #4942). This document links the module map generally and repeats none of those file claims; prose unchanged.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"#4852 fix round 2: vitest-resource-manifest.mjs gained one process-heavy file unrelated to agent-runtime; the turn-retention claim here is unaffected; unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#4852 fix round 2: sdk.md gained one sentence on the re-read span; this scope file routes to sdk.md and its rules still apply; unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"#4852 fix round 2: the new child-process test is classified in vitest-resource-manifest.mjs, as this file requires; the rule is unchanged and was followed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence. Server scope rules unaffected; unchanged.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#4852 fix round 2: module-map.md changed only the ProjectRoom file sentence. UI scope rules unaffected (retirement stays in the existing room hook, data through the SDK query); unchanged.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

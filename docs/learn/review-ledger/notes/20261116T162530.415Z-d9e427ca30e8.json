@@ -1,0 +1,7 @@
+{
+  "revision": "ad4ba1fe3213dd95c33889b1b13cbcb92ad14636",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked claims against the changed tests/screenshots.spec.ts: only added switcher after-forget Gallery screens; no claim here changes.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

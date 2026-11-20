@@ -1,0 +1,7 @@
+{
+  "revision": "355d3c3247ec6a54f3165039544c85e6b0b37498",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed after restoring the phone Actions sheet to main (Chat inventory, Background tasks, Copy and origin stay there) and moving desktop e2e journeys to the card-or-menu helpers and the Chat settings gear; 'on a phone, ⋯ then This chat' for Chat inventory is now one of two phone routes; still accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

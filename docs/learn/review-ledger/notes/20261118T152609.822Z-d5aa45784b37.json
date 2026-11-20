@@ -1,0 +1,141 @@
+{
+  "revision": "75c76854860d8cdafcebce3b0c9ebdbe10794ee4",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed the ACP stop outcome documentation against the adapter’s real terminal path and retained-event interpretation tests.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Finish-reason clear authority entry against event-store evidence lookups, lifecycle and run folds, and their existing runtime auth-health shared owner.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/finish-reason-authority.ts","src-server/services/orchestration/__tests__/event-store.test.ts","src-server/services/orchestration/event-store.ts","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Reviewed existing runtime event payloads and producer identity. ACP other completions now project safe failure or unconfirmed result copy using their bounded stop reason. Current producers use the existing error method. Older stored payloads and unknown reason values remain readable.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed existing runtime event payloads and producer identity. ACP other completions now project safe failure or unconfirmed result copy using their bounded stop reason. Current producers use the existing error method. Older stored payloads and unknown reason values remain readable.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed existing runtime event payloads and producer identity. ACP other completions now project safe failure or unconfirmed result copy using their bounded stop reason. Current producers use the existing error method. Older stored payloads and unknown reason values remain readable.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed existing runtime event payloads and producer identity. ACP other completions now project safe failure or unconfirmed result copy using their bounded stop reason. Current producers use the existing error method. Older stored payloads and unknown reason values remain readable.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked transcript replay for old ACP completions. Existing output is retained and the safe failure explanation is rendered without offering the row as a verified answer.","inputs":["packages/shared/src/runtime-event-projection.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed actual adapter take-up for resolved refusal and request limits. The test observes non-retryable terminal errors with the original bounded provider reasons and sends a new turn over the same adapter.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed ACP event translation. Shared finish reasons still map end-turn, token budget and cancellation. Unrepresentable reasons keep their bounded provider text for terminal classification.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed ACP event translation. Shared finish reasons still map end-turn, token budget and cancellation. Unrepresentable reasons keep their bounded provider text for terminal classification.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed ACP event translation. Shared finish reasons still map end-turn, token budget and cancellation. Unrepresentable reasons keep their bounded provider text for terminal classification.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed ACP event translation. Shared finish reasons still map end-turn, token budget and cancellation. Unrepresentable reasons keep their bounded provider text for terminal classification.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed prompted and provider-triggered ACP settlement. Identity binding and request closure precede the terminal. Refusal, request-limit and unknown outcomes carry safe error copy and no retry authority, and the attached session stays reusable.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the existing positive finish-reason allowlist. The same proof is now required to supersede an exact turn’s recorded terminal failure.","inputs":["src-server/providers/finish-reason-authority.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed full and bounded history compatibility. The two bounded projections retrieve displaced decisive facts only for a weak current terminal and exact turn identity. Stored rows are preserved.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed full, single-bounded and batched session reads against persisted terminal sequences. Negative controls cover weak late terminals and historical ACP reason evidence; positive controls cover genuine proof and a canceled successor.","inputs":["src-server/services/orchestration/__tests__/event-store.test.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed run and session summaries through the shared turn-outcome projection. Late weak same-turn terminals preserve the recorded failure and a different turn supplies its own outcome.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed terminal lifecycle state, failure detail, and supersession. Verified positive completion clears a recorded same-turn failure, with deferred retry and user cancellation retaining their prior semantics.","inputs":["src-server/services/orchestration/session-lifecycle-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the notification listener’s classification and provider-triggered outcomes. An ACP stop without result produces an attention notice. Existing notification lifecycle and dismissal authority are preserved.","inputs":["src-server/services/orchestration/turn-completion-notifications.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed delegation snapshot and event projection. Known ACP outcomes cross the peer seam as fixed reason codes and copy. Opaque provider reason data stays local.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated Finish-reason clear authority topic against the common allowlist and the same-turn and bounded evidence owners.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed prompt settlement, request closure, stop-reason compatibility, safe error display and manual continuation against the ACP adapter and read projections.","inputs":["docs/guides/acp.md"]}
+  ]
+}

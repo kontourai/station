@@ -18,73 +18,79 @@ interface HeaderBreadcrumb {
 }
 
 export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
-  const generic = [
+  const common = [
     {
-      label: 'What can you do?',
-      prompt: 'What can you help me with? List your capabilities.',
+      label: 'What needs my attention?',
+      prompt:
+        'Use list_active_work to summarize work visible to this conversation, what is waiting on me, and recorded blockers. State the scope and any gaps.',
     },
     {
-      label: 'System health check',
+      label: 'Check my Station',
       prompt:
-        'Run a system health check and tell me if anything needs attention.',
+        'Use system_status to check my Station and explain reported problems. Identify unavailable checks.',
     },
   ];
-
-  if (!view) return generic;
-
-  const contextual: HeaderHelpPrompt[] = [];
-
-  switch (view.type) {
+  const projectSlug = getHeaderBreadcrumb(
+    view ?? { type: 'home' },
+  )?.projectSlug;
+  if (projectSlug)
+    return [
+      {
+        label: 'What is happening in this project?',
+        prompt: `Use list_active_work and read_conversation to summarize work visible to this conversation. Report whether its scope includes project ${JSON.stringify(projectSlug)}; do not imply a Station-wide inventory.`,
+      },
+      ...common,
+    ];
+  switch (view?.type) {
     case 'agents':
-      contextual.push(
+      return [
         {
-          label: 'Create an agent for me',
-          prompt: 'Help me create a new agent. Ask me what I need it to do.',
-        },
-        {
-          label: 'What skills should I add?',
+          label: 'Which agents have I configured?',
           prompt:
-            'List available skills and recommend which ones to install based on common use cases.',
+            'Use list_agents and get_agent to summarize my configured agents, their engines and instructions.',
         },
-      );
-      break;
+        ...common,
+      ];
     case 'connections-tools':
-      contextual.push(
+      return [
         {
-          label: 'Add an MCP server',
+          label: 'Which tool connections are configured?',
           prompt:
-            'Help me add a new MCP tool server. What popular ones are available?',
+            'Use list_integrations and get_integration to summarize my tool connections and any reported setup problems.',
         },
-        {
-          label: 'Browse the registry',
-          prompt:
-            'List available integrations from the registry and help me pick ones to install.',
-        },
-      );
-      break;
-    case 'guidance':
-      contextual.push({
-        label: 'Install recommended skills',
-        prompt:
-          'What skills are available in the registry? Recommend the most useful ones and install them.',
-      });
-      break;
-    case 'schedule':
-      contextual.push({
-        label: 'Set up an automation',
-        prompt:
-          'Help me set up an automation. Ask me what I want to run and when.',
-      });
-      break;
+        ...common,
+      ];
+    case 'connections':
     case 'connections-models':
-      contextual.push({
-        label: 'Add a model connection',
-        prompt: 'Help me set up a new model connection.',
-      });
-      break;
+      return [
+        {
+          label: 'Check my model connections',
+          prompt:
+            'Use list_providers and system_status to check my model connections. Which need attention, and why?',
+        },
+        ...common,
+      ];
+    case 'guidance':
+      return [
+        {
+          label: 'Which skills are installed?',
+          prompt:
+            'Use list_skills to summarize my installed skills and what each helps me do.',
+        },
+        ...common,
+      ];
+    case 'schedule':
+      return [
+        {
+          label: 'What happened to my automations?',
+          prompt:
+            'Use list_jobs and get_job_logs to summarize my automations and their latest outcomes, failures and missing receipts.',
+        },
+        ...common,
+      ];
+    default:
+      return common;
   }
-
-  return [...contextual, ...generic];
 }
 
 /** Display label for a standalone section view, or null if it has none. */

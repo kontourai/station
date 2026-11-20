@@ -46,9 +46,7 @@ describe('UIBlockRenderer — attestation badge (station#1399 fix round, H2)', (
     render(<UIBlockRenderer block={block} />);
     const badgeText = screen.getByText('Unattested');
     const tooltipHost = badgeText.closest('[title]');
-    expect(tooltipHost?.getAttribute('title')).toMatch(
-      /not verified against anything/,
-    );
+    expect(tooltipHost?.getAttribute('title')).toMatch(/isn't verified/);
   });
 
   test('renders an Unattested badge on a claiming table block with attestationState unattested', () => {

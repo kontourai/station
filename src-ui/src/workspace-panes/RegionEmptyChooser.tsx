@@ -9,7 +9,6 @@ import {
 import { createPortal } from 'react-dom';
 import {
   AgentGlyph,
-  ChartGlyph,
   DiffGlyph,
   FolderGlyph,
   HomeGlyph,
@@ -43,8 +42,6 @@ function SurfaceGlyph({ icon }: { icon: string }) {
   switch (icon) {
     case 'chat':
       return <MessageGlyph />;
-    case 'activity':
-      return <ChartGlyph />;
     case 'agent':
       return <AgentGlyph />;
     case 'device':

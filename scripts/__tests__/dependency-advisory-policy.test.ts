@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   ALL_DEPENDENCY_SCOPES,
   classifyChangedPaths,
@@ -35,6 +36,9 @@ import {
   pnpmDependencyGraph,
   pnpmImporterManifest,
 } from '../lib/pnpm-dependency-graph.mjs';
+
+// Removed in an after-hook, so a failed assertion cannot leak the fixture.
+const makeTempDir = trackTempDirs();
 
 const NOW = new Date('2026-07-10T00:00:00.000Z');
 
@@ -451,6 +455,82 @@ overrides:
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('admits a cacache glob major only through its own reviewed override', () => {
+    const root = makeTempDir('station-remediation-');
+    const put = (directory: string, manifest: object) => {
+      mkdirSync(path.join(root, directory), { recursive: true });
+      writeFileSync(
+        path.join(root, directory, 'package.json'),
+        JSON.stringify(manifest),
+      );
+    };
+    const workspace = (overrides: string) =>
+      writeFileSync(
+        path.join(root, 'pnpm-workspace.yaml'),
+        `packages: []\nnodeLinker: hoisted\noverrides:\n  brace-expansion@^2.0.2: ^2.1.4\n${overrides}`,
+      );
+    try {
+      put('.', { name: 'fixture', dependencies: { cacache: '^21.0.0' } });
+      put('node_modules/cacache', {
+        name: 'cacache',
+        version: '21.0.1',
+        dependencies: { glob: '^13.0.0' },
+      });
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '14.0.4',
+        dependencies: { minimatch: '^11.0.0' },
+      });
+      put('node_modules/minimatch', {
+        name: 'minimatch',
+        version: '11.0.6',
+        dependencies: { 'brace-expansion': '^5.0.12' },
+      });
+      put('node_modules/brace-expansion', {
+        name: 'brace-expansion',
+        version: '5.0.12',
+      });
+      workspace('  cacache@21>glob: ^14.0.3\n');
+      expect(
+        validateInstalledRemediationGraph(root).find(
+          (edge) => edge.parent === 'cacache',
+        ),
+      ).toMatchObject({ name: 'glob', version: '14.0.4' });
+      // Another major's override does not admit this cacache's edge.
+      workspace('  cacache@20>glob: ^14.0.3\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency: cacache@21.0.1 -> glob@14.0.4; expected ^13.0.0',
+      );
+      // The override still bounds the installed copy.
+      workspace('  cacache@21>glob: ^14.0.5\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'expected ^14.0.5',
+      );
+      // An override may only move glob forward: "any" or a lower major is
+      // refused even when the installed copy satisfies it.
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '7.2.3',
+        dependencies: { minimatch: '^11.0.0' },
+      });
+      workspace('  cacache@21>glob: "*"\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'override * is below declared ^13.0.0',
+      );
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '12.0.0',
+        dependencies: { minimatch: '^11.0.0' },
+      });
+      workspace('  cacache@21>glob: ^12.0.0\n');
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'override ^12.0.0 is below declared ^13.0.0',
+      );
+    } finally {
+      // The tracker removes `root`; nothing else to restore.
     }
   });
 

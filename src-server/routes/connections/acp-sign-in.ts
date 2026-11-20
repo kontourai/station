@@ -10,15 +10,29 @@
  * additionally needs both `coding:exec` and `terminal:operate` to start it,
  * and `terminal:operate` to attach to it.
  * A request that may be an agent's can do none of these.
+ *
+ * Station-run sign-in, for an engine that delegates its credential to the
+ * host (`/connections/:id/host-auth/login`, `/host-auth/sign-out`), is
+ * `engine:login` like any other sign-in; its attempt read carries the device
+ * code, so it is gated too. Installing a managed engine
+ * (`/connections/:id/managed-install`) downloads and lays down code Station
+ * will run, so it is `orchestration:operate` and needs explicit consent.
  */
 
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import type { EngineSignInView } from '@kontourai/station-contracts/engine-sign-in';
+import type { HostAuthLoginRequest } from '@kontourai/station-contracts/engine-credential-provider';
+import type {
+  EngineHostAuthView,
+  EngineSignInView,
+  ManagedInstallStateView,
+} from '@kontourai/station-contracts/engine-sign-in';
 import {
   PAIRING_SCOPE_ENGINE_LOGIN,
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { ManagedInstallState } from '@kontourai/station-contracts/managed-engine-install';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import type { RuntimeContext } from '../../runtime/types.js';
@@ -27,14 +41,20 @@ import {
   mayRunCommandsOnHost,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { classifyOperatorCredentialPosition } from '../../security/host-operator-credential.js';
 import {
   assertEngineAllowedByManagedPolicy,
+  engineHostAuthPolicy,
   isManagedEngineRefusal,
   managedEngineRefusalBody,
 } from '../../security/managed-engine-limits.js';
 import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
-import { registryAuthFor } from '../../services/acp/acp-engine-descriptors.js';
+import {
+  managedRuntimeEntryFor,
+  registryAuthFor,
+  stationOwnsEngineSignIn,
+} from '../../services/acp/acp-engine-descriptors.js';
 import {
   engineSignInStatus,
   invalidateEngineStatus,
@@ -47,6 +67,15 @@ import {
   EngineSignInError,
   type EngineSignInService,
 } from '../../services/acp/engine-sign-in.js';
+import {
+  HOST_AUTH_LOGIN_REFUSAL_TEXT,
+  HostAuthLoginRefusedError,
+} from '../../services/engine-host-auth/kiro-oidc/kiro-sign-in.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
+import {
+  ManagedInstallConsentRequiredError,
+  managedInstaller,
+} from '../../services/engines/managed-install.js';
 import { findACPConnection } from './acp.js';
 
 function granted(c: Context): string | undefined {
@@ -79,6 +108,116 @@ function mayRunTerminalSignIn(c: Context): boolean {
   );
 }
 
+/** May install a managed engine: the operator in person, or a device granted `orchestration:operate`. */
+function mayInstallEngines(c: Context): boolean {
+  const request = c.req.raw;
+  if (requestMayBeAnAgent(request)) return false;
+  if (isOperatorInPersonNotAgent(request)) return true;
+  const scope = granted(c);
+  return (
+    !!getRuntimeAuthenticatedRequestPrincipal(request) &&
+    scope !== undefined &&
+    pairingScopeIncludes(scope, PAIRING_SCOPE_ORCHESTRATION_OPERATE)
+  );
+}
+
+const INSTALL_NOT_GRANTED = {
+  success: false as const,
+  code: 'engine-install-not-granted' as const,
+  error:
+    "This device is not allowed to install engines on this Station's computer. Install it there, or ask the Station's operator to allow operating Station from this device.",
+};
+
+function installStateView(state: ManagedInstallState): ManagedInstallStateView {
+  return state.kind === 'installed'
+    ? { kind: 'installed', version: state.version }
+    : state;
+}
+
+/**
+ * Whether this request's browser is on the Station's computer, the only place
+ * a social sign-in's loopback callback can reach. The same-machine reading
+ * `runtime-http.ts` uses; it can only narrow (a forwarded or tailnet request
+ * reads off-host), so a wrong answer costs a sign-in that times out, never
+ * access. See `classifyOperatorCredentialPosition` for what it does not prove.
+ */
+function browserOnHost(c: Context): boolean {
+  return classifyOperatorCredentialPosition(c) !== 'off-host';
+}
+
+/** The credential scope a connection's Station-run sign-in uses. */
+function hostAuthScope(config: ACPConnectionConfig) {
+  return { connectionId: config.id, credentialProfileRef: 'default' };
+}
+
+function hostAuthView(
+  c: Context,
+  config: ACPConnectionConfig,
+): EngineHostAuthView | undefined {
+  const owned = stationOwnsEngineSignIn(config);
+  const managed = managedRuntimeEntryFor(config)?.managedRuntime;
+  if (!owned && !managed) return undefined;
+  const service = engineHostAuth();
+  const installer = managedInstaller();
+  const definition = managed
+    ? installer?.definition(managed.installId)
+    : undefined;
+  return {
+    ...(owned && service
+      ? { status: service.status(hostAuthScope(config)) }
+      : {}),
+    identities: owned
+      ? [
+          'builder-id',
+          'identity-center',
+          ...(browserOnHost(c) ? (['social'] as const) : []),
+        ]
+      : [],
+    ...(owned && !browserOnHost(c)
+      ? { socialSignIn: 'needs-browser-on-host' as const }
+      : {}),
+    policy: engineHostAuthPolicy(),
+    ...(managed && installer && definition
+      ? {
+          install: {
+            installId: managed.installId,
+            version: definition.pin.version,
+            state: installStateView(installer.state(managed.installId)),
+          },
+        }
+      : {}),
+    allowed: { install: mayInstallEngines(c) },
+  };
+}
+
+/** Reads a sign-in request body; anything malformed is null. */
+async function readHostAuthLoginRequest(
+  c: Context,
+): Promise<HostAuthLoginRequest | null> {
+  const body: unknown = await c.req.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const value = body as Record<string, unknown>;
+  const region =
+    typeof value.region === 'string' && value.region.length <= 32
+      ? value.region.trim()
+      : undefined;
+  if (value.identity === 'builder-id')
+    return { identity: 'builder-id', ...(region ? { region } : {}) };
+  if (value.identity === 'social') return { identity: 'social' };
+  if (
+    value.identity === 'identity-center' &&
+    typeof value.startUrl === 'string' &&
+    value.startUrl.length <= 512 &&
+    region
+  )
+    return {
+      identity: 'identity-center',
+      startUrl: value.startUrl,
+      region,
+    };
+  return null;
+}
+
 const SIGN_IN_NOT_GRANTED = {
   success: false as const,
   code: 'engine-login-not-granted' as const,
@@ -107,6 +246,7 @@ async function viewFor(
   const methods = service.methodsView(config);
   const termsNotice = service.engineTermsNotice(config);
   const signIn = maySignInEngines(c);
+  const hostAuth = hostAuthView(c, config);
   return {
     connectionId: config.id,
     engineName: config.name,
@@ -124,6 +264,7 @@ async function viewFor(
       signIn,
       terminal: signIn && service.terminalAvailable && mayRunTerminalSignIn(c),
     },
+    ...(hostAuth ? { hostAuth } : {}),
   };
 }
 
@@ -212,7 +353,9 @@ export function createACPSignInRoutes(input: {
     if (!config) return notFound(c);
     const refused = managedRefusal(config);
     if (refused) return c.json(managedEngineRefusalBody(refused), 403);
-    await service.refreshMethods(config);
+    // An engine Station signs in has no sign-in methods of its own to read,
+    // and launching it for a handshake would only ask Station for a token.
+    if (!stationOwnsEngineSignIn(config)) await service.refreshMethods(config);
     return c.json({
       success: true,
       data: await viewFor(c, service, config, true),
@@ -320,6 +463,149 @@ export function createACPSignInRoutes(input: {
       success: true,
       data: await viewFor(c, service, config, true),
     });
+  });
+
+  // --- Station-run sign-in (an engine that delegates its credential) -------
+
+  const hostAuthTarget = async (c: Context) => {
+    const config = await connection(c);
+    if (!config) return { response: notFound(c) };
+    const refused = managedRefusal(config);
+    if (refused)
+      return { response: c.json(managedEngineRefusalBody(refused), 403) };
+    const hostAuth = engineHostAuth();
+    if (!stationOwnsEngineSignIn(config) || !hostAuth)
+      return {
+        response: c.json(
+          {
+            success: false,
+            error: `${config.name} keeps its own sign-in; Station does not sign it in.`,
+          },
+          409,
+        ),
+      };
+    return { config, hostAuth };
+  };
+
+  app.post('/connections/:id/host-auth/login', async (c) => {
+    if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
+    const target = await hostAuthTarget(c);
+    if ('response' in target) return target.response;
+    const request = await readHostAuthLoginRequest(c);
+    if (!request)
+      return c.json(
+        {
+          success: false,
+          error:
+            'Choose AWS Builder ID, IAM Identity Center with a start URL and region, or Google or GitHub.',
+        },
+        400,
+      );
+    // The sign-in page returns to a loopback port here: from a browser
+    // elsewhere it could only time out, holding a port meanwhile.
+    if (request.identity === 'social' && !browserOnHost(c))
+      return c.json(
+        {
+          success: false,
+          code: 'social-sign-in-needs-browser-on-host',
+          error: HOST_AUTH_LOGIN_REFUSAL_TEXT['browser-not-on-host'],
+        },
+        409,
+      );
+    try {
+      return c.json({
+        success: true,
+        data: await target.hostAuth.startLogin(
+          hostAuthScope(target.config),
+          request,
+        ),
+      });
+    } catch (error) {
+      if (error instanceof HostAuthLoginRefusedError)
+        return c.json(
+          { success: false, error: HOST_AUTH_LOGIN_REFUSAL_TEXT[error.code] },
+          400,
+        );
+      return failure(c, error);
+    }
+  });
+
+  app.get('/connections/:id/host-auth/login', async (c) => {
+    if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
+    const target = await hostAuthTarget(c);
+    if ('response' in target) return target.response;
+    return c.json({
+      success: true,
+      data: target.hostAuth.login(hostAuthScope(target.config)) ?? null,
+    });
+  });
+
+  app.delete('/connections/:id/host-auth/login', async (c) => {
+    if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
+    const target = await hostAuthTarget(c);
+    if ('response' in target) return target.response;
+    return c.json({
+      success: true,
+      data: target.hostAuth.cancelLogin(hostAuthScope(target.config)) ?? null,
+    });
+  });
+
+  app.post('/connections/:id/host-auth/sign-out', async (c) => {
+    if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
+    const target = await hostAuthTarget(c);
+    if ('response' in target) return target.response;
+    try {
+      await target.hostAuth.signOut(hostAuthScope(target.config));
+    } catch (error) {
+      return failure(c, error);
+    }
+    invalidateEngineStatus(target.config.id);
+    return c.json({
+      success: true,
+      data: await viewFor(c, service, target.config, false),
+    });
+  });
+
+  // --- Managed install ------------------------------------------------------
+
+  app.post('/connections/:id/managed-install', async (c) => {
+    if (!mayInstallEngines(c)) return c.json(INSTALL_NOT_GRANTED, 403);
+    const config = await connection(c);
+    if (!config) return notFound(c);
+    const refused = managedRefusal(config);
+    if (refused) return c.json(managedEngineRefusalBody(refused), 403);
+    const managed = managedRuntimeEntryFor(config)?.managedRuntime;
+    const installer = managedInstaller();
+    if (!managed || !installer?.definition(managed.installId))
+      return c.json(
+        {
+          success: false,
+          error: `${config.name} is not an engine Station installs.`,
+        },
+        409,
+      );
+    const body: unknown = await c.req.json().catch(() => null);
+    const consent =
+      body && typeof body === 'object' && 'consent' in body
+        ? (body as { consent: unknown }).consent
+        : undefined;
+    try {
+      // The literal `true` a person gave, or a refusal before any I/O.
+      const { state } = installer.start(managed.installId, {
+        consent: consent as true,
+      });
+      return c.json({ success: true, data: installStateView(state) });
+    } catch (error) {
+      if (error instanceof ManagedInstallConsentRequiredError)
+        return c.json(
+          {
+            success: false,
+            error: 'Installing an engine needs your explicit go-ahead.',
+          },
+          400,
+        );
+      return failure(c, error);
+    }
   });
 
   return app;

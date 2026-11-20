@@ -6,6 +6,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { AgentService } = await import('../agent-service.js');
+const { AgentConfigNotFoundError } = await import(
+  '../../../domain/config-loader-agents.js'
+);
 
 function createMockConfigLoader() {
   return {
@@ -110,6 +113,38 @@ describe('AgentService', () => {
         execution: { agentConnectionId: 'claude' },
       },
     ]);
+  });
+
+  // #4995: the setup probe walked this listing and read each spec; a
+  // registry default (here `muse`) is listed but never has an `agent.json`.
+  test('findAgent answers null for a listed registry default with no file, and still throws an unreadable one', async () => {
+    const loader = createMockConfigLoader();
+    loader.loadAgent.mockImplementation(async (slug: string) => {
+      if (slug === 'default') return { name: 'Default', prompt: 'p' };
+      if (slug === 'broken') throw new Error('EACCES: permission denied');
+      throw new AgentConfigNotFoundError(
+        slug,
+        `/home/agents/${slug}/agent.json`,
+      );
+    });
+    const svc = new AgentService(
+      loader as any,
+      createMockStorageAdapter() as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+      async () => registryWithEngineDefault('muse', { kind: 'native' }) as any,
+    );
+
+    const listed = (await svc.listAgents()).map((agent) => agent.slug);
+    expect(listed).toContain('muse');
+    await expect(svc.getAgent('muse')).rejects.toThrow(
+      "Agent 'muse' not found",
+    );
+    expect(await svc.findAgent('muse')).toBeNull();
+    expect(await svc.findAgent('default')).toMatchObject({ name: 'Default' });
+    await expect(svc.findAgent('broken')).rejects.toThrow('EACCES');
   });
 
   // RT-11 — connecting an ACP CLI adds a defaultAgents entry, and the naming

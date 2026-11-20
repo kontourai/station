@@ -330,3 +330,175 @@ describe('extension transcript markers (station#3415)', () => {
     ).toBeUndefined();
   });
 });
+
+describe('model.rerouted transcript marker', () => {
+  const reroute = (eventId: string, extra: Record<string, unknown> = {}) =>
+    ev(eventId, {
+      method: 'model.rerouted',
+      provider: 'acp',
+      createdAt: '2026-10-05T00:00:05.000Z',
+      fromModel: 'claude-opus-4.6',
+      toModel: 'claude-sonnet-4.6',
+      trigger: 'refusal',
+      scope: 'turn',
+      ...extra,
+    });
+
+  it('a reroute during a turn follows that turn as one quiet line', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        ev('e0', { method: 'turn.started', turnId: 't1', prompt: 'question' }),
+        reroute('e1', { turnId: 't1' }),
+        ev('e2', { method: 'content.text-delta', turnId: 't1', delta: 'ok' }),
+        ev('e3', { method: 'turn.completed', turnId: 't1' }),
+      ],
+      { stableIds: true },
+    );
+    expect(shape(messages).slice(-2)).toEqual([
+      expect.objectContaining({ role: 'assistant', answerEligible: true }),
+      {
+        id: 'e1:transcript-marker',
+        role: 'system',
+        text: 'transcript-marker:Model switched from claude-opus-4.6 to claude-sonnet-4.6 after a refusal during this turn',
+      },
+    ]);
+  });
+
+  it('a session-scope reroute says it holds for the session; a subagent one names the subagent', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        reroute('e1', { scope: 'session', trigger: 'availability' }),
+        reroute('e2', { childWorkId: 'sub-1', scope: 'session' }),
+        reroute('e3', { toModel: undefined, trigger: 'availability' }),
+      ],
+      { stableIds: true },
+    );
+    expect(shape(messages).map((row) => row.text)).toEqual([
+      'transcript-marker:Model switched from claude-opus-4.6 to claude-sonnet-4.6 (unavailable) for the rest of this session',
+      'transcript-marker:A subagent’s model switched from claude-opus-4.6 to claude-sonnet-4.6 after a refusal',
+      'transcript-marker:Model claude-opus-4.6 could not be used (unavailable); no fallback was available',
+    ]);
+  });
+});
+
+describe('in-place engine rewind marker', () => {
+  const turn = (n: number) => [
+    ev(`s${n}`, {
+      method: 'turn.started',
+      turnId: `t${n}`,
+      prompt: `question ${n}`,
+    }),
+    ev(`d${n}`, {
+      method: 'content.text-delta',
+      turnId: `t${n}`,
+      delta: `answer ${n}`,
+    }),
+    ev(`c${n}`, { method: 'turn.completed', turnId: `t${n}` }),
+  ];
+  /** The exact shape `AcpAdapter.rewindSession` publishes. */
+  const rewound = (details: Record<string, unknown>) =>
+    ev('w', {
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: 'acp.session-rewound',
+      message: 'Kiro rewound this conversation; 2 turns are hidden from it.',
+      details,
+    });
+
+  it('keeps every turn, marks the hidden ones rewound, and draws one marker where it happened', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        ...turn(1),
+        ...turn(2),
+        ...turn(3),
+        rewound({
+          beforeTurnId: 't2',
+          hiddenTurnIds: ['t2', 't3'],
+          affectedFileCount: 2,
+        }),
+      ],
+      { stableIds: true },
+    );
+    expect(
+      messages.map((message) => [
+        message.role,
+        message.metadata?.turnId,
+        message.metadata?.rewound === true,
+      ]),
+    ).toEqual([
+      ['user', 't1', false],
+      ['assistant', 't1', false],
+      ['user', 't2', true],
+      ['assistant', 't2', true],
+      ['user', 't3', true],
+      ['assistant', 't3', true],
+      ['system', undefined, false],
+    ]);
+    expect(messages.at(-1)?.parts).toEqual([
+      {
+        type: 'transcript-marker',
+        text: 'Rewound: the engine no longer sees 2 turns; the engine restored 2 files',
+      },
+    ]);
+  });
+
+  it('marks only the hidden turns of the session that reported them', () => {
+    const otherSession = {
+      ...rewound({ beforeTurnId: 't1', hiddenTurnIds: ['t1'] }),
+      threadId: 'another-session',
+    } as CanonicalRuntimeEvent;
+    const messages = projectRuntimeEventsToMessages([...turn(1), otherSession]);
+    expect(messages.some((message) => message.metadata?.rewound)).toBe(false);
+  });
+
+  it('a warning with another code, or no hidden-turn list, draws nothing', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ...turn(1),
+      ev('x', {
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'something-else',
+        message: 'unrelated',
+        details: { hiddenTurnIds: ['t1'] },
+      }),
+      rewound({ beforeTurnId: 't1' }),
+    ]);
+    expect(messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+    expect(messages.some((message) => message.metadata?.rewound)).toBe(false);
+  });
+});
+
+describe('late engine rewind marker', () => {
+  it('is drawn as its own marker row from the stored event, and marks no turn', () => {
+    const messages = projectRuntimeEventsToMessages(
+      [
+        ev('s1', { method: 'turn.started', turnId: 't1', prompt: 'one' }),
+        ev('d1', { method: 'content.text-delta', turnId: 't1', delta: 'a' }),
+        ev('c1', { method: 'turn.completed', turnId: 't1' }),
+        ev('w', {
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: 'acp.session-rewound-late',
+          message:
+            'Kiro applied an earlier rewind late, after a later turn started.',
+          details: { beforeTurnId: 't1' },
+        }),
+      ],
+      { stableIds: true },
+    );
+    expect(messages.at(-1)).toMatchObject({
+      id: 'w:transcript-marker',
+      role: 'system',
+      parts: [
+        {
+          type: 'transcript-marker',
+          text: 'Rewound late: the engine may no longer see turns from an earlier point on',
+        },
+      ],
+    });
+    expect(messages.some((message) => message.metadata?.rewound)).toBe(false);
+  });
+});

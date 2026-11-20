@@ -1,0 +1,7 @@
+{
+  "revision": "d2c753dedc1690a55a007dd78f5387d9165a1d36",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated with npm run docs:mcp:generate after the module map's first-turn composition paragraph gained the re-delivery sentence for acp.session-started-fresh; that topic's prose is the only change. The reference's claims about how topics are generated, checked and served are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

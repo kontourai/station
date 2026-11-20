@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"#4517 managed settings. Changed: config-loader.ts: loadAppConfig, the launchability snapshot and mutation results apply the managed overlay; mutateAppConfig and saveAppConfig refuse locked-key changes; loadStoredAppConfig added; file-storage-adapter.ts: getProject/listProjects hide locked override fields; projects.ts: project mutations map ManagedSettingLockedError to 403; config.ts: PUT /config/app refuses a locked managed setting first (403 managed_setting_locked), GET /config/app returns managed values with managed provenance, log-level and first-run map the refusal to 403; station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads. Cited docs edited: docs/reference/api.md. Updated Get/Update App Configuration: managed values and provenance on GET, the 403 managed_setting_locked refusal and no-op on PUT, and the log-level, first-run and project refusals. Other API sections make no claim about these paths.","inputs":["docs/reference/api.md","src-server/domain/config-loader.ts","src-server/domain/file-storage-adapter.ts","src-server/routes/projects/projects.ts","src-server/routes/system/config.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

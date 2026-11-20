@@ -32,12 +32,26 @@ Markdown, and checks every emitted HTML file for broken or escaping relative
 links. It writes disposable output to `dist-pages/`; do not edit that directory
 by hand.
 
+Product images on the home page are not separate captures. The build copies
+the screens named in `PAGES_GALLERY_SCREENS` (`scripts/build-github-pages.mjs`)
+from the committed screenshot-gallery baseline in `tests/screenshots.baseline/`
+to `media/<screen>.png`, so they change when that baseline is regenerated. The
+home page names light and dark captures, and phone captures beside desktop ones,
+through `<picture>` sources: the reader's theme and screen width pick one, so
+each image the page references, including every `srcset`, must be in that list.
+The root README embeds the same baseline images. A renamed, dropped, or volatile
+baseline screen fails the build or `product-docs-source-links.test.ts`. The
+`og:image` and `twitter:image` URLs point at the published `media/` copy.
+
 Rendered headings have section IDs from their visible text, using the same
 heading rules as the learning reader. Repeated headings receive unique numeric
 suffixes within each document. Links such as the getting-started guide's
 `#install-nightly` resolve to those sections in the generated page. The Pages
-link checker validates target files; the renderer tests cover these heading
-targets. Neither check proves the hosted site has deployed the current source.
+link checker validates target files, and a fragment on a link to another page
+must name an element in that page (the docs header links to the home page's
+`#how`); the renderer tests cover these heading targets. Fragments within the
+same page are not checked. Neither check proves the hosted site has deployed
+the current source.
 
 An admitted document may link relatively only to another admitted document;
 link anything else by its absolute
@@ -53,10 +67,12 @@ document URLs are the same `docs/<path>.html` pages this builder writes. The
 bundle step fails open: a failed docs-kit build never blocks this site's
 publish, and the previous `docs-bundle.json` stays on `gh-pages` (stale, shown
 as behind on the hub) until a later build succeeds. The bundle build and advisory
-docs gate both pin Corpus source `b8ecf4cd4c6482bb804cdeea617ebe2d9b78ab05`,
+docs gate both pin Corpus source `dfadba4e64883e6187fb42e32911ca9f091e0fa7`,
 the reviewed 0.7 renderer and v2 bundle implementation. Station continues to
 publish its own HTML and CSS; updating this pin does not replace that renderer
-or install an MCP client.
+or install an MCP client. Its identity fields and `builtOn` are also inputs to
+the shipped Station Docs bundle, so changing them needs `npm run
+docs:mcp:generate`.
 
 It also lists the agent-facing manual `docs/reference/station-docs.md` with
 `"publish": false`: the bundle carries it, with its relative links made
@@ -81,8 +97,12 @@ renders no page for it and this builder never publishes it. The manifest's
 - `docs/user/workspace-checkpoints.md` and `docs/user/houston.md`: the
   unadmitted user guides.
 - `docs/reviews/personal-boards-20261016/README.md`,
-  `docs/reviews/workspace-map-20261015/README.md` and
-  `docs/ui/reviews/mobile-pickers-20261003/README.md`: dated review evidence,
+  `docs/reviews/sidebar-focus-20261107/README.md`,
+  `docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md`,
+  `docs/reviews/task-code-review-4656/README.md`,
+  `docs/reviews/workspace-map-20261015/README.md`,
+  `docs/ui/reviews/mobile-pickers-20261003/README.md`, and
+  `docs/ui/reviews/station-connections-20261105/README.md`: dated review evidence,
   each listed by exact path.
 
 Admitting or withdrawing a document changes both files.

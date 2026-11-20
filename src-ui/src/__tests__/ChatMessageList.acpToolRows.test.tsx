@@ -107,7 +107,6 @@ function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
     ...overrides,
@@ -489,13 +488,14 @@ describe('ACP (OpenCode) tool rows', () => {
     expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
       1,
     );
-    // #2915: a Claude Edit asked with no acceptEdits suggestion has nothing a
-    // session answer could forward, so no session option is offered.
+    // Owner decision (2026-11-16): a session answer is offered on every tool
+    // approval. A Claude Edit with no acceptEdits suggestion offers Station's
+    // own tool grant, which forwards nothing to the engine.
     expect(
-      screen.queryByRole('button', {
+      screen.getByRole('button', {
         name: 'More ways to allow this request',
       }),
-    ).toBeNull();
+    ).toBeTruthy();
     expect(screen.getAllByText(/^Edit approved\.txt/)).toHaveLength(1);
   });
 });

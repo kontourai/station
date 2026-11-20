@@ -1,0 +1,13 @@
+{
+  "revision": "839ef8becdbbc743f82cb5734dba61b18cfe36de",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"Checked the revised authored-command refusal wording. It names the command and next step, clears the composer through the shared cleanup, and reaches neither the normal sender nor the run counter. The 222-test focused rerun and copy style gate passed.","inputs":["src-ui/src/slashCommands/dispatch.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked revised labels for the unset rule and empty search. Registered conditions, modal/focus guidance, mobile read-only capture and the exact Space reload journey still pass in controlled Chromium.","inputs":["src-ui/src/views/settings/KeyboardShortcutsSection.tsx"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Checked revised labels for the unset rule and empty search. Registered conditions, modal/focus guidance, mobile read-only capture and the exact Space reload journey still pass in controlled Chromium.","inputs":["src-ui/src/views/settings/KeyboardShortcutsSection.tsx"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"The terminal-focus fixture now uses a native focusable button. The registration replacement, modal, disabled/absent and native Space ownership assertions passed with the accessibility ratchet.","inputs":["src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx"]}
+  ]
+}

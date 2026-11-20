@@ -1,8 +1,70 @@
 #!/usr/bin/env node
 import { appendFileSync } from 'node:fs';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { github, listGithub } from './qualification-evidence.mjs';
-import { QUALIFICATION_GATE_JOB } from './qualification-repair.mjs';
+import {
+  FAILED_SOURCE_WINDOW_MS,
+  github,
+  listGithub,
+} from './qualification-evidence.mjs';
+import {
+  describeSignal,
+  qualificationFailureSignal,
+  signalMode,
+} from './qualification-failure-signal.mjs';
+import {
+  corpusExecuted,
+  QUALIFICATION_GATE_JOB,
+} from './qualification-repair.mjs';
+
+const KNOWN_ONLY_MARKER =
+  /<!-- station-qualification-known-only:(\{[^\n]*\}) -->/;
+
+/** Whether a completed run executed its qualification corpus. */
+function executedRun(item) {
+  return (
+    item.run.status === 'completed' &&
+    item.jobs.some(
+      (job) =>
+        job.name.startsWith('qualification / ') &&
+        job.name !== 'qualification / resolve' &&
+        job.name !== QUALIFICATION_GATE_JOB,
+    ) &&
+    corpusExecuted(item.jobs)
+  );
+}
+
+/**
+ * The run whose failure manifests the workflow downloads before classifying:
+ * the newest completed canonical run that executed its corpus, when its gate
+ * did not pass. Empty when there is nothing red to classify.
+ */
+export async function selectRunToClassify(env = process.env) {
+  const since = new Date(Date.now() - 48 * HOUR).toISOString();
+  const runs = (
+    await listGithub(
+      `actions/workflows/main-qualification.yml/runs?branch=main&created=${encodeURIComponent(`>=${since}`)}`,
+      'workflow_runs',
+      { env },
+    )
+  )
+    .filter(
+      (run) =>
+        run.path === '.github/workflows/main-qualification.yml' &&
+        run.head_repository?.full_name === env.GITHUB_REPOSITORY &&
+        run.head_branch === 'main' &&
+        run.status === 'completed',
+    )
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  for (const run of runs) {
+    const jobs = await listGithub(`actions/runs/${run.id}/jobs`, 'jobs', {
+      env,
+    });
+    if (!executedRun({ run, jobs })) continue;
+    const gate = jobs.find((job) => job.name === QUALIFICATION_GATE_JOB);
+    return gate?.conclusion === 'success' ? '' : String(run.id);
+  }
+  return '';
+}
 
 const TITLE = 'Main qualification health';
 const HOUR = 60 * 60_000;
@@ -24,6 +86,20 @@ const NIGHTLY_TERMINAL_RESULTS = new Set([
   'startup_failure',
   'stale',
 ]);
+
+/**
+ * Jobs whose failure is the CLI leg's: the npm publish itself, and the job
+ * that records its ledger row when the native cohort did not (a ledger
+ * failure in the publish job counted as the CLI leg before it moved out).
+ */
+const CLI_LEG_JOBS = Object.freeze([
+  '3 · Publish CLI to npm nightly',
+  '4 · Record the CLI ship the cohort did not',
+]);
+
+function cliLegJob(name) {
+  return CLI_LEG_JOBS.some((suffix) => name.endsWith(suffix));
+}
 
 function publishedLeg(jobs, leg) {
   return jobs.some(
@@ -53,6 +129,7 @@ function publishedLeg(jobs, leg) {
 export async function checkQualificationHealth(
   env = process.env,
   clock = Date.now,
+  { root = process.cwd() } = {},
 ) {
   const currentTime = typeof clock === 'function' ? clock : () => clock;
   const options = { env };
@@ -336,12 +413,8 @@ export async function checkQualificationHealth(
       const failed = item.jobs.filter((job) =>
         ['failure', 'timed_out', 'cancelled'].includes(job.conclusion),
       );
-      const cli = failed.some((job) =>
-        job.name.endsWith('3 · Publish CLI to npm nightly'),
-      );
-      const native = failed.some(
-        (job) => !job.name.endsWith('3 · Publish CLI to npm nightly'),
-      );
+      const cli = failed.some((job) => cliLegJob(job.name));
+      const native = failed.some((job) => !cliLegJob(job.name));
       return {
         id: item.run.id,
         at: item.run.updated_at,
@@ -376,6 +449,66 @@ export async function checkQualificationHealth(
   const started = observed
     .filter((item) => item.started !== null)
     .sort((a, b) => b.started - a.started)[0];
+  // The failure signal for the newest executed red run. The workflow
+  // downloads that run's manifests first (QUALIFICATION_CLASSIFY_RUN names
+  // it); manifests fetched for any other run cannot explain this one.
+  const mode = signalMode(env.STATION_QUALIFICATION_SIGNAL);
+  const latestExecuted = observed.find(executedRun);
+  let signal = null;
+  if (latestExecuted && !latestExecuted.passed) {
+    const classified = env.QUALIFICATION_CLASSIFY_RUN;
+    signal =
+      classified && classified !== String(latestExecuted.run.id)
+        ? {
+            known: [],
+            fresh: [
+              {
+                job: latestExecuted.run.html_url,
+                failure: 'qualification',
+                reason: `failure manifests were downloaded for run ${classified}, not this run`,
+              },
+            ],
+            removable: [],
+            knownOnly: false,
+          }
+        : await qualificationFailureSignal(
+            latestExecuted.run,
+            latestExecuted.jobs,
+            { env, root },
+          );
+  }
+  const previousKnownOnly = KNOWN_ONLY_MARKER.exec(
+    issue?.state === 'open' ? issue.body : '',
+  );
+  let knownOnlySince = null;
+  if (signal?.knownOnly) {
+    try {
+      const kept = previousKnownOnly ? JSON.parse(previousKnownOnly[1]) : null;
+      if (
+        Number.isSafeInteger(kept?.runId) &&
+        Number.isFinite(Date.parse(kept?.at))
+      )
+        knownOnlySince = { runId: kept.runId, at: kept.at };
+    } catch {}
+    knownOnlySince ??= {
+      runId: latestExecuted.run.id,
+      at: latestExecuted.run.updated_at,
+    };
+  }
+  const owners = signal
+    ? [...new Set(signal.known.map((item) => item.issue))]
+        .sort((a, b) => a - b)
+        .map((issue) => `#${issue}`)
+        .join(', ')
+    : '';
+  const knownOnlyLine = knownOnlySince
+    ? `Main qualification has been red only on known failures since ${knownOnlySince.at} (run https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${knownOnlySince.runId}), owned by open issues ${owners}. Release qualification stays blocked.`
+    : null;
+  // Enforcement alone may change what alerts; report mode only adds text.
+  const enforceKnownOnly =
+    mode === 'enforce' &&
+    signal?.knownOnly &&
+    now - Date.parse(latestExecuted.run.updated_at) <= FAILED_SOURCE_WINDOW_MS;
   const reasons = [];
   if (!started || now - started.started > 8 * HOUR)
     reasons.push(
@@ -383,7 +516,18 @@ export async function checkQualificationHealth(
     );
   if (!green || now - green.completed > 14 * HOUR)
     reasons.push(
-      'No successful source qualification within 14 hours (conservative successful-source freshness bound).',
+      enforceKnownOnly
+        ? knownOnlyLine
+        : 'No successful source qualification within 14 hours (conservative successful-source freshness bound).',
+    );
+  if (mode === 'enforce' && signal && !signal.knownOnly)
+    reasons.push(
+      `New qualification failure in ${latestExecuted.run.html_url}: ${signal.fresh
+        .slice(0, 5)
+        .map((item) => `${item.failure} (${item.reason})`)
+        .join(
+          '; ',
+        )}${signal.fresh.length > 5 ? `; and ${signal.fresh.length - 5} more` : ''}.`,
     );
   if (
     observed.some(
@@ -433,6 +577,14 @@ export async function checkQualificationHealth(
     green
       ? `Latest passing gate: ${green.run.html_url}, source \`${green.run.head_sha}\`, completed ${new Date(green.completed).toISOString()}.`
       : 'No passing qualification gate found in the last 48 hours.',
+    ...(signal
+      ? [
+          '',
+          `Latest executed qualification: ${latestExecuted.run.html_url}, source \`${latestExecuted.run.head_sha}\`.`,
+          ...(knownOnlyLine ? [knownOnlyLine] : []),
+          ...describeSignal(signal, { mode }),
+        ]
+      : []),
     pendingDelivery
       ? `Unresolved Nightly delivery: ${pendingDelivery.failures.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
       : 'No failed Nightly delivery run found in the last 48 hours.',
@@ -453,6 +605,9 @@ export async function checkQualificationHealth(
       lines.join('\n') +
       (pendingDelivery || stalled.length
         ? `\n\n<!-- station-qualification-health:${JSON.stringify({ failures: pendingDelivery?.failures ?? [], ...(stalled.length ? { stalled } : {}) })} -->`
+        : '') +
+      (knownOnlySince
+        ? `\n\n<!-- station-qualification-known-only:${JSON.stringify(knownOnlySince)} -->`
         : '');
     if (issue?.state !== 'open' || issue.body !== body)
       await github(issue ? `issues/${issue.number}` : 'issues', {
@@ -478,7 +633,22 @@ export async function checkQualificationHealth(
   return { healthy: reasons.length === 0, reasons, summary };
 }
 
-if (invokedDirectly(import.meta.url)) {
+if (invokedDirectly(import.meta.url) && process.argv[2] === 'select-run') {
+  selectRunToClassify()
+    .then((runId) => {
+      if (!process.env.GITHUB_OUTPUT)
+        throw new Error('GITHUB_OUTPUT is required');
+      appendFileSync(process.env.GITHUB_OUTPUT, `run_id=${runId}\n`);
+      console.log(
+        runId ? `Classifying run ${runId}` : 'No red run to classify',
+      );
+    })
+    .catch((error) => {
+      // A failed selection only means nothing is downloaded; the health check
+      // that follows then reports every failed job as unexplained.
+      console.error(error.message);
+    });
+} else if (invokedDirectly(import.meta.url)) {
   checkQualificationHealth()
     .then((result) => console.log(result.summary))
     .catch((error) => {

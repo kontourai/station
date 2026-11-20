@@ -1,3 +1,17 @@
+.project-tasks-section--list.page-section {
+  overflow: clip;
+}
+
+.project-tasks-section--list .project-page__task-list {
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+}
+
+.project-tasks-section--list .list-refresh__status {
+  margin-block-start: auto;
+}
+
 .project-tasks-section .project-tasks-section__list-layout {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -45,4 +59,14 @@
 
 .project-tasks-section__outcome > button {
   min-height: 44px;
+}
+
+/* The list/board toggle: two adjacent buttons, one pressed. */
+.project-tasks-section__view-toggle {
+  display: inline-flex;
+  gap: var(--k-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }

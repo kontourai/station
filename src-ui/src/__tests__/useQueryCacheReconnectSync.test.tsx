@@ -6,11 +6,34 @@
  * Mirrors ConnectionBannerSource.test.tsx's mock shape for `@kontourai/station-connect`
  * (same shared connection-status signal, no new offline detector).
  */
+import type { FetchSseConnection } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureOrchestrationEventStream as openOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { PERSISTED_QUERY_KEY_PREFIXES } from '../lib/queryPersistence';
+
+import { observeSseFixture, ownSseFixture } from './helpers/ownedSseFixture';
+
+const connections = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('@kontourai/station-sdk', async (load) => {
+  const sdk = await load<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...sdk,
+    fetchSSE: (...args: Parameters<typeof sdk.fetchSSE>) =>
+      observeSseFixture(connections, sdk.fetchSSE(...args)),
+  };
+});
+
+const retainRelease = ownSseFixture(connections);
+function ensureOrchestrationEventStream(
+  ...args: Parameters<typeof openOrchestrationEventStream>
+) {
+  return retainRelease(openOrchestrationEventStream(...args));
+}
 
 const connectionStatus: {
   status: 'connected' | 'connecting' | 'error';
@@ -185,5 +208,47 @@ describe('useQueryCacheReconnectSync', () => {
     rerender();
 
     expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The live stream and the health poll recover separately. After a server
+ * restart the poll reports `connected` within its ten-second interval, while
+ * the stream could be up to thirty seconds into a backoff: freshly loaded
+ * lists beside "Reconnecting live updates…".
+ *
+ * The stream module and the SDK transport are real here; only `fetch` is
+ * stubbed, so "woken" means another request was sent.
+ */
+describe('useQueryCacheReconnectSync and the live stream', () => {
+  it('cuts the orchestration stream backoff short when health recovers', async () => {
+    const apiBase = 'https://reconnect-sync-stream-wake.example.test';
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => {
+        throw new TypeError('network down');
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const streamRequests = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).startsWith(`${apiBase}/api/orchestration/events`),
+      ).length;
+
+    connectionStatus.status = 'error';
+    ensureOrchestrationEventStream(apiBase);
+    const { rerender } = renderHook(() => useQueryCacheReconnectSync(), {
+      wrapper: wrapper(new QueryClient()),
+    });
+    // The first attempt failed; the stream is now inside its 2s backoff.
+    await vi.waitFor(() => expect(streamRequests()).toBe(1));
+
+    // Control: a render with health still down leaves the backoff alone.
+    rerender();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(streamRequests()).toBe(1);
+
+    connectionStatus.status = 'connected';
+    rerender();
+    await vi.waitFor(() => expect(streamRequests()).toBe(2), { timeout: 500 });
   });
 });

@@ -12,7 +12,7 @@ import {
   orchestrationLifecycleLabel,
   sessionAttentionKind,
 } from '../../utils/session-state';
-import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import { requestAttentionKind } from '../../utils/waiting-approvals';
 import { groupDelegatedSessionRuns } from '../sessions/run-groups';
 import type { HomeWorkItem } from './home-view-model';
 
@@ -71,6 +71,8 @@ export interface WorkFacts {
   chatBinding?: ChatStationBindingV1;
   /** Host-only detail reads and controls must not borrow a bound receiver ID. */
   hostDetails?: boolean;
+  /** A completed local delegation with an idle Session available for follow-up. */
+  resumableDelegationResult?: true;
   /** Recorded run root, resolved against this presentation's row identities. */
   runRootId?: string;
   station?: { id: string; label: string };
@@ -80,6 +82,13 @@ export interface WorkFacts {
     OrchestrationSessionSummary['ownedWork']
   >['state'];
   ownedStopReasons?: readonly string[];
+  /**
+   * The conversation's open or latest turn is one the engine opened on its
+   * own (a reply to background work), not a send: the open turn's trigger
+   * while it runs, the summary's `latestTurnTrigger` after. A fact beside the
+   * item, not an item field, so the Home role projection is unchanged.
+   */
+  engineOpenedTurn?: true;
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -155,7 +164,8 @@ function workActivityFrom(
 function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
   // Requests still waiting on the user, not every one open on the server: an
   // answered one waits on the engine (utils/waiting-approvals).
-  if (requestsWaitingOnUser(chat).length > 0) return 'approval';
+  const requestKind = requestAttentionKind(chat);
+  if (requestKind) return requestKind;
   if (
     chat.outboundQueuedTurns?.some(
       (turn) =>
@@ -227,6 +237,18 @@ export function buildWorkFacts({
       hostDetails:
         item.kind !== 'remote-session' && (!chat || chatBelongsToStation(chat)),
     };
+    if (
+      entry.hostDetails &&
+      item.lifecycleLabel === 'Completed' &&
+      session?.delegation?.taskId &&
+      (session.delegation.environmentKind === undefined ||
+        session.delegation.environmentKind === 'current') &&
+      session.controlMode !== 'read-only-attached' &&
+      session.lifecycleState === 'idle' &&
+      session.answerability.answerable
+    ) {
+      entry.resumableDelegationResult = true;
+    }
     if (chat?.stationBinding && chat.stationBinding.affinity.kind !== 'host')
       entry.station = {
         id: chat.stationBinding.environmentId,
@@ -243,11 +265,18 @@ export function buildWorkFacts({
           session.delegation.environmentId,
       };
     }
+    if (
+      session &&
+      (session.conversationActivity?.openTurn
+        ? session.conversationActivity.openTurn.trigger === 'provider'
+        : session.latestTurnTrigger === 'provider')
+    )
+      entry.engineOpenedTurn = true;
     if (item.lifecycleLabel === 'Needs attention') {
       const attention = moreUrgentAttention(
         moreUrgentAttention(
           session && orchestrationLifecycleLabel(session) === 'Needs attention'
-            ? sessionAttentionKind(session)
+            ? sessionAttentionKind(session, chat?.answeredApprovals)
             : undefined,
           chat ? chatAttentionKind(chat) : undefined,
         ),

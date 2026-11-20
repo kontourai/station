@@ -1,7 +1,0 @@
-{
-  "revision": "ceba2e178253fd6267b72ad35a50efa2631786d1",
-
-  "notes": [
-    {"path":"docs/reference/issue-lifecycle.md","note":"Added reported:troubleshoot to .github/labels.json. Re-read the handoff-axis, stage-axis and reconciliation claims: none enumerates the full inventory, and the new label belongs to no exclusive axis, so the prose stays accurate.","inputs":["docs/reference/issue-lifecycle.md",".github/labels.json"]}
-  ]
-}

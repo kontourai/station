@@ -1,0 +1,7 @@
+{
+  "revision": "1e740a35b6ea36904078c928625587be0edad20e",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Rechecked the Run setup paragraph against #4971: long trigger labels still truncate and the sheet owns the full choices; the new Agent moved hint stays whole beside the label and the sheet wraps the move caption, so nothing claimed here changed. 44px targets unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.css","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -197,7 +197,8 @@ describe('ChatEmptyState', () => {
 
     expect(screen.getByTestId('chat-empty-state-unconfigured')).toBeTruthy();
     expect(screen.getByText('Dev Agent needs a model connection')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Connections' }));
+    expect(screen.queryByText(/coding engine is available/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Manage connections' }));
     expect(navigate).toHaveBeenCalledWith('/connections/models');
   });
 

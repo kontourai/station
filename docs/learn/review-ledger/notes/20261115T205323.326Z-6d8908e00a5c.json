@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Workload launcher entry still accurate: it routes failure behavior to the development guide, which now owns cleanup backoff; new metrics are additive and do not change any other module's instrument claims.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts","src-server/telemetry/metrics.ts"]}
+  ]
+}

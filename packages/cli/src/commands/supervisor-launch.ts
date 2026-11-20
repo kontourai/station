@@ -15,12 +15,13 @@
  * (`--request`), so the one control-channel client ships with the supervisor
  * it talks to, and synchronous lifecycle code (`station stop`) can wait on it.
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveInstallerOwnedArchiveVersion } from '@kontourai/station-shared/prebuilt-archive';
 import {
   type ControlServerMessage,
+  type GenerationStatus,
   isValidInstanceId,
 } from '@kontourai/station-supervisor/protocol';
 
@@ -141,7 +142,7 @@ function supervisorBuildRoot(codeRoot: string): string | null {
   return installed ? join(installed.installRoot, 'versions') : null;
 }
 
-interface SupervisorRequestTarget {
+export interface SupervisorRequestTarget {
   /** Supervisor bundles to try, in order; the first that exists answers. */
   bundles: string[];
   home: string;
@@ -239,6 +240,46 @@ export function requestSupervisorSync(
     };
   }
   return settle(result.status, result.stdout ?? '', result.stderr ?? '');
+}
+
+/** Reads the generation admitted by the specific supervisor this start spawned. */
+export async function readAdmittedGeneration(
+  target: SupervisorRequestTarget,
+  expected: { pid: number; port: number },
+  signal: AbortSignal,
+): Promise<GenerationStatus | undefined> {
+  const bundle = firstBundle(target);
+  if (!bundle) return undefined;
+  const reply = await new Promise<ControlServerMessage | undefined>(
+    (resolveReply) => {
+      execFile(
+        process.execPath,
+        requestArgs(bundle, target, 'status'),
+        { signal, timeout: 5_000, windowsHide: true },
+        (error, stdout) =>
+          resolveReply(
+            error
+              ? undefined
+              : parseMessages(stdout).find(
+                  (message) => message.type === 'status.result',
+                ),
+          ),
+      );
+    },
+  );
+  if (reply?.type !== 'status.result') return undefined;
+  const { supervisor, state, active } = reply.status;
+  if (
+    supervisor.pid !== expected.pid ||
+    supervisor.instance !== target.instanceId ||
+    state !== 'serving' ||
+    active?.state !== 'serving' ||
+    typeof active.pid !== 'number' ||
+    !active.bootId ||
+    active.port !== expected.port
+  )
+    return undefined;
+  return active;
 }
 
 /**

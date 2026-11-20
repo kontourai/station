@@ -1,9 +1,0 @@
-{
-  "revision": "395d0110a5687a445a660e161eea8cc9ddb6479d",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed the fresh-home admission regression against the existing shared bounded reader and both call sites. Constructor leaves the ledger absent; missing initial locked read and admission/capacity read both yield an empty ledger, and the first write contains the reserved identity before the effect. Restart replay invokes no duplicate effect. Disabling either missing-file fallback made the named fresh-home test fail at the intended read; exact restoration passed all 57 tests in the claims owner and both hosted-failure files. The hosted resolved-instead-of-rejecting cases wrote malformed fixtures to a retired filename, not a swallowed production refusal. No contract prose or production-reader behavior changed.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/create-request-claims.test.ts"]},
-
-    {"path":"docs/reference/api.md","note":"Reviewed the fresh-home admission regression against the existing shared bounded reader and both call sites. Constructor leaves the ledger absent; missing initial locked read and admission/capacity read both yield an empty ledger, and the first write contains the reserved identity before the effect. Restart replay invokes no duplicate effect. Disabling either missing-file fallback made the named fresh-home test fail at the intended read; exact restoration passed all 57 tests in the claims owner and both hosted-failure files. The hosted resolved-instead-of-rejecting cases wrote malformed fixtures to a retired filename, not a swallowed production refusal. No contract prose or production-reader behavior changed.","inputs":["docs/reference/api.md","src-server/services/orchestration/__tests__/create-request-claims.test.ts"]}
-  ]
-}

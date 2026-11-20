@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"packages/telemetry-broker/README.md","note":"Added the shared lite-core paragraph and updated the public dashboard sentence. Checked lite-core.ts exports used by lite-store.ts and lite-routes.ts, and public-dashboard.ts (fetches every aggregates page, charts per-week channel totals and latest-week bars, textContent only, same-origin script). Existing wire-contract claims re-checked by the unchanged broker suites (broker, lite-weekly, lite-rate-limit: 73 tests pass).","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/lite-routes.ts","packages/telemetry-broker/src/lite-store.ts","packages/telemetry-broker/src/public-dashboard.ts"]}
-  ]
-}

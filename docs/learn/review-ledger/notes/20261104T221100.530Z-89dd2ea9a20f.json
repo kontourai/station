@@ -1,7 +1,0 @@
-{
-  "revision": "1494738957d5c046e80a8c2231c13c9169c2d925",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Shipped MCP topics regenerated after the foldable round-2 guide and module-map changes; station-docs-content.ts carries those reviewed texts. The reference itself makes no fold, hub or live-surface claim.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

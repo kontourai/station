@@ -1,6 +1,8 @@
 import {
   CHILD_WORK_SUMMARY_MAX_CHARS,
+  type ChildWorkItem,
   childWorkDisplayStatus,
+  childWorkKindOf,
 } from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
@@ -12,22 +14,28 @@ import {
   cacheInclusiveTotalTokens,
   foldUsageEvents,
 } from '@kontourai/station-shared/usage-fold';
-import { type CSSProperties, useId, useMemo, useState } from 'react';
+import { type CSSProperties, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ChildWorkActivity } from '../../components/chat/ChildWorkActivity';
 import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
+import { WorkStatusPill } from '../../components/chat-dock/backgroundTaskRows';
+import {
+  childChatTarget,
+  useChildChatNavigation,
+} from '../../components/chat-dock/ChildChatNavigationContext';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { ConversationStopControl } from '../../components/conversation/ConversationStopControl';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
+  childWorkKindLabel,
+  childWorkResultText,
   childWorkSummaryLabel,
   childWorkUsageClauses,
   formatChildWorkElapsed,
   latestChildTool,
 } from '../../utils/child-work-display';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import { ChildWorkTranscript } from './ChildWorkTranscript';
 import type {
   ChildWorkProvenance,
   ChildWorkRowModel,
@@ -126,6 +134,7 @@ export function ChildWorkRow({
   now,
   showProvenance,
   onOpenSession,
+  onOpenChild,
   agent,
   stationName,
 }: {
@@ -135,12 +144,12 @@ export function ChildWorkRow({
   now: number;
   showProvenance: boolean;
   onOpenSession: (threadId: string) => void;
+  onOpenChild?: (item: ChildWorkItem, title: string) => void;
 }) {
   const target = useOptionalConversationConnection();
   const owningStationName = target?.station?.binding.stationName ?? stationName;
   const [expanded, setExpanded] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
-  const transcriptId = useId();
+  const openChild = useChildChatNavigation();
   const { item } = row;
   const running = item.status === 'running';
   const interrupt = useInterruptDelegatedTaskMutation();
@@ -168,7 +177,13 @@ export function ChildWorkRow({
           ? row.endedAtMs - row.startedAtMs
           : undefined;
   const isDelegate = item.producer === 'station-delegate';
-  const kind = item.kindLabel ?? (isDelegate ? 'Delegate' : 'Subagent');
+  const workKind = childWorkKindOf(item);
+  const isAgent = workKind === 'agent';
+  const kind = isAgent
+    ? (childWorkKindLabel(item) ?? (isDelegate ? 'Delegate' : 'Subagent'))
+    : workKind === 'monitor'
+      ? 'Background monitor'
+      : 'Background command';
   const meta = [
     kind,
     ...(elapsedMs !== undefined ? [formatChildWorkElapsed(elapsedMs)] : []),
@@ -176,9 +191,10 @@ export function ChildWorkRow({
   // #3163: an engine subagent's OWN model, or the plain fact that its engine
   // did not report one. Never the parent's. A delegate is a session of its
   // own, whose model that session shows.
-  const model = isDelegate ? undefined : (item.model ?? null);
+  // A shell command has no model to report.
+  const model = isDelegate || !isAgent ? undefined : (item.model ?? null);
   const transcript = isDelegate ? undefined : item.transcript;
-  const summary = item.result?.summary;
+  const summary = childWorkResultText(item, row.title);
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
   const usage = childWorkUsageClauses(item.usage);
@@ -240,7 +256,7 @@ export function ChildWorkRow({
               progress={item.progress}
             />
           ) : null}
-          {item.status === 'completed' && !summary && (
+          {isAgent && item.status === 'completed' && !summary && (
             <span className="child-work-row__note">Summary not reported</span>
           )}
           {showProvenance && (
@@ -250,11 +266,10 @@ export function ChildWorkRow({
             </span>
           )}
         </span>
-        <span
-          className={`child-work-row__chip child-work-row__chip--${childWorkDisplayStatus(item)}`}
-        >
-          {CHILD_WORK_STATUS_LABEL[childWorkDisplayStatus(item)]}
-        </span>
+        <WorkStatusPill
+          status={childWorkDisplayStatus(item)}
+          label={CHILD_WORK_STATUS_LABEL[childWorkDisplayStatus(item)]}
+        />
         {expandable && (
           <span className="child-work-row__chevron" aria-hidden="true">
             {expanded ? '▾' : '▸'}
@@ -265,7 +280,11 @@ export function ChildWorkRow({
         <div className="child-work-row__detail">
           {summary && (
             <p className="child-work-row__summary">
-              <strong>{childWorkSummaryLabel(item.result?.source)}</strong>
+              <strong>
+                {isAgent
+                  ? childWorkSummaryLabel(item.result?.source)
+                  : 'Result'}
+              </strong>
               {' · '}
               <span>{summary}</span>
             </p>
@@ -299,23 +318,19 @@ export function ChildWorkRow({
             <Button
               size="sm"
               className="tap-target"
-              {...(sessionHandle
-                ? {}
-                : {
-                    'aria-expanded': transcriptOpen,
-                    'aria-controls': transcriptId,
-                  })}
-              onClick={() =>
-                sessionHandle
-                  ? onOpenSession(sessionHandle.threadId)
-                  : setTranscriptOpen((current) => !current)
-              }
+              onClick={() => {
+                if (openChild && target) {
+                  openChild({
+                    ...childChatTarget(item, target),
+                    title: row.title,
+                  });
+                  return;
+                }
+                if (onOpenChild) onOpenChild(item, row.title);
+                else if (sessionHandle) onOpenSession(sessionHandle.threadId);
+              }}
             >
-              {sessionHandle
-                ? 'Open session'
-                : transcriptOpen
-                  ? 'Hide transcript'
-                  : 'View transcript'}
+              Open chat
             </Button>
           )}
           {row.stop && (
@@ -349,17 +364,6 @@ export function ChildWorkRow({
               Nothing to stop yet — try again.
             </span>
           )}
-        </div>
-      )}
-      {transcript && transcriptOpen && (
-        <div className="child-work-row__detail">
-          <ChildWorkTranscript
-            id={transcriptId}
-            threadId={item.reporterThreadId}
-            childId={item.childId}
-            running={running}
-            revision={JSON.stringify([item.status, item.progress, item.usage])}
-          />
         </div>
       )}
     </li>

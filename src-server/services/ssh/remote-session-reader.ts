@@ -1,4 +1,7 @@
-import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import type {
+  OrchestrationSessionEventWindow,
+  OrchestrationSessionSummary,
+} from '@kontourai/station-contracts/orchestration';
 // archive#1778: ONE normalizer, shared with the SDK's fetch helpers. A second
 // hand-written copy here would be the divergent-copy disease this change is
 // about — and the first version of it guarded on truthiness, so a remote
@@ -7,13 +10,38 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import {
   type ClientRequestOptions,
+  getOrchestrationSessionDetailWindow,
   listOrchestrationSessions,
+  SessionDetailWindowUnsupportedError,
   StationHttpError,
   StationRequestTimeoutError,
+  StationResponseTooLargeError,
   searchConversationMessages,
 } from '@kontourai/station-sdk/client';
+import {
+  guardRemoteMessageSearch,
+  type RemoteStationReadAuthority,
+} from '../../security/remote-station-read-authority.js';
+import { createLogger } from '../../utils/logger.js';
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
 import type { SshEnvironmentService } from './ssh-environment-service.js';
+
+const logger = createLogger({ name: 'remote-session-reader' });
+
+/**
+ * A remote's answer passed this Station's byte ceiling. Its status stays the
+ * read's existing one (unavailable, unreachable), so it is logged, by
+ * environment id alone: no name, address or content.
+ */
+function logTooLarge(
+  environmentId: string,
+  read: 'session-list' | 'message-search' | 'session-history',
+): void {
+  logger.warn('Remote Station answer exceeded its byte ceiling', {
+    environmentId,
+    read,
+  });
+}
 
 /** R1 (archive#1097): keep every remote read well under the local list's own
  * render budget — a slow/unreachable environment must never make the human
@@ -112,17 +140,39 @@ interface RemoteMessageSearchResult {
   deferredInstanceCount: number;
 }
 
-type RemoteMessageSearchFetcher = (
+export type RemoteMessageSearchFetcher = (
   apiBase: string,
   query: string,
   options?: ClientRequestOptions,
 ) => Promise<RemoteMessageSearchMatch[]>;
 
+/**
+ * Byte ceiling on one remote's session list. The list asks for the newest
+ * `MAX_REMOTE_SESSIONS_PER_ENVIRONMENT`; measured summaries (132 real attached
+ * sessions: p50 4,128, p90 6,502, max 30,840 bytes) put 200 of the largest at
+ * about 6.2 MB. An older remote that ignores `limit` sends every session, and
+ * this still holds about 2,000 typical ones. Past it the environment is
+ * unavailable for this read, logged, never parsed.
+ */
+export const MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES = 8_388_608;
+
+/**
+ * Byte ceiling on one remote's search answer. It keeps at most five short
+ * excerpts per remote, so a larger answer is not one this Station can use;
+ * that remote reads as unreachable for this search.
+ */
+export const MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES = 262_144;
+
 const defaultFetcher: RemoteSessionsFetcher = (apiBase, options) =>
-  listOrchestrationSessions<OrchestrationSessionSummary[]>(apiBase, {
-    timeoutMs: REMOTE_SESSION_FETCH_TIMEOUT_MS,
-    ...options,
-  });
+  listOrchestrationSessions<OrchestrationSessionSummary[]>(
+    apiBase,
+    {
+      timeoutMs: REMOTE_SESSION_FETCH_TIMEOUT_MS,
+      ...options,
+      maxResponseBytes: MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES,
+    },
+    { limit: MAX_REMOTE_SESSIONS_PER_ENVIRONMENT },
+  );
 
 const defaultMessageSearchFetcher: RemoteMessageSearchFetcher = (
   apiBase,
@@ -132,6 +182,7 @@ const defaultMessageSearchFetcher: RemoteMessageSearchFetcher = (
   searchConversationMessages(apiBase, query, {
     timeoutMs: REMOTE_MESSAGE_SEARCH_TIMEOUT_MS,
     ...options,
+    maxResponseBytes: MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES,
   });
 
 interface ConnectedEnvironment {
@@ -282,6 +333,8 @@ export async function searchConnectedRemoteMessages(
     if (isAbort(result.reason, signal)) {
       throw result.reason;
     }
+    if (isResponseTooLarge(result.reason))
+      logTooLarge(environment.id, 'message-search');
     instances.push({
       instanceId: environment.id,
       instanceName: environment.name,
@@ -295,6 +348,29 @@ export async function searchConnectedRemoteMessages(
     // status per unqueried saved profile on every settled keystroke.
     deferredInstanceCount: deferred.length,
   };
+}
+
+/**
+ * The message search runtime-routes.ts hands the conversation routes: the
+ * connected-Station search above, reached only by a caller the read
+ * authority admits. A caller it refuses gets no remote result, no remote
+ * Station named, and no bearer sent; the route's local results are its own.
+ */
+export function runtimeRemoteMessageSearch(
+  reads: RemoteStationReadAuthority,
+  service: Pick<SshEnvironmentService, 'list'>,
+  peerCredentials: Pick<PeerCredentialStore, 'get'>,
+  fetchMessages: RemoteMessageSearchFetcher = defaultMessageSearchFetcher,
+) {
+  return guardRemoteMessageSearch(reads, (query, signal) =>
+    searchConnectedRemoteMessages(
+      service,
+      query,
+      signal,
+      fetchMessages,
+      peerCredentials,
+    ),
+  );
 }
 
 /**
@@ -356,8 +432,10 @@ export async function listConnectedRemoteSessions(
         return {
           environmentId: environment.id,
           environmentName: environment.name,
+          // The read model is oldest first; keep the newest (all of them
+          // from a remote that honoured `limit`).
           sessions: sessions
-            .slice(0, MAX_REMOTE_SESSIONS_PER_ENVIRONMENT)
+            .slice(-MAX_REMOTE_SESSIONS_PER_ENVIRONMENT)
             .map(withNormalizedAnswerability),
         } satisfies RemoteEnvironmentSessions;
       }),
@@ -369,6 +447,8 @@ export async function listConnectedRemoteSessions(
         return;
       }
       const source = batch[index];
+      if (isResponseTooLarge(result.reason))
+        logTooLarge(source.id, 'session-list');
       if (
         result.reason instanceof RemoteSessionAuthenticationRequiredError ||
         (result.reason instanceof StationHttpError &&
@@ -399,4 +479,197 @@ class RemoteSessionAuthenticationRequiredError extends Error {
     );
     this.name = 'RemoteSessionAuthenticationRequiredError';
   }
+}
+
+/** One history page is a short, bounded read over the tunnel. */
+const REMOTE_SESSION_HISTORY_TIMEOUT_MS = 5_000;
+
+/** Newest turns asked of the remote per page; the route refuses more. */
+export const MAX_REMOTE_SESSION_HISTORY_TURNS = 20;
+
+/**
+ * Byte ceiling on one relayed page's complete response. A current remote
+ * answers at most `SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES` (64,000) per
+ * window; this leaves headroom for other versions while bounding a legacy
+ * remote that ignores `view=window-v1` and sends its whole detail. Read past
+ * it is refused (`too_large`), never parsed.
+ */
+export const MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES = 262_144;
+
+/** The SDK's refusal of a bounded body, found anywhere on the cause chain. */
+function isResponseTooLarge(error: unknown): boolean {
+  for (
+    let current: unknown = error, depth = 0;
+    current instanceof Error && depth < 8;
+    current = current.cause, depth += 1
+  )
+    if (current instanceof StationResponseTooLargeError) return true;
+  return false;
+}
+
+/** Matches the remote orchestration route's own cursor bound. */
+export const MAX_REMOTE_HISTORY_CURSOR_LENGTH = 512;
+
+/**
+ * Defense-in-depth bound on events relayed from one remote page,
+ * independent of the remote Station's own window budget. A larger page is
+ * refused, not truncated: a cut page would read as a complete transcript.
+ */
+export const MAX_REMOTE_SESSION_HISTORY_EVENTS = 2_000;
+
+export type RemoteSessionHistoryFetcher = (
+  apiBase: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit: number },
+  options?: ClientRequestOptions,
+) => Promise<OrchestrationSessionEventWindow>;
+
+const defaultHistoryFetcher: RemoteSessionHistoryFetcher = (
+  apiBase,
+  threadId,
+  input,
+  options,
+) =>
+  getOrchestrationSessionDetailWindow(apiBase, threadId, input, {
+    timeoutMs: REMOTE_SESSION_HISTORY_TIMEOUT_MS,
+    readOnly: true,
+    ...options,
+    maxResponseBytes: MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES,
+  });
+
+export type RemoteSessionHistoryFailure =
+  /** No saved environment by that id, or it is not connected right now. */
+  | 'environment_unavailable'
+  /** Connected, but no outbound peer bearer, or the remote rejected it. */
+  | 'authentication_required'
+  /** The remote Station has no session by that id readable to this peer. */
+  | 'not_found'
+  /** The remote did not answer in time or could not be reached. */
+  | 'unreachable'
+  /** The remote's page passed this Station's byte ceiling. */
+  | 'too_large'
+  /** The remote answered with a page this Station will not relay. */
+  | 'invalid_response';
+
+export class RemoteSessionHistoryError extends Error {
+  constructor(readonly reason: RemoteSessionHistoryFailure) {
+    super(`Remote session history unavailable: ${reason}`);
+    this.name = 'RemoteSessionHistoryError';
+  }
+}
+
+export interface RemoteSessionHistoryPage {
+  environmentId: string;
+  environmentName: string;
+  window: OrchestrationSessionEventWindow;
+}
+
+/**
+ * Read one bounded history page of a session that lives on a connected SSH
+ * environment's Station. The remote Station discovered and owns the
+ * session (its own attached-session follower read its own host), so this
+ * Station only relays a read: it never dials a tunnel (only an environment
+ * already `connected` is used), presents the provisioned outbound peer
+ * bearer, and the remote derives the read's authority itself. The remote's
+ * answer must name the requested session, and the environment identity on
+ * the result comes from this Station's profile, never from the response.
+ */
+export async function readConnectedRemoteSessionHistory(
+  service: Pick<SshEnvironmentService, 'list'>,
+  environmentId: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit: number },
+  fetchHistory: RemoteSessionHistoryFetcher = defaultHistoryFetcher,
+  peerCredentials?: Pick<PeerCredentialStore, 'get'>,
+  /** The caller's own request signal: a caller that leaves cancels the read. */
+  signal?: AbortSignal,
+): Promise<RemoteSessionHistoryPage> {
+  const environment = connectedEnvironments(service).find(
+    (candidate) => candidate.id === environmentId,
+  );
+  if (!environment) {
+    throw new RemoteSessionHistoryError('environment_unavailable');
+  }
+  const peer = environment.peerEnvironmentId
+    ? peerCredentials?.get(environment.peerEnvironmentId)
+    : null;
+  if (peerCredentials && !peer) {
+    throw new RemoteSessionHistoryError('authentication_required');
+  }
+  let window: OrchestrationSessionEventWindow;
+  try {
+    window = await fetchHistory(
+      environment.localUrl,
+      threadId,
+      {
+        ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+        turnLimit: Math.min(input.turnLimit, MAX_REMOTE_SESSION_HISTORY_TURNS),
+      },
+      peer
+        ? {
+            headers: { Authorization: `Bearer ${peer.credential}` },
+            ...(signal ? { signal } : {}),
+          }
+        : signal
+          ? { signal }
+          : undefined,
+    );
+  } catch (error) {
+    if (error instanceof StationHttpError) {
+      if (error.status === 401) {
+        throw new RemoteSessionHistoryError('authentication_required');
+      }
+      // A read the remote refuses for this peer is indistinguishable from
+      // a missing session, as on the remote itself.
+      if (error.status === 403 || error.status === 404) {
+        throw new RemoteSessionHistoryError('not_found');
+      }
+    }
+    if (isResponseTooLarge(error)) {
+      logTooLarge(environment.id, 'session-history');
+      throw new RemoteSessionHistoryError('too_large');
+    }
+    if (error instanceof SessionDetailWindowUnsupportedError) {
+      throw new RemoteSessionHistoryError('invalid_response');
+    }
+    throw new RemoteSessionHistoryError('unreachable');
+  }
+  if (
+    !window ||
+    typeof window !== 'object' ||
+    window.protocolVersion !== 1 ||
+    !window.session ||
+    window.session.threadId !== threadId ||
+    !Array.isArray(window.events) ||
+    window.events.length > MAX_REMOTE_SESSION_HISTORY_EVENTS ||
+    typeof window.hasMore !== 'boolean' ||
+    !Number.isSafeInteger(window.watermark) ||
+    (window.nextCursor !== undefined &&
+      (typeof window.nextCursor !== 'string' ||
+        window.nextCursor.length > MAX_REMOTE_HISTORY_CURSOR_LENGTH))
+  ) {
+    throw new RemoteSessionHistoryError('invalid_response');
+  }
+  return {
+    environmentId: environment.id,
+    environmentName: environment.name,
+    // Only the page's own top-level fields are relayed; any other top-level
+    // field a remote adds stays on the remote. The session summary and each
+    // event are relayed as the remote's ordinary authorized read returned
+    // them: the events are the transcript, and the summary is the same shape
+    // (cwd included) the remote-sessions list already relays to this caller.
+    window: {
+      protocolVersion: 1,
+      session: withNormalizedAnswerability(window.session),
+      events: window.events,
+      hasMore: window.hasMore,
+      ...(window.nextCursor !== undefined
+        ? { nextCursor: window.nextCursor }
+        : {}),
+      ...(window.turnStartDetached === true
+        ? { turnStartDetached: true as const }
+        : {}),
+      watermark: window.watermark,
+    },
+  };
 }

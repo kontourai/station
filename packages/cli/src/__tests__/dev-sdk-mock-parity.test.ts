@@ -2,9 +2,13 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import {
+  agentId,
+  STATION_AGENT_ID,
+} from '@kontourai/station-contracts/agent-identity';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import ts from 'typescript-api';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { serializeSDKMock } from '../dev/sdk-mock.js';
 import { buildDevSharedRuntimeScript } from '../dev/template-scripts.js';
 
@@ -114,9 +118,13 @@ function exampleImports(): Map<string, Set<string>> {
 }
 
 /** Run the harness's shared-runtime script and return what each specifier resolves to. */
-function harnessSharedModules(): Record<string, Record<string, unknown>> {
+function harnessSharedModules(
+  fetch?: typeof globalThis.fetch,
+): Record<string, Record<string, unknown>> {
   const element = () => ({ appendChild() {}, remove() {}, className: '' });
-  const window: Record<string, unknown> = {};
+  const window: Record<string, unknown> = {
+    location: new URL('http://127.0.0.1:4173/'),
+  };
   runInNewContext(
     buildDevSharedRuntimeScript(serializeSDKMock({ layoutSlug: 'example' })),
     {
@@ -125,12 +133,30 @@ function harnessSharedModules(): Record<string, Record<string, unknown>> {
       sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
       setTimeout,
       Proxy,
+      URL,
+      Request,
+      fetch,
     },
   );
+  // The SDK browser asset is assigned after this script and before the plugin.
+  window.__station_sdk = { agentId };
   return window.__station_ai_shared as Record<string, Record<string, unknown>>;
 }
 
 describe('station dev SDK mock', () => {
+  test('routes Agent identity checks through the SDK browser asset', () => {
+    const sdk = harnessSharedModules()['@kontourai/station-sdk/agent'];
+    const validate = sdk.agentId;
+    if (typeof validate !== 'function')
+      throw new Error('Agent validator is missing');
+    expect(sdk.STATION_AGENT_ID).toBe(STATION_AGENT_ID);
+    expect(validate(sdk.STATION_AGENT_ID)).toBe(agentId(STATION_AGENT_ID));
+    expect(validate('example-agent')).toBe(agentId('example-agent'));
+    expect(() => validate('abcdefab-1234-1234-9abc-defabcdefabc')).toThrow(
+      'Invalid clean identity',
+    );
+  });
+
   test('exposes every SDK value a previewable example imports', () => {
     const imports = exampleImports();
     // A broken scan would vacuously pass; these are imported today.
@@ -149,6 +175,44 @@ describe('station dev SDK mock', () => {
       })
       .map(([key, users]) => `${key} (${[...users].join(', ')})`);
     expect(missing).toEqual([]);
+  });
+
+  test('authenticatedFetch reaches only the preview origin with no credentials or redirects', async () => {
+    const unavailable = new Response('Not found', { status: 404 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(unavailable);
+    const sdk = harnessSharedModules(fetch)['@kontourai/station-sdk']!;
+    const authenticatedFetch =
+      sdk.authenticatedFetch as typeof globalThis.fetch;
+    const request = new Request('http://127.0.0.1:4173/api/example', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-only',
+        Cookie: 'preview=test-only',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ type: 'stt' }),
+    });
+    await expect(authenticatedFetch(request)).resolves.toBe(unavailable);
+    const [sent, options] = fetch.mock.calls[0]!;
+    expect(sent).toBeInstanceOf(Request);
+    const outbound = sent as Request;
+    expect(outbound.url).toBe(request.url);
+    expect(outbound.method).toBe('POST');
+    expect(outbound.headers.get('Authorization')).toBeNull();
+    expect(outbound.headers.get('Cookie')).toBeNull();
+    expect(outbound.headers.get('Content-Type')).toBe('application/json');
+    await expect(outbound.json()).resolves.toEqual({ type: 'stt' });
+    expect(options).toMatchObject({
+      credentials: 'omit',
+      mode: 'same-origin',
+      redirect: 'error',
+    });
+    await expect(
+      authenticatedFetch('//localhost:4173/api/example'),
+    ).rejects.toThrow('only accepts preview URLs');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   test('the mock pure helpers match the SDK they stand in for', () => {

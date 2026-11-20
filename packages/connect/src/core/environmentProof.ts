@@ -2,6 +2,7 @@ import {
   buildStationProofMessage,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 
 function decodeBase64url(value: string): ArrayBuffer {
   const padded = value
@@ -17,13 +18,7 @@ function decodeBase64url(value: string): ArrayBuffer {
 }
 
 export function createStationProofNonce(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  return encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
 export async function verifyStationEnvironmentProof(input: {

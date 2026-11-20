@@ -176,7 +176,7 @@ describe('device setup wizard', () => {
     const log = stub({ status: () => status() });
     mountWizard();
     const toggle = await screen.findByRole('switch', {
-      name: 'Enable device hub',
+      name: 'Turn on device helper',
     });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(screen.getByText(/Turning this on is your consent/)).toBeTruthy();
@@ -212,13 +212,13 @@ describe('device setup wizard', () => {
     mountWizard();
     expect(
       await screen.findByText(
-        'Installing the device hub… (step 2 of 4: downloading)',
+        'Installing the device helper… (step 2 of 4: downloading)',
       ),
     ).toBeTruthy();
     expect(
       (
         screen.getByRole('switch', {
-          name: 'Enable device hub',
+          name: 'Turn on device helper',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -284,7 +284,7 @@ describe('device setup wizard', () => {
           hubProcess: {
             state: 'crashed',
             attempts: 5,
-            detail: 'The device hub exited (1).',
+            detail: 'The device helper exited (1).',
           },
         }),
     });
@@ -342,7 +342,7 @@ describe('device setup wizard', () => {
         }),
     });
     mountWizard();
-    await screen.findByText('The device hub is ready.');
+    await screen.findByText('The device helper is ready.');
     await click(screen.getByRole('button', { name: 'Continue' }));
     expect(
       screen.getByText('Xcode and iOS Simulator are available.'),
@@ -437,7 +437,7 @@ describe('device sharing (D12)', () => {
       ],
     });
     mountWizard();
-    await screen.findByText('The device hub is ready.');
+    await screen.findByText('The device helper is ready.');
     await click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText('Shared with beta.')).toBeTruthy();
     await click(screen.getByRole('button', { name: 'Share with Project…' }));
@@ -496,7 +496,7 @@ describe('device sharing (D12)', () => {
       ],
     });
     mountWizard();
-    await screen.findByText('The device hub is ready.');
+    await screen.findByText('The device helper is ready.');
     await click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText('Shared with beta.')).toBeTruthy();
     await click(screen.getByRole('button', { name: 'Stop sharing with beta' }));
@@ -526,7 +526,7 @@ describe('device sharing (D12)', () => {
     mountWizard();
     expect(
       await screen.findByText(
-        /Station runs the device hub locally and only answers requests from Station itself\./,
+        /Station runs the device helper locally and only answers requests from Station itself\./,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/where only Station can reach it/)).toBeNull();
@@ -543,7 +543,7 @@ describe('Device pane entry', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await click(await screen.findByRole('button', { name: 'Set up devices' }));
     expect(
-      await screen.findByRole('switch', { name: 'Enable device hub' }),
+      await screen.findByRole('switch', { name: 'Turn on device helper' }),
     ).toBeTruthy();
   });
 });

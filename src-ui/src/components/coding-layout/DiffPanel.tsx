@@ -34,7 +34,9 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { describeStationFailure } from '../../utils/stationFailure';
+import { RelativeTime } from '../pull-requests/RelativeTime';
 import { DiffCommentThread } from './DiffCommentThread';
 import './DiffPanel.css';
 import { createPortal } from 'react-dom';
@@ -78,6 +80,7 @@ function ProviderCommentThread({
 }: {
   comments: PullRequestReviewComment[];
 }) {
+  const now = useCoarseNow(undefined, { enabled: comments.length > 0 });
   return (
     <div className="diff-comment-thread diff-comment-thread--provider">
       {comments.map((comment) => (
@@ -88,11 +91,11 @@ function ProviderCommentThread({
         >
           <div className="diff-comment__meta">
             <strong>{comment.author || 'Unknown author'}</strong>
-            <span className="diff-comment__time">
-              {Number.isNaN(Date.parse(comment.createdAt))
-                ? ''
-                : new Date(comment.createdAt).toLocaleString()}
-            </span>
+            <RelativeTime
+              iso={comment.createdAt}
+              now={now}
+              className="diff-comment__time"
+            />
           </div>
           <div className="diff-comment__body">{comment.body}</div>
         </div>
@@ -168,9 +171,9 @@ function parseDiffFiles(patch: string): FileDiffMetadata[] {
   const normalized = patch.trim();
   if (normalized.length === 0) return [];
   try {
-    return parsePatchFiles(normalized, 'coding-diff-panel').flatMap(
-      (parsed) => parsed.files,
-    );
+    return parsePatchFiles(normalized, {
+      cacheKeyPrefix: 'coding-diff-panel',
+    }).flatMap((parsed) => parsed.files);
   } catch {
     return [];
   }

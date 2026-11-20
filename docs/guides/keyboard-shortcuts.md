@@ -9,10 +9,10 @@ plain-language names.
   **Cancel** to leave both unchanged.
 - **Clear** removes a shortcut. **Restore default** returns the command to its
   current registered default binding, which may come from a plugin or command skill.
-- Each row has a context hint, with a technical hint under **Advanced**. These
-  currently come from the command's ID, not its actual availability rule; they
-  are not a live explanation of why a command can or cannot run.
-  [#2767](https://github.com/kontourai/station/issues/2767) tracks that correction.
+- Each row explains the registered condition. **Advanced** shows its exact
+  rule and explains how modal and input ownership can take priority. Commands
+  are listed when registered in the current view. A listed command with a
+  cleared binding shows **Not set**.
 - Some known browser-reserved combinations carry a warning. They may work more reliably
   in the desktop app because a browser can intercept them first.
 
@@ -28,23 +28,30 @@ including narrow desktop windows.
 Press **⌘K** on macOS or **Ctrl+K** on Windows and Linux to open the command
 palette from anywhere in Station, including while you are typing in a field. It
 does not open while another dialog is open, and you can rebind it under
-**Settings → Keyboard shortcuts**. There is no on-screen button for it, so a
-phone or tablet without a keyboard cannot open it.
+**Settings → Keyboard shortcuts**. You can also choose **Search or jump to…**
+in the header, which shows the current shortcut. On a phone it is a search
+icon, so a touch device without a keyboard can open the palette too.
+
+With nothing typed, the palette starts with **Suggestions** (such as New chat
+and New Board), then **Recent** (up to five items you ran on this device,
+newest first), then **Places** to go. Every other command follows under its
+usual group. Rows with a shortcut show it.
 
 Type to search. Results are grouped into commands, actions (such as opening the
 chat dock, a new Board, the tour, **Troubleshoot an issue** or **Report a problem**), places to go,
 plugins, Settings rows, open chats, Projects, workspace panes, Agents and
-skills. After two characters it also searches indexed conversation messages.
+skills. After two characters it also searches chat messages.
 Among close matches, items you use often rank higher; **Reset command history**
 clears that. Choose
-**Workspace search (this Station)** at the top to switch to workspace search.
+**Search Tasks and messages** at the top to switch to workspace search.
 
 A command row shows its current shortcut, if it has one, so the palette doubles
 as a way to learn them.
 
 Use the arrow keys to move, Return to run the highlighted item, and Escape or a
-click outside to close. Running an item usually closes the palette and returns
-focus to where you were. Some items keep it open, such as
+click outside to close; a key legend at the bottom repeats this unless the
+device's main pointer is touch. Running an item usually closes the palette and returns
+focus to where you were, including to the header entry if you opened it there. Some items keep it open, such as
 **Reset command history**, which shows whether the reset worked, and a message
 found on another Station, which explains that it cannot be opened here.
 
@@ -78,7 +85,19 @@ After dismissing an inbox conversation, choose **Undo** in the toast or press
 **⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
 be rebound in Keyboard shortcuts. The command declines inside text fields,
 contenteditable editors, CodeMirror and terminals, preserving their own Undo.
-Dismissal does not stop work or delete conversation history.
+Dismissal does not stop work or delete conversation history. The same Undo
+reverses **Hide** on a third-party session with Open and Settled inbox on.
+
+## Undo the last action
+
+After an action that offers **Undo** in a notice (currently deleting a Board or
+moving it into a Project), press **⌘Z** on macOS or **Ctrl+Z** on Windows and
+Linux to undo the most recent one. **Undo last action** can be rebound in
+Keyboard shortcuts. Like **Undo inbox dismissal**, which shares the default
+key, it declines inside text fields, contenteditable editors, CodeMirror and
+terminals, and does nothing when no notice is waiting. When both have
+something to undo, each press undoes one of them; choose **Undo** in a notice
+to pick which. If an Undo can no longer apply, the notice says why.
 
 ## Dispatch and limits
 
@@ -98,10 +117,10 @@ including when restoring a default. It does not analyze all conditional overlaps
 or guarantee that every chord is conflict-free. The catalog also depends on which
 components have registered their commands in the current view.
 
-Custom bindings containing Space currently store a key name that does not match
-the standard keyboard event. [#2771](https://github.com/kontourai/station/issues/2771)
-tracks the capture-to-dispatch correction; the defect was reproduced through
-the mounted editor and registry with DOM events.
+Space works as a shortcut key, including in existing saved bindings. A bare
+Space binding lets a focused text field or control use the key. A chord with
+Control, Command, or Alt still follows the command's normal focus and modal
+rules.
 
 The [keyboard shortcut module](https://github.com/kontourai/station/blob/main/docs/architecture/module-map.md#keyboard-shortcuts)
 connects these rules to the editor, registry, device store, import/export owner

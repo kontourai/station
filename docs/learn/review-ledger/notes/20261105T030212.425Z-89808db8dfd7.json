@@ -1,7 +1,0 @@
-{
-  "revision": "afc5075dffd45ae320b2c811bb563f5b597aad98",
-
-  "notes": [
-    {"path":"docs/guides/monitoring.md","note":"Public domain sentence now names provisioned channels (public-domain.ts, lite-store.ts publishWeeks). Other Lite claims unchanged.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md","packages/telemetry-broker/src/lite-store.ts"]}
-  ]
-}

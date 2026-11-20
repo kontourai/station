@@ -41,6 +41,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
+  optionalValueFlag,
   type ParsedCoreArgs,
   printJsonMode,
   requirePositional,
@@ -48,6 +49,7 @@ import {
 import {
   consumeSseFrames,
   resolveApprovalsAgentProvider,
+  sessionProviderMatches,
 } from './session-client.js';
 
 const VALID_DECISIONS: ApprovalDecision[] = [
@@ -257,7 +259,10 @@ async function listPendingForProvider(
   const matching =
     provider === undefined
       ? sessions
-      : sessions.filter((session) => session.provider === provider);
+      : // One saved ACP connection holds `acp` and `opencode` chats alike.
+        sessions.filter((session) =>
+          sessionProviderMatches(session.provider, provider),
+        );
 
   const pending: PendingApproval[] = [];
   for (const session of matching) {
@@ -416,10 +421,8 @@ async function runApprovalsList(
   apiBase: string,
   parsed: ParsedCoreArgs,
 ): Promise<void> {
-  const agentSlug =
-    typeof parsed.flags.agent === 'string' ? parsed.flags.agent : undefined;
-  const threadId =
-    typeof parsed.flags.thread === 'string' ? parsed.flags.thread : undefined;
+  const agentSlug = optionalValueFlag(parsed, 'agent');
+  const threadId = optionalValueFlag(parsed, 'thread');
   const jsonMode = parsed.flags.json === true;
   const watch = parsed.flags.watch === true;
 

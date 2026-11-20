@@ -1,0 +1,7 @@
+{
+  "revision": "7fc73e60294b7bc5a764ddce0fa75d59f2082d6c",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Cited fixture-fidelity anchor unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

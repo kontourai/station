@@ -1,3 +1,5 @@
+import type { UpdateDownloadPolicy } from './system-status.js';
+
 /**
  * Desktop app self-update state (#3851).
  *
@@ -18,15 +20,11 @@ export const DESKTOP_UPDATE_STATE_EVENT = 'station://desktop-update-state';
  * When an available update downloads without a click. A manual download
  * always works; restart is never automatic under any policy.
  */
-export const DESKTOP_UPDATE_DOWNLOAD_POLICIES = [
-  'never',
-  'after-24h',
-  'immediately',
-] as const;
-export type DesktopUpdateDownloadPolicy =
-  (typeof DESKTOP_UPDATE_DOWNLOAD_POLICIES)[number];
-export const DEFAULT_DESKTOP_UPDATE_DOWNLOAD_POLICY: DesktopUpdateDownloadPolicy =
-  'after-24h';
+export {
+  DEFAULT_UPDATE_DOWNLOAD_POLICY as DEFAULT_DESKTOP_UPDATE_DOWNLOAD_POLICY,
+  UPDATE_DOWNLOAD_POLICIES as DESKTOP_UPDATE_DOWNLOAD_POLICIES,
+} from './system-status.js';
+export type DesktopUpdateDownloadPolicy = UpdateDownloadPolicy;
 
 export type DesktopUpdatePhase =
   /** This build has no usable update channel; nothing is checked. */
@@ -59,7 +57,9 @@ export type DesktopUpdateErrorContext = 'check' | 'download' | 'install';
 
 export interface DesktopUpdateError {
   context: DesktopUpdateErrorContext;
-  /** The updater's own message, unclassified. */
+  /** Present when the native installer observed that the volume is full. */
+  reason?: 'disk-full';
+  /** Diagnostic text from the updater. */
   message: string;
   version: string | null;
 }

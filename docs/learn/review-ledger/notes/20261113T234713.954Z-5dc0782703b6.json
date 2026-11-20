@@ -1,0 +1,7 @@
+{
+  "revision": "6e9ca58a096abda02d4e9891800428a01bc4992d",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Checked the Muse serve usage/cost/context rows against the changed muse-serve-adapter.test.ts: the change adds only a schema-check build-swap test and touches no usage, cost or context assertion; no edit needed.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts"]}
+  ]
+}

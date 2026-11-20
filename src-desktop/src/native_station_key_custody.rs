@@ -373,10 +373,7 @@ fn validate_binding(binding: &CandidateBinding) -> CandidateResult<()> {
         || binding.profile_revision > JS_SAFE_INTEGER_MAX
         || binding.expected_trust_revision > JS_SAFE_INTEGER_MAX
         || !valid_app_identifier(&binding.app_identifier)
-        || !matches!(
-            binding.channel.as_str(),
-            "dev" | "stable" | "beta" | "nightly"
-        )
+        || !matches!(binding.channel.as_str(), "dev" | "stable" | "nightly")
         || canonical_broker_origin(&binding.broker_origin).is_err()
         || !valid_uuid(&binding.station_id)
         || !valid_uuid(&binding.enrollment_id)
@@ -1022,10 +1019,7 @@ fn validate_trust_profile_binding(binding: &TrustProfileBinding) -> CandidateRes
     if binding.profile_owner_id.is_empty()
         || binding.profile_owner_id.len() > 256
         || !valid_app_identifier(&binding.app_identifier)
-        || !matches!(
-            binding.channel.as_str(),
-            "dev" | "stable" | "beta" | "nightly"
-        )
+        || !matches!(binding.channel.as_str(), "dev" | "stable" | "nightly")
         || !valid_uuid(&binding.client_instance_id)
         || canonical_broker_origin(&binding.broker_origin).is_err()
         || !valid_uuid(&binding.station_id)

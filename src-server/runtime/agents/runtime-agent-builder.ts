@@ -9,6 +9,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import type { SkillService } from '../../services/agents/skill-service.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { GuardianConversationReader } from '../../services/approvals/guardian-conversation.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { Logger } from '../../utils/logger.js';
@@ -23,6 +24,7 @@ import { type AgentHooksDeps, createAgentHooks } from './agent-hooks.js';
 
 interface RuntimeAgentBuilderContext {
   observeModelContext?: AgentHooksDeps['observeModelContext'];
+  pullRequestWatchPolicy?: AgentHooksDeps['pullRequestWatchPolicy'];
   validateProjectTools?: (
     slug: string,
     spec: AgentSpec,
@@ -79,6 +81,8 @@ interface RuntimeAgentBuilderContext {
   /** Optional for hook-only/test callers; production bootstrap supplies it. */
   resolveUnattendedGrant?: AgentHooksDeps['resolveUnattendedGrant'];
   workItemCapture?: WorkItemCapture;
+  /** #4827: the person's own turns, for the approval guardian. */
+  readGuardianConversation: GuardianConversationReader;
 }
 
 export type RuntimeAgentPreparationState = Pick<
@@ -133,6 +137,7 @@ export async function prepareRuntimeAgentInstance(
 
   const hooks = createAgentHooks({
     observeModelContext: context.observeModelContext,
+    pullRequestWatchPolicy: context.pullRequestWatchPolicy,
     projectToolPolicy: (invocation, tool) => {
       const source = preparationState.toolNameMapping.get(
         tool.toolName,
@@ -159,6 +164,7 @@ export async function prepareRuntimeAgentInstance(
       logger: context.logger,
       modelCatalog: context.modelCatalog,
       projectHomeDir: context.configLoader.getProjectHomeDir(),
+      readConversation: context.readGuardianConversation,
     }),
     agentPolicyService: getAgentPolicyService(context.logger),
     resolveUnattendedGrant: context.resolveUnattendedGrant,

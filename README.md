@@ -6,6 +6,12 @@
 [![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="tests/screenshots.baseline/task-capabilities-dark-desktop.png">
+  <source media="(prefers-color-scheme: light)" srcset="tests/screenshots.baseline/task-capabilities-light-desktop.png">
+  <img src="tests/screenshots.baseline/task-capabilities-light-desktop.png" width="900" alt="A Station Task room for the Task Review the documentation change. Its overview lists three steps, Plan, Work chats, and Artifacts and receipts, above the Project tools available to the Task.">
+</picture>
+
 Agent work shouldn’t be trapped in one terminal or provider. Pick up where you
 left off, bring your team into the work, and make what your agents produce
 something you can build on together.
@@ -13,15 +19,27 @@ something you can build on together.
 Station is open source, runs on a computer you control, and has a public SDK
 for plugins.
 
+<table>
+  <tr>
+    <td align="center" valign="top"><img src="tests/screenshots.baseline/home.png" height="300" alt="Station Home, where you describe what you want done, choose an agent and a model, and start the work."><br>Start work from Home</td>
+    <td align="center" valign="top"><img src="tests/screenshots.baseline/mobile-home.png" height="300" alt="Station Home on a phone, with the same request box and agent choice."><br>Continue on your phone</td>
+    <td align="center" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="tests/screenshots.baseline/task-capabilities-dark-mobile.png"><source media="(prefers-color-scheme: light)" srcset="tests/screenshots.baseline/task-capabilities-light-mobile.png"><img src="tests/screenshots.baseline/task-capabilities-light-mobile.png" height="300" alt="The same Task room on a phone, listing its plan, work chats, and artifacts and receipts."></picture><br>Check a Task from anywhere</td>
+  </tr>
+</table>
+
+<sub>Screens from Station’s automated UI gallery, using sample data. They are
+regenerated with the gallery baseline.</sub>
+
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
-[Getting started](docs/user/getting-started.md) ·
+[Quickstart](docs/user/getting-started.md#quickstart) ·
+[Product tour](docs/learn/walkthroughs.md) ·
 [Concepts](docs/user/concepts.md) ·
 [Contributing](CONTRIBUTING.md)
 
 > **Status:** open source (Apache-2.0) and in active development. Install
 > the Nightly with one command, use a Nightly desktop build, or run from source.
-> v1 is coming soon; no stable release is published yet. See [Get Station](#get-station).
+> The first Stable release is in preparation; no Stable release is published yet. See [Get Station](#get-station).
 
 ## Why Station
 
@@ -62,6 +80,9 @@ Editing Tasks and running agents from that entry aren’t available yet. Review
 and member-presence UI include Feature Previews. Pairing connects your own
 devices; it isn’t team access. Read [sharing setup and current limits](docs/guides/deployment-authentication.md)
 before inviting someone.
+
+Plugins reports incomplete update checks and keeps the updates it found. See the
+[plugin guide](docs/guides/plugins.md) for installation, recovery and inspection.
 
 Plugins can also provide team-specific work surfaces. See [integrating Station](docs/guides/integrating-station.md)
 for supported extension contracts and deployment boundaries.
@@ -140,7 +161,7 @@ steps. Use it for:
 
 - the Windows PowerShell Nightly install, updates and uninstall;
 - the [verified installer](docs/user/getting-started.md#install-or-upgrade)
-  for a published stable or beta release ring, and the signed
+  for a published Stable release, and the signed
   prebuilt-archive path;
 - [the release list](https://github.com/kontourai/station/releases) and
   [release rings](docs/guides/release-rings.md) for what is currently published.

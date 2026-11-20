@@ -1,4 +1,3 @@
-import { useConversationContextBoundaryStatusQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
@@ -10,8 +9,9 @@ import {
 import type { SelectableModel } from '../../utils/modelCapabilities';
 import { agentRunnability } from '../agent-runnability';
 import {
-  readConversationContextBoundaryUiState,
-  writeConversationContextBoundaryUiState,
+  type ContextBoundaryAuthority,
+  observeContextBoundary,
+  useContextBoundaryRecovery,
 } from './conversationContextBoundaryUiState';
 
 export interface ForkFollowUp {
@@ -39,18 +39,26 @@ export function useConversationBoundaryDialogs({
   apiBase,
   activeSession,
   allSessions,
+  contextBoundaryAuthority,
 }: {
   agents: AgentData[];
   apiBase: string;
   activeSession: ChatSession | null;
   allSessions: ChatSession[];
+  contextBoundaryAuthority?: ContextBoundaryAuthority;
 }) {
   const handoffReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [handoffSource, setHandoffSource] = useState<{
     id: string;
     agentSlug: string;
     executionPreset?: { executionAgentId?: string; modelId?: string };
+    /**
+     * Each open is a new dialog: the dialog is keyed by this, so one chat's
+     * request state can never carry into another's picker.
+     */
+    nonce: number;
   } | null>(null);
+  const nextNonce = useRef(0);
   const [forkSource, setForkSource] = useState<{
     id: string;
     agentSlug: string;
@@ -100,54 +108,26 @@ export function useConversationBoundaryDialogs({
   } | null>(null);
 
   const activeConversationId = activeSession?.conversationId ?? '';
-  const [contextBoundaryStored, setContextBoundaryStored] = useState(() =>
-    activeConversationId
-      ? readConversationContextBoundaryUiState(activeConversationId)
-      : null,
-  );
+  const open = activeSession?.conversationOpenState;
+  const contextBoundarySessionId =
+    open?.status === 'fresh-context-ready' &&
+    open.conversation.id === activeConversationId
+      ? open.predecessorSessionId
+      : (activeSession?.currentSessionId ?? activeSession?.id);
+  const scope =
+    contextBoundaryAuthority && activeConversationId && contextBoundarySessionId
+      ? {
+          ...contextBoundaryAuthority,
+          conversationId: activeConversationId,
+          sessionId: contextBoundarySessionId,
+        }
+      : undefined;
+  const { candidate: contextBoundaryCandidate, boundary: contextBoundary } =
+    useContextBoundaryRecovery(scope, apiBase);
   useEffect(() => {
-    setContextBoundaryStored(
-      activeConversationId
-        ? readConversationContextBoundaryUiState(activeConversationId)
-        : null,
-    );
-    const onStorage = () =>
-      setContextBoundaryStored(
-        activeConversationId
-          ? readConversationContextBoundaryUiState(activeConversationId)
-          : null,
-      );
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [activeConversationId]);
-  // The SDK owns this read (`useConversationContextBoundaryStatusQuery`), and
-  // `ConversationContextResetDialog` — the dock's own overlay for the same
-  // conversation — already calls it. This used to be a second, hand-rolled
-  // query against the same endpoint under a different key, so a dock with the
-  // dialog open ran two caches and two two-second timers over one status.
-  // Same call shape as the dialog's, so both observe one cache entry.
-  const contextBoundaryStatusQuery = useConversationContextBoundaryStatusQuery(
-    activeConversationId,
-    contextBoundaryStored?.idempotencyKey ?? '',
-    apiBase,
-    { enabled: Boolean(contextBoundaryStored), refetchInterval: 2_000 },
-  );
-  useEffect(() => {
-    if (!contextBoundaryStored || !contextBoundaryStatusQuery.data) return;
-    if (
-      contextBoundaryStored.status === contextBoundaryStatusQuery.data.status &&
-      contextBoundaryStored.boundaryId ===
-        contextBoundaryStatusQuery.data.boundaryId &&
-      contextBoundaryStored.policy === contextBoundaryStatusQuery.data.policy
-    )
-      return;
-    setContextBoundaryStored(
-      writeConversationContextBoundaryUiState(
-        contextBoundaryStored.idempotencyKey,
-        contextBoundaryStatusQuery.data,
-      ),
-    );
-  }, [contextBoundaryStatusQuery.data, contextBoundaryStored]);
+    if (scope && contextBoundaryCandidate && contextBoundary)
+      observeContextBoundary(scope, contextBoundaryCandidate, contextBoundary);
+  }, [scope, contextBoundaryCandidate, contextBoundary]);
 
   // The queue publishes every durable transition through its own
   // subscription, so this reads a cached projection and is told when it
@@ -161,25 +141,35 @@ export function useConversationBoundaryDialogs({
       turn.conversationId === activeSession?.conversationId ||
       turn.sessionId === activeSession?.id,
   ).length;
-  const contextBoundaryStatus =
-    contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
+  const contextBoundaryStatus = contextBoundary?.status;
   const contextBoundaryLabel =
-    contextBoundaryStatus === 'reserved'
-      ? `Next engine start: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'Empty' : 'Re-anchor'}`
-      : contextBoundaryStatus === 'claimed'
-        ? 'Engine start reconciling'
-        : contextBoundaryStatus === 'indeterminate'
-          ? 'Engine start needs inspection'
-          : contextBoundaryStatus === 'failed'
-            ? 'Start failed; retry available'
-            : undefined;
+    contextBoundaryCandidate &&
+    !contextBoundaryCandidate.legacy &&
+    !contextBoundaryStatus
+      ? 'Check reset status'
+      : contextBoundaryStatus === undefined &&
+          !activeSession?.orchestrationSessionStarted &&
+          !activeSession?.conversationOpenPending &&
+          !activeSession?.conversationOpenFailed &&
+          open?.status === 'fresh-context-ready' &&
+          open.conversation.id === activeSession?.conversationId &&
+          open.canContinue &&
+          open.callerAccess?.continue !== false
+        ? 'Next message starts fresh'
+        : contextBoundaryStatus === 'reserved'
+          ? `Next message: ${contextBoundary?.policy === 'empty-next-cold-start' ? 'starts fresh' : 'continues'}`
+          : contextBoundaryStatus === 'claimed'
+            ? 'Reset in progress'
+            : contextBoundaryStatus === 'indeterminate'
+              ? 'Reset unconfirmed, check the chat'
+              : contextBoundaryStatus === 'failed'
+                ? 'Reset failed, retry available'
+                : undefined;
   const hasLocalDeferredMessages = Boolean(
     activeSession?.queuedMessages?.length ||
       activeSession?.queuedMessageFailure ||
       activeSession?.unsentMessages?.length,
   );
-  const contextBoundarySessionId =
-    activeSession?.currentSessionId ?? activeSession?.id;
   // One reason gates every boundary action this hook owns: continuing with
   // another Agent, switching engines, and replacing engine context. The words
   // therefore name no single action; each surface supplies its own subject.
@@ -188,13 +178,13 @@ export function useConversationBoundaryDialogs({
     : isSessionExecutionActive(activeSession)
       ? 'Wait for the current turn to finish.'
       : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages first.'
+        ? 'Send or discard queued messages first.'
         : durableHandoffQueue.status === 'pending'
           ? 'Checking queued messages…'
           : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
             : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages first.'
+              ? 'Send or discard queued messages first.'
               : undefined;
 
   const openConversationHandoff = useCallback(
@@ -204,6 +194,7 @@ export function useConversationBoundaryDialogs({
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
       });
     },
     [activeSession],
@@ -212,9 +203,13 @@ export function useConversationBoundaryDialogs({
   const openExecutionHandoff = useCallback(
     (model?: SelectableModel) => {
       if (!activeSession?.conversationId) return;
+      // The engine picker owns no button to return to; the dialog returns
+      // focus to the composer instead.
+      handoffReturnFocusRef.current = null;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
         executionPreset: {
           executionAgentId: model?.executionAgentId,
           modelId: model?.id,
@@ -231,6 +226,12 @@ export function useConversationBoundaryDialogs({
           session.id === handoffSource.id,
       )
     : undefined;
+  // The source chat was deleted or closed: its dialog has nothing to render
+  // into, so the held source is dropped.
+  const sourceGone = Boolean(handoffSource && !handoffSession);
+  useEffect(() => {
+    if (sourceGone) setHandoffSource(null);
+  }, [sourceGone]);
 
   return {
     handoffReturnFocusRef,
@@ -250,7 +251,7 @@ export function useConversationBoundaryDialogs({
     forkEligibleAgents,
     contextResetSource,
     setContextResetSource,
-    setContextBoundaryStored,
+    contextBoundaryAuthority,
     contextBoundaryLabel,
     contextBoundarySessionId,
     hasLocalDeferredMessages,

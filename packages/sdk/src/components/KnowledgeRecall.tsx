@@ -479,7 +479,7 @@ export function KnowledgeRecordDetail({
     <div className="knowledge-recall-state" role="alert">
       <p>Could not load the canonical record: {errorText(error)}</p>
       <button type="button" onClick={retry}>
-        Try again
+        Retry
       </button>
     </div>
   ),

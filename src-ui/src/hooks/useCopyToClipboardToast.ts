@@ -11,8 +11,7 @@ import { copyToClipboard } from '../lib/clipboard';
  */
 
 export const COPY_TOAST_SUCCESS = 'Copied to clipboard';
-export const COPY_TOAST_FAILURE =
-  "Couldn't copy — this browser refused clipboard access";
+export const COPY_TOAST_FAILURE = "Couldn't copy to the clipboard";
 
 export function useCopyToClipboardToast(): (text: string) => Promise<boolean> {
   const { showToast } = useToast();

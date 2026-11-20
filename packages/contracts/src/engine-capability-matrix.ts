@@ -374,8 +374,9 @@ export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
   steerPlacement: {
     state: 'emulated',
+    boundary: 'engine-defined',
     detail:
-      'Orchestration commands can steer through a live extension or cancel and reprompt. The chat composer does not offer ACP steering.',
+      'Steering cancels the active prompt, waits for its answer, and continues the same task with the additional instruction.',
   },
 };
 
@@ -459,7 +460,10 @@ export interface EngineCapabilityMatrix {
   toolServers: CapabilityDelivery;
   skills: CapabilityDelivery;
   commands: CapabilityDelivery;
-  modelSelection: CapabilityDelivery;
+  modelSelection: CapabilityDelivery & {
+    /** Explicit false keeps an existing conversation's model picker closed. */
+    overridePerTurn?: boolean;
+  };
   /** The declared pre-tool blocking/grant boundary; see `ToolPolicyDelivery`. */
   toolPolicy: ToolPolicyDelivery;
   /** Whether a pasted image reaches the model; see `ImageInputDelivery`. */
@@ -503,6 +507,13 @@ export type SubagentObservabilityCell =
       evidence: string;
       /** Adapter module that maps them, used by the conformance tripwire. */
       adapterModule: string;
+      /**
+       * Set when only some connections of this engine report (the adapter
+       * decides per connection, at session start). A session this process
+       * has not seen report then reads `not-reported` with this reason,
+       * never "nothing running".
+       */
+      perConnection?: { unobservedReason: string };
     };
 
 /**
@@ -718,27 +729,30 @@ export function toolPolicyDeliveryLabel(
   return 'Station approvals do not apply';
 }
 
-/** The detailed, non-overclaiming explanation paired with the label above. */
+/**
+ * The plain explanation paired with the label above: what Station's approval
+ * rules do for this engine, without overclaiming coverage.
+ */
 export function toolPolicyDeliveryExplanation(
   delivery: ToolPolicyDelivery | undefined,
 ): string {
   if (!delivery) {
-    return 'Station cannot tell whether its tool approvals cover this session: no engine capability matrix resolved.';
+    return "Station can't tell whether its approval rules apply here.";
   }
   if (delivery.state === 'native') {
-    return 'Station checks its blocks and auto-approve grants before every tool call.';
+    return "Station's approval rules apply to every tool call.";
   }
   if (delivery.state === 'partial') {
     const limits = [
-      "Station auto-applies only its matching auto-approve grants; everything else still goes through this engine's own approval flow.",
+      "Station auto-approves what your rules allow; everything else follows this engine's own approvals.",
       delivery.coverageLimit,
       delivery.toolIdentity === 'self-reported'
-        ? 'Tool identity is self-reported by the engine.'
+        ? 'Tool names come from the engine.'
         : undefined,
     ].filter(Boolean);
     return limits.join(' ');
   }
-  return "This engine runs its own approvals; Station's blocks and auto-approve grants are not consulted.";
+  return "This engine handles its own approvals; Station's rules aren't used.";
 }
 
 /**
@@ -782,21 +796,18 @@ export const ACP_MODEL_OVERRIDE_PER_TURN = false;
  *   by the chat's approval mode (Ask: a person decides; Auto: file edits are
  *   allowed; full access: every request is allowed). The approval control
  *   offers Station's approval modes.
- * - `engine`: Station has no channel into the engine's permission rules. It
- *   answers only the requests the engine chooses to send, so the approval
- *   control says the engine decides and offers no mode.
+ * - `requests`: Station's approval mode answers the ACP permission requests
+ *   the engine sends. Its own tool rules still decide when it asks.
+ * - `engine`: Station has no confirmed ACP connection to apply a mode to.
  */
-export type AcpApprovalControl = 'station' | 'engine';
+export type AcpApprovalControl = 'station' | 'requests' | 'engine';
 
-/** ACP engines whose launch configuration Station sets (#3290). */
-export type AcpStationApprovalEngine = 'opencode';
+/** ACP engine identities with specific approval settings or descriptions. */
+export type AcpStationApprovalEngine = 'opencode' | 'antigravity';
 
 /**
- * The ACP engine a connection's command launches, when Station sets its
- * approval rules at launch. Matched on the executable's own name (any
- * directory, a Windows launcher extension ignored), the identity the
- * OpenCode model listing also uses. A wrapper such as `npx opencode-ai` is
- * not recognized, so that connection is `engine`-decided.
+ * Identifies an ACP engine with specific approval settings or descriptions.
+ * Unrecognized executables can still send the standard ACP permission requests.
  */
 export function acpStationApprovalEngine(
   command: string | null | undefined,
@@ -809,14 +820,41 @@ export function acpStationApprovalEngine(
     .pop()
     ?.toLowerCase()
     .replace(/\.(exe|cmd|bat)$/, '');
-  return executable === 'opencode' ? 'opencode' : undefined;
+  if (executable === 'opencode') return 'opencode';
+  if (executable === 'agy') return 'antigravity';
+  return undefined;
+}
+
+/**
+ * Whether a saved ACP connection runs OpenCode: the OpenCode descriptor's own
+ * id, or a command whose executable is `opencode` launched as `opencode acp`.
+ * The `opencode` engine runs exactly these records; a managed policy governs
+ * them through its `acp` entry (R5′).
+ */
+export function isOpenCodeAcpConnection(
+  config:
+    | {
+        readonly id?: string;
+        readonly command?: string | null;
+        readonly args?: readonly string[] | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!config) return false;
+  if (config.id === 'opencode') return true;
+  return (
+    acpStationApprovalEngine(config.command) === 'opencode' &&
+    config.args?.[0] === 'acp'
+  );
 }
 
 /** Who decides which of this ACP connection's actions ask (#3290). */
 export function acpApprovalControl(
   command: string | null | undefined,
 ): AcpApprovalControl {
-  return acpStationApprovalEngine(command) ? 'station' : 'engine';
+  if (acpStationApprovalEngine(command) === 'opencode') return 'station';
+  return command?.trim() ? 'requests' : 'engine';
 }
 
 export const ENGINE_CAPABILITY_MATRICES: Record<
@@ -825,6 +863,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
 > = {
   station: {
     engineId: toEngineId('station'),
+    // Of Station's two frameworks, VoltAgent applies an authored Agent's
+    // maxSteps. Strands and the external engine rows use their own limits.
     durability: STATION_ENGINE_DURABILITY,
     systemPrompt: { state: 'native' },
     // Native systemPrompt already delivers the authored prompt; the
@@ -1103,7 +1143,54 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   muse: {
     engineId: toEngineId('muse'),
-    durability: EXTERNAL_ENGINE_DURABILITY,
+    // Steering is native on `muse serve` (see `midTurnSteer` below); the
+    // Station runtime runs every Muse session there unless its host cannot
+    // be used, and that exec-fallback session refuses a steer itself.
+    //
+    // Continuity (`MuseAdapter.metadata.continuity`, not a matrix cell): a
+    // serve session resumes after a Station restart. Its resume cursor is
+    // the durable muse session id, re-attached on a fresh host with
+    // `session/resume` (live 1.4.18 across two `muse serve` processes;
+    // `muse-serve-1.4.18-resume-goal-fork`, which also captures the
+    // `sessionNotFound` refusal Station reports as a dead binding). Exec
+    // sessions do not resume. `session/fork` is captured there too, but
+    // the conversation fork route is replay-only, so no native fork is
+    // declared. Goals (`ProviderAdapterShape.goals`): read, `goal/pause`
+    // and `goal/clear` on serve; `goal/set` and `goal/resume` start a goal
+    // turn on an idle session (`muse-serve-1.4.18-goal-set-pause`) and are
+    // not offered.
+    //
+    // Sign-in (#1942, not a matrix cell): credential profiles through the
+    // generic app-home surface. A profile is an XDG config root
+    // (`museAppHomeEnv`); `muse login` relays its device code
+    // (live 1.4.18 through `DeviceCodeLoginManager`, cancelled before
+    // approval; `app-home-muse.routes.test.ts`), and serve hosts and exec
+    // turns spawn under the profile (`muse-serve-adapter.test.ts`,
+    // `muse-adapter.test.ts`). API-key sign-in is not offered.
+    //
+    // MCP status (not a matrix cell): `muse mcp list --json` at session start
+    // → `engine-mcp.status`, `scope: 'engine-config'`, enabled servers
+    // `configured` (stable MSP reports no connection state and has no
+    // reconnect, so none is declared; `muse-mcp-status.test.ts`).
+    // `approval/reviewing` → `tool.progress` on the held call (schema-built
+    // frame, no live capture; `muse-serve-adapter.test.ts`).
+    //
+    // Managed install: not offered. The release channel, manifest (sha256
+    // and size per platform) and binary were fetchable without an account
+    // on 2026-11-13, so a pin is possible, but the managed-install
+    // abstraction is keyed on built-in ACP descriptors. Readiness and
+    // sign-in probes run with `MUSE_NO_AUTO_UPDATE=1 MUSE_LOGIN=0`
+    // (`MUSE_UNATTENDED_LAUNCHER_ENV`) so the launcher never downloads or
+    // prompts during a probe.
+    durability: STEERING_ENGINE_DURABILITY,
+    // Adopting a muse session Station did not start needs an
+    // attached-session source that lists them (`session/list`); none
+    // exists for Muse, so nothing reaches `adoptSession`.
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station lists no Muse sessions it did not start, so none can be continued here.',
+    },
     // Slice 1 is deliberately narrow. `muse exec` is a one-prompt-per-process
     // headless runner; nothing in its flag surface or its observed JSONL
     // stream delivers an authored system prompt, MCP tool servers, skills, or
@@ -1117,6 +1204,16 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // nothing resembling a system-prompt field.
     instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
     toolServers: { state: 'unsupported' },
+    // These two cells are about delivering Station-authored skills and
+    // commands, which muse has no channel for. Muse's OWN commands are a
+    // separate surface: `getCommands` lists `/compact` on serve as an
+    // `adapter-action` route that `MuseAdapter` sends as MSP
+    // `session/compact` (live 1.4.18: refused `run_active` mid-turn and
+    // `compaction_unavailable` on the account's default model;
+    // `muse-serve-1.4.18-background-task-stop`). Muse's skills
+    // (`skill/list`, per session) are not listed: `getCommands` is
+    // adapter-wide and has no session to ask, and a short-lived discovery
+    // host would have to start (and persist) a muse session to read them.
     skills: { state: 'unsupported' },
     commands: { state: 'unsupported' },
     // The one positively evidenced channel: `muse exec --model <ID>` is
@@ -1131,6 +1228,19 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `MUSE_MODEL_LAUNCH` (muse-adapter-types.ts), read by
     // `MuseAdapter.metadata.modelLaunch` and by `launchCapabilities()` in
     // `execution-target-resolver.ts`.
+    //
+    // On `muse serve` the same selector rides `session/start.modelId` and
+    // `session/setModel` (refused by muse for an id outside its catalog;
+    // live-capture: `session/started.modelId` echoes the applied model). The
+    // catalog itself is listed through a session-less `model/list` (#2266),
+    // which live against 1.4.18 answered `models: []` (`bundledCatalog`):
+    // enumeration can be empty while selection still applies, so this cell
+    // and the connection's `modelLaunch` say selection, never the catalog.
+    // The channel stays `flag`: exec is the transport every Muse install
+    // has. Reasoning effort (`modelOptions.effort`) rides
+    // `turn/start.reasoningEffort` / `--reasoning-effort` (schema + live
+    // `session/reasoningEffortChanged` for the session-level form); the
+    // matrix has no cell for effort.
     modelSelection: { state: 'session', channel: 'flag' },
     toolPolicy: { state: 'unsupported', adapterModule: 'muse-adapter' },
     // Image bytes are validated and staged until the owned process exits;
@@ -1140,8 +1250,16 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'declared',
     },
-    // One prompt is bound to one muse process; there is no live input channel.
-    midTurnSteer: false,
+    // #1952: `muse serve` (MSP) `turn/steer {expectedTurnId}` joins input to
+    // the running turn. Live against Muse Code 1.4.18: a steer sent while a
+    // turn ran a shell command was admitted (`{status:'accepted', turnId}`),
+    // appeared as a `userMessage` item in that same turn, and changed its
+    // final answer; with no running turn it is refused (`commandRejected`,
+    // `missing_run`). `MuseAdapter.steerTurn` sends it; pinned by
+    // `muse-serve-adapter.test.ts` (fixture `muse-serve-1.4.18-steer`). A
+    // session on the `muse exec` fallback (one prompt per process) has no
+    // such channel and refuses (`MuseAdapter.canSteerTurn`).
+    midTurnSteer: true,
     // #2452, live `muse serve` (MSP) captures against Muse Code
     // 1.3.0-R3401.1 (committed as
     // `src-server/providers/__tests__/fixtures/muse-serve-1.3.0-*`). A
@@ -1153,11 +1271,22 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // progress line or output; no depth either. Declared for serve: a
     // session on the `muse exec` fallback names no subagent and reports its
     // child work `not-reported`.
+    //
+    // Muse Code 1.4.18 (`muse-serve-1.4.18-workflow-child-steer`) also
+    // emits a `subagent` item per workflow child (same id as its
+    // `childId`), whose `result.summary` is the child's own reply; Station
+    // takes the child's result from it. A native `subagent` item (no
+    // `workflowRunId`) is mapped from the same fields, but no live native
+    // spawn was capturable (the agent offered no spawn tool outside
+    // workflows), so that path rests on the schema plus the workflow
+    // child's live item shape. A tool call muse keeps running past its
+    // completed turn (`task/list`: `executionMode: background`) is child
+    // work too (`workKind: command`, `muse-serve-1.4.18-background-task-stop`).
     subagentObservability: {
       state: 'declared',
       signals: ['lifecycle', 'usage', 'result'],
       evidence:
-        'workflow item children[] (scheduled/started/usage/completed/terminal) and its workflow-launch-reconciled final_summary',
+        'workflow item children[] (scheduled/started/usage/completed/terminal), the 1.4.18 subagent item result.summary, and the workflow-launch-reconciled final_summary',
       adapterModule: 'muse-serve-child-work.ts',
     },
     subagentControl: {
@@ -1165,7 +1294,19 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       // `subagent/stop {subagentId}` (a client request) cancelled the child
       // within ~35 ms in the capture `muse-serve-1.3.0-workflow-child-stop`;
       // `MuseAdapter.stopProviderTask` sends it and the child reads
-      // stopped-unconfirmed until its own `terminal: cancelled`.
+      // stopped-unconfirmed until its own `terminal: cancelled`. A
+      // background task is stopped with `task/stop {taskId}` instead (live
+      // 1.4.18: the task's item completed `cancelled`; muse refuses
+      // `task/stop` on a subagent id, `invalid_target`).
+      //
+      // Not a matrix cell, but wired: `steerChildWork` sends
+      // `subagent/sendMessage` (live 1.4.18: queued, delivered, and the
+      // child's reply carried it, sent after the launching turn ended;
+      // `muse-serve-1.4.18-workflow-child-steer`). A workflow's turn ends at
+      // launch, so the serve adapter declares `childSteerOutlivesParentTurn`
+      // and orchestration admits the steer for a child still running under
+      // its steer token. `subagent/interrupt` maps to no adapter seam and is
+      // not sent.
       stop: {
         state: 'available',
         invocation: 'client-request',
@@ -1173,6 +1314,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
         evidence:
           'subagent/stop → workflow child terminal cancelled (muse-serve-1.3.0-workflow-child-stop)',
       },
+      // MSP has `subagent/resume`, but no adapter seam or caller resumes a
+      // provider subagent, so wiring it would add a method nothing calls.
       resume: {
         state: 'unsupported',
         reason: 'No subagent resume is wired.',
@@ -1184,6 +1327,14 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   acp: {
     engineId: toEngineId('acp'),
     durability: ACP_ENGINE_DURABILITY,
+    // `AcpSessionListSource` lists sessions an ACP agent ran outside Station,
+    // read-only and without history. Nothing shows that resuming one keeps
+    // its conversation, so continuing one is not offered.
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station lists these sessions read-only and has no evidence that resuming one keeps its history.',
+    },
     systemPrompt: { state: 'unsupported' },
     // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
     // `{type:'text', text: input.input}` prompt content block on every
@@ -1241,7 +1392,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // catalog advertises the value: a model config option whose response
     // confirms the exact currentValue, else a `models` list switched with
     // session/set_model (#352). Resume/per-turn remain unsupported.
-    modelSelection: { state: 'session', channel: 'wire' },
+    modelSelection: {
+      state: 'session',
+      channel: 'wire',
+      overridePerTurn: ACP_MODEL_OVERRIDE_PER_TURN,
+    },
     // ACP enters the shared staged policy at requestPermission. Coverage is
     // still partial: ACP does not guarantee every tool call requests
     // permission, and the tool identity is reported by the external engine.
@@ -1272,20 +1427,131 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     midTurnSteer: true,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.
+    // ACP 1.1.1 has no subagent concept, so this is a per-connection
+    // observation, like `muse`'s serve/exec split: an engine whose handshake
+    // identifies a reporter (`acp-child-work.ts`: kiro-cli's
+    // `_kiro.dev/subagent/list_update` roster, Kiro's agent service's
+    // `agent-subtask` tool calls, Grok Build's `_x.ai/*` background-task and
+    // subagent notifications) has its children mapped; every other ACP
+    // engine's session publishes `not-reported` at start, so its silence never
+    // reads as nothing running. Signals are the union over reporters: Kiro's
+    // wires carry lifecycle only, Grok's also progress, usage and result.
     subagentObservability: {
-      state: 'none',
-      // ACP 1.1.1 has no subagent concept. `session/update` carries
-      // `agent_message_chunk`, `agent_thought_chunk`, `tool_call`,
-      // `tool_call_update`, `plan`, `usage_update` and mode/command/config
-      // updates only, so a subagent invocation is indistinguishable from an
-      // ordinary tool call — it arrives without a child id or model.
-      reason: 'ACP 1.1.1 has no subagent concept.',
+      state: 'declared',
+      // No `nesting`: a Grok subagent's own subagents stream on the child's
+      // session, which is not this session's, so depth is unobserved.
+      signals: ['lifecycle', 'progress', 'usage', 'result'],
+      evidence:
+        'kiro-cli `_kiro.dev/subagent/list_update` subagents[{sessionId, status.type}] and Kiro agent service tool_call `_meta.kiro.kind: agent-subtask` with `agentSubtaskId` (kirocrew session_handle_native_children.py, test_kas_subagent_progress.py); grok 1.0.77 live capture (src-server/services/acp/__tests__/fixtures/grok-1.0.77-session-frames.jsonl): subagent_spawned / subagent_progress / subagent_finished, _x.ai/task_backgrounded, background_tasks, _x.ai/task_completed, _x.ai/monitor_event',
+      adapterModule: 'acp-child-work.ts',
+      perConnection: {
+        unobservedReason:
+          'Only some ACP engines report subagents, and this session has not reported since Station started.',
+      },
     },
     subagentControl: {
       state: 'none',
-      // Nothing to control: a subagent is not addressable, having no identity
-      // separate from the tool call that invoked it.
-      reason: 'A subagent is not addressable.',
+      // No client request stops or resumes one engine subagent on ACP.
+      reason: 'No ACP engine offers a per-subagent stop Station has wired.',
+    },
+    builtInTools: { state: 'unenumerated' },
+    builtInToolControl: { state: 'none' },
+  },
+  // The `opencode` engine (`opencode-adapter.ts`, behind the
+  // `opencode-native-engine` Feature Preview). A session runs over OpenCode
+  // 2's own server (`opencode serve`) where Station verified its API, and
+  // over ACP otherwise, and the transport is chosen per session at start.
+  // The matrix has no per-transport cells, so each cell states what BOTH
+  // transports deliver; where the ACP fallback could do more, the comment
+  // says so and the cell stays at the native floor.
+  opencode: {
+    engineId: toEngineId('opencode'),
+    durability: ACP_ENGINE_DURABILITY,
+    // Neither transport has a system-prompt field: native `POST
+    // /api/session/{id}/prompt` takes `{id, text}`, ACP takes a text block.
+    systemPrompt: { state: 'unsupported' },
+    // Both send the turn's text as the prompt (`opencode-serve-session.ts`
+    // sendTurn; the inner ACP adapter's `session/prompt`), so the authored
+    // prompt prepended to the first turn arrives as ordinary text.
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
+    // Both transports deliver the servers the `acp` row does, resolved the
+    // same way (`acp-mcp-passthrough.ts`). Native: each is added to the
+    // session's own OpenCode server (`PUT /api/experimental/mcp/{name}`,
+    // `opencode-native-mcp.ts`; fixture `opencode-serve-2.3.0-mcp-add.jsonl`),
+    // a server no session with other tool servers shares; HTTP MCP is part
+    // of the verified API. ACP: on `session/new`, behind the live
+    // `mcpCapabilities.http` gate, as for `acp`.
+    toolServers: {
+      state: 'session',
+      channel: 'wire',
+      builtinStationControlDelivery: {
+        mechanism: 'http-header-token',
+        basis: 'runtime_observation',
+        observation: 'acp-mcp-http',
+      },
+    },
+    skills: { state: 'unsupported' },
+    // Authored commands are not delivered on either transport; OpenCode's
+    // own commands run through `engine-command-dispatch.ts`.
+    commands: { state: 'unsupported' },
+    // Native: `POST /api/session` carries `model: {providerID, id}`
+    // after checking the model catalog; subsequent native turns switch with
+    // `POST /api/session/{id}/model`. ACP fallback selects only at start.
+    modelSelection: {
+      state: 'session',
+      channel: 'wire',
+      overridePerTurn: true,
+    },
+    // Station's staged policy, for a session started as an Agent, on both
+    // transports. ACP: at `requestPermission`, exactly as on the `acp` row
+    // (the declared hook and module, which the tool-policy tripwire checks).
+    // Native: on each OpenCode `permission.asked`, the session's or a
+    // descendant's, in ACP's order, with the tool name OpenCode's ACP layer
+    // reports (`OpenCodeNativeSession.decideAsk`; replay tests "a session
+    // started as an Agent runs natively, and its Station tool policy's deny
+    // ..." and siblings in `opencode-adapter.replay.test.ts`, and a live
+    // 2.3.0 deny in `opencode-native.process.test.ts`). On either, only calls
+    // OpenCode asks about and names a tool for are covered, and the engine
+    // reports that name.
+    toolPolicy: {
+      state: 'partial',
+      permissionHook: 'requestPermission',
+      evidence: 'sharedStagedPolicy',
+      toolIdentity: 'self-reported',
+      coverageLimit:
+        "Only calls OpenCode asks permission for and names a tool for enter this policy seam, over ACP or OpenCode's own server.",
+      adapterModule: 'acp-adapter',
+    },
+    // Native: images go as `POST .../prompt` `files` (data URIs), as
+    // OpenCode's own ACP layer sends them (fixture
+    // `opencode-serve-2.3.0-attachment.jsonl`); other files are refused.
+    // ACP: as the `acp` row, only when the connection's `initialize`
+    // advertised `promptCapabilities.image`, so the basis is an observation.
+    imageInput: {
+      state: 'session',
+      channel: 'native-content',
+      basis: 'runtime_observation',
+    },
+    // Native: `POST .../prompt {delivery:'steer'}`, acknowledged by
+    // `inbox.delivered` (fixture `opencode-serve-2.3.0-steer.jsonl`); ACP:
+    // OpenCode's `_session/steering` row in `acp-steer.ts`.
+    midTurnSteer: true,
+    // Native only: a descendant session (`parentID` this session's id, or a
+    // descendant's) becomes `child-work.updated` with its start and terminal status
+    // (`opencode-serve-session.ts`; fixture
+    // `opencode-serve-2.3.0-subagent.jsonl`). No progress, usage or result
+    // is mapped. A session on the ACP fallback names no reporting engine and
+    // states `not-reported` at start, as the `acp` row describes.
+    subagentObservability: {
+      state: 'declared',
+      signals: ['lifecycle'],
+      evidence:
+        'opencode-serve-2.3.0-subagent.jsonl: session.created with parentID, then session.execution.started / succeeded on the child',
+      adapterModule: 'opencode-serve-session.ts',
+    },
+    subagentControl: {
+      state: 'none',
+      reason: 'No OpenCode subagent stop or resume is wired.',
     },
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
@@ -1361,6 +1627,7 @@ export function sessionDeliveryChannels(
  * connection record carrying BOTH an acp type/id and a managed engine
  * identity resolves to `acp`, never letting the managed check shadow it).
  *
+ *   explicit engineId 'opencode'                   -> opencode
  *   id/type 'acp'                                 -> acp
  *   explicit engineId (top-level or config-nested) -> that engine only when
  *                                                     its type is its exact
@@ -1376,6 +1643,17 @@ export function resolveEngineCapabilityMatrix(
     config?: { engineId?: unknown; executionClass?: unknown };
   } | null,
 ): EngineCapabilityMatrix {
+  // A saved ACP connection that the `opencode` engine claims projects
+  // `engineId: 'opencode'` (only while its Feature Preview is on); it reads
+  // the `opencode` row, not the `acp` one its type would pick.
+  const projectedEngineId =
+    connection?.engineId ??
+    (typeof connection?.config?.engineId === 'string'
+      ? connection.config.engineId
+      : undefined);
+  if (projectedEngineId === 'opencode') {
+    return ENGINE_CAPABILITY_MATRICES.opencode;
+  }
   if (agentConnectionId === 'acp' || connection?.type === 'acp') {
     return ENGINE_CAPABILITY_MATRICES.acp;
   }

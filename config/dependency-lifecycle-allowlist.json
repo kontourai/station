@@ -130,8 +130,8 @@
       "lock": "pnpm-lock.yaml",
       "path": "node_modules/koffi",
       "name": "koffi",
-      "version": "3.3.6",
-      "integrity": "sha512-pPqCZg8o4laLvzxySGEju/T1Fd+eCJTVnJmcH6h1u98HFRoBQ9EokNuBSj3NxIQdzkEPRxPnHKjhBVkLeB+X0g==",
+      "version": "3.3.7",
+      "integrity": "sha512-Vrq4UwAE19HPLMou8m7HGCELiTE3l9D+r1nA7XwVHUTNaRdymPM+kzkkD2VGxlyjI2qZTb9tMDaFn7kfZ72v3Q==",
       "hooks": [
         {
           "name": "install",
@@ -147,8 +147,8 @@
         "capability": "koffi",
         "proof": "no-build-fallback"
       },
-      "purl": "pkg:npm/koffi@3.3.6",
-      "reviewedAt": "2026-11-04",
+      "purl": "pkg:npm/koffi@3.3.7",
+      "reviewedAt": "2026-11-12",
       "expiresAt": "2027-02-02",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [

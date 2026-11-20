@@ -274,16 +274,17 @@ is a round hundred of at least 1,000, the sweep logs `may be paged`.
 This is eventual cleanup, not a maximum leak lifetime. Recorded channels become
 eligible after 12 hours, then unrecorded channels require a ten-minute observed
 grace. Provider/ledger outages, incomplete listings and delete failures delay
-reclamation. Scopes are traversed in configured order with one shared budget;
-a sustained backlog in an early scope can defer later scopes repeatedly. The
-current code has no rotating scope cursor or per-scope reserved budget.
+reclamation. The sweep lists and triages each admitted scope before deleting.
+It interleaves eligible deletes across scopes, so an ongoing Stable backlog
+does not consume Nightly's share. Remaining due channels wait for later runs
+under the same call and delete limits.
 
 **Sweep scopes.** The sweep deletes every channel in a swept scope that this
 deployment's ledger does not record, so each swept environment and bundle
 must have exactly one ledger: never create channels in a swept scope from
 anywhere else (`wrangler dev`, a staging deploy, a manual test with the real
 key), or they will be deleted. `SWEEP_SCOPES` defaults to production for the
-three shipping bundles (`io.kontourai.station`, `.beta`, `.nightly`); the
+two supported bundles (`io.kontourai.station` and `.nightly`); the
 sandbox environment and `io.kontourai.station.dev.instance` are never swept,
 so do development and testing there. An entry naming another environment or a
 bundle outside `ALLOWED_IOS_BUNDLES` is ignored and logged, and an empty value
@@ -359,7 +360,7 @@ cleanup can lag, and the actual Apple quota requires separate confirmation.
 **Scaling.** When legitimate starts approach 10 per minute, ask Apple for a
 confirmed channel quota, measure admission across Worker locations and check
 ledger/CPU capacity. Keep successful reclamation ahead of actual channel growth
-and account for scope starvation. Do not raise the limit using the 12-hour
+and check the backlog in each scope. Do not raise the limit using the 12-hour
 estimate alone.
 
 If starts begin failing with 503 (the channel create is refused) or quota

@@ -164,6 +164,32 @@ describe('ConversationStatsModal — unmeasured figures', () => {
     expect(note).not.toContain('context usage');
   });
 
+  test('engine-reported credits and a context reading are not called unreported, and the engine is named', () => {
+    // Kiro (KAS): credits in its own unit and a context percentage, no tokens.
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        engineName="Kiro (KAS)"
+        stats={{
+          modelId: 'auto',
+          conversationId: 'c-kas',
+          turns: 1,
+          toolCalls: 0,
+          contextWindowPercentage: 2.2,
+          reportedCosts: [{ unit: 'credit', amount: 0.0535 }],
+          measurement: { source: 'engine-events', provider: 'acp' },
+        }}
+      />,
+    );
+    const note = screen.getByText(/did not report/).textContent ?? '';
+    expect(note).toMatch(
+      /^Kiro \(KAS\) did not report token counts for this session/,
+    );
+    expect(note).not.toContain('Custom engine');
+    expect(note).not.toContain('cost');
+    expect(note).not.toContain('context usage');
+  });
+
   test('the derived context header still renders — it is the one real number', () => {
     renderModal(UNMEASURED);
 
@@ -389,5 +415,44 @@ describe('ConversationStatsModal — cache-honest totals (station#4196)', () => 
     expect(rowValue('In')).toBe('1,200');
     expect(screen.queryByText(/uncached/)).toBeNull();
     expect(screen.queryByText(/Prompt total/)).toBeNull();
+  });
+});
+
+describe('ConversationStatsModal — engine-reported usage and MCP servers', () => {
+  const KIRO: ConversationStatsSnapshot = {
+    modelId: 'claude-sonnet-4.6',
+    turns: 1,
+    toolCalls: 0,
+    contextWindowPercentage: 1.2,
+    reportedCosts: [{ unit: 'credit', amount: 0.0745 }],
+    measurement: { source: 'engine-events', provider: 'acp' },
+  };
+
+  test("shows credits in the engine's unit, never as dollars, and the engine's own context reading", () => {
+    renderModal(KIRO);
+    expect(screen.getByText('Engine-reported usage')).toBeTruthy();
+    expect(screen.getByText('0.0745 credits')).toBeTruthy();
+    expect(screen.queryByText(/\$0\.0745/)).toBeNull();
+    expect(screen.getByText('As the engine reported it')).toBeTruthy();
+    expect(screen.getByText('1.2%')).toBeTruthy();
+  });
+
+  test('mounts the engine MCP panel with the servers the session reported', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={KIRO}
+        engineMcpServers={[
+          { name: 'remote', state: 'needs-auth', scope: 'engine-config' },
+        ]}
+        onReconnectMcpServer={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('region', { name: 'Engine MCP servers' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Sign in: remote' }),
+    ).toBeTruthy();
   });
 });

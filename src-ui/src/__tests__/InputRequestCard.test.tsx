@@ -372,6 +372,50 @@ test("a tool server's form is never drafted on the device", async () => {
   expect(storage.set).not.toHaveBeenCalled();
 });
 
+test('an engine link is opened from its own card and answered accept, with no content', async () => {
+  const posted = postedCommands();
+  const opened = {
+    provider: 'acp',
+    threadId: 'thread-link',
+    createdAt: '2026-11-13T00:00:00Z',
+    method: 'request.opened',
+    eventId: 'event-link',
+    requestId: 'link-one',
+    requestType: 'approval',
+    title: 'Kiro wants you to sign in',
+    payload: {
+      inputRequest: {
+        schema: 'station.input-request/v1',
+        source: 'harness:kiro',
+        requester: 'Kiro',
+        message: 'Sign in to the docs MCP server',
+        body: {
+          kind: 'url',
+          url: 'https://auth.example.com/authorize?x=1',
+          purpose: 'mcp-sign-in',
+        },
+      },
+    },
+  } as unknown as CanonicalRuntimeEvent;
+  const [request] = unansweredApprovalRequests([], [opened]);
+  expect(request.inputRequest).toBeUndefined();
+  expect(request.inputRequestUrl?.body.url).toBe(
+    'https://auth.example.com/authorize?x=1',
+  );
+  render(<InputRequestRequest request={request} />);
+  fireEvent.click(screen.getByRole('link', { name: 'Sign in' }));
+  expect(await screen.findByText('Opened Kiro’s link')).toBeTruthy();
+  expect(posted).toEqual([
+    {
+      type: 'respondToRequest',
+      threadId: 'thread-link',
+      requestId: 'link-one',
+      expectedRequestEventId: 'event-link',
+      decision: 'accept',
+    },
+  ]);
+});
+
 test("a question's header is shown with it; a form with no header draws no header slot", () => {
   const harness = render(
     <InputRequestCard form={HARNESS} onRespond={respond} />,

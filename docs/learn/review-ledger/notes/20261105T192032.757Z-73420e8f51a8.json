@@ -1,7 +1,0 @@
-{
-  "revision": "421258f54aa201935ceb83e6de4ba4807a631420",
-
-  "notes": [
-    {"path":"docs/patterns/frontend.md","note":"Comment-only change in PlatformProfileContext.tsx (what shares the initial platform resolution); no behaviour change, and this document makes no claim about platform resolution.","inputs":["docs/patterns/frontend.md","src-ui/src/platform/PlatformProfileContext.tsx"]}
-  ]
-}

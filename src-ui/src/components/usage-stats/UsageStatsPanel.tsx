@@ -131,7 +131,7 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
         />
         <StatCard
           icon={<CalendarGlyph />}
-          label="Active Days"
+          label="Active days"
           value={`${rangeSummary.activeDays}/${rangeSummary.totalDays}`}
         />
       </div>

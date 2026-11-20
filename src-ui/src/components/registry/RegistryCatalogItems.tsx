@@ -61,8 +61,8 @@ export function RegistryCatalogDetail({
     (mcpServer ? null : installRefusal) ??
     (tab === 'skills'
       ? installed
-        ? 'Removing deletes the workspace copy so the skill is no longer selectable in agent definitions.'
-        : 'Installing copies this skill into the workspace so it becomes selectable in agent definitions.'
+        ? 'Removing it means agents can no longer use this skill.'
+        : 'Adds this skill to your workspace so agents can use it.'
       : null);
   const source = getRegistrySourceLabel(item);
   const isInstalledPlugin = tab === 'plugins' && installed;
@@ -161,10 +161,10 @@ export function RegistryCatalogDetail({
               }}
             >
               {checkingInstalled
-                ? 'Checking installed status...'
+                ? 'Checking installed status…'
                 : pending
-                  ? 'Working...'
-                  : 'Remove Plugin'}
+                  ? 'Working…'
+                  : 'Remove plugin'}
             </Button>
           </>
         ) : (
@@ -182,9 +182,9 @@ export function RegistryCatalogDetail({
             {installRefusal
               ? 'Unavailable'
               : checkingInstalled
-                ? 'Checking installed status...'
+                ? 'Checking installed status…'
                 : pending
-                  ? 'Working...'
+                  ? 'Working…'
                   : getRegistryActionLabel(tab, installed, item)}
           </Button>
         )}
@@ -230,13 +230,16 @@ export function RegistryCatalogCard({
             <McpQualificationBadge listing={item.mcpServer} />
           )}
         </div>
+        {/* A short visible label so a long name cannot overflow the card;
+            the accessible name still names the item. */}
         <Button
           variant="secondary"
           size="sm"
           aria-pressed={selected}
+          aria-label={`View ${item.displayName || item.name || id} details`}
           onClick={choose}
         >
-          View {item.displayName || item.name || id} details
+          Details
         </Button>
       </div>
     </article>

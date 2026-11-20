@@ -1,0 +1,11 @@
+{
+  "revision": "51374b20424193747f8265411b5b160e403bc961",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Re-checked each citing page after merging main's baseline advance: the record command's --input expansion and closing report are unchanged by the merge; no claim changed.","inputs":["scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Re-checked each citing page after merging main's baseline advance: the record command's --input expansion and closing report are unchanged by the merge; no claim changed.","inputs":["scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Re-checked each citing page after merging main's baseline advance: the record command's --input expansion and closing report are unchanged by the merge; no claim changed.","inputs":["scripts/record-documentation-review.mjs"]}
+  ]
+}

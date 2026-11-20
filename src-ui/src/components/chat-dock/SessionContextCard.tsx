@@ -56,6 +56,21 @@ export interface SessionContextCardProps {
   inventory?: {
     onOpen: (trigger: HTMLElement) => void;
   };
+  /**
+   * Where this chat came from (a delegating Task), as the dock words it. A
+   * fact, not a command, so it is a row here rather than a disabled row of
+   * the More menu.
+   */
+  origin?: string;
+  /**
+   * The chat's clipboard commands (Copy chat ID, session ID, folder path).
+   * They live here, beside the facts they copy, rather than in the More menu.
+   */
+  copyActions?: readonly {
+    key: string;
+    label: string;
+    onSelect: (trigger: HTMLElement) => void;
+  }[];
 }
 
 /** A folder Station made for this chat, named instead of shown as its hash path. */
@@ -181,6 +196,8 @@ export function SessionContextRows({
   conversationId,
   onOpenChatDetails,
   inventory,
+  origin,
+  copyActions,
   wrap = (action) => action(),
   inventoryTrigger,
 }: SessionContextCardProps & {
@@ -306,6 +323,11 @@ export function SessionContextRows({
             ) : null}
           </Row>
         ) : null}
+        {origin ? (
+          <Row label="From">
+            <span className="session-context-card__primary">{origin}</span>
+          </Row>
+        ) : null}
         {conversationId ? (
           <PullRequestsRow
             conversationId={conversationId}
@@ -316,19 +338,35 @@ export function SessionContextRows({
       {conversationId ? (
         <SessionScheduledSection conversationId={conversationId} wrap={wrap} />
       ) : null}
-      {inventory ? (
+      {inventory || copyActions?.length ? (
         <div className="session-context-card__footer">
-          <button
-            type="button"
-            className="session-context-card__link"
-            aria-haspopup="dialog"
-            onClick={(event) => {
-              const trigger = inventoryTrigger ?? event.currentTarget;
-              wrap(() => inventory.onOpen(trigger));
-            }}
-          >
-            Chat inventory
-          </button>
+          {inventory ? (
+            <button
+              type="button"
+              className="session-context-card__link"
+              aria-haspopup="dialog"
+              onClick={(event) => {
+                const trigger = inventoryTrigger ?? event.currentTarget;
+                wrap(() => inventory.onOpen(trigger));
+              }}
+            >
+              Chat inventory
+            </button>
+          ) : null}
+          {copyActions?.map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              className="session-context-card__link"
+              data-kind="copy"
+              onClick={(event) => {
+                const trigger = inventoryTrigger ?? event.currentTarget;
+                wrap(() => action.onSelect(trigger));
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
         </div>
       ) : null}
     </>

@@ -3,6 +3,7 @@ import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
 import { JobDetail } from '../components/scheduler';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
 import { useToast } from '../contexts/ToastContext';
@@ -19,8 +20,10 @@ import {
 import { errorText } from '../utils/errorText';
 import { useSortableTable } from './SortableTable';
 import { ScheduleEmptyState } from './schedule/ScheduleEmptyState';
+import { ScheduleExecutions } from './schedule/ScheduleExecutions';
 import { ScheduleJobsTable } from './schedule/ScheduleJobsTable';
 import { ScheduleStats } from './schedule/ScheduleStats';
+import { ScheduleWeek } from './schedule/ScheduleWeek';
 import {
   buildEnrichedSchedulerJobs,
   selectSchedulerFailure,
@@ -63,7 +66,13 @@ export function ScheduleView() {
     refetch: refetchStatus,
     isFetching: fetchingStatus,
   } = useSchedulerStatus();
-  const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
+  const {
+    data: runs = [],
+    isLoading: runsLoading,
+    isError: runsError,
+  } = useRunsQuery();
+  const [pane, setPane] = useState('list');
+  const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
   const schedulerAvailable = !jobsError && !statusError;
   const { isRunning, markErrorShown, getMissedCount } =
     useSchedulerEvents(schedulerAvailable);
@@ -238,19 +247,33 @@ export function ScheduleView() {
             totalRuns={totalRuns}
           />
 
+          {!!status?.providers['built-in']?.rowIssues?.length && (
+            <section aria-labelledby="schedule-row-issues">
+              <h2 id="schedule-row-issues">Schedules that need repair</h2>
+              <ul>
+                {status.providers['built-in'].rowIssues.map((issue) => (
+                  <li key={issue.jobId}>
+                    <strong>{issue.name}</strong>{' '}
+                    {issue.reason === 'invalid-json'
+                      ? 'The stored job cannot be decoded.'
+                      : 'The stored job has invalid fields.'}{' '}
+                    Contact the Station administrator with job ID {issue.jobId}{' '}
+                    to recover this job.
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {runError && <p role="alert">{runError}</p>}
 
           {runTarget && !runsLoading && !exactRun && (
-            <p role="status">
-              That scheduled run isn’t available, and Station won’t open a
-              different one in its place.
-            </p>
+            <p role="status">That run is no longer available.</p>
           )}
 
           {exactRun && !matchedDeepLinkedJob && (
-            <section aria-label="Exact Scheduler receipt">
-              <h2>Scheduled check receipt</h2>
-              <p>The owning job was removed; its durable run remains.</p>
+            <section aria-label="Scheduled run">
+              <h2>Scheduled run</h2>
+              <p>The job was removed, but this run was kept.</p>
               <JobDetail
                 name={exactRun.sourceId ?? qualifiedRun?.jobName ?? ''}
                 providerId={exactRun.providerId}
@@ -259,85 +282,118 @@ export function ScheduleView() {
             </section>
           )}
 
-          {sortedJobs.length === 0 && !exactRun ? (
-            <ScheduleEmptyState
-              filterText={filterText}
-              onClearFilter={() => setFilterText('')}
-              onSelectTemplate={(template) => {
-                if (authority)
-                  schedulerJobDialogStore.open({
-                    authority,
-                    prefill: template,
-                  });
-              }}
-            />
-          ) : sortedJobs.length > 0 ? (
-            <ScheduleJobsTable
-              autoOpenRun={runTarget}
-              daemonOk={daemonOk}
-              expanded={expanded}
-              filterText={filterText}
-              getMissedCount={getMissedCount}
-              handleRun={handleRun}
-              isRunning={isRunning}
-              runPendingJob={runPendingJob}
-              onDelete={(job) => {
-                setConfirmAction({
-                  title: 'Delete Job',
-                  message: `Delete job "${job.name}"? This cannot be undone.`,
-                  variant: 'danger',
-                  onConfirm: () => {
-                    deleteJob.mutate(job.name);
-                    setConfirmAction(null);
-                  },
-                });
-              }}
-              onDuplicate={(job) => {
-                if (!authority) return;
-                schedulerJobDialogStore.open({
-                  authority,
-                  prefill: {
-                    name: `${job.name}-copy`,
-                    cron: job.cron,
-                    schedule: job.schedule,
-                    prompt: job.prompt,
-                    agent: job.agent,
-                  },
-                });
-              }}
-              onEdit={(job) => {
-                if (authority) schedulerJobDialogStore.open({ authority, job });
-              }}
-              onExpand={setExpanded}
-              onFilterChange={setFilterText}
-              onToggle={(job, running) => {
-                if (running) {
-                  setConfirmAction({
-                    title: 'Cancel Running Job',
-                    message: `Disabling '${job.name}' will cancel the currently running job. Continue?`,
-                    variant: 'warning',
-                    onConfirm: () => {
+          <Tabs
+            id="schedule-views"
+            aria-label="Schedule view"
+            activeKey={pane}
+            activation="manual"
+            onSelect={setPane}
+            items={[
+              { key: 'list', label: 'List' },
+              { key: 'week', label: 'Calendar' },
+              { key: 'executions', label: 'Executions' },
+            ]}
+          />
+          <div
+            role="tabpanel"
+            id={tabPanelElementId('schedule-views', pane)}
+            aria-labelledby={tabElementId('schedule-views', pane)}
+          >
+            {pane === 'week' ? (
+              <ScheduleWeek />
+            ) : pane === 'executions' ? (
+              <ScheduleExecutions
+                runs={runs}
+                loading={runsLoading}
+                unavailable={runsError}
+                selectedId={selectedReceipt}
+                onSelect={setSelectedReceipt}
+              />
+            ) : (
+              <>
+                {sortedJobs.length === 0 && !exactRun ? (
+                  <ScheduleEmptyState
+                    filterText={filterText}
+                    onClearFilter={() => setFilterText('')}
+                    onSelectTemplate={(template) => {
+                      if (authority)
+                        schedulerJobDialogStore.open({
+                          authority,
+                          prefill: template,
+                        });
+                    }}
+                  />
+                ) : sortedJobs.length > 0 ? (
+                  <ScheduleJobsTable
+                    autoOpenRun={runTarget}
+                    daemonOk={daemonOk}
+                    expanded={expanded}
+                    filterText={filterText}
+                    getMissedCount={getMissedCount}
+                    handleRun={handleRun}
+                    isRunning={isRunning}
+                    runPendingJob={runPendingJob}
+                    onDelete={(job) => {
+                      setConfirmAction({
+                        title: 'Delete job',
+                        message: `Delete job "${job.name}"? This cannot be undone.`,
+                        variant: 'danger',
+                        onConfirm: () => {
+                          deleteJob.mutate(job.name);
+                          setConfirmAction(null);
+                        },
+                      });
+                    }}
+                    onDuplicate={(job) => {
+                      if (!authority) return;
+                      schedulerJobDialogStore.open({
+                        authority,
+                        prefill: {
+                          name: `${job.name}-copy`,
+                          cron: job.cron,
+                          schedule: job.schedule,
+                          prompt: job.prompt,
+                          agent: job.agent,
+                        },
+                      });
+                    }}
+                    onEdit={(job) => {
+                      if (authority)
+                        schedulerJobDialogStore.open({ authority, job });
+                    }}
+                    onExpand={setExpanded}
+                    onFilterChange={setFilterText}
+                    onToggle={(job, running) => {
+                      if (running) {
+                        setConfirmAction({
+                          title: 'Cancel Running Job',
+                          message: `Disabling '${job.name}' will cancel the currently running job. Continue?`,
+                          variant: 'warning',
+                          onConfirm: () => {
+                            toggleJob.mutate({
+                              target: job.name,
+                              enabled: false,
+                            });
+                            setConfirmAction(null);
+                          },
+                        });
+                        return;
+                      }
+
                       toggleJob.mutate({
                         target: job.name,
-                        enabled: false,
+                        enabled: !job.enabled,
                       });
-                      setConfirmAction(null);
-                    },
-                  });
-                  return;
-                }
-
-                toggleJob.mutate({
-                  target: job.name,
-                  enabled: !job.enabled,
-                });
-              }}
-              sortDir={sortDir}
-              sortKey={sortKey}
-              sortedJobs={sortedJobs}
-              toggleSort={toggle}
-            />
-          ) : null}
+                    }}
+                    sortDir={sortDir}
+                    sortKey={sortKey}
+                    sortedJobs={sortedJobs}
+                    toggleSort={toggle}
+                  />
+                ) : null}
+              </>
+            )}
+          </div>
         </>
       )}
       {confirmAction && (

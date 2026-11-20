@@ -45,12 +45,14 @@ export const runsQueries = {
   }),
 };
 
-export function useSchedulerJobs() {
+export function useSchedulerJobs(weekStart?: string, displayZone?: string) {
   return useApiQuery(
-    ['scheduler', 'jobs'],
+    weekStart === undefined
+      ? ['scheduler', 'jobs']
+      : ['scheduler', 'jobs', weekStart, displayZone ?? 'UTC'],
     async () => {
       const apiBase = await _getApiBase();
-      return listJobs(apiBase);
+      return listJobs(apiBase, undefined, weekStart, displayZone);
     },
     { staleTime: 30_000 },
   );
@@ -76,6 +78,24 @@ export function useScheduledConversationTargetCapability() {
     ['scheduler', 'conversation-target-capability'],
     async () => fetchScheduledConversationTargetCapability(await _getApiBase()),
     { staleTime: 10_000, refetchInterval: 10_000, retry: false },
+  );
+}
+
+/**
+ * #5070: whether the host runs a job as a Task in a Project
+ * (`projectSchedules`). An older host would strip `projectId` and create a
+ * plain job, so a client offers Project schedules only on `true`.
+ */
+export function useProjectSchedulesCapability() {
+  return useApiQuery(
+    ['scheduler', 'project-schedules-capability'],
+    async () => {
+      const handshake = await readPublicStationCapabilities(
+        await _getApiBase(),
+      );
+      return handshake ? hasCapability(handshake, 'projectSchedules') : null;
+    },
+    { staleTime: 10_000, retry: false },
   );
 }
 

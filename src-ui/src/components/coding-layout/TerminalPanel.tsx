@@ -85,6 +85,7 @@ export function TerminalPanel({
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
+  const signIn = launch?.kind === 'repository-sign-in';
   const store = useTerminalSessionStore();
   const { apiBase } = useApiBase();
   const openFilePreview = useOpenFilePreviewInRegion();
@@ -359,14 +360,20 @@ export function TerminalPanel({
     return (
       <div className="coding-terminal-shell">
         <p role="alert">{unavailableReason}</p>
-        <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
+        {!signIn && (
+          <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
+        )}
       </div>
     );
   }
 
   return (
     <div className="coding-terminal-shell">
-      {exited ? (
+      {exited && signIn ? (
+        <p className="coding-terminal-connection" role="status">
+          {ended?.message ?? 'Sign-in command ended.'}
+        </p>
+      ) : exited ? (
         <div className="coding-terminal-connection">
           <ErrorState
             variant="compact"
@@ -391,12 +398,14 @@ export function TerminalPanel({
       ) : wsError ? (
         <div className="coding-terminal-connection" role="alert">
           <span>{wsError}</span>
-          <Button
-            size="sm"
-            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
-          >
-            Reconnect terminal
-          </Button>
+          {(!signIn || terminalId) && (
+            <Button
+              size="sm"
+              onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+            >
+              Reconnect terminal
+            </Button>
+          )}
         </div>
       ) : !connected ? (
         <p role="status">Connecting to the terminal…</p>
@@ -500,9 +509,11 @@ function CommandExecutor({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Follow the output: `lines` is the only thing that grows the scroll area.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `lines` is the trigger, not an input.
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, []);
+  }, [lines]);
 
   const run = async () => {
     const cmd = input.trim();
@@ -548,7 +559,7 @@ function CommandExecutor({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const next = histIdx - 1;
+      const next = Math.max(-1, histIdx - 1);
       setHistIdx(next);
       setInput(next < 0 ? '' : (history[next] ?? ''));
     }
@@ -573,6 +584,9 @@ function CommandExecutor({
       }}
       onClick={() => inputRef.current?.focus()}
       onKeyDown={(event) => {
+        // Keys bubbling from the command input are the input's own: without
+        // this guard every Space typed there was default-prevented.
+        if (event.target !== event.currentTarget) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           inputRef.current?.focus();

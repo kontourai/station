@@ -98,6 +98,43 @@ describe('#3390 input request transcript record', () => {
     expect(records(messages)[0]?.outcome).toBe(outcome);
   });
 
+  it.each([
+    ['approved', 'opened'],
+    ['cancelled', 'cancelled'],
+  ])(
+    'a link resolved %s is recorded as a link that reads %s',
+    (status, outcome) => {
+      const link = {
+        schema: 'station.input-request/v1',
+        source: 'harness:kiro',
+        requester: 'Kiro',
+        message: 'Sign in to the docs MCP server',
+        body: {
+          kind: 'url',
+          url: 'https://auth.example.com/authorize?x=1',
+          purpose: 'mcp-sign-in',
+        },
+      };
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'turn-1', prompt: 'Go' }),
+        opened('link-1', { inputRequest: link }),
+        ev({
+          method: 'request.resolved',
+          requestId: 'link-1',
+          status,
+        } as never),
+      ]);
+      expect(records(messages)).toEqual([
+        expect.objectContaining({
+          kind: 'url',
+          requester: 'Kiro',
+          message: 'Sign in to the docs MCP server',
+          outcome,
+        }),
+      ]);
+    },
+  );
+
   it('records a pre-#3390 stored harness question too', () => {
     const stored = legacy.codex as unknown as CanonicalRuntimeEvent;
     const messages = projectRuntimeEventsToMessages([

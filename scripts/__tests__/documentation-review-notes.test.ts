@@ -1,8 +1,21 @@
-import { cpSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { REVIEW_LEDGER_DIR, recordFile } from '../lib/review-ledger-store.mjs';
+import {
+  REVIEW_LEDGER_DIR,
+  recordFile,
+  serializeNotesFile,
+} from '../lib/review-ledger-store.mjs';
 import {
   check,
   commit,
@@ -13,6 +26,7 @@ import {
   fixture,
   fixtureAt,
   git,
+  gitEnv,
   hash,
   identity,
   ledgerTexts,
@@ -27,40 +41,41 @@ import {
   stale,
   strict,
 } from './helpers/documentation-freshness-fixture.js';
-import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
+import {
+  forbidAmbientFreshnessMode,
+  pinnedFreshnessEnv,
+} from './helpers/freshness-env.js';
 
 // Every check below pins its mode; an unpinned read throws (#2934).
 forbidAmbientFreshnessMode();
 const makeFileTempDir = trackTempDirs({ lifetime: 'file' });
 
-describe('append-only review notes and Git history (#3101)', () => {
-  // Built once per file and copied per test: the migration child dominated
-  // each test's setup, and every test starts from the same commits.
-  let template: { root: string; content: string } | undefined;
-  function pathOnlyFixture() {
-    if (!template) {
-      const f = fixture({ makeDir: makeFileTempDir });
-      // Two documents depend on the same source, as broad hubs do in Station.
-      editRecord(f.root, 'docs/c.md', (data) => {
-        data.sources.push({
-          path: 'src/c.ts',
-          digest: hash(SHARED_C),
-          revision: f.content,
-        });
+// Built once per file and copied per test: the migration child dominated
+// each test's setup, and every test starts from the same commits.
+let template: { root: string; content: string } | undefined;
+function pathOnlyFixture() {
+  if (!template) {
+    const f = fixture({ makeDir: makeFileTempDir });
+    // Two documents depend on the same source, as broad hubs do in Station.
+    editRecord(f.root, 'docs/c.md', (data) => {
+      data.sources.push({
+        path: 'src/c.ts',
+        digest: hash(SHARED_C),
+        revision: f.content,
       });
-      commit(f.root, 'add a shared dependency');
-      const migrated = run(f.root, 'migrate-review-ledger.mjs', [
-        '--path-only',
-      ]);
-      expect(migrated.status, migrated.stderr).toBe(0);
-      commit(f.root, 'migrate path-only decisions');
-      template = { root: f.root, content: f.content };
-    }
-    const root = makeTempDir('station-review-notes-');
-    cpSync(template.root, root, { recursive: true });
-    return fixtureAt(root, template.content);
+    });
+    commit(f.root, 'add a shared dependency');
+    const migrated = run(f.root, 'migrate-review-ledger.mjs', ['--path-only']);
+    expect(migrated.status, migrated.stderr).toBe(0);
+    commit(f.root, 'migrate path-only decisions');
+    template = { root: f.root, content: f.content };
   }
+  const root = makeTempDir('station-review-notes-');
+  cpSync(template.root, root, { recursive: true });
+  return fixtureAt(root, template.content);
+}
 
+describe('append-only review notes and Git history (#3101)', () => {
   function reviewShared(f: ReturnType<typeof fixture>, message: string) {
     for (const path of ['docs/map.md', 'docs/c.md']) {
       const result = record_(f.root, [path, '--note', message]);
@@ -662,5 +677,547 @@ describe('append-only review notes and Git history (#3101)', () => {
     git(f.root, ['mv', 'src/c.ts', 'src/moved.ts']);
     commit(f.root, 'later unreviewed move');
     expect(check(f.root, scoped).status).toBe(1);
+  });
+});
+
+// `--input` records one reviewed note for a changed input as ordinary notes,
+// one per record or capture that cites it, each covering only that input.
+describe('input review notes', () => {
+  const NOTES_DIR = `${REVIEW_LEDGER_DIR}/notes`;
+  const C_CHANGED = SHARED_C.replace('c1 = 1', 'c1 = 2');
+  const recordInput = (f: { root: string }, input: string, note: string) => {
+    const result = record_(f.root, ['--input', input, '--note', note]);
+    expect(result.status, JSON.stringify(result.error)).toBe(0);
+    return result.output;
+  };
+  const noteText = (f: { read: (path: string) => string }, file: string) =>
+    f.read(`${NOTES_DIR}/${file}`);
+  const blockedChanges = (result: ReturnType<typeof check>) =>
+    Object.fromEntries(
+      result.blocking.map((entry) => [entry.path, entry.changed]),
+    );
+  const packageJson = (docs: string, other: string) =>
+    `${JSON.stringify({ scripts: { docs, other } }, null, 2)}\n`;
+
+  it('writes one ordinary note per citing document, sorted, and nothing for a page that does not cite the input', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'change shared source');
+    expect(entryPaths(check(f.root, scoped).blocking)).toEqual([
+      'docs/c.md',
+      'docs/map.md',
+    ]);
+    const before = ledgerTexts(f.root);
+    const output = recordInput(f, 'src/c.ts', 'Neither page states c1.');
+    expect(output.recorded).toEqual([
+      {
+        kind: 'input',
+        path: 'src/c.ts',
+        paths: ['docs/c.md', 'docs/map.md'],
+        rebound: [],
+      },
+    ]);
+    for (const [file, text] of Object.entries(before))
+      expect(f.read(file)).toBe(text);
+    expect(notesFiles(f.root)).toHaveLength(1);
+    const [file] = notesFiles(f.root);
+    expect(JSON.parse(noteText(f, file)).notes).toEqual([
+      {
+        path: 'docs/c.md',
+        note: 'Neither page states c1.',
+        inputs: ['src/c.ts'],
+      },
+      {
+        path: 'docs/map.md',
+        note: 'Neither page states c1.',
+        inputs: ['src/c.ts'],
+      },
+    ]);
+    expect(check(f.root, scoped).status).toBe(0);
+    commit(f.root, 'record input note');
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(compiled(f.root, 'docs/map.md').notes.at(-1)).toMatchObject({
+      file: `${NOTES_DIR}/${file}`,
+      inputs: ['src/c.ts'],
+      note: 'Neither page states c1.',
+    });
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash PR');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('lets a later catch-up input note cover a landing that had none', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'unreviewed landing');
+    const missing = check(f.root, strict);
+    expect(missing.status).toBe(1);
+    expect(blockedChanges(missing)).toEqual({
+      'docs/c.md': ['src/c.ts'],
+      'docs/map.md': ['src/c.ts'],
+    });
+    recordInput(f, 'src/c.ts', 'Catch-up: no documented claim changed.');
+    commit(f.root, 'catch up deliberately');
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('does not cover an edited document that cites the input, in scoped or strict replay', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    f.write('docs/map.md', '# Map cites C and D, edited\n');
+    commit(f.root, 'change source and one citing page');
+    recordInput(f, 'src/c.ts', 'Checked c1 against both pages.');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)).toEqual({ 'docs/map.md': ['docs/map.md'] });
+    commit(f.root, 'input note');
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash without a page note');
+    const replay = check(f.root, strict);
+    expect(replay.status).toBe(1);
+    expect(blockedChanges(replay)).toEqual({ 'docs/map.md': ['docs/map.md'] });
+  });
+
+  it('does not cover a different changed input, and the closing report matches the check', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    f.write('src/d.ts', 'export const d = 2;\n');
+    commit(f.root, 'change two sources');
+    const output = recordInput(f, 'src/c.ts', 'Checked c1.');
+    expect(output.dependents).toEqual([
+      { path: 'docs/map.md', changed: ['src/d.ts'] },
+    ]);
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)).toEqual({ 'docs/map.md': ['src/d.ts'] });
+    recordInput(f, 'src/d.ts', 'Checked d.');
+    expect(check(f.root, scoped).status).toBe(0);
+  });
+
+  it('reports a cited value still stale when another value in its file is uncommitted, as the check does', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write(
+      'package.json',
+      packageJson('node docs.mjs --all', 'node other.mjs'),
+    );
+    commit(f.root, 'change the cited value');
+    // An uncommitted edit to another value in the same file.
+    f.write('package.json', packageJson('node docs.mjs --all', 'dirty'));
+    const result = record_(f.root, ['docs/pkg.md', '--note', 'Checked docs.']);
+    expect(result.status, JSON.stringify(result.error)).toBe(0);
+    expect(result.output.dependents).toEqual([
+      { path: 'docs/pkg.md', changed: ['package.json#/scripts/docs'] },
+    ]);
+    expect(blockedChanges(check(f.root, scoped))).toEqual({
+      'docs/pkg.md': ['package.json#/scripts/docs'],
+    });
+  });
+
+  it('does not cover a record edit', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    editRecord(f.root, 'docs/map.md', (data) => {
+      data.summary = 'A changed human decision.';
+    });
+    commit(f.root, 'change source and a record decision');
+    recordInput(f, 'src/c.ts', 'Checked c1.');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)).toEqual({ 'docs/map.md': ['docs/map.md'] });
+  });
+
+  it('does not cover a document that starts citing the input after the note, in scoped or strict replay', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'change shared source');
+    recordInput(f, 'src/c.ts', 'Checked c1 on its citing pages.');
+    commit(f.root, 'input note');
+    editRecord(f.root, 'docs/b.md', (data) => {
+      data.sources.push('src/c.ts');
+    });
+    commit(f.root, 'docs/b.md starts citing the changed source');
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)['docs/b.md']).toContain('src/c.ts');
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash');
+    const replay = check(f.root, strict);
+    expect(replay.status).toBe(1);
+    expect(blockedChanges(replay)['docs/b.md']).toContain('src/c.ts');
+    expect(blockedChanges(replay)['docs/c.md']).toBeUndefined();
+  });
+
+  it('covers only the exact cited value, not another value or the whole file, in scoped or strict replay', () => {
+    const f = pathOnlyFixture();
+    // Both pages also cite the reviewed value, so each receives a note for
+    // it that must not stand for the other binding into the same file.
+    editRecord(f.root, 'docs/b.md', (data) => {
+      data.sources.push(
+        'package.json#/scripts/docs',
+        'package.json#/scripts/other',
+      );
+    });
+    editRecord(f.root, 'docs/a.md', (data) => {
+      data.sources.push('package.json', 'package.json#/scripts/docs');
+    });
+    commit(f.root, 'cite another value and the whole file');
+    for (const path of ['docs/a.md', 'docs/b.md'])
+      expect(
+        record_(f.root, [path, '--note', 'Added the citation.']).status,
+      ).toBe(0);
+    commit(f.root, 'review the new citations');
+    expect(check(f.root, strict).status).toBe(0);
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write(
+      'package.json',
+      packageJson('node docs.mjs --all', 'node other.mjs --all'),
+    );
+    commit(f.root, 'change two cited values');
+    expect(
+      recordInput(f, 'package.json#/scripts/docs', 'Checked the docs script.')
+        .recorded[0].paths,
+    ).toEqual(['docs/a.md', 'docs/b.md', 'docs/pkg.md']);
+    const expected = {
+      'docs/a.md': ['package.json'],
+      'docs/b.md': ['package.json#/scripts/other'],
+    };
+    expect(blockedChanges(check(f.root, scoped))).toEqual(expected);
+    commit(f.root, 'value note');
+    git(f.root, ['switch', '-q', 'main']);
+    git(f.root, ['merge', '--squash', 'pr']);
+    commit(f.root, 'squash');
+    expect(blockedChanges(check(f.root, strict))).toEqual(expected);
+  });
+
+  it('covers a capture citing the input but not a change to the capture itself', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/ui.ts', 'export const ui = 2;\n');
+    const media = JSON.parse(f.read(MEDIA));
+    media.captures[0].caption = 'A task, recaptioned.';
+    f.write(MEDIA, `${JSON.stringify(media, null, 2)}\n`);
+    commit(f.root, 'change the capture source and the capture');
+    expect(
+      recordInput(f, 'src/ui.ts', 'Pixels unaffected.').recorded[0].paths,
+    ).toEqual(['docs/learn/media/task.png']);
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(blockedChanges(result)['docs/learn/media/task.png']).toEqual([
+      'docs/learn/media/task.png',
+    ]);
+  });
+
+  it('leaves a document whose citation was dropped needing its own note', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'change shared source');
+    // In one batch the page's own entry drops the citation; the input entry
+    // then lists only the pages that still cite it.
+    f.write(
+      '.git/reviews.json',
+      JSON.stringify([
+        {
+          path: 'docs/map.md',
+          note: 'c1 no longer belongs on the map.',
+          removedSources: ['src/c.ts'],
+        },
+        { input: 'src/c.ts', note: 'Checked c1.' },
+      ]),
+    );
+    const batch = record_(f.root, ['--batch', '.git/reviews.json']);
+    expect(batch.status, JSON.stringify(batch.error)).toBe(0);
+    expect(batch.output.recorded.at(-1).paths).toEqual(['docs/c.md']);
+    expect(check(f.root, scoped).status).toBe(0);
+    // A hand-edited drop gets no coverage from the input note.
+    git(f.root, ['reset', '-q', '--hard', 'HEAD']);
+    git(f.root, ['clean', '-qfd', NOTES_DIR]);
+    editRecord(f.root, 'docs/map.md', (data) => {
+      data.sources = data.sources.filter(
+        (source: string) => source !== 'src/c.ts',
+      );
+    });
+    commit(f.root, 'drop the citation by hand');
+    expect(recordInput(f, 'src/c.ts', 'Checked c1.').recorded[0].paths).toEqual(
+      ['docs/c.md'],
+    );
+    const result = check(f.root, scoped);
+    expect(result.status).toBe(1);
+    expect(entryPaths(result.blocking)).toContain('docs/map.md');
+  });
+
+  it('refuses a renamed input by either name until records cite the new one', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    git(f.root, ['mv', 'src/c.ts', 'src/moved.ts']);
+    commit(f.root, 'move the shared source');
+    expect(
+      record_(f.root, ['--input', 'src/moved.ts', '--note', 'x']).error?.code,
+    ).toBe('not-cited');
+    expect(
+      record_(f.root, ['--input', 'src/c.ts', '--note', 'x']).error?.code,
+    ).toBe('untracked');
+    expect(notesFiles(f.root)).toEqual([]);
+  });
+
+  it('names one input per note and refuses bad entries by code, before writing anything', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', C_CHANGED);
+    f.write('src/d.ts', 'export const d = 2;\n');
+    commit(f.root, 'change two sources');
+    const before = ledgerTexts(f.root);
+    expect(
+      record_(f.root, [
+        '--input',
+        'src/c.ts',
+        '--input',
+        'src/d.ts',
+        '--note',
+        'One note for both.',
+      ]).error?.code,
+    ).toBe('usage');
+    expect(
+      record_(f.root, ['--input', 'src/none.ts', '--note', 'x']).error?.code,
+    ).toBe('not-cited');
+    // A whole-file input does not stand for a cited value inside that file.
+    const value = run(f.root, 'record-documentation-review.mjs', [
+      '--input',
+      'package.json',
+      '--note',
+      'x',
+    ]);
+    expect(value.status).toBe(1);
+    expect(value.stderr).toContain('package.json#/scripts/docs');
+    for (const [entries, code] of [
+      [[{ input: ['src/c.ts', 'src/d.ts'], note: 'Both.' }], 'invalid-path'],
+      [
+        [{ input: 'src/c.ts', paths: ['docs/a.md'], note: 'Chosen pages.' }],
+        'invalid-batch',
+      ],
+      [
+        [
+          { input: 'src/c.ts', note: 'Once.' },
+          { input: 'src/c.ts', note: 'Twice.' },
+        ],
+        'duplicate-entry',
+      ],
+      [
+        [
+          { path: 'docs/map.md', note: 'Valid page entry.' },
+          { input: 'src/none.ts', note: 'Nothing cites this.' },
+        ],
+        'not-cited',
+      ],
+    ] as const) {
+      f.write('.git/reviews.json', JSON.stringify(entries));
+      const refused = record_(f.root, ['--batch', '.git/reviews.json']);
+      expect(refused.status).toBe(1);
+      expect(refused.error?.code).toBe(code);
+    }
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 9'));
+    expect(
+      record_(f.root, ['--input', 'src/c.ts', '--note', 'Uncommitted.']).error
+        ?.code,
+    ).toBe('not-committed');
+    expect(ledgerTexts(f.root)).toEqual(before);
+  });
+
+  it('keeps the notes it writes append-only and accepts only their exact privacy redaction', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'main source change');
+    recordInput(f, 'src/c.ts', 'Checked c1 on proxy.example.internal.');
+    commit(f.root, 'main input note');
+    const [file] = notesFiles(f.root);
+    const path = `${NOTES_DIR}/${file}`;
+    const original = f.read(path);
+    git(f.root, ['switch', '-qc', 'pr']);
+    rmSync(join(f.root, path));
+    commit(f.root, 'delete the input note');
+    const deleted = check(f.root, scoped);
+    expect(deleted.status).toBe(1);
+    expect(deleted.blocking).toContainEqual(
+      expect.objectContaining({ path, rule: 'note-removed' }),
+    );
+    // Dropping one page's entry under a new hash name is a removal too.
+    const parsed = JSON.parse(original);
+    const narrowed = serializeNotesFile({
+      revision: parsed.revision,
+      notes: parsed.notes.filter(
+        (entry: { path: string }) => entry.path !== 'docs/c.md',
+      ),
+    });
+    expect(JSON.parse(narrowed).notes).toHaveLength(1);
+    f.write(
+      `${NOTES_DIR}/${file.slice(0, 21)}${hash(narrowed).slice(0, 12)}.json`,
+      narrowed,
+    );
+    commit(f.root, 'rewrite the input note');
+    expect(check(f.root, scoped).blocking).toContainEqual(
+      expect.objectContaining({ path, rule: 'note-removed' }),
+    );
+    git(f.root, ['reset', '-q', '--hard', 'main']);
+    const redacted = run(f.root, 'record-documentation-review.mjs', [
+      '--redact-private-hosts',
+      path,
+    ]);
+    expect(redacted.status, redacted.stderr).toBe(0);
+    commit(f.root, 'redact the input note');
+    expect(check(f.root, scoped).status).toBe(0);
+    const [kept] = notesFiles(f.root);
+    expect(JSON.parse(noteText(f, kept)).notes[0]).toEqual({
+      path: 'docs/c.md',
+      note: 'Checked c1 on [private host].',
+      inputs: ['src/c.ts'],
+    });
+  });
+
+  it('archives the notes it writes byte for byte at compaction and still compiles them', () => {
+    const f = pathOnlyFixture();
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'main source change');
+    recordInput(f, 'src/c.ts', 'Checked c1.');
+    commit(f.root, 'main input note');
+    const [file] = notesFiles(f.root);
+    const bytes = f.read(`${NOTES_DIR}/${file}`);
+    const advance = () => {
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      const result = run(f.root, 'record-documentation-review.mjs', [
+        '--advance-baseline',
+      ]);
+      expect(result.status, result.stderr).toBe(0);
+    };
+    advance();
+    commit(f.root, 'advance once');
+    expect(notesFiles(f.root)).toContain(file);
+    const previous = git(f.root, ['rev-parse', 'HEAD~1']);
+    advance();
+    git(f.root, ['switch', '-qc', 'compact']);
+    commit(f.root, 'advance and compact');
+    expect(notesFiles(f.root)).not.toContain(file);
+    const archive = JSON.parse(f.read(`${NOTES_DIR}/archive/${previous}.json`));
+    expect(archive.notes[file]).toBe(bytes);
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+    expect(compiled(f.root, 'docs/map.md').notes).toContainEqual(
+      expect.objectContaining({
+        file: `${NOTES_DIR}/${file}`,
+        inputs: ['src/c.ts'],
+        note: 'Checked c1.',
+      }),
+    );
+  });
+
+  it('serializes document notes exactly as before input notes existed', () => {
+    const revision = 'a'.repeat(40);
+    // The serializer's JSDoc names only path and note, though it writes inputs.
+    const notes = [
+      { path: 'docs/a.md', note: 'Old form.' },
+      { path: 'docs/c.md', note: 'With inputs.', inputs: ['src/c.ts'] },
+    ];
+    expect(serializeNotesFile({ revision, notes })).toBe(
+      `{\n  "revision": "${revision}",\n\n  "notes": [\n    {"path":"docs/a.md","note":"Old form."},\n\n    {"path":"docs/c.md","note":"With inputs.","inputs":["src/c.ts"]}\n  ]\n}\n`,
+    );
+  });
+
+  // The property this storage rests on: freshness scripts from before input
+  // notes existed read what --input writes. Their code is taken from Git at
+  // the commit this lane started from, not copied into the repository. That
+  // reader is the one main had at that commit; the serialization pin above is
+  // what covers readers older than it.
+  it('is read by the freshness check as it was before input notes existed', () => {
+    const OLD = 'e75a9e7947e5';
+    const repo = join(import.meta.dirname, '../..');
+    // A shallow clone lacks the commit. Say so, instead of failing later on
+    // an unexplained `git show` error; this never becomes a pass.
+    const present = spawnSync(
+      'git',
+      ['-C', repo, 'cat-file', '-e', `${OLD}^{commit}`],
+      { env: gitEnv(), windowsHide: true },
+    );
+    if (present.status !== 0)
+      throw new Error(
+        `this test needs full history (fetch-depth: 0): commit ${OLD} is absent from this checkout`,
+      );
+    const show = (path: string) =>
+      execFileSync('git', ['-C', repo, 'show', `${OLD}:${path}`], {
+        env: gitEnv(),
+        maxBuffer: 64 * 1024 * 1024,
+        windowsHide: true,
+      });
+    const old = realpathSync(makeTempDir('station-old-freshness-'));
+    const files = [
+      ...execFileSync(
+        'git',
+        ['-C', repo, 'ls-tree', '-r', '--name-only', OLD, 'scripts/lib'],
+        { env: gitEnv(), encoding: 'utf8', windowsHide: true },
+      )
+        .split('\n')
+        .filter((file) => file.endsWith('.mjs')),
+      // The rest of the old check's import graph outside scripts/lib.
+      'scripts/check-documentation-freshness.mjs',
+      'scripts/documentation-impact.mjs',
+      'scripts/generate-station-docs.mjs',
+      'scripts/build-github-pages.mjs',
+      'scripts/deploy-ledger.mjs',
+      'scripts/deploy-changelog.mjs',
+      'scripts/public-docs-hygiene.mjs',
+    ];
+    for (const file of files) {
+      mkdirSync(dirname(join(old, file)), { recursive: true });
+      writeFileSync(join(old, file), show(file));
+    }
+    symlinkSync(join(repo, 'node_modules'), join(old, 'node_modules'), 'dir');
+    const oldCheck = (root: string, env: Record<string, string>) => {
+      const result = spawnSync(
+        process.execPath,
+        [join(old, 'scripts/check-documentation-freshness.mjs'), '--json'],
+        {
+          cwd: root,
+          env: pinnedFreshnessEnv(env),
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      );
+      return { status: result.status, out: `${result.stdout}${result.stderr}` };
+    };
+    const f = pathOnlyFixture();
+    const base = git(f.root, ['rev-parse', 'HEAD']);
+    f.write('src/c.ts', C_CHANGED);
+    commit(f.root, 'main source change');
+    recordInput(f, 'src/c.ts', 'Checked c1.');
+    commit(f.root, 'main input note');
+    expect(oldCheck(f.root, strict)).toMatchObject({ status: 0 });
+    // A branch cut before the note, judged by its own old scripts against main.
+    git(f.root, ['switch', '-qc', 'stale', base]);
+    f.write('src/a.ts', 'export const a = 2;\n');
+    commit(f.root, 'stale branch change');
+    expect(record_(f.root, ['docs/a.md', '--note', 'Checked a.']).status).toBe(
+      0,
+    );
+    commit(f.root, 'stale branch note');
+    const stale = oldCheck(f.root, scoped);
+    expect(stale.status, stale.out).toBe(0);
+    // Control: the removed entry form breaks that same stale branch.
+    git(f.root, ['switch', '-q', 'main']);
+    const head = git(f.root, ['rev-parse', 'HEAD']);
+    const text = `{\n  "revision": "${head}",\n\n  "notes": [\n    {"input":"src/c.ts","paths":["docs/c.md"],"note":"x"}\n  ]\n}\n`;
+    f.write(
+      `${NOTES_DIR}/20990101T000000.000Z-${hash(text).slice(0, 12)}.json`,
+      text,
+    );
+    commit(f.root, 'a note in the removed form');
+    git(f.root, ['switch', '-q', 'stale']);
+    expect(oldCheck(f.root, scoped).status).toBe(1);
   });
 });

@@ -1,7 +1,4 @@
-import {
-  ACTIVITY_SURFACE_ID,
-  activityDeepLink,
-} from '@kontourai/station-contracts/surface-deep-link';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test } from 'vitest';
 import {
   clearSurfaceDeepLinkParams,
@@ -10,38 +7,41 @@ import {
 
 describe('surface deep-link URL handling', () => {
   test.each([
-    [{}, { surfaceId: ACTIVITY_SURFACE_ID }],
-    [
-      { sessionId: 'thread-1' },
-      { surfaceId: ACTIVITY_SURFACE_ID, sessionId: 'thread-1' },
-    ],
+    [{ sessionId: 'thread-1' }, { surfaceId: 'chat', sessionId: 'thread-1' }],
     [
       { sessionId: 'thread-1', focus: 'evidence' },
       {
-        surfaceId: ACTIVITY_SURFACE_ID,
+        surfaceId: 'chat',
         sessionId: 'thread-1',
         focus: 'evidence',
       },
     ],
     [
       { sessionId: 'thread/alpha' },
-      { surfaceId: ACTIVITY_SURFACE_ID, sessionId: 'thread/alpha' },
+      { surfaceId: 'chat', sessionId: 'thread/alpha' },
     ],
+    [{ sessionId: 'a b' }, { surfaceId: 'chat', sessionId: 'a b' }],
     [
-      { sessionId: 'a b' },
-      { surfaceId: ACTIVITY_SURFACE_ID, sessionId: 'a b' },
+      {
+        sessionId: 'parent',
+        childSessionId: 'delegate / 1',
+        childTitle: 'Research',
+      },
+      {
+        surfaceId: 'chat',
+        sessionId: 'parent',
+        childSessionId: 'delegate / 1',
+        childTitle: 'Research',
+      },
     ],
-    [
-      { sessionId: 'x&y=z' },
-      { surfaceId: ACTIVITY_SURFACE_ID, sessionId: 'x&y=z' },
-    ],
+    [{ sessionId: 'x&y=z' }, { surfaceId: 'chat', sessionId: 'x&y=z' }],
     [
       {
         sessionId: 'sender',
         messageAnchor: { direction: 'sent', requestKey: 'key / & 1' },
       },
       {
-        surfaceId: ACTIVITY_SURFACE_ID,
+        surfaceId: 'chat',
         sessionId: 'sender',
         messageAnchor: { direction: 'sent', requestKey: 'key / & 1' },
       },
@@ -59,10 +59,13 @@ describe('surface deep-link URL handling', () => {
       parseSurfaceDeepLink(
         new URLSearchParams('surface=activity&focus=evidence'),
       ),
-    ).toEqual({ surfaceId: ACTIVITY_SURFACE_ID });
+    ).toEqual({ surfaceId: 'chat' });
     expect(parseSurfaceDeepLink(new URLSearchParams(''))).toBeNull();
     expect(parseSurfaceDeepLink(new URLSearchParams('surface='))).toBeNull();
     expect(clearSurfaceDeepLinkParams()).toEqual({
+      child: null,
+      childTitle: null,
+      childSession: null,
       surface: null,
       session: null,
       focus: null,
@@ -80,7 +83,7 @@ test('a message anchor is bounded and belongs to the Session its surface names',
     `surface=activity&session=s&messageSession=s&messageDirection=sent&messageRequest=${'x'.repeat(129)}`,
   ])
     expect(parseSurfaceDeepLink(new URLSearchParams(query))).toEqual({
-      surfaceId: 'activity',
+      surfaceId: 'chat',
       sessionId: 's',
     });
 });

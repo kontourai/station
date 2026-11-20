@@ -25,6 +25,10 @@ import type { ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
+  type CatalogModelRoute,
+  readCatalogModelRoute,
+} from '@kontourai/station-contracts/tool';
+import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
@@ -72,10 +76,15 @@ export interface OpenCodeCapabilitiesDeps extends OpenCodeListingOptions {
   };
 }
 
+interface OpenCodeCatalogModel {
+  imageInput?: boolean;
+  catalogRoute?: CatalogModelRoute;
+}
+
 interface CacheEntry {
   /** Launch settings the listing was read with; a change makes it stale. */
   key: string;
-  models: Map<string, boolean>;
+  models: Map<string, OpenCodeCatalogModel>;
   failed: boolean;
   at: number;
 }
@@ -99,14 +108,14 @@ function isOpenCodeCommand(command: string): boolean {
 
 /**
  * Parse `opencode models --verbose`. Unknown shapes yield an empty map and a
- * model whose block is malformed or has no boolean image flag is omitted;
- * neither throws. A model with variants also yields `<id>/<variant>`, because
+ * model whose block supplies neither route nor image evidence is omitted.
+ * A model with variants also yields `<id>/<variant>`, because
  * the ACP model option value carries the variant suffix.
  */
 export function parseOpenCodeModelListing(
   stdout: string,
-): Map<string, boolean> {
-  const result = new Map<string, boolean>();
+): Map<string, OpenCodeCatalogModel> {
+  const result = new Map<string, OpenCodeCatalogModel>();
   if (typeof stdout !== 'string') return result;
   let header: string | null = null;
   let block: string[] = [];
@@ -122,22 +131,37 @@ export function parseOpenCodeModelListing(
     block.push(line);
     if (line !== '}') continue;
     try {
-      const model: unknown = JSON.parse(block.join('\n'));
-      const image = (
-        model as {
-          capabilities?: { input?: { image?: unknown } };
-        } | null
-      )?.capabilities?.input?.image;
-      if (typeof image === 'boolean') {
-        result.set(header, image);
-        const variants = (model as { variants?: unknown }).variants;
+      const model = JSON.parse(block.join('\n')) as {
+        id?: unknown;
+        providerID?: unknown;
+        name?: unknown;
+        capabilities?: { input?: { image?: unknown } };
+        variants?: unknown;
+      } | null;
+      const image = model?.capabilities?.input?.image;
+      const route = readCatalogModelRoute({
+        providerId: model?.providerID,
+        modelId: model?.id,
+        displayName: model?.name,
+      });
+      const catalogRoute =
+        route && header === `${route.providerId}/${route.modelId}`
+          ? route
+          : undefined;
+      if (typeof image === 'boolean' || catalogRoute) {
+        result.set(header, {
+          ...(typeof image === 'boolean' ? { imageInput: image } : {}),
+          ...(catalogRoute ? { catalogRoute } : {}),
+        });
+        const variants = model?.variants;
         if (
+          typeof image === 'boolean' &&
           variants &&
           typeof variants === 'object' &&
           !Array.isArray(variants)
         ) {
           for (const variant of Object.keys(variants)) {
-            result.set(`${header}/${variant}`, image);
+            result.set(`${header}/${variant}`, { imageInput: image });
           }
         }
       }
@@ -269,12 +293,20 @@ export function resetOpenCodeModelCapabilities(): void {
 export function openCodeModelImageInput(
   connectionId: string | undefined,
   modelId: string,
+  current?: ACPConnectionConfig,
+): boolean | undefined {
+  return openCodeCatalogModel(connectionId, modelId, current)?.imageInput;
+}
+
+export function openCodeCatalogModel(
+  connectionId: string | undefined,
+  modelId: string,
   /**
    * The connection's CURRENT configuration. When given, an entry read with
    * different launch settings (an edit without a reconnect) is unknown.
    */
   current?: ACPConnectionConfig,
-): boolean | undefined {
+): OpenCodeCatalogModel | undefined {
   if (!connectionId) return undefined;
   const entry = cache.get(connectionId);
   if (!entry) return undefined;
@@ -312,7 +344,7 @@ export function refreshOpenCodeModelCapabilities(
   const running = inFlight.get(config.id);
   if (running && running.generation === generation) return running.task;
   const task = (async () => {
-    let models = new Map<string, boolean>();
+    let models = new Map<string, OpenCodeCatalogModel>();
     let failure: string | null = null;
     try {
       const listing = await (deps.run

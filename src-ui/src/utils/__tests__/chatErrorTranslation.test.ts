@@ -61,7 +61,7 @@ describe('translateChatError', () => {
       message: 'The requested conversation is unavailable.',
     });
     expect(result.retryable).toBe(false);
-    expect(result.title).toMatch(/could not be resumed/);
+    expect(result.title).toMatch(/couldn’t be resumed/);
     expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
   });
 
@@ -126,7 +126,7 @@ describe('translateChatError', () => {
       message: 'Synthetic provider failure',
     });
 
-    expect(result.title).toBe("Can't resume");
+    expect(result.title).toBe('This chat can’t continue');
     expect(result.body).toBe('Synthetic provider failure');
     expect(result.hint).not.toMatch(/Model connection settings/i);
   });
@@ -230,6 +230,14 @@ describe('translateChatError', () => {
       // The client cannot know a retry helps here (archive#3297: the underlying
       // cause in the observed instance was a stale credential).
       expect(result.hint).not.toBe('Retry your request.');
+      // That cause is this device's credential at Station, not the model
+      // connection, so the hint points at the device's connection.
+      expect(result.hint).toBe(
+        'This can be temporary. If it keeps happening, check this device’s connection to this Station.',
+      );
+      expect(result.body).toBe(
+        'The response ended before the reply finished, so nothing more arrived for this turn.',
+      );
     });
 
     it('REPRO: a bare "Unexpected end of JSON input" (no stream-controller wrapper) classifies the same way', () => {
@@ -608,7 +616,7 @@ describe('formatChatErrorDisplay', () => {
     const rendered = formatChatErrorDisplay({
       title: "This conversation's history is gone",
       body: "Can't reach native session.",
-      hint: 'New chat.',
+      hint: 'Start a new chat.',
       disclosureRaw: true,
     });
 

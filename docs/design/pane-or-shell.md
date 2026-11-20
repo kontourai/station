@@ -55,10 +55,14 @@ pane.
   resolve to the same *placement*: when a pane's standalone host goes away,
   its path joins the retirement table (`getLegacyPathRedirect`) and redirects
   to the surface's canonical placement, carrying its payload. `/activity`
-  and `/activity?session=…&focus=evidence` are the worked example —
-  station#928 removed the standalone placement and both spellings now land on
-  `/?surface=activity[&session=…][&focus=evidence]`, minted by the one builder
-  (`activityDeepLink`) every producer of those links already uses. What the
+  and `/activity?session=…&focus=evidence` are permanent compatibility links to
+  the inbox and Chat respectively. The compatibility builder
+  (`activityDeepLink`) now mints Chat links with `surface=chat`; collection links
+  use `/notifications`. Legacy redirects trim `session`; blank sessions open the
+  inbox. Session links keep valid `focus=evidence` and the `messageSession`,
+  `messageDirection`, and `messageRequest` exact-message anchor fields. Redirects
+  also keep `openedNotification`, `dock`, `chat`, and an existing Project path. Unknown
+  parameters are dropped; values retain percent encoding for spaces. What the
   invariant forbids is a 404 or a silently discarded payload: if converting a
   surface would break a URL, the conversion is wrong, not the URL.
 - **Panes consume declared data surfaces.** A pane — first-party or not —
@@ -81,7 +85,7 @@ Pane (work surface — target state; most are routes today and stay routable):
 | --- | --- |
 | Home | descriptor already exists (`workspace-home-pane.ts`); placement is epic slice M2 |
 | Chat | already a pane; the dock and the fullscreen layout are placements |
-| Activity | #305 asks for exactly this |
+| Activity (retired) | Session links now open Chat; the inbox and Home own work lists |
 | Console Board | already a Console Kit view behind D8; first extraction candidate |
 | Agents | list+detail work surface |
 | Connections | work surface, though its recovery flows are shell (test 1 splits pages, not areas) |

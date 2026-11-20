@@ -5,13 +5,19 @@ import {
   requestBoundCallIds,
 } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+  isInputRequestEvent,
+} from '@kontourai/station-shared/input-request';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
 } from '@kontourai/station-shared/runtime-event-projection';
 import {
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -33,7 +39,7 @@ const requestKey = (threadId: string, requestId: string) =>
   `${threadId}\u0000${requestId}`;
 
 /**
- * Approval requests in this window that are still open: no `request.resolved`
+ * Requests in this window that are still open: no `request.resolved`
  * for them, and nothing since has retired them (`approvalRetiredBy`: a session
  * exit, or — for a main-thread request — the end of its turn). This is the
  * same rule the projection uses to retire a bound card. Keyed by thread AND
@@ -47,7 +53,8 @@ function openApprovalRequests(
     if (event.method === 'request.opened') {
       if (
         event.requestType === 'approval' ||
-        event.requestType === 'permission'
+        event.requestType === 'permission' ||
+        event.requestType === 'input'
       )
         open.set(requestKey(event.threadId, event.requestId), event);
     } else if (event.method === 'request.resolved') {
@@ -145,13 +152,14 @@ export function unansweredApprovalRequests(
   }
   const unanswered = open.filter(
     (request) =>
-      inputRequestFromRequestEvent(request) !== null ||
+      isCardAnsweredRequestEvent(request) ||
       !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
     const inputRequest = inputRequestFromRequestEvent(request);
+    const inputRequestUrl = inputRequestUrlFromRequestEvent(request);
     // docs/design/event-content-spill.md: a request that names its call
     // only by id (a Codex file change) is approved over that call's
     // arguments, which may be stored out of line; the card shows and loads
@@ -183,7 +191,9 @@ export function unansweredApprovalRequests(
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
+      requestKind: isInputRequestEvent(request) ? 'input' : 'approval',
       ...(inputRequest ? { inputRequest } : {}),
+      ...(inputRequestUrl ? { inputRequestUrl } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       // docs/design/event-content-spill.md: loaded whole before Allow.
@@ -192,6 +202,17 @@ export function unansweredApprovalRequests(
         : {}),
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
       approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
+      approvalRuleGrant: toolRequestRuleGrantFromPayload(request.payload),
     };
   });
+}
+
+/** The event kind wins; old in-memory rows still carry validated form or link bodies. */
+export function pendingRequestKind(
+  request: PendingApprovalRequest,
+): 'input' | 'approval' {
+  return (
+    request.requestKind ??
+    (request.inputRequest || request.inputRequestUrl ? 'input' : 'approval')
+  );
 }

@@ -1,0 +1,51 @@
+/* #4695: agent-reported plan progress on a Task card: one text line over a
+   full-width bar, both fixed height, so live plan updates never change the
+   card's height and the words keep the card's whole width. Child selectors
+   are doubled so a host card's `span` rule cannot resize them. */
+.task-plan-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: min(100%, calc(var(--k-space-6) * 8));
+}
+
+.task-plan-progress .task-plan-progress__text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--k-leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-plan-progress .task-plan-progress__track {
+  display: block;
+  width: 100%;
+  height: var(--k-space-1);
+  overflow: hidden;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-line);
+}
+
+.task-plan-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--k-action);
+}
+
+.task-plan-progress[data-state="complete"] .task-plan-progress__fill {
+  background: var(--k-positive);
+}
+
+.task-plan-progress[data-state="stopped"] .task-plan-progress__fill,
+.task-plan-progress[data-state="waiting"] .task-plan-progress__fill {
+  background: var(--k-caution);
+}
+
+.task-plan-progress[data-stale="true"] .task-plan-progress__fill {
+  background: var(--k-line-strong);
+}

@@ -52,6 +52,7 @@ export {
   decideTurnDedupRelease,
   decideTurnDedupResolve,
   turnClaimIsReclaimable,
+  witnessedTurnInputDigest,
 } from './decisions/turn-dedup.js';
 export {
   type MemoryKernelStorageOptions,
@@ -66,6 +67,7 @@ export {
   ownerLivenessFromProbe,
   type ProcessIdentityObservation,
   type ProcessIdentityProbe,
+  parseOwnerIdentity,
 } from './owner.js';
 export {
   type CommitParticipant,

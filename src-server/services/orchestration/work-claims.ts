@@ -464,7 +464,7 @@ type ClaimantStateReader = {
   currentConversationSessionId(conversationId: string): string;
   listSessionReadModel(
     authority: typeof INTERNAL_SESSION_READ_SCOPE,
-    options: { threadIds: readonly string[] },
+    options: { purpose: 'work-claims'; threadIds: readonly string[] },
   ): Promise<
     readonly Pick<
       OrchestrationSessionSummary,
@@ -499,7 +499,7 @@ export async function readWorkClaimantStates(
   if (current.size === 0) return new Map();
   const summaries = await orchestrationService.listSessionReadModel(
     INTERNAL_SESSION_READ_SCOPE,
-    { threadIds: [...new Set(current.values())] },
+    { purpose: 'work-claims', threadIds: [...new Set(current.values())] },
   );
   const byThread = new Map(
     summaries.map((summary) => [summary.threadId, summary]),

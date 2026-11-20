@@ -113,13 +113,38 @@ export function parseGooglePlayObservation(
   };
 }
 
-async function publisherRequest(client, request, timeoutMs) {
-  const signal = AbortSignal.timeout(timeoutMs);
-  return client.request({
-    ...request,
-    signal,
-    timeout: timeoutMs,
-  });
+class ReadbackFailure extends Error {
+  constructor(detail, options) {
+    super(`Google Play cohort verification failed: ${detail}`, options);
+    this.detail = detail;
+  }
+}
+
+function readbackFailure(phase, cause, signal) {
+  const codes = [cause?.name, cause?.code, cause?.cause?.name];
+  const aborted = codes.includes('AbortError') || codes.includes('ABORT_ERR');
+  const localDeadline =
+    signal?.aborted && (aborted || codes.includes('TimeoutError'));
+  const outcome = localDeadline
+    ? 'local deadline elapsed'
+    : aborted
+      ? 'aborted'
+      : 'failed';
+  return new ReadbackFailure(`${phase} ${outcome}`, { cause });
+}
+
+async function publisherRequest(client, phase, request, timeoutMs) {
+  let signal;
+  try {
+    signal = AbortSignal.timeout(timeoutMs);
+    return await client.request({
+      ...request,
+      signal,
+      timeout: timeoutMs,
+    });
+  } catch (cause) {
+    throw readbackFailure(phase, cause, signal);
+  }
 }
 
 async function defaultAuthFactory() {
@@ -127,6 +152,22 @@ async function defaultAuthFactory() {
   return new GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/androidpublisher'],
   });
+}
+
+async function googlePlayClient(authFactory) {
+  let phase = 'authenticate';
+  try {
+    const auth = await authFactory();
+    if (!auth || typeof auth.getClient !== 'function')
+      fail('ADC auth is unavailable');
+    phase = 'acquire-client';
+    const client = await auth.getClient();
+    if (!client || typeof client.request !== 'function')
+      fail('ADC client is unavailable');
+    return client;
+  } catch (cause) {
+    throw readbackFailure(phase, cause);
+  }
 }
 
 /**
@@ -148,12 +189,8 @@ export async function queryGooglePlayInternal(identity, options = {}) {
   if (identity.packageName !== 'io.kontourai.station.nightly')
     fail('package name is not the Nightly listing');
   const encodedPackage = encodeURIComponent(identity.packageName);
-  const auth = await authFactory();
-  if (!auth || typeof auth.getClient !== 'function')
-    fail('ADC auth is unavailable');
-  const client = await auth.getClient();
-  if (!client || typeof client.request !== 'function')
-    fail('ADC client is unavailable');
+  const client = await googlePlayClient(authFactory);
+  let phase = 'create-edit';
   let editId;
   let result;
   let operationError;
@@ -161,6 +198,7 @@ export async function queryGooglePlayInternal(identity, options = {}) {
   try {
     const created = await publisherRequest(
       client,
+      phase,
       {
         url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits`,
         method: 'POST',
@@ -168,56 +206,67 @@ export async function queryGooglePlayInternal(identity, options = {}) {
       },
       requestTimeoutMs,
     );
-    editId = created?.data?.id;
-    if (typeof editId !== 'string' || !editId)
+    const createdId = created?.data?.id;
+    if (typeof createdId !== 'string' || !createdId)
       fail('temporary edit creation returned no id');
+    editId = createdId;
     const encodedEdit = encodeURIComponent(editId);
+    phase = 'read-track';
     const track = await publisherRequest(
       client,
+      phase,
       {
         url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits/${encodedEdit}/tracks/internal`,
         method: 'GET',
       },
       requestTimeoutMs,
     );
+    phase = 'read-bundles';
     const bundles = await publisherRequest(
       client,
+      phase,
       {
         url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits/${encodedEdit}/bundles`,
         method: 'GET',
       },
       requestTimeoutMs,
     );
+    phase = 'validate-observation';
     result = parseGooglePlayObservation(
       identity,
       { track: track?.data, bundles: bundles?.data },
       clock().toISOString(),
     );
-  } catch (error) {
-    operationError = error;
+  } catch (cause) {
+    operationError =
+      cause instanceof ReadbackFailure ? cause : readbackFailure(phase, cause);
   } finally {
     if (editId) {
       try {
         await publisherRequest(
           client,
+          'delete-edit',
           {
             url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits/${encodeURIComponent(editId)}`,
             method: 'DELETE',
           },
           requestTimeoutMs,
         );
-      } catch (error) {
-        cleanupError = error;
+      } catch (cause) {
+        cleanupError =
+          cause instanceof ReadbackFailure
+            ? cause
+            : readbackFailure('delete-edit', cause);
       }
     }
   }
-  if (cleanupError) {
-    const cleanup = new Error(
-      `Google Play cohort verification failed: temporary edit cleanup failed: ${cleanupError.message}${operationError ? `; operation also failed: ${operationError.message}` : ''}`,
+  if (cleanupError && operationError) {
+    throw new ReadbackFailure(
+      `${cleanupError.detail} after ${operationError.detail}`,
+      { cause: new AggregateError([cleanupError, operationError]) },
     );
-    if (operationError) cleanup.cause = operationError;
-    throw cleanup;
   }
+  if (cleanupError) throw cleanupError;
   if (operationError) throw operationError;
   return result;
 }
@@ -231,7 +280,11 @@ async function main(argv = process.argv.slice(2)) {
 }
 if (invokedDirectly(import.meta.url)) {
   main().catch((error) => {
-    process.stderr.write(`${error.message}\n`);
+    const message =
+      error instanceof ReadbackFailure
+        ? error.message
+        : 'Google Play cohort verification failed: invalid invocation';
+    process.stderr.write(`${message}\n`);
     process.exitCode = 1;
   });
 }

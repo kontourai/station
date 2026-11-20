@@ -1,7 +1,0 @@
-{
-  "revision": "bf6e9ce281b744749f7bb11c2e97c6c6936031dd",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Scoped durability delta: traced steerFidelityForThread through ThreadInboxDelivery retry and native receipt dispatch. Missing declarations keep durable steers queued; declared none and direct unsupported dispatch refuse before effect. Checked real service/inbox regression and no-effect assertion, plus fault restoring the old none fallback. Create claims remain deferred until PR 4422 lands; no contract for that branch is asserted here.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/thread-inbox.ts"]}
-  ]
-}

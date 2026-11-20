@@ -1,0 +1,11 @@
+{
+  "revision": "70caf068a12a6cef36bfbd6db46eb9d1b42c41d7",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed final settings scenes: original watch/default control data remains real API seed; added no-repository scenes assert Sources setup with no switches, and existing settings scenes measure at least 16px separation before the shared subgroup. Existing motion, telemetry and screenshot capture/controls audit contracts are untouched. Eight scenes rendered at 390/1440 in both themes with zero Gallery findings.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed final settings scenes: original watch/default control data remains real API seed; added no-repository scenes assert Sources setup with no switches, and existing settings scenes measure at least 16px separation before the shared subgroup. Existing motion, telemetry and screenshot capture/controls audit contracts are untouched. Eight scenes rendered at 390/1440 in both themes with zero Gallery findings.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed final settings scenes: original watch/default control data remains real API seed; added no-repository scenes assert Sources setup with no switches, and existing settings scenes measure at least 16px separation before the shared subgroup. Existing motion, telemetry and screenshot capture/controls audit contracts are untouched. Eight scenes rendered at 390/1440 in both themes with zero Gallery findings.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

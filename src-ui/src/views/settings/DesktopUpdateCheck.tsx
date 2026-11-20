@@ -1,5 +1,4 @@
 import {
-  DESKTOP_UPDATE_DOWNLOAD_POLICIES,
   type DesktopUpdateDownloadPolicy,
   type DesktopUpdateState,
 } from '@kontourai/station-contracts/desktop-update';
@@ -8,7 +7,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DesktopUpdateRestartDialog } from '../../components/desktop-update/DesktopUpdateRestartDialog';
-import { downloadPercent } from '../../components/desktop-update/desktopUpdatePresentation';
+import {
+  desktopInstallFailureMessage,
+  downloadPercent,
+} from '../../components/desktop-update/desktopUpdatePresentation';
 import { useDesktopRestartServerImpact } from '../../components/desktop-update/useDesktopRestartServerImpact';
 import { useDesktopUpdateState } from '../../components/desktop-update/useDesktopUpdateState';
 import { StatusSummary } from '../../components/StatusSummary';
@@ -21,18 +23,10 @@ import {
 } from '../../platform/native/desktopUpdate';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { formatBytes } from '../../utils/formatBytes';
+import { formatDateTime } from '../../utils/relativeTime';
 import { TechnicalDetails } from './coreUpdatePresentation';
+import { DownloadPolicyOptions } from './DownloadPolicyOptions';
 import '../../components/desktop-update/DesktopUpdate.css';
-
-const POLICY_LABELS: Record<DesktopUpdateDownloadPolicy, string> = {
-  never: 'Never',
-  'after-24h': 'After 24 hours',
-  immediately: 'Immediately',
-};
-
-function formatTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleString();
-}
 
 function StatusLine({ state }: { state: DesktopUpdateState }) {
   const { phase } = state;
@@ -53,7 +47,7 @@ function StatusLine({ state }: { state: DesktopUpdateState }) {
             ? 'It downloads when you choose.'
             : state.autoDownloadAt <= Date.now()
               ? 'It downloads automatically at the next check.'
-              : `It downloads automatically after ${formatTime(state.autoDownloadAt)}.`}
+              : `It downloads automatically after ${formatDateTime(state.autoDownloadAt)}.`}
         </p>
       );
     case 'downloading': {
@@ -102,7 +96,6 @@ const PHASE_BADGES: Record<
 const ERROR_LEADS = {
   check: 'Could not check for desktop app updates.',
   download: 'The download did not complete.',
-  install: 'The update did not install, and Station did not restart.',
 } as const;
 const ERROR_BADGE_LABELS = {
   check: 'Check failed',
@@ -154,7 +147,7 @@ export function DesktopUpdateCheck({
           Station could not read the desktop app’s update state.
         </p>
         <TechnicalDetails detail={readError} />
-        <Button onClick={retry}>Try again</Button>
+        <Button onClick={retry}>Retry</Button>
       </div>
     );
   }
@@ -203,8 +196,11 @@ export function DesktopUpdateCheck({
       <StatusLine state={state} />
       {error && (
         <>
-          {/* The updater's text is disclosed verbatim, never classified. */}
-          <p role="alert">{ERROR_LEADS[error.context]}</p>
+          <p role="alert">
+            {error.context === 'install'
+              ? desktopInstallFailureMessage(error.reason)
+              : ERROR_LEADS[error.context]}
+          </p>
           <TechnicalDetails detail={error.message} />
         </>
       )}
@@ -281,7 +277,7 @@ export function DesktopUpdateCheck({
       )}
       {showPolicy && phase.status !== 'disabled' && (
         <Field
-          label="Automatic download"
+          label="Automatic desktop app download"
           htmlFor={policyId}
           hint="When an update downloads without a click. Downloading never restarts Station."
         >
@@ -298,11 +294,7 @@ export function DesktopUpdateCheck({
               )
             }
           >
-            {DESKTOP_UPDATE_DOWNLOAD_POLICIES.map((policy) => (
-              <option key={policy} value={policy}>
-                {POLICY_LABELS[policy]}
-              </option>
-            ))}
+            <DownloadPolicyOptions />
           </Select>
         </Field>
       )}

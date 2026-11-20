@@ -106,7 +106,8 @@ export function createWorkspacePanePreviewRoutes(
   previewService = new WorkspaceFilePreviewService(),
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory,
   changesService = new WorkspaceFileChangesService(previewService),
-  frameOrigin?: () => string | undefined,
+  /** The frame origin, only when this request's client can reach it. */
+  frameOrigin?: (c: Context) => string | undefined,
 ) {
   const app = new Hono();
 
@@ -173,7 +174,9 @@ export function createWorkspacePanePreviewRoutes(
           success: true,
           data: {
             ...visual,
-            ...(visual.kind === 'html' ? { frameOrigin: frameOrigin?.() } : {}),
+            ...(visual.kind === 'html'
+              ? { frameOrigin: frameOrigin?.(c) }
+              : {}),
           },
         });
       }

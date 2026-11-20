@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
-import {
-  countOpenChatAttention,
-  openChatsStore,
-} from '../contexts/open-chats-store';
+import { openChatsStore } from '../contexts/open-chats-store';
 import type { AgentSummary } from '../types';
 import { focusChatEventDetailForAction } from '../views/home/work-item-open-policy';
 
@@ -51,7 +48,6 @@ describe('openChatsStore', () => {
       const unregister = openChatsStore.registerNavigation({
         openConversation,
         focus: vi.fn(),
-        openCollection: vi.fn(),
       });
       try {
         expect(await pending).toBe(state === 'current');
@@ -79,7 +75,6 @@ describe('openChatsStore', () => {
     const unregister = openChatsStore.registerNavigation({
       openConversation,
       focus,
-      openCollection: vi.fn(),
     });
     try {
       expect(
@@ -112,27 +107,10 @@ describe('openChatsStore', () => {
     ).toEqual(['older']);
   });
 
-  test('routes the exact focus target and collection-open action', () => {
-    const focus = vi.fn();
-    const openCollection = vi.fn();
-    const unregister = openChatsStore.registerNavigation({
-      focus,
-      openCollection,
-    });
-
-    openChatsStore.focus({ sessionId: 'wanted' });
-    openChatsStore.openCollection();
-
-    expect(focus).toHaveBeenCalledWith({ sessionId: 'wanted' });
-    expect(openCollection).toHaveBeenCalledOnce();
-    unregister();
-  });
-
   test('routes a resolved focus transition to the intended session', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     const target = focusChatEventDetailForAction({
       kind: 'focus',
@@ -146,23 +124,12 @@ describe('openChatsStore', () => {
     unregister();
   });
 
-  test('derives the shared unread attention count once', () => {
-    expect(
-      countOpenChatAttention([
-        { hasUnread: true },
-        { hasUnread: false },
-        { hasUnread: true },
-      ]),
-    ).toBe(2);
-  });
-
   test('delivers a focus transition requested before navigation mounts', () => {
     addChat('queued', 400);
     openChatsStore.focus({ sessionId: 'queued' });
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
 
     expect(focus).toHaveBeenCalledWith({ sessionId: 'queued' });
@@ -176,7 +143,6 @@ describe('openChatsStore', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
 
     expect(focus).not.toHaveBeenCalled();
@@ -185,7 +151,6 @@ describe('openChatsStore', () => {
     const nextFocus = vi.fn();
     const unregisterNext = openChatsStore.registerNavigation({
       focus: nextFocus,
-      openCollection: vi.fn(),
     });
     expect(nextFocus).not.toHaveBeenCalled();
     unregisterNext();

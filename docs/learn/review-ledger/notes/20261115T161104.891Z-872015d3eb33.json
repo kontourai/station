@@ -1,0 +1,7 @@
+{
+  "revision": "7741f351e5c6e604023fbbde424617c8eedd4d68",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Replaced the claim that later connection/authority waits use state primitives: StationConnectingScreen and post-launch StartupScreen now render StationPreparingSurface (splash mark, startStartupAnimation, stage label); verified in StartupScreen.test.tsx, authorityQueryIsolation and startup-presentation.browser tests. Cold-launch presentation behavior unchanged.","inputs":["docs/guides/theming.md","src-ui/src/components/StartupScreen.tsx","src-ui/src/lib/startup-presentation.ts"]}
+  ]
+}

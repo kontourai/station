@@ -146,7 +146,9 @@
 
     "docs/decisions/telemetry-tiers.md",
 
-    "src-server/domain/__tests__/telemetry-publisher-schema.test.ts"
+    "src-server/domain/__tests__/telemetry-publisher-schema.test.ts",
+
+    "deploy/telemetry-worker/test/station-sender.test.ts"
   ],
 
   "checks": [

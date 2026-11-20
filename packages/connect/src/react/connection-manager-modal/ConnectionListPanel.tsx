@@ -1,9 +1,11 @@
+import { applyReturnFocus } from '@kontourai/station-shared/return-focus';
 import {
   type KeyboardEvent,
   type ReactNode,
   type Ref,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -83,6 +85,7 @@ interface ConnectionListPanelProps {
   hasLocalStation?: boolean;
   onViewDevices: () => void;
   onDiscover: () => void;
+  discoverTriggerRef?: Ref<HTMLButtonElement>;
   /**
    * station#1794 (part A): the "Other Stations" entry point is hidden
    * entirely while no discovery provider is registered
@@ -110,6 +113,7 @@ interface ConnectionListPanelProps {
  */
 function ConnectionRow({
   connection,
+  detailsTriggerRef,
   activeConnectionId,
   pendingConnectionId,
   onCancelPendingApproval,
@@ -130,6 +134,7 @@ function ConnectionRow({
   renderConnectionDetails,
 }: {
   connection: SavedConnection;
+  detailsTriggerRef: Ref<HTMLButtonElement>;
   canEditSharedProfiles?: boolean;
   canRemoveSharedProfiles?: boolean;
   sharedProfilesVisibleToCli?: boolean;
@@ -243,6 +248,7 @@ function ConnectionRow({
           type="button"
           className="station-connect-row__select"
           disabled={busy}
+          ref={detailsTriggerRef}
           aria-label={`View details for ${connectionDisplayLabel(connection)}`}
           aria-expanded={detailsOpen}
           onClick={() => setDetailsOpen((open) => !open)}
@@ -654,10 +660,24 @@ export function ConnectionListPanel({
   hasLocalStation = true,
   onViewDevices,
   onDiscover,
+  discoverTriggerRef,
   discoveryAvailable,
   listFooterContent,
   renderConnectionDetails,
 }: ConnectionListPanelProps) {
+  const editNameRef = useRef<HTMLInputElement>(null);
+  const detailsTriggersRef = useRef(new Map<string, HTMLButtonElement>());
+  const previousEditingIdRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const previous = previousEditingIdRef.current;
+    previousEditingIdRef.current = editingId;
+    if (editingId !== null) {
+      if (editingId !== previous) editNameRef.current?.focus();
+    } else if (previous !== null) {
+      const trigger = detailsTriggersRef.current.get(previous);
+      if (trigger) applyReturnFocus([trigger]);
+    }
+  }, [editingId]);
   const selected = connections.find(
     (connection) => connection.id === activeConnectionId,
   );
@@ -710,6 +730,7 @@ export function ConnectionListPanel({
                 )}
               <input
                 type="text"
+                ref={editNameRef}
                 value={editName}
                 aria-label="Station name"
                 disabled={editPending}
@@ -806,6 +827,10 @@ export function ConnectionListPanel({
           ) : (
             <ConnectionRow
               key={connection.id}
+              detailsTriggerRef={(node) => {
+                if (node) detailsTriggersRef.current.set(connection.id, node);
+                else detailsTriggersRef.current.delete(connection.id);
+              }}
               connection={connection}
               activeConnectionId={activeConnectionId}
               pendingConnectionId={pendingConnectionId}
@@ -891,6 +916,7 @@ export function ConnectionListPanel({
           </button>
           {discoveryAvailable && (
             <button
+              ref={discoverTriggerRef}
               type="button"
               onClick={onDiscover}
               className="station-connect-btn station-connect-btn--secondary"

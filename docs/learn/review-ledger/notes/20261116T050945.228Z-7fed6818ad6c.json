@@ -1,0 +1,7 @@
+{
+  "revision": "c6775beaa2f5024da07fae8b330aa2d193febaac",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Re-read the permission flow and OpenCode governance: staged policy, autoApprove and session grants still answer before the mode; required asks still reach a person. The adapter now passes full access to the staged policy (untrusted ask not raised at never); no claim here contradicts that.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

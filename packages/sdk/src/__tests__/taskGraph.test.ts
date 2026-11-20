@@ -91,6 +91,15 @@ describe('taskGraph SDK domain', () => {
     });
   });
 
+  it('keeps the HTTP status when a failure body is not JSON', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('<html>Bad Gateway</html>', { status: 502 }),
+    );
+    await expect(
+      fetchTasks({ projectId: 'project-alpha' }),
+    ).rejects.toMatchObject({ name: 'StationHttpError', status: 502 });
+  });
+
   it('fetches tasks for a project', async () => {
     mockJsonResponse({ success: true, data: [{ id: 'task-1' }] });
 

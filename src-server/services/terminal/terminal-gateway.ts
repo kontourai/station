@@ -4,6 +4,7 @@ import {
   TERMINAL_CLOSE,
   TERMINAL_SOCKET_PATH,
   TERMINAL_SOCKET_PROTOCOL,
+  TERMINAL_SOCKET_PROTOCOL_V2,
   TERMINAL_TICKET_PROTOCOL_PREFIX,
 } from '@kontourai/station-contracts/terminal-transport';
 import { type WebSocket, WebSocketServer } from 'ws';
@@ -68,7 +69,9 @@ function offered(request: IncomingMessage): {
     tickets: values
       .filter((value) => value.startsWith(TERMINAL_TICKET_PROTOCOL_PREFIX))
       .map((value) => value.slice(TERMINAL_TICKET_PROTOCOL_PREFIX.length)),
-    versioned: values.includes(TERMINAL_SOCKET_PROTOCOL),
+    versioned:
+      values.includes(TERMINAL_SOCKET_PROTOCOL) ||
+      values.includes(TERMINAL_SOCKET_PROTOCOL_V2),
   };
 }
 
@@ -86,11 +89,14 @@ export class TerminalGateway<Principal> {
     noServer: true,
     maxPayload: 64 * 1024 + 13,
     perMessageDeflate: false,
-    // Never echo the ticket: select only the version subprotocol.
+    // Never echo the ticket: select only the version subprotocol, the
+    // newest one offered (version 2 adds resize frames, #4625).
     handleProtocols: (protocols) =>
-      protocols.has(TERMINAL_SOCKET_PROTOCOL)
-        ? TERMINAL_SOCKET_PROTOCOL
-        : false,
+      protocols.has(TERMINAL_SOCKET_PROTOCOL_V2)
+        ? TERMINAL_SOCKET_PROTOCOL_V2
+        : protocols.has(TERMINAL_SOCKET_PROTOCOL)
+          ? TERMINAL_SOCKET_PROTOCOL
+          : false,
   });
   private connections = new Map<
     TerminalChannelConnection<Principal>,

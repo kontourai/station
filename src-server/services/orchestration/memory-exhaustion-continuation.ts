@@ -41,6 +41,7 @@ import {
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import type {
@@ -244,7 +245,7 @@ export class MemoryExhaustionContinuation {
     } catch (error) {
       this.ports.logger.warn('automatic continuation failed', {
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }

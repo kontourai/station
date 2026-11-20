@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Added the Antigravity prompt-handoff row to the steer mechanism table; checked against acp-steer.ts and the adapter's steerByPromptHandoff and pending-request refusal. Composer statements (ACP waits/queues) unchanged and still true.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/acp-steer.ts"]}
+  ]
+}

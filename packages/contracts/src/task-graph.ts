@@ -1,5 +1,8 @@
+import type { AutomationTaskProjection } from './automation';
 import type { ClientOrigin } from './client-origin.js';
 import type { EngineId, ProviderSession } from './provider.js';
+import type { TaskPullRequestWatchMode } from './pull-request-watch.js';
+import { isObjectRecord } from './record-guard.js';
 
 /**
  * Station's task status vocabulary (roadmap #581, part of epic #580).
@@ -656,6 +659,12 @@ export interface TaskRecord {
    * that worktree or the Project checkout is unknown.
    */
   taskWorktreeUnknown?: true;
+  /**
+   * #4511: read projection only, never stored or accepted. The immutable
+   * authority an automation-started Task was created under, from the
+   * server's private intent bound to this exact Task incarnation.
+   */
+  automation?: AutomationTaskProjection;
   /** Provider-neutral source of this task, when it originated from an
    * external work-item provider (e.g. `'github'`). Absent for tasks created
    * directly in Station. */
@@ -686,9 +695,40 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /**
+   * When a person last reopened this Task on the Project Overview (#5064).
+   * The Overview auto-resolves an Idle Task after its Project's quiet
+   * period; that clock restarts here. Only a person sets it
+   * (`POST /api/tasks/:taskId/overview-reopen`). Absent: never reopened.
+   */
+  overviewReopenedAt?: string;
+  /**
+   * A person's choice (#5066) whether this Task watches the pull requests
+   * kept on it: `on` and `off` override the Project's setting, absent
+   * follows it. Only a person sets it
+   * (`PUT /api/tasks/:taskId/pull-request-watch`); "Stop watching" writes
+   * `off`. Older Station builds refuse a Task store that carries it.
+   */
+  pullRequestWatch?: TaskPullRequestWatchMode;
+  /**
+   * Why Station moved this Task to `blocked` (#5066): a watched pull
+   * request used every fix attempt and these checks still fail. Cleared
+   * when the Task's status changes. Older Station builds refuse a Task
+   * store that carries it.
+   */
+  pullRequestWatchHold?: TaskPullRequestWatchHold;
   /** Deliverable hierarchy, independent of execution Sessions and status. */
   parent?: TaskIdentity;
   relationshipRevision?: number;
+}
+
+/** See {@link TaskRecord.pullRequestWatchHold}. */
+export interface TaskPullRequestWatchHold {
+  /** The failing check names, at most 20. */
+  checks: string[];
+  /** The pull request, as `owner/name#ref`. */
+  pullRequest: string;
+  at: string;
 }
 
 export interface TaskCreateInput {
@@ -976,7 +1016,7 @@ export function validateTaskWorkspaceBinding(
   binding: TaskWorkspaceBinding | undefined,
 ): string[] {
   if (binding === undefined) return [];
-  if (!isRecord(binding)) return ['workspaceBinding must be an object'];
+  if (!isObjectRecord(binding)) return ['workspaceBinding must be an object'];
 
   const errors: string[] = [];
   if (
@@ -1275,10 +1315,6 @@ function isNonBlankString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isJsonValue(value: unknown): boolean {
   if (
     value === null ||
@@ -1289,7 +1325,7 @@ function isJsonValue(value: unknown): boolean {
   }
   if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
-  if (!isRecord(value)) return false;
+  if (!isObjectRecord(value)) return false;
   return Object.values(value).every(isJsonValue);
 }
 
@@ -1297,7 +1333,7 @@ function validateReferenceMetadata(
   metadata: Record<string, unknown> | undefined,
 ): string[] {
   if (metadata === undefined) return [];
-  if (!isRecord(metadata) || !isJsonValue(metadata)) {
+  if (!isObjectRecord(metadata) || !isJsonValue(metadata)) {
     return ['metadata must be a JSON object'];
   }
   const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));

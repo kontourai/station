@@ -1280,8 +1280,16 @@
             "maxLength": 50
           },
           "maxSteps": {
-            "type": "integer",
-            "minimum": 0
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "icon": {
             "type": "string",
@@ -1325,8 +1333,16 @@
             "maxLength": 50
           },
           "maxSteps": {
-            "type": "integer",
-            "minimum": 0
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "icon": {
             "type": "string",

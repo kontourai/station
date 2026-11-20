@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Only the attached continuation passages changed (per-source signal, Not now, focus); citing pages' references remain accurate.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

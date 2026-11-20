@@ -50,25 +50,36 @@ describe('station target', () => {
     expect(localServiceStatus).not.toHaveBeenCalled();
   });
 
-  test('uses a local service observer only for a local selected endpoint', async () => {
-    const stdout = vi.fn();
-    const localServiceStatus = vi.fn().mockResolvedValue({ state: 'healthy' });
-    await runTargetCommand(['--api-base=http://127.0.0.1:3141'], {
-      stdout,
-      localServiceStatus,
-      fetch: vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-      }) as unknown as typeof fetch,
-    });
-    expect(JSON.parse(stdout.mock.calls[0][0])).toMatchObject({
-      station: null,
-      endpoint: 'http://127.0.0.1:3141',
-      localService: { state: 'healthy' },
-      reachability: { reachable: true },
-    });
-    expect(localServiceStatus).toHaveBeenCalledTimes(1);
-  });
+  test.each([
+    'http://127.0.0.1:3141',
+    'http://localhost:3141',
+    // An IPv6 loopback literal is local too; `URL.hostname` reports it
+    // bracketed, which a bare `::1` comparison never matched.
+    'http://[::1]:3141',
+  ])(
+    'uses a local service observer only for a local selected endpoint (%s)',
+    async (endpoint) => {
+      const stdout = vi.fn();
+      const localServiceStatus = vi
+        .fn()
+        .mockResolvedValue({ state: 'healthy' });
+      await runTargetCommand([`--api-base=${endpoint}`], {
+        stdout,
+        localServiceStatus,
+        fetch: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+        }) as unknown as typeof fetch,
+      });
+      expect(JSON.parse(stdout.mock.calls[0][0])).toMatchObject({
+        station: null,
+        endpoint,
+        localService: { state: 'healthy' },
+        reachability: { reachable: true },
+      });
+      expect(localServiceStatus).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test('reports the exact persisted local service identity for a local Station', async () => {
     upsertProfile({

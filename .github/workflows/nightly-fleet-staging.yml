@@ -14,6 +14,7 @@ jobs:
     name: Plan portable staging
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
       cohort_id: ${{ steps.plan.outputs.cohort_id }}
@@ -52,6 +53,7 @@ jobs:
     needs: fleet-plan
     if: ${{ needs.fleet-plan.result == 'success' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     permissions: { contents: read, attestations: write, id-token: write }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,6 +91,7 @@ jobs:
     needs: [fleet-plan, portable]
     if: ${{ always() && !cancelled() && needs.fleet-plan.result == 'success' && needs.portable.result == 'success' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     permissions: { contents: read, attestations: write, id-token: write }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

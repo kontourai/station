@@ -12,12 +12,20 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { prepareChangedSelection } from '../run-changed-verification.mjs';
+import {
+  configuredVitestEnvironment,
+  vitestEnvironmentSuites,
+} from '../lib/dependency-change-scan.mjs';
+import {
+  planChangedVerificationShards,
+  prepareChangedSelection,
+} from '../run-changed-verification.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
   dependencyChangeEdges,
@@ -66,6 +74,108 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
     .filter((reason: string) =>
       /dependency .*\(#3149\)|import this changed dependency/.test(reason),
     );
+
+describe('dispatch-scope contract dependencies (#3335)', () => {
+  const guard =
+    'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts';
+
+  test.each([
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ])('retains the posture guard when only %s changes', (path) => {
+    for (const hosted of [false, true]) {
+      const result = select([path], head, hosted);
+      expect(executed(result)).toContain(guard);
+      expect(result.selection.lanes).toContainEqual(
+        expect.objectContaining({ id: 'ci-fast' }),
+      );
+    }
+  });
+
+  test('an unrelated high-fanout contract keeps the guard out of its explicit selection', () => {
+    const result = select(['packages/contracts/src/agent.ts']);
+    expect(executed(result)).not.toContain(guard);
+    expect(result.selection.lanes).toContainEqual(
+      expect.objectContaining({ id: 'ci-fast' }),
+    );
+  });
+});
+
+describe('Nightly regressions outside the import graph', () => {
+  test.each([
+    [
+      'tests/gallery-screen-sources.json',
+      'scripts/__tests__/gallery-screen-coverage.test.ts',
+    ],
+    [
+      'src-ui/src/pages/AppearancePage.tsx',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-ui/src/views/project-settings/OverviewNotificationsSection.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'docs/reference/play-data-safety.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'docs/privacy-policy.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.css',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.tsx',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-server/adapters/node-pty-adapter.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    [
+      'src-server/services/infra/workload-resources.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    ['docs/learn/atlas.js', 'scripts/__tests__/learning-atlas.browser.test.ts'],
+    [
+      'docs/learn/index.html',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
+    [
+      'scripts/lib/learning-markdown.mjs',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
+    [
+      'tests/interactive-workspace-performance-bridge.spec.ts',
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+  ])('%s selects its executable contract %s', (path, suite) => {
+    expect(executed(select([path], head, true))).toContain(suite);
+  });
+});
 
 describe('#3200: a sibling dependency bump selects the suites importing it', () => {
   const FLOW_AGENTS = '@kontourai/flow-agents';
@@ -138,6 +248,135 @@ describe('#3200: a sibling dependency bump selects the suites importing it', () 
   });
 });
 
+describe('#4631: a test-runtime environment bump runs the suites in that environment', () => {
+  // The suites that failed in the queue for four unrelated pull requests
+  // after jsdom 31 merged with them deferred (#4910/#4911). None imports
+  // jsdom; each declares the jsdom environment in its docblock.
+  const BROKEN = [
+    'src-ui/src/__tests__/MCPToolUIFrame.test.tsx',
+    'src-ui/src/__tests__/TaskRoomComposer.test.tsx',
+    'src-ui/src/__tests__/settings-catalog-completeness.test.tsx',
+  ];
+  // A node-environment suite (no docblock; the root default is node).
+  const NODE_SUITE = 'scripts/__tests__/run-ci-fast.test.ts';
+  const runtimeReasons = (result: ReturnType<typeof select>) =>
+    result.selection.tests
+      .flatMap((entry: { reasons: string[] }) => entry.reasons)
+      .filter((reason: string) => reason.includes('(#4631)'));
+
+  // The base side: the real head files with jsdom moved back a major, in the
+  // exact shape pnpm writes, as #4631's own diff moved it forward.
+  function jsdomBase(path: string): string | null {
+    const text = head(path);
+    if (text === null) return null;
+    if (path.endsWith('package.json')) {
+      const manifest = JSON.parse(text);
+      for (const section of ['dependencies', 'devDependencies'])
+        if (manifest[section]?.jsdom) manifest[section].jsdom = '^29.1.1';
+      return `${JSON.stringify(manifest, null, 2)}\n`;
+    }
+    if (path === 'pnpm-lock.yaml') {
+      const rewritten = text.replace(
+        /(\n {6}jsdom:\n {8}specifier: )[^\n]+(\n {8}version: )[^\n]+/g,
+        '$1^29.1.1$2 29.1.1',
+      );
+      expect(rewritten).not.toBe(text);
+      return rewritten;
+    }
+    return text;
+  }
+
+  test('the hosted plan runs every jsdom suite, and the deferral stays explicit', () => {
+    const result = select(['package.json', 'pnpm-lock.yaml'], jsdomBase, true);
+    for (const suite of BROKEN) expect(executed(result)).toContain(suite);
+    expect(executed(result)).not.toContain(NODE_SUITE);
+    const jsdomSuites = vitestEnvironmentSuites({ root }).get('jsdom') ?? [];
+    // 1,362 jsdom suites when written; the bound only guards a derivation
+    // that silently came back nearly empty.
+    expect(jsdomSuites.length).toBeGreaterThan(1000);
+    expect(executed(result)).toEqual(expect.arrayContaining(jsdomSuites));
+    // The manifest edits still escalate: running the jsdom suites narrows
+    // what the deferral leaves unrun, it does not discharge it.
+    expect(
+      result.selection.lanes.map((lane: { id: string }) => lane.id),
+    ).toContain('ci-fast');
+  });
+
+  test('a lockfile-only jsdom bump selects them too', () => {
+    const result = select(['pnpm-lock.yaml'], jsdomBase, true);
+    for (const suite of BROKEN) expect(executed(result)).toContain(suite);
+  });
+
+  test('no version change, or a non-environment bump, selects none of them', () => {
+    expect(runtimeReasons(select(['package.json', 'pnpm-lock.yaml']))).toEqual(
+      [],
+    );
+    for (const [section, name] of [
+      ['devDependencies', 'vitest'],
+      ['devDependencies', 'react'],
+    ]) {
+      const result = select(['package.json'], (path) => {
+        const manifest = JSON.parse(head(path) as string);
+        expect(manifest[section]?.[name], name).toBeDefined();
+        manifest[section][name] = '0.0.1';
+        return JSON.stringify(manifest);
+      });
+      expect(runtimeReasons(result), name).toEqual([]);
+    }
+  });
+
+  test('environments follow the docblock, then the configured default', () => {
+    // Assembled, because Vitest reads this pragma anywhere in a test file's
+    // text: spelled out here it would run this suite under jsdom.
+    const pragma = (environment: string) =>
+      `/** @vitest${'-'}environment ${environment} */\n`;
+    const sources: Record<string, string> = {
+      'a.test.ts': pragma('jsdom'),
+      'b.test.ts': `// ${pragma('happy-dom')}`,
+      'c.test.ts': '// no docblock\n',
+      'd.test.ts': pragma('node'),
+      'tests/e.spec.ts': pragma('jsdom'),
+    };
+    const suites = (defaultEnvironment: string) =>
+      Object.fromEntries(
+        vitestEnvironmentSuites({
+          root,
+          testFiles: Object.keys(sources),
+          read: (path) => sources[path],
+          defaultEnvironment,
+        }),
+      );
+    expect(suites('node')).toEqual({
+      jsdom: ['a.test.ts'],
+      'happy-dom': ['b.test.ts'],
+    });
+    expect(suites('jsdom')).toEqual({
+      jsdom: ['a.test.ts', 'c.test.ts'],
+      'happy-dom': ['b.test.ts'],
+    });
+    expect(configuredVitestEnvironment(root)).toBe('node');
+  });
+
+  test('a config the scan cannot read exactly is refused, not guessed', () => {
+    const config = (test: string) => () =>
+      `import { defineConfig } from 'vitest/config';\nexport default defineConfig({ test: ${test} });\n`;
+    expect(
+      configuredVitestEnvironment(root, config("{ environment: 'jsdom' }")),
+    ).toBe('jsdom');
+    expect(configuredVitestEnvironment(root, config('{}'))).toBe('node');
+    for (const test of [
+      "{ environment: process.env.ENV ?? 'node' }",
+      "{ environmentMatchGlobs: [['**/*.tsx', 'jsdom']] }",
+      '{ projects: [] }',
+      '{ ...shared }',
+    ])
+      expect(
+        () => configuredVitestEnvironment(root, config(test)),
+        test,
+      ).toThrow(/test runtime: vitest\.config\.ts/);
+  });
+});
+
 describe('#3251: CLI service entry points that compose shared modules', () => {
   const ENTRY_POINTS =
     'packages/cli/src/__tests__/service-dev-home-entry-points.test.ts';
@@ -148,6 +387,20 @@ describe('#3251: CLI service entry points that compose shared modules', () => {
       result.selection.lanes.map((lane: { id: string }) => lane.id),
     ).toContain('ci-fast');
     expect(executed(result)).toContain(ENTRY_POINTS);
+  });
+
+  // #4891's derived edges add ten suites for this diff's `lib.rs` change,
+  // which takes it past the local profile's bound of 32 explicit tests.
+  test('locally the suites only a native-literal edge selected go first; the hosted plan keeps them', () => {
+    const NATIVE_ONLY = 'scripts/__tests__/native-release-config.test.ts';
+    const local = select(incidents['3251'].paths);
+    expect(selected(local).length).toBeGreaterThan(32);
+    expect(selected(local)).toContain(NATIVE_ONLY);
+    expect(executed(local)).not.toContain(NATIVE_ONLY);
+    expect(executed(local).length).toBeGreaterThan(0);
+    expect(
+      executed(select(incidents['3251'].paths, undefined, true)),
+    ).toContain(NATIVE_ONLY);
   });
 
   test('a shared host-owner claim change alone runs it', () => {
@@ -162,6 +415,165 @@ describe('#3251: CLI service entry points that compose shared modules', () => {
     );
     expect(selected(result)).toContain(
       'scripts/__tests__/native-recovery-docs.test.ts',
+    );
+  });
+});
+
+describe('#4935, #4999: a new Station home root and the dev-home seed', () => {
+  // The seed suite imports the registry, but `packages/shared/` escalates,
+  // which drops related discovery: both pull requests added a root and
+  // reached main with this suite failing on 2026-11-16.
+  const SEED = 'scripts/__tests__/seed-dev-home.test.ts';
+
+  // The hosted shard plan keeps every mapped target; the local profile drops
+  // them all past 32, and #4935's diff selects more than that.
+  test.each(['4935', '4999'])(
+    'the hosted plan for the #%s diff runs the seed suite despite escalating',
+    (incident) => {
+      const result = select(incidents[incident].paths, undefined, true);
+      expect(
+        result.selection.lanes.map((lane: { id: string }) => lane.id),
+      ).toContain('ci-fast');
+      expect(executed(result)).toContain(SEED);
+    },
+  );
+
+  test('a registry change alone runs it', () => {
+    const result = select([
+      'packages/shared/src/station-home-store-registry.ts',
+    ]);
+    expect(executed(result)).toContain(SEED);
+  });
+});
+
+describe('#5010: an escalated diff runs the suites near its escalated files', () => {
+  // #5010 changed thirteen modules under packages/shared and packages/contracts
+  // and reached main with these suites failing (main qualification run
+  // 43925029422). Each imports a changed shared module directly, or through
+  // one module, and the escalation skipped related discovery for both.
+  const NEAR_IMPORTERS = [
+    // packages/shared/src/product-telemetry.ts, one edge away
+    'src-server/services/__tests__/usage-telemetry-service.test.ts',
+    // packages/shared/src/prebuilt-archive.ts, one edge away
+    'scripts/__tests__/accepted-release-parity.test.ts',
+    // packages/shared/src/prebuilt-archive.ts, two edges away
+    'src-server/routes/system/__tests__/archive-update-routes.test.ts',
+  ];
+
+  // Real related discovery (a Vitest child). Its timeout derives from this
+  // deadline (less a 30 s reserve), so a loaded host waits up to 510 s
+  // instead of failing at the 60 s floor, inside the test's own 600 s. On a
+  // host at load 50, the #5010 discovery alone took over 190 s.
+  const PLAN_TEST_TIMEOUT_MS = 600_000;
+  const makeTempDir = trackTempDirs();
+  const hostedPlan = (paths: readonly string[], planRoot = root) =>
+    planChangedVerificationShards('HEAD', {
+      root: planRoot,
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [...paths] }),
+      headSha: 'c'.repeat(40),
+      discoveryDeadlineAt: Date.now() + PLAN_TEST_TIMEOUT_MS - 60_000,
+      ...(planRoot === root ? {} : { assertDependencyProvenance: () => ({}) }),
+    });
+
+  test(
+    'the hosted plan runs them, and still defers ci-fast for every escalated path',
+    async () => {
+      const plan = await hostedPlan(incidents['5010'].paths);
+      const files = plan.groups.flatMap(
+        (group: { files: string[] }) => group.files,
+      );
+      expect(files).toEqual(expect.arrayContaining(NEAR_IMPORTERS));
+      const ciFast = plan.deferredLanes.find(
+        (lane: { id: string }) => lane.id === 'ci-fast',
+      );
+      expect(ciFast?.reasons).toEqual(
+        expect.arrayContaining([
+          'escalation: packages/shared/src/prebuilt-archive.ts',
+          'escalation: packages/shared/src/product-telemetry.ts',
+        ]),
+      );
+      expect(plan.escalatedImporters?.paths).toContainEqual(
+        expect.objectContaining({
+          path: 'packages/shared/src/prebuilt-archive.ts',
+          disposition: 'selected',
+          depth: 2,
+        }),
+      );
+      // Vite reports real paths; a seed named under a symlinked root must
+      // still match them (it silently matched fewer when compared as given).
+      const seed = 'packages/shared/src/product-telemetry.ts';
+      const linked = join(makeTempDir('incident-symlinked-root-'), 'station');
+      symlinkSync(root, linked);
+      const entryFor = (planned: typeof plan) =>
+        planned.escalatedImporters?.paths.find(
+          (candidate: { path: string }) => candidate.path === seed,
+        );
+      const direct = entryFor(plan);
+      expect(direct).toMatchObject({ disposition: 'selected' });
+      expect(entryFor(await hostedPlan([seed], linked))).toEqual(direct);
+    },
+    2 * PLAN_TEST_TIMEOUT_MS,
+  );
+
+  test('the selection itself, and so the local profile, does not change', () => {
+    const local = select(incidents['5010'].paths);
+    expect(local.executionSelection).not.toHaveProperty('escalatedSeeds');
+    expect(local.selection).not.toHaveProperty('escalationPaths');
+    for (const suite of NEAR_IMPORTERS)
+      expect(executed(local)).not.toContain(suite);
+    const hosted = select(incidents['5010'].paths, undefined, true);
+    expect(hosted.executionSelection.escalatedSeeds).toEqual(
+      expect.arrayContaining([
+        'packages/shared/src/prebuilt-archive.ts',
+        'packages/shared/src/product-telemetry.ts',
+      ]),
+    );
+    // A workflow has no importer graph to query.
+    expect(hosted.executionSelection.escalatedSeeds).not.toContain(
+      '.github/workflows/release.yml',
+    );
+  });
+
+  test('#4904 deleted an escalated module: it is named absent, not queried', () => {
+    const DELETED = 'packages/contracts/src/workspace-activity-pane.ts';
+    expect(incidents['4904'].paths).toContain(DELETED);
+    expect(existsSync(join(root, DELETED))).toBe(false);
+    const hosted = select(incidents['4904'].paths, undefined, true);
+    expect(hosted.executionSelection.escalatedSeeds).not.toContain(DELETED);
+    expect(hosted.executionSelection.escalatedUnqueried).toContainEqual({
+      path: DELETED,
+      disposition: 'absent',
+      depth: null,
+      suites: 0,
+    });
+  });
+});
+
+describe('#4752: suites that boot the server and assert its exit status', () => {
+  // #4752 changed the startup-refused status from 1 to 78 and updated one of
+  // these suites; the other two failed first in main qualification. Each
+  // boots `src-server/index.ts` as a child process, outside the import graph.
+  const REFUSAL_SUITES = [
+    'src-server/__tests__/managed-approval-ceiling.process.test.ts',
+    'src-server/__tests__/managed-policy-startup.process.test.ts',
+    'src-server/__tests__/managed-remote-clients.process.test.ts',
+  ];
+
+  test('the hosted plan for the incident diff runs every suite that asserts the refusal status', () => {
+    expect(executed(select(incidents['4752'].paths, undefined, true))).toEqual(
+      expect.arrayContaining(REFUSAL_SUITES),
+    );
+  });
+
+  test.each([
+    'src-server/index.ts',
+    'packages/supervisor/src/protocol.ts',
+    'src-server/runtime/bootstrap/managed-policy-boot.ts',
+    'src-server/security/managed-approval-ceiling.ts',
+    'src-server/security/managed-network-exposure.ts',
+  ])('a change to %s alone runs them', (path) => {
+    expect(executed(select([path]))).toEqual(
+      expect.arrayContaining(REFUSAL_SUITES),
     );
   });
 });

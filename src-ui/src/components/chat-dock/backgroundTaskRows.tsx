@@ -5,6 +5,7 @@ import type { StationConnection } from '../../connections/station-connection';
 // sheet's — the row is the same row, and renaming its styling would have been
 // the only change a reader could see.
 
+import type { ChildWorkDisplayStatus } from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
   useOrchestrationSessionActivityQuery,
@@ -15,6 +16,7 @@ import {
   cacheInclusiveTotalTokens,
   foldUsageEvents,
 } from '@kontourai/station-shared/usage-fold';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { useMemo, useState } from 'react';
 import type {
   BackgroundTaskEntry,
@@ -22,38 +24,22 @@ import type {
 } from '../../contexts/background-tasks-store';
 import {
   CHILD_WORK_STATUS_LABEL,
-  formatChildWorkElapsed,
   latestChildTool,
 } from '../../utils/child-work-display';
+import { formatDateTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
   sessionIconAgent,
 } from '../../utils/sessionDisplay';
-import { ChildWorkActivity } from '../chat/ChildWorkActivity';
+import { BackgroundTaskActivity } from '../chat/BackgroundTaskActivity';
 import { ChildWorkIdentity } from '../chat/ChildWorkIdentity';
 import { AgentGlyph, TerminalGlyph } from '../icons/Glyph';
 import './BackgroundTasksSheet.css';
 
-/**
- * #2459: a card's elapsed time, or undefined when no start was reported —
- * a running card counts to `now`, a settled one to its end.
- */
-export function backgroundTaskElapsedMs(
-  entry: BackgroundTaskEntry,
-  now: number,
-): number | undefined {
-  if (entry.startedAt === undefined) return undefined;
-  return entry.state === 'running'
-    ? now - entry.startedAt
-    : (entry.endedAt ?? entry.startedAt) - entry.startedAt;
-}
-
-const KIND_LABEL: Record<BackgroundTaskEntry['kind'], string> = {
-  tool: 'Tool',
-  agent: 'Agent',
-};
+export { backgroundTaskElapsedMs } from '../chat/BackgroundTaskActivity';
 
 const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
+  running: 'Running',
   completed: 'Completed',
   stopped: 'Stopped',
   // station#1558: not "Stopped" and not "Failed" — the session ended before
@@ -64,6 +50,61 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   interrupted: CHILD_WORK_STATUS_LABEL.interrupted,
   failed: 'Failed',
 };
+
+/**
+ * A card's status words. A tool call that completed reported success, so it
+ * reads "Completed". An agent card's "completed" is only its turn ending,
+ * which says nothing about whether the work succeeded: it reads like a
+ * child-work row ("Run finished"), so one word keeps one meaning in a list
+ * that shows both.
+ */
+function outcomeLabel(
+  kind: BackgroundTaskEntry['kind'],
+  state: BackgroundTaskState,
+): string {
+  if (kind === 'agent' && state === 'completed')
+    return CHILD_WORK_STATUS_LABEL.completed;
+  return OUTCOME_LABEL[state] ?? state;
+}
+
+/** Every status a background-task card or a child-work row can show. */
+export type WorkStatus = BackgroundTaskState | ChildWorkDisplayStatus;
+
+/**
+ * One tone per status, so every successful end reads alike whichever row
+ * shows it. An unconfirmed stop and a missing result are neutral: neither is
+ * an outcome anyone observed.
+ */
+const WORK_STATUS_TONE: Record<WorkStatus, SemanticTone> = {
+  running: 'active',
+  completed: 'positive',
+  failed: 'negative',
+  interrupted: 'caution',
+  stopped: 'neutral',
+  cancelled: 'neutral',
+  unresolved: 'neutral',
+  'stopped-unconfirmed': 'neutral',
+};
+
+/**
+ * The status pill the background-tasks sheet, `TaskRow` and the Agents
+ * pane's `ChildWorkRow` share: one shape, sentence case, one tone per status.
+ */
+export function WorkStatusPill({
+  status,
+  label,
+}: {
+  status: WorkStatus;
+  label: string;
+}) {
+  return (
+    <Badge
+      value={label}
+      tone={WORK_STATUS_TONE[status] ?? 'neutral'}
+      className={`work-status-pill work-status-pill--${status}`}
+    />
+  );
+}
 
 function TaskGlyph({ kind }: { kind: BackgroundTaskEntry['kind'] }) {
   return kind === 'tool' ? <TerminalGlyph /> : <AgentGlyph />;
@@ -87,7 +128,7 @@ export function TaskRow({
   /** Absent when no start was reported: the meta line then shows no time. */
   elapsedMs: number | undefined;
   outcomeChip?: BackgroundTaskState;
-  onOpenTranscript: (threadId: string) => void;
+  onOpenTranscript: (threadId: string, title?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const readTarget = station;
@@ -137,7 +178,6 @@ export function TaskRow({
   const usageTokens = usage
     ? (cacheInclusiveTotalTokens(usage.provider, usage) ?? usage.totalTokens)
     : undefined;
-  const hasDetail = Boolean(entry.detail) || Boolean(delegateThreadId);
   const latestTool = useMemo(
     () =>
       entry.state === 'running' && delegateThreadId && activity.data
@@ -174,9 +214,11 @@ export function TaskRow({
       <button
         type="button"
         className="background-tasks-sheet__row-main"
-        aria-expanded={hasDetail ? expanded : undefined}
-        disabled={!hasDetail}
-        onClick={() => hasDetail && setExpanded((current) => !current)}
+        // Every row opens: the collapsed row clips its title to one line and
+        // carries no times, so its full title, status and timing are worth a
+        // look even for a tool with no progress text or transcript.
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
       >
         <span className="background-tasks-sheet__glyph">
           {entry.kind === 'agent' ? (
@@ -202,37 +244,80 @@ export function TaskRow({
               Via {station.stationName}
             </span>
           )}
-          <span className="background-tasks-sheet__meta">
-            {entry.state === 'running' && (entry.latestTool || latestTool) ? (
-              <ChildWorkActivity
-                tool={entry.latestTool ?? latestTool}
-                progress={
-                  entry.source === 'provider-task' ? entry.detail : undefined
-                }
-              />
-            ) : (
-              KIND_LABEL[entry.kind]
-            )}
-            {elapsedMs !== undefined &&
-              ` · ${formatChildWorkElapsed(elapsedMs)}`}
-          </span>
+          <BackgroundTaskActivity
+            entry={entry}
+            latestTool={latestTool}
+            elapsedMs={elapsedMs}
+          />
         </span>
         {outcomeChip && (
-          <span
-            className={`background-tasks-sheet__chip background-tasks-sheet__chip--${outcomeChip}`}
-          >
-            {OUTCOME_LABEL[outcomeChip] ?? outcomeChip}
-          </span>
+          <WorkStatusPill
+            status={outcomeChip}
+            label={outcomeLabel(entry.kind, outcomeChip)}
+          />
         )}
-        {hasDetail && (
-          <span className="background-tasks-sheet__chevron" aria-hidden="true">
-            {expanded ? '▾' : '▸'}
-          </span>
-        )}
+        <span className="background-tasks-sheet__chevron" aria-hidden="true">
+          {expanded ? '▾' : '▸'}
+        </span>
       </button>
-      {expanded && hasDetail && (
+      {expanded && (
         <div className="background-tasks-sheet__detail">
-          {entry.detail}
+          <dl className="background-tasks-sheet__facts">
+            <dt>Task</dt>
+            <dd>{entry.title}</dd>
+            {entry.delegationTitle && entry.delegationTitle !== entry.title && (
+              <>
+                <dt>Delegation</dt>
+                <dd>{entry.delegationTitle}</dd>
+              </>
+            )}
+            {entry.toolName && entry.toolName !== entry.title && (
+              <>
+                <dt>Tool</dt>
+                <dd>{entry.toolName}</dd>
+              </>
+            )}
+            {entry.toolInput && (
+              <>
+                <dt>Input</dt>
+                <dd>{entry.toolInput}</dd>
+              </>
+            )}
+            {/* A settled row already shows its outcome as a chip. */}
+            {!outcomeChip && (
+              <>
+                <dt>Status</dt>
+                <dd>
+                  {entry.state === 'running'
+                    ? 'Running'
+                    : outcomeLabel(entry.kind, entry.state)}
+                </dd>
+              </>
+            )}
+            {(entry.latestTool ?? latestTool) && (
+              <>
+                <dt>Latest tool</dt>
+                <dd>{entry.latestTool ?? latestTool}</dd>
+              </>
+            )}
+            {entry.startedAt !== undefined && (
+              <>
+                <dt>Started</dt>
+                <dd>{formatDateTime(entry.startedAt)}</dd>
+              </>
+            )}
+            {entry.endedAt !== undefined && entry.state !== 'running' && (
+              <>
+                <dt>Ended</dt>
+                <dd>{formatDateTime(entry.endedAt)}</dd>
+              </>
+            )}
+          </dl>
+          {entry.detail && (
+            <p className="background-tasks-sheet__detail-text">
+              {entry.detail}
+            </p>
+          )}
           {usage && (
             <span className="background-tasks-sheet__usage">
               {/* An engine that reported no token count (ACP reports context
@@ -259,9 +344,9 @@ export function TaskRow({
                   ? `Open on ${station.stationName} to view this transcript`
                   : undefined
               }
-              onClick={() => onOpenTranscript(delegateThreadId)}
+              onClick={() => onOpenTranscript(delegateThreadId, entry.title)}
             >
-              View transcript
+              Open chat
             </button>
             {isRunningDelegate && (
               <button

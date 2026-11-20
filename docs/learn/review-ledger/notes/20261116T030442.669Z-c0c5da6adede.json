@@ -1,0 +1,7 @@
+{
+  "revision": "491a8f90a2032365f573dd05937db853806a7604",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Refusal wording now exempts the connection config home alongside the legacy app home, matching credentialProfileEnvForHome.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

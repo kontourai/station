@@ -18,6 +18,7 @@ import { Button } from '../Button';
 import { RepositoryProviderPicker } from './RepositoryProviderPicker';
 
 interface Props {
+  expanded?: boolean;
   onUseCheckout: (path: string, name: string, acquisitionId: string) => void;
   onBusyChange: (busy: boolean) => void;
 }
@@ -49,6 +50,7 @@ function RepositorySourceControls({
   onUseCheckout,
   onBusyChange,
   stationName,
+  expanded,
 }: Props & {
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   stationName: string;
@@ -231,16 +233,11 @@ function RepositorySourceControls({
     setReuseSearch(null);
   }
   const record = operation.data;
-  return (
-    <details className="new-project-modal__options">
-      <summary>Start from a Git repository</summary>
+  const controls = (
+    <>
       <p className="editor-hint">
         Create a working copy via {stationName} using that Station's Git
         credentials.
-      </p>
-      <p className="editor-hint">
-        Repository setup is separate. Attaching a repository does not grant an
-        Agent remote access.
       </p>
       {!requestId ? (
         <>
@@ -468,6 +465,14 @@ function RepositorySourceControls({
           {userFacingErrorMessage(acquire.error ?? operation.error)}
         </p>
       )}
+    </>
+  );
+  return expanded ? (
+    <div className="project-sources__form">{controls}</div>
+  ) : (
+    <details className="new-project-modal__options">
+      <summary>Start from a Git repository</summary>
+      {controls}
     </details>
   );
 }

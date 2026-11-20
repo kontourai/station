@@ -1,0 +1,7 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked the edits (stated tool groups incl. Devices/Browser; only On demand adds the ToolSearch line). This document's references to the agent-configuration guide are unaffected.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}

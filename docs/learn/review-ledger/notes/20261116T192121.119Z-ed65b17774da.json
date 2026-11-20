@@ -1,0 +1,7 @@
+{
+  "revision": "be25d196d286cb15fb559c1e8bd1ca612a463242",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited for #5069/#5070: Project lifecycle (Pause, Archive, counted Delete), Project schedules and their Feature Previews; checked the edited passages against the implementing sources.","inputs":["docs/reference/api.md","packages/sdk/src/query-domains/scheduler.ts","src-server/domain/file-storage-schemas.ts","packages/contracts/src/environment-security.ts","packages/contracts/src/scheduler.ts","packages/sdk/src/queries.ts","src-server/domain/file-storage-adapter.ts","src-server/routes/operations/scheduler.ts","src-server/routes/projects/projects.ts","src-server/routes/schemas/schema-definitions/scheduler.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/scheduling/builtin-scheduler.ts"]}
+  ]
+}

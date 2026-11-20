@@ -30,6 +30,7 @@ import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import type { ProjectSessionContextSource } from '../../services/projects/project-session-context-source.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { Logger } from '../../utils/logger.js';
@@ -59,6 +60,10 @@ interface RuntimeInitializationContext {
   getReviewedTariffConfiguration?: InitializeRuntimeDeps['getReviewedTariffConfiguration'];
   validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
+  stationInstructionsEnabled?: InitializeRuntimeDeps['stationInstructionsEnabled'];
+  codexBoundToolsEnabled?: InitializeRuntimeDeps['codexBoundToolsEnabled'];
+  codexToolFamiliesAdmitted?: InitializeRuntimeDeps['codexToolFamiliesAdmitted'];
+  stationControlCallerRecords?: InitializeRuntimeDeps['stationControlCallerRecords'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -78,6 +83,10 @@ interface RuntimeInitializationContext {
     // #3429: this Station's Environment, which a continued attached
     // conversation records as its execution binding.
     | 'readExistingRecord'
+    // #2377 slice D: the voice socket's credential resolves to its person.
+    | 'verifyOperatorCredential'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -112,6 +121,12 @@ interface RuntimeInitializationContext {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
   hostImagesPreview?: FeaturePreviewSelector;
+  coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065: the Project brief and memory every new Session starts from. */
+  projectSessionContext?: ProjectSessionContextSource;
+  projectCoordinatorEffort?: (projectSlug: string) => string | undefined;
+  /** The `opencode-native-engine` Feature Preview selector. */
+  openCodeNativeEnginePreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -151,7 +166,6 @@ interface RuntimeInitializationContext {
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
-  reloadAgents: () => Promise<void>;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -199,6 +213,10 @@ export function createRuntimeInitializationDeps(
     storageAdapter: context.storageAdapter,
     validateProjectTools: context.validateProjectTools,
     resolveProjectToolServers: context.resolveProjectToolServers,
+    stationInstructionsEnabled: context.stationInstructionsEnabled,
+    codexBoundToolsEnabled: context.codexBoundToolsEnabled,
+    codexToolFamiliesAdmitted: context.codexToolFamiliesAdmitted,
+    stationControlCallerRecords: context.stationControlCallerRecords,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,
@@ -207,6 +225,10 @@ export function createRuntimeInitializationDeps(
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     hostImagesPreview: context.hostImagesPreview,
+    coordinatorSessionPreview: context.coordinatorSessionPreview,
+    projectSessionContext: context.projectSessionContext,
+    projectCoordinatorEffort: context.projectCoordinatorEffort,
+    openCodeNativeEnginePreview: context.openCodeNativeEnginePreview,
     durableAgentPreview: context.durableAgentPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     getReviewedTariffConfiguration: context.getReviewedTariffConfiguration,
@@ -239,7 +261,6 @@ export function createRuntimeInitializationDeps(
     ollamaAdapter: context.ollamaAdapter,
     createVoltAgentInstance: context.createVoltAgentInstance,
     configureRoutes: context.configureRoutes,
-    reloadAgents: context.reloadAgents,
     captureAgentConfigurationRevisions:
       context.captureAgentConfigurationRevisions,
     registryTrustPolicyAuthority: context.registryTrustPolicyAuthority,

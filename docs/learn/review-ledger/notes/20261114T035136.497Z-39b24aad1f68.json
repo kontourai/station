@@ -1,0 +1,7 @@
+{
+  "revision": "4c6a37bea6b0ea706404b8f6aa2019b235296df5",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Re-checked after scripts/portable-release-publication.mjs gained a JSDoc type marking assertReleasePayload's location tag optional; runtime behaviour (tag defaults to v<version>) is unchanged, so no claim in this guide changes.","inputs":["docs/guides/release-rings.md","scripts/portable-release-publication.mjs"]}
+  ]
+}

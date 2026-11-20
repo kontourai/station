@@ -86,12 +86,18 @@ describe('FeaturePreviewRegistry', () => {
       }),
       expect.objectContaining({ id: 'task-capabilities', enabled: false }),
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'apps-library', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({
+        id: 'inline-browser-activity',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
         enabled: false,
       }),
+      expect.objectContaining({ id: 'continue-in-project', enabled: false }),
     ]);
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
@@ -102,12 +108,18 @@ describe('FeaturePreviewRegistry', () => {
       }),
       expect.objectContaining({ id: 'task-capabilities', enabled: false }),
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'apps-library', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({
+        id: 'inline-browser-activity',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
         enabled: false,
       }),
+      expect.objectContaining({ id: 'continue-in-project', enabled: false }),
       expect.objectContaining({ id: 'probe', enabled: false }),
     ]);
     expect(selectProbe(probe)).toBe('skipped');
@@ -152,12 +164,18 @@ describe('FeaturePreviewRegistry', () => {
       }),
       expect.objectContaining({ id: 'task-capabilities', enabled: false }),
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
+      expect.objectContaining({ id: 'apps-library', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({
+        id: 'inline-browser-activity',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
         enabled: false,
       }),
+      expect.objectContaining({ id: 'continue-in-project', enabled: false }),
     ]);
     await expect(registry.setEnabled('orphaned', false)).rejects.toBeInstanceOf(
       FeaturePreviewNotOfferedError,

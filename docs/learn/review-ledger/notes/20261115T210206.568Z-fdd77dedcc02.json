@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/privacy-policy.md","note":"Re-read for #4994: the ledger still coalesces dropped observations by publisher, reason and UTC day; no data, destination or identifier claim changes (the detail is status-only and never sent).","inputs":["docs/privacy-policy.md","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

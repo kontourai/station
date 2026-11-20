@@ -23,7 +23,7 @@ export function resolveDevBundlePaths(cwd: string): DevBundlePaths {
     bundleCss: join(cwd, 'dist/bundle-dev.css'),
     bundleCssFallback: join(cwd, 'dist/bundle.css'),
     reactBundle: join(cwd, 'dist/.react-dev.js'),
-    sdkBundle: join(cwd, 'dist/.sdk-dev.js'),
+    sdkBundle: join(cwd, 'dist/.sdk-dev-v2.js'),
   };
 }
 
@@ -119,7 +119,11 @@ export function ensureDevAssetBundles(cwd: string) {
     const sdkEntry = join(cwd, 'dist/.sdk-entry.mjs');
     writeFileSync(
       sdkEntry,
-      `import { SDKProvider, LayoutHeader, AuthStatusBadge, ActionButton } from '@kontourai/station-sdk';\nwindow.__station_sdk = { SDKProvider, LayoutHeader, AuthStatusBadge, ActionButton };\n`,
+      [
+        `import { SDKProvider, LayoutHeader, AuthStatusBadge, ActionButton } from '@kontourai/station-sdk';`,
+        `import { agentId } from '@kontourai/station-sdk/agent';`,
+        `window.__station_sdk = { SDKProvider, LayoutHeader, AuthStatusBadge, ActionButton, agentId };`,
+      ].join('\n'),
     );
     try {
       execFileSync(

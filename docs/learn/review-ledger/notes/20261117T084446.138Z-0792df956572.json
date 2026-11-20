@@ -1,0 +1,7 @@
+{
+  "revision": "5439ec4e393c30077aee4bd5d5204525c721f0dc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5126: rewrote the Project jobs paragraph to say the Task and turn act as createdBy as recorded, the run checks execute via createProjectPrincipalPermission and refuses otherwise, and an ownerless Project job starts nothing with ownerNeeded. Checked against scheduled-project-runs.ts, project-lifecycle-composition.ts, builtin-scheduler.ts and scheduler-ledger.ts and the project-schedules tests.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

@@ -68,8 +68,59 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // The attached OpenCode source sums the `step-finish` usage of one turn's
     // assistant messages and emits it once, when that turn closes
     // (`opencode-session-source.ts`), so each event is that turn's figure.
+    // The `opencode` engine's native transport publishes one event per
+    // model step (`session.step.ended`, `opencode-native-events.ts`), each
+    // that step's own usage: summing them within a turn and across turns is
+    // the turn's and the session's figure, which is what `per-turn` means.
     ['opencode', 'per-turn'],
+    // ACP: the adapter publishes one event per answered `session/prompt`,
+    // from that answer's `usage`, which the schema describes as "Token usage
+    // for this turn" (its field docs say "across session"; the protocol marks
+    // the field unstable). A recorded engine's input figure falls from one
+    // turn to the next (Antigravity 1.5.8, `antigravity-1.5.8-session-frames.jsonl`:
+    // 10377 then 8610), which no running total does. `usage_update` events
+    // carry only the context pair and add nothing to a sum. Only an engine
+    // recorded reporting per-turn figures has its answer's usage published
+    // (`ACP_PER_TURN_PROMPT_USAGE_ENGINES`, acp-adapter-events.ts), so every
+    // `acp` event with totals is per-turn by construction.
+    ['acp', 'per-turn'],
   ]);
+
+/**
+ * Providers whose `token-usage.updated` carries only context occupancy
+ * (`contextTokens`/`contextWindowTokens`) and never consumed-token or cost
+ * figures. They stay out of {@link PROVIDER_USAGE_SCOPE} on purpose: neither
+ * scope describes an event with no totals, and declaring one would let a
+ * consumer read their absent totals as zero. None today: ACP was, until its
+ * adapter read the prompt answer's `usage` for engines recorded reporting
+ * per-turn figures (see `PROVIDER_USAGE_SCOPE`). Any other ACP engine
+ * publishes only `usage_update`'s context window, so its turns carry no
+ * total. An engine's own cost (Kiro credits, Grok's per-turn USD) rides
+ * `reportedCost`, folded per unit apart from these totals. Grok also states
+ * token counts, but the scope is the provider's, not the engine's, so they
+ * are not published.
+ */
+export const CONTEXT_OCCUPANCY_ONLY_PROVIDERS: ReadonlySet<string> =
+  new Set<string>();
+
+/** True when a provider is declared to report context occupancy, never totals. */
+export function providerReportsContextOccupancyOnly(provider: string): boolean {
+  return CONTEXT_OCCUPANCY_ONLY_PROVIDERS.has(provider);
+}
+
+/**
+ * Whether a provider kind is declared to emit `token-usage.updated` at all:
+ * a declared usage scope, or declared context-occupancy-only. Everything else
+ * (a typo, a connection id, an engine that reports no usage) is not a usage
+ * provider, so a usage filter naming it is refused rather than answered with
+ * an empty total.
+ */
+export function isDeclaredUsageProvider(provider: string): boolean {
+  return (
+    PROVIDER_USAGE_SCOPE.has(provider) ||
+    CONTEXT_OCCUPANCY_ONLY_PROVIDERS.has(provider)
+  );
+}
 
 /** `undefined` means nobody has declared this provider's usage scope. */
 export function providerUsageScope(

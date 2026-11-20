@@ -1,0 +1,41 @@
+{
+  "revision": "e4e6390bc1ae0e6c2b5e10925f8f6f4d5fc1ef7a",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Checked the Local CodeQL SARIF policy section against .github/workflows/security-analysis.yml at e4e6390: merge-group analysis per landing; on pull_request_target the base-defined gate-change job (git fetch --filter=tree:0, exact merge base, diff -- .github/) decides, and CodeQL runs unless it succeeded with analyse=false; schedule/dispatch on main fail on stale baseline entries; merge groups and PR-level runs warn.","inputs":["docs/guides/dependency-security.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"security-analysis.yml inventory row now states CodeQL runs on PR events only for .github/ changes (otherwise reported skipped); checked against the gate-change job and CodeQL guard. Resource-manifest prose (lines 841, 1974, 2563) unchanged and still accurate with the new child-process test classified there.","inputs":["docs/guides/testing.md","scripts/actionlint-gate.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Merge-queue composition paragraph still accurate: the merge group runs CodeQL on the merge-group SHA; the added PR-level run for .github/ changes is not contradicted.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"Required contexts unchanged (ruleset not modified); actionlint queue-field note unaffected by the gate-change pin.","inputs":["docs/guides/releasing.md","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Rule that new child-process tests are classified in scripts/vitest-resource-manifest.mjs is satisfied: security-analysis-gate-change.test.ts was added to the bounded child-process group.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/repository-layout.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/work-board-security.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["docs/guides/workspace-packages.md",".github/workflows/security-analysis.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-read for claims about security-analysis triggers, the CodeQL job guard or the new gate-change job, the CodeQL baseline, actionlint-gate security pins, or child-process test classification; it makes none affected by the PR-level CodeQL run for .github/ changes.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "1378d4277015e215b9f825e6d506ff5b84ba777b",
-
-  "notes": [
-    {"path":"packages/agent-runtime/CONTEXT.md","note":"#4515 integration: scripts/vitest-resource-manifest.mjs adds the #4523 plutil and #4524 xmllint managed-policy tests to PROCESS_HEAVY_VITEST_FILES (single-shot child processes), as the rule that child-process tests are classified there requires. Checked this doc's resource-group and worker-limit claims; none changes.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
-  ]
-}

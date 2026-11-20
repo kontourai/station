@@ -257,11 +257,12 @@ function Review({
         }
       >
         <p>
-          Only continue if you expected an invitation from this Station’s owner.
+          Only continue if you expected an invitation from this Station’s
+          operator.
         </p>
         {delivery.kind === 'rejected' ? (
           <>
-            <p role="alert">Ask the Station owner for a new link.</p>
+            <p role="alert">Ask the Station operator for a new link.</p>
             <details>
               <summary>Details</summary>
               <p>{delivery.message}</p>
@@ -302,7 +303,7 @@ function Review({
             {delivery.kind === 'bound-invitation' && !profile ? (
               <p role="alert">
                 Save this Station first. Share your device details with its
-                owner, then ask for a setup link.
+                operator, then ask for a setup link.
               </p>
             ) : null}
             {profile ? (
@@ -343,7 +344,7 @@ function Review({
                 {redeemed && selection ? (
                   <>
                     <p role="status">
-                      Connection invitation accepted. The Station owner still
+                      Connection invitation accepted. The Station operator still
                       needs to approve this device.
                     </p>
                     <NativeRelayEnrollmentWizard

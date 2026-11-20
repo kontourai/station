@@ -21,6 +21,7 @@ describe('project-settings utils', () => {
     ).toEqual({
       name: 'Demo',
       icon: '',
+      iconDisabled: false,
       description: '',
       defaultModel: '',
       defaultAgent: undefined,
@@ -40,7 +41,88 @@ describe('project-settings utils', () => {
       defaultEnvironment: { kind: 'current' },
       workingDirectory: '',
       agents: undefined,
+      toolDefaults: undefined,
+      goal: '',
+      instructions: '',
+      coordinatorEffort: 'inherit',
+      taskEffort: 'inherit',
+      taskModel: '',
+      taskProviderId: '',
     });
+  });
+
+  test('#5062/#5068: brief and model fields reach only a host offering the preview', () => {
+    const saved = buildProjectForm({ name: 'Demo' } as any);
+    const edited = {
+      ...saved,
+      goal: '  Ship it  ',
+      instructions: 'Run tests.',
+      coordinatorEffort: 'low' as const,
+      taskModel: 'claude-sonnet-5-5',
+      taskProviderId: 'claude',
+    };
+    const off = buildProjectSavePayload(edited, undefined, saved);
+    for (const field of [
+      'goal',
+      'instructions',
+      'coordinatorEffort',
+      'taskEffort',
+      'taskModel',
+      'taskProviderId',
+    ])
+      expect(off).not.toHaveProperty(field);
+    expect(
+      buildProjectSavePayload(edited, undefined, saved, {
+        projectCoordination: true,
+      }),
+    ).toMatchObject({
+      goal: 'Ship it',
+      instructions: 'Run tests.',
+      coordinatorEffort: 'low',
+      taskEffort: null,
+      taskModel: 'claude-sonnet-5-5',
+      taskProviderId: 'claude',
+    });
+    // Cleared text drops the stored value.
+    expect(
+      buildProjectSavePayload(
+        { ...edited, goal: ' ', instructions: '', taskModel: '' },
+        undefined,
+        saved,
+        { projectCoordination: true },
+      ),
+    ).toMatchObject({
+      goal: null,
+      instructions: null,
+      taskModel: null,
+      taskProviderId: null,
+    });
+  });
+
+  test('reselecting the saved custom icon normalizes the dirty-state inputs', () => {
+    const saved = buildProjectForm({ name: 'Demo', icon: '🧭' } as any);
+    const repicked = { ...saved, icon: '🧭', iconDisabled: false };
+    expect(JSON.stringify(repicked)).toBe(JSON.stringify(saved));
+    expect(
+      buildProjectSavePayload(repicked, undefined, saved),
+    ).not.toHaveProperty('icon');
+  });
+
+  test('choosing No icon for detected artwork sends an explicit clear while rename leaves it alone', () => {
+    const saved = buildProjectForm({
+      name: 'Demo',
+      derivedIcon: 'data:image/png;base64,iVBORw0KGgo=',
+    } as any);
+    expect(
+      buildProjectSavePayload({ ...saved, name: 'Renamed' }, undefined, saved),
+    ).not.toHaveProperty('icon');
+    const payload = buildProjectSavePayload(
+      { ...saved, iconDisabled: true },
+      undefined,
+      saved,
+    );
+    expect(payload.icon).toBe('');
+    expect(payload).not.toHaveProperty('derivedIcon');
   });
 
   test('getKnowledgeTimeAgo formats recent durations', () => {
@@ -68,6 +150,7 @@ describe('project-settings utils', () => {
     ).toEqual({
       name: 'Demo',
       icon: '',
+      iconDisabled: false,
       description: '',
       defaultModel: '',
       // `null`, not absent: the route drops the override on null, and

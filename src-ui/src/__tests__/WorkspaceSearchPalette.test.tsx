@@ -181,7 +181,8 @@ test('server-ranked message survives local text mismatch, names partial source, 
     (await screen.findByRole('region', { name: 'Exact matched message' }))
       .textContent,
   ).toContain('Canonical historical A text');
-  expect(screen.getByText(/No assigned Agent identity available/)).toBeTruthy();
+  expect(screen.queryByText(/Agent:/)).toBeNull();
+  expect(screen.getByText(/^Read-only · Text page 1/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Next text page' }));
   expect(await screen.findByText('Second canonical page')).toBeTruthy();
   expect(screen.queryByText('Canonical historical A text')).toBeNull();
@@ -222,7 +223,7 @@ test('query change and repeated Enter cannot publish a superseded message open',
       }),
     );
   });
-  expect(screen.queryByText('Matched message — read-only')).toBeNull();
+  expect(screen.queryByText('Matched message')).toBeNull();
   expect(
     fetch.mock.calls.some(([url]) => String(url).endsWith('/read-message')),
   ).toBe(false);
@@ -292,7 +293,7 @@ test('authority replacement during exact-page read suppresses old text and permi
     finish(reply(page('SECRET FROM OLD AUTHORITY')));
   });
   expect(screen.queryByText('SECRET FROM OLD AUTHORITY')).toBeNull();
-  expect(screen.queryByText('Matched message — read-only')).toBeNull();
+  expect(screen.queryByText('Matched message')).toBeNull();
   expect(await screen.findByRole('option')).toBeTruthy();
 });
 
@@ -312,7 +313,7 @@ test('a denied exact open keeps the palette and does not read another message', 
   fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
   expect(
     await screen.findByText(
-      'This exact message is unavailable. No other Session was opened.',
+      'Couldn’t open this message. You may no longer have access to it.',
     ),
   ).toBeTruthy();
   expect(

@@ -4,6 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  padding-block-start: var(--notification-stack-clearance, 0px);
   color: var(--k-text);
   background: var(--k-panel);
 }
@@ -27,9 +28,15 @@
 }
 .mobile-inbox__toolbar .chat-dock-inbox__scope label {
   font-size: var(--k-text-sm);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
 }
 .mobile-inbox__toolbar .chat-dock-inbox__scope select {
   max-width: 100%;
+  min-width: 0;
+  flex: 1;
 }
 .mobile-inbox__search-toggle {
   flex: none;
@@ -42,14 +49,8 @@
 }
 .mobile-inbox__search {
   margin: var(--k-space-2) var(--k-space-3);
-  min-height: 44px;
+  width: auto;
   min-width: 0;
-  padding: var(--k-space-2);
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-bg);
-  color: var(--k-text);
-  font-size: var(--k-text-lg);
 }
 
 .mobile-inbox__list {
@@ -81,7 +82,8 @@
   padding-left: calc(var(--k-space-3) + var(--k-space-6) + var(--k-space-2));
   padding-right: calc(var(--k-space-3) + 44px);
 }
-.mobile-inbox .inbox-row__meta {
+.mobile-inbox .inbox-row__meta,
+.mobile-inbox .inbox-row__headline {
   display: contents;
 }
 .mobile-inbox .inbox-row__meta-text {
@@ -130,6 +132,33 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+/* #3075: the row leads with its identity mark, so the unread dot hangs in
+   the row's outer margin, left of the mark (the same place the title's
+   first line sits vertically), never over the mark or the text. */
+.mobile-inbox .inbox-row[data-unread] .inbox-row__title[data-title]::before,
+.mobile-inbox
+  .inbox-row[data-read-unknown]
+  .inbox-row__title[data-title]::before {
+  left: calc(
+    var(--k-space-1) /
+    2 -
+    (var(--k-space-3) + var(--k-space-6) + var(--k-space-2))
+  );
+}
+/* #3075: a two-layer title (InboxRow.css) clamps on its layers, so the bold
+   copy keeps deciding the height in both read states. */
+.mobile-inbox .inbox-row__title[data-title] {
+  display: grid;
+  align-content: start;
+}
+.mobile-inbox .inbox-row__title[data-title] > .inbox-row__title-text,
+.mobile-inbox .inbox-row__title[data-title]::after {
+  display: -webkit-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .mobile-inbox .inbox-row__project-context {
   grid-column: 3;
   grid-row: 2;
@@ -167,6 +196,10 @@
   flex-wrap: wrap;
   white-space: normal;
   font-size: var(--k-text-sm);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--k-space-2);
 }
 .mobile-inbox .inbox-row__chips {
   grid-column: 1 / -1;
@@ -194,6 +227,26 @@
   bottom: var(--k-space-2);
   top: auto;
 }
+
+/* Details stays with the chat header when an approval adds a row below it. */
+.mobile-inbox .inbox-row--touch:has(> .inbox-row__approval) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  > .inbox-row__open,
+  > .inbox-row__actions {
+    grid-area: 1 / 1;
+  }
+  > .inbox-row__actions {
+    position: relative;
+    inset: auto;
+    place-self: end;
+    margin: var(--k-space-2);
+  }
+  > .inbox-row__approval {
+    grid-area: 2 / 1;
+  }
+}
+
 .mobile-inbox .chat-dock-inbox__group-label,
 .mobile-inbox .chat-dock-inbox__section-toggle {
   min-height: 44px;

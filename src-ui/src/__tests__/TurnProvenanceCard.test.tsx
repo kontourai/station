@@ -948,7 +948,7 @@ describe('TurnProvenanceCard', () => {
       expand();
 
       const contextSummary = await screen.findByRole('button', {
-        name: /Injected context · 2 blocks/,
+        name: /Added context · 2 items/,
       });
       expect(contextSummary.getAttribute('aria-expanded')).toBe('false');
       expect(screen.queryByText('Project knowledge')).toBeNull();
@@ -974,9 +974,7 @@ describe('TurnProvenanceCard', () => {
       // that means nothing was recorded either way. Rendering nothing would
       // discard the distinction and make the two indistinguishable.
       expect(
-        await screen.findByText(
-          'Station composed no additional context for this turn.',
-        ),
+        await screen.findByText('Station added no context this turn.'),
       ).toBeTruthy();
     });
 
@@ -990,9 +988,7 @@ describe('TurnProvenanceCard', () => {
         />,
       );
       await Promise.resolve();
-      expect(
-        screen.queryByLabelText('Injected context for this turn'),
-      ).toBeNull();
+      expect(screen.queryByLabelText('Added context for this turn')).toBeNull();
     });
 
     it('derives one row per injected block and truthfully qualifies server estimates', () => {
@@ -1015,7 +1011,7 @@ describe('TurnProvenanceCard', () => {
       );
 
       const summary = screen.getByRole('button', {
-        name: /Injected context · 6 blocks/,
+        name: /Added context · 6 items/,
       });
       expect(summary.tagName).toBe('BUTTON');
       expect(summary.getAttribute('aria-expanded')).toBe('false');
@@ -1045,12 +1041,12 @@ describe('TurnProvenanceCard', () => {
       // Both caveats: the numbers are estimates, AND the record is not a
       // census of the whole model input. Without the second, "N blocks"
       // reads as everything Station sent.
-      const qualification = screen.getByText(/Token figures are approximate/);
+      const qualification = screen.getByText(/Token counts are estimates/);
       expect(qualification.textContent).toContain(
-        'derived from the injected text size',
+        'Token counts are estimates.',
       );
       expect(qualification.textContent).toContain(
-        "not the agent's system prompt, its tools, or the conversation history",
+        "Excludes the agent's system prompt, tools and chat history.",
       );
     });
 
@@ -1098,8 +1094,34 @@ describe('TurnProvenanceCard', () => {
       />,
     );
     expand();
-    expect(valueFor('Conversation boundary')).toBe(
-      'Prior transcript omitted from this engine context',
+    expect(valueFor('Context reset')).toBe(
+      'Started fresh without chat history',
     );
+  });
+
+  // The server marks a summary reset as not injecting the prior transcript,
+  // so the policy, not that flag, has to name it.
+  it.each([
+    ['summary-next-cold-start', 'Continued from a summary'],
+    ['task-state-next-cold-start', 'Continued from a summary'],
+    ['continue-from-history', 'Continued from chat history'],
+  ] as const)('names a consumed %s boundary by its policy', (policy, value) => {
+    render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          contextBoundary: {
+            state: 'observed',
+            value: {
+              boundaryId: 'boundary-a',
+              policy,
+              priorTranscriptInjected: policy === 'continue-from-history',
+            },
+            observedFrom: [{ eventId: 'terminal-a', method: 'turn.completed' }],
+          },
+        })}
+      />,
+    );
+    expand();
+    expect(valueFor('Context reset')).toBe(value);
   });
 });

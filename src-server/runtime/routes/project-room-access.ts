@@ -163,6 +163,15 @@ export function createProjectRoomAccess(
         () => current(request, slug, action),
       );
     },
+    members(scope, actor) {
+      // People, by their current names; the reader is always one of them.
+      const people = (deps.membership?.viewingMembers(scope) ?? [])
+        .filter((principal) => principal.kind === 'human')
+        .map(actorFor);
+      return people.some((person) => person.id === actor.id)
+        ? people
+        : [{ ...actor }, ...people];
+    },
     async current(request, scope, actorId, action) {
       try {
         if (!current(request, scope.localProjectSlug, action)) return false;

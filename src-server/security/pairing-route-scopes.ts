@@ -188,7 +188,13 @@ function isEngineSignInLeaf(request: {
     (['GET', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
     (['PUT', 'DELETE'].includes(request.method) &&
-      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path)) ||
+    (['PUT', 'DELETE'].includes(request.method) &&
+      /^\/remote-task-engines\/connections\/[^/]+\/credential$/.test(path))
   );
 }
 
@@ -417,6 +423,9 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/webhooks',
   '/api/agents',
   '/acp',
+  // docs/decisions/remote-task-engines.md: reads `orchestration:read`,
+  // changes `orchestration:operate`; the token leaf is `engine:login` below.
+  '/remote-task-engines',
   // createInvokeRoutes mounts at '/' with absolute leaf paths — '/invoke'
   // and '/tool-approval' are the two that do not already fall under
   // another listed prefix (their sibling `/agents/:slug/invoke` and
@@ -815,12 +824,39 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
-  // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
-  // return bounded projections — hashed transport keys, outcome codes and
-  // ids, never a payload or secret. The shared ledger is operator management,
+  // #3075: the caller's own read markers. Both are POSTs only because a batch
+  // body does not fit a query string; they read or advance the requesting
+  // person's markers and nothing else, and each target is re-authorized
+  // through its own conversation or room read. A read-only paired phone must
+  // reach them, or reading there could never clear unread anywhere. They are
+  // person self-service leaves, so an account-bound member's Device reaches
+  // them too; the target's own read still decides what it can see.
+  {
+    id: '/api/read-markers/summary:read',
+    method: 'POST',
+    prefix: '/api/read-markers/summary',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/read-markers/mark:own',
+    method: 'POST',
+    prefix: '/api/read-markers/mark',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  // Epic #3439: Automation reads return bounded projections — hashed
+  // transport keys, outcome codes, ids and secret-free sources, never a
+  // payload or secret. The shared ledger is operator management.
   // Deliberately NOT a family: `/automations` mutations create and enable
-  // triggers that start agent work, so every mutating method stays unmapped
-  // (refused) until a later slice classifies it on purpose.
+  // triggers that start agent work. #4513 classifies them on purpose as
+  // access management, and the routes additionally require the operator in
+  // person (`operator(request)`), so a paired device's scope alone is never
+  // enough.
   {
     id: '/api/isolated-repairs:operator',
     method: '*',
@@ -835,6 +871,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  ...MUTATING_METHODS.map(
+    (method): PairingScopeRouteRule => ({
+      id: `/automations:${method.toLowerCase()}`,
+      method,
+      prefix: '/automations',
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -1828,11 +1873,85 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // A remote task engine's vendor token: the `engine:login` decision, like
+  // an ACP connection's key.
+  {
+    id: '/remote-task-engines/connections/:id/credential:engine-login',
+    method: '*',
+    prefix: '/remote-task-engines/connections/:id/credential',
+    exact: true,
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
   {
     id: '/acp/connections/:id/credentials:engine-login',
     method: '*',
     prefix: '/acp/connections/:id/credentials',
     scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
+  // Station-run engine sign-in (acp-sign-in.ts): starting, reading (it
+  // carries the device code) or cancelling one, and signing out, are the
+  // `engine:login` decision like the engine's own sign-in above.
+  ...(['host-auth/login', 'host-auth/sign-out'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  // Setup reads expose an owner-scoped recipe/eligibility projection. The
+  // installer includes terminal metadata only after its command/terminal guard.
+  ...(
+    [
+      '/acp/setup',
+      '/acp/registry/:id/install-terminal',
+      '/acp/connections/:id/station-tools',
+    ] as const
+  ).map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:engine-setup-read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  // Preserve the ACP operate tier. Handlers additionally require terminal and
+  // host-command authority, a current personal-owner device, and the attempt id.
+  ...(['POST', 'DELETE'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/acp/registry/:id/install-terminal:${method.toLowerCase()}`,
+      method,
+      prefix: '/acp/registry/:id/install-terminal',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Agent mutations stay person-only; launcher repair also checks host-command authority.
+  ...(['station-tools', 'recommended-setup'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-setup-operate`,
+      method: 'POST',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Installing a managed engine downloads and lays down code Station runs:
+  // an operate-tier action, with explicit consent in the body.
+  {
+    id: '/acp/connections/:id/managed-install:operate',
+    method: 'POST',
+    prefix: '/acp/connections/:id/managed-install',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // Re-detecting engines re-runs the host user's login shell (bounded and
@@ -1850,6 +1969,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/orchestration/sessions/:threadId/goal:operate',
     method: 'POST',
     prefix: '/api/orchestration/sessions/:threadId/goal',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  // #4771: settling a worktree Session's output records a decision once and,
+  // for a discard, removes the worktree and branch Station created. The
+  // person-only, Session-mutation-gated control a paired device needs the
+  // operate tier for.
+  {
+    id: '/api/orchestration/sessions/:threadId/worktree-settlement:operate',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/worktree-settlement',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
@@ -2199,6 +2330,23 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit' as const,
   })),
+  // Pull request agent feedback: reading it is a conversation read; a
+  // switch, a move or Send again acts on what the agent is told, the same
+  // tier as linking the pull request.
+  {
+    id: '/api/pull-request-feedback:read',
+    method: 'GET',
+    prefix: '/api/pull-request-feedback',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['PUT', 'DELETE', 'POST'] as const).map((method) => ({
+    id: `/api/pull-request-feedback:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/pull-request-feedback',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'
@@ -2279,6 +2427,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // enroll, import, enable automatic recovery, or apply a profile. The
   // `:id` segment is a route parameter, matched structurally below rather
   // than treated as a literal pathname component.
+  // "Continue on <label>" on a usage-limit stop lists this Station's
+  // enrolled credential profiles and switches the connection's account, the
+  // same effects as credential-recovery below, so it takes the same tier
+  // instead of the Session family's.
+  {
+    id: '/api/orchestration/sessions/:threadId/usage-limit/continue-on:manage',
+    method: '*',
+    prefix: '/api/orchestration/sessions/:threadId/usage-limit/continue-on',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/connections/agent/:id/credential-recovery:manage',
     method: '*',
@@ -3619,6 +3779,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     {
       method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/turn-directory',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/session-reads/:sessionId/wait',
     },
     // #3413 part B work claims. The three POST leaves are agent-only at the
@@ -3650,12 +3814,43 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // (404 otherwise) and keyed on the verified station-control caller's own
     // Task binding, so a paired credential reaches nothing through it.
     { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #5067 `list_project_library` and `read_project_library_file`'s REST
+    // side. Internal-only at the route (404 otherwise) and keyed on the
+    // Project Station recorded for the verified caller's own Session, so a
+    // paired credential reaches nothing through them. Reads only.
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-library',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-library/file',
+    },
     // #4003 `task_summary_update` and `task_record`'s REST side.
     // Internal-only at the route like the leaf above; the Task they write is
     // the verified caller Session's own bound Task, and each write is one
     // bounded Task-memory revision or record version.
     { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
     { method: 'POST', path: '/api/orchestration/station-control/task-record' },
+    // #5065 Project memory tools' REST side. Internal-only at the route like
+    // the leaves above; the Project they read and write is the verified
+    // caller Session's own, and each write is one bounded note.
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-memory',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/project-memory',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-memory/:id',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/station-control/project-memory/:id',
+    },
     { method: 'GET', path: '/api/orchestration/station-control/task-threads' },
     {
       method: 'POST',
@@ -3679,6 +3874,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/station-control/job-proposals',
+    },
+    // #4830 `propose_automation_source`, `propose_automation_rule` and
+    // `list_automation_proposals`: internal-only at the route like the leaves
+    // above, on the verified caller's own conversation. A proposal creates
+    // nothing; a person's Confirm below does.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/sources',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/rules',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/automation-proposals',
     },
     // `terminal_run` and `terminal_read` (#3994): internal-only at the route
     // (404 otherwise), on the verified caller's own conversation. A request
@@ -3719,6 +3930,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
     },
+    // #4830: a person's Confirm and Decline of an agent's Automation
+    // proposal. The same gate as the job proposal's Decline (sending to the
+    // conversation, never a request that may be an agent's); Confirm also
+    // requires the Station operator in person, because it creates
+    // Station-wide configuration.
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/confirm',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/decline',
+    },
     // #3628: the person's own coordinator designation. Every leaf reads or
     // writes only the request principal's record and refuses a request that
     // may be an agent's; designating also needs sending to the conversation.
@@ -3740,6 +3964,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    // The person's own custom appearance: every leaf reads or writes only the
+    // request principal's document. Keep, save, dismiss and report also
+    // refuse a request that may be an agent's.
+    { method: 'GET', path: '/api/me/appearance' },
+    { method: 'PUT', path: '/api/me/appearance' },
+    { method: 'POST', path: '/api/me/appearance/proposal' },
+    { method: 'DELETE', path: '/api/me/appearance/proposal' },
+    { method: 'POST', path: '/api/me/appearance/proposal/keep' },
+    { method: 'POST', path: '/api/me/appearance/proposal/report' },
+    { method: 'GET', path: '/api/me/appearance/library' },
+    { method: 'POST', path: '/api/me/appearance/library' },
+    { method: 'PATCH', path: '/api/me/appearance/library' },
+    { method: 'DELETE', path: '/api/me/appearance/library' },
     { method: 'GET', path: '/api/me/notifications' },
     { method: 'POST', path: '/api/me/notifications/:id/read' },
     { method: 'DELETE', path: '/api/me/notifications/:id' },
@@ -3754,6 +3991,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/me/layouts/clone-project' },
     { method: 'POST', path: '/api/me/layouts/:layoutSlug/clone' },
     { method: 'PUT', path: '/api/projects/:slug/layout-policy' },
+    // #5066 whether the Project's Tasks watch the pull requests they keep. It
+    // writes one Project setting; the runtime Project guard admits only the
+    // owner, and no station-control tool names it.
+    { method: 'PUT', path: '/api/projects/:slug/pull-request-watch' },
+    // #5063 the `#general` coordinator's limits. One Project setting with
+    // the same admission as the watch above: owner only, no tool names it.
+    { method: 'PUT', path: '/api/projects/:slug/room-coordinator' },
     // #488 Explicitly shared Task reads retain the Project family's read tier;
     // exact membership/share/Task checks own resource visibility. Administration
     // retains the family's operate tier and separately requires Station operator.
@@ -3797,6 +4041,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/tasks/:taskId/work-chats' },
     { method: 'DELETE', path: '/api/tasks/:taskId/work-chats' },
     { method: 'GET', path: '/api/tasks/:taskId/kept-pull-requests' },
+    // Derived Task lanes: the same kept pull requests for a Project's live
+    // Tasks, filtered by the same per-keep session read check, with each
+    // read at its exact identity through the host's own forge login (as the
+    // `work-item` leaf below). Personal mode only; it changes nothing.
+    { method: 'GET', path: '/api/tasks/pull-request-facts' },
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
@@ -3823,6 +4072,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #5064 a person reopens a Task the Project Overview auto-resolved. It
+    // writes one timestamp (`overviewReopenedAt`) on that Task's own record:
+    // no status transition, no dispatch, no external or provider effect, and
+    // it leaves `updatedAt` alone. That is narrower than close-on-merge just
+    // above, which can move a Task to `done`, and than the family's status
+    // change, so the task family's operate tier is the intended scope and a
+    // read-tier device cannot call it. It is also refused while the
+    // `project-overview` Feature Preview is off; no station-control tool
+    // reaches it.
+    { method: 'POST', path: '/api/tasks/:taskId/overview-reopen' },
+    // #5066 a Task's pull request watch: what it watches, its fix attempts
+    // and refused agent actions (read tier), and a person's choice to watch
+    // or Stop watching (operate tier, that Task's own record). No
+    // station-control tool reaches either.
+    { method: 'GET', path: '/api/tasks/:taskId/pull-request-watch' },
+    { method: 'PUT', path: '/api/tasks/:taskId/pull-request-watch' },
     // #4003 Start Task on a board item, and the Task's linked-item header.
     // Both read one tracker item through the Station host's own `gh` login.
     // The POST reads only a ref the Project's board offers when it is
@@ -3840,6 +4105,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/code' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/code' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
     { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
     {
@@ -3959,6 +4226,44 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/projects/:slug/flow/runs/:runId/gates/:gateId/evaluations/:evaluationId',
     },
+    // docs/decisions/remote-task-engines.md: connection settings, the
+    // acknowledgement, and remote tasks. None returns a credential; the
+    // handlers also refuse a request that may be an agent's.
+    { method: 'GET', path: '/remote-task-engines/connections' },
+    { method: 'POST', path: '/remote-task-engines/connections' },
+    { method: 'GET', path: '/remote-task-engines/connections/:id' },
+    { method: 'PATCH', path: '/remote-task-engines/connections/:id' },
+    { method: 'DELETE', path: '/remote-task-engines/connections/:id' },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/acknowledgement',
+    },
+    {
+      method: 'DELETE',
+      path: '/remote-task-engines/connections/:id/acknowledgement',
+    },
+    { method: 'GET', path: '/remote-task-engines/connections/:id/tasks' },
+    { method: 'POST', path: '/remote-task-engines/connections/:id/tasks' },
+    {
+      method: 'GET',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/sync',
+    },
+    {
+      method: 'GET',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/events',
+    },
     // prettier-ignore
     { method: 'GET', path: '/acp/connections' },
     { method: 'POST', path: '/acp/connections' },
@@ -4012,6 +4317,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/agents/:slug' },
     { method: 'GET', path: '/agents/:slug/conversations' },
     { method: 'DELETE', path: '/agents/:slug/conversations/:conversationId' },
+    {
+      method: 'DELETE',
+      path: '/agents/:slug/conversations/:conversationId/owned',
+    },
     { method: 'PATCH', path: '/agents/:slug/conversations/:conversationId' },
     // Regeneration reads and writes the same local conversation metadata as
     // PATCH, then asks this Station's configured title generator for a title.
@@ -4060,6 +4369,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/agents/:slug/conversations/:conversationId/fork',
+    },
+    // A paired Station continues one of its conversations here: like a fork,
+    // it creates a conversation for this Agent from history, but the history
+    // is the caller's own bounded record rather than one this Station holds.
+    // It reads and returns nothing of any other conversation, so it is no
+    // more sensitive than fork or POST /agents and takes the operate tier.
+    {
+      method: 'POST',
+      path: '/agents/:slug/conversation-imports',
     },
     {
       method: 'GET',
@@ -4212,7 +4530,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/conversations/search' },
     { method: 'GET', path: '/api/conversations/work-state' },
     { method: 'PUT', path: '/api/conversations/:id/work-state' },
-    // Agent-only work discovery; same read scope and transcript admission.
+    // Hides or unhides a third-party Session in the caller's own inbox only,
+    // after the same Session read check; the family's mutating scope applies.
+    { method: 'PUT', path: '/api/conversations/:id/inbox-hidden' },
+    // Saved conversation discovery reuses person read authority or the verified agent caller scope.
     { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
     // Authoritative conversation admission: it reads the same current-session
@@ -4235,6 +4556,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // refused there; the scope is the floor, not the gate.
     { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
+    // #4774: this Station's host-level confinement facts before any start:
+    // states and the providers' reasons with paths removed, no environment
+    // value, path or credential. Less than the bundle above discloses (its
+    // doctor report), so the same family read tier.
+    { method: 'GET', path: '/api/diagnostics/confinement-preflight' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
     // (`locality: 'home-possession'` — local-grant secret, or UI-bootstrap
@@ -4302,6 +4628,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/integrations/untrusted-content/conversations/:conversationId',
     },
+    // #4828: per-engine coverage of native web reads; Station's own
+    // derivation, read like the mark above.
+    { method: 'GET', path: '/integrations/untrusted-content/coverage' },
     {
       method: 'POST',
       path: '/integrations/untrusted-content/conversations/:conversationId/clear',
@@ -4421,6 +4750,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/conversations/:conversationId/handoff',
     },
     {
+      method: 'POST',
+      path: '/api/orchestration/conversations/:conversationId/staged-handoff',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
+    },
+    {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
     },
@@ -4532,6 +4869,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/goal' },
+    // #4771: the Session's one worktree output record, read with Session
+    // read authority; it names the Session's own repository, worktree path
+    // and branch, which the Session's own events already disclose.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/worktree-settlement',
+    },
     // Immutable experience history uses the same Session read authority;
     // the reader also authorizes every historical thread before publication.
     {
@@ -4573,6 +4917,31 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
+    // Restart (or sign in to) one MCP server the Session's ENGINE runs, in
+    // a Session the caller already reaches through this family. Like the
+    // usage-limit actions below it is the person's act on their own Session
+    // (`canUserMutateSession`, the authority of sending the next turn). It
+    // returns only the engine's outcome; a sign-in link it starts arrives
+    // as an input request this family already reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    },
+    // A Session's live continuity (which engine-native actions its engine
+    // declared) and the person's in-place rewind of that engine's context.
+    // The read returns only two declared mechanism names under the same
+    // session-read gate as its siblings; the rewind is the person's act on
+    // their own Session (`canUserMutateSession`, the authority of sending the
+    // next turn) and edits no transcript, so it takes the operate tier like
+    // the MCP reconnect above.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/continuity',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/rewind',
     },
     // #3157: the usage-limit banner's recovery read and its two person-owned
     // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
@@ -4724,11 +5093,27 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },
+    // #5069: Pause/Resume and Archive/Unarchive this Station's own Project,
+    // and the counts Delete's confirmation shows. The mutation stops this
+    // Project's own running turns through the ordinary interrupt and holds
+    // its schedules; no more sensitive than `DELETE /:slug` beside it. The
+    // read counts this Station's own records and mutates nothing.
+    { method: 'POST', path: '/api/projects/:slug/lifecycle' },
+    { method: 'GET', path: '/api/projects/:slug/deletion-preview' },
     // What a new chat in this Project starts with for the caller: the
     // Project's own new-chat settings, which `GET /:slug` already returns,
     // and the model and approval mode the caller's own last chat here
     // started with. A read of the caller's own history; mutates nothing.
     { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
+    // #5065: the Project's memory notes, behind the `project-coordination`
+    // preview. Project-scoped notes in this Station's own Project data; every
+    // leaf separately requires the current operator. No peer or other-Station
+    // data, no model call, and no execution grant.
+    { method: 'GET', path: '/api/projects/:slug/memory' },
+    { method: 'POST', path: '/api/projects/:slug/memory' },
+    { method: 'GET', path: '/api/projects/:slug/memory/:id' },
+    { method: 'PUT', path: '/api/projects/:slug/memory/:id' },
+    { method: 'DELETE', path: '/api/projects/:slug/memory/:id' },
     // This Station's Project-scoped learning records and canonical sources.
     // Intents change owner lifecycle state, not execution/installation grants;
     // POST source/evidence reads conservatively retain the operate tier.
@@ -4745,6 +5130,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // root/content-currentness checks still fence both family-tier leaves.
     { method: 'GET', path: '/api/projects/:slug/working-configuration' },
     { method: 'PUT', path: '/api/projects/:slug/working-configuration' },
+    // #5067: the Project Library. Files this Station keeps for the Project
+    // (its Library folder and its Tasks' kept outputs), behind the
+    // `project-library` preview and the current Project operator. Upload and
+    // remove write only inside the Project's Library folder; no command,
+    // model call or other-Station data. Reads take the read tier, writes the
+    // operate tier, as their family does.
+    { method: 'GET', path: '/api/projects/:slug/library' },
+    { method: 'GET', path: '/api/projects/:slug/library/uploads/content' },
+    { method: 'PUT', path: '/api/projects/:slug/library/uploads' },
+    { method: 'DELETE', path: '/api/projects/:slug/library/uploads' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/library/outputs/:outputId/content',
+    },
     // How far the Project's checkout is behind its upstream, from local git
     // refs: its branch, upstream name, commit counts and an update command
     // naming the working directory `GET /:slug` already returns. A read that
@@ -4783,6 +5182,34 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/projects/:slug/room/note' },
     { method: 'POST', path: '/api/projects/:slug/room/presence' },
     { method: 'GET', path: '/api/projects/:slug/room/events' },
+    // #4798, #4799: typing composes the room's discuss tier like presence;
+    // the member directory and the multiplexed stream are reads, each channel
+    // admitted by its own room read.
+    { method: 'POST', path: '/api/projects/:slug/room/typing' },
+    { method: 'GET', path: '/api/projects/:slug/room/members' },
+    { method: 'GET', path: '/api/projects/:slug/rooms/live' },
+    // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
+    // tier; the room refuses edits and deletes of anyone else's message.
+    // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
+    // Task-room files, they never feed an Agent request, and each is bound to
+    // its uploader (see account-bound-device-gate.ts isAccountBoundRoomLeaf).
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/delete',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/room/attachments/:attachmentId',
+    },
     { method: 'POST', path: '/api/projects/:slug/room/agents' },
     { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
     {
@@ -4792,6 +5219,76 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
+    // The `#general` coordinator (#5063), so a paired phone can review its
+    // cards. Start and the status sweep compose the room's execute tier,
+    // exactly as an agent request does; the view is the room's read.
+    { method: 'GET', path: '/api/projects/:slug/room/coordinator' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/coordinator/proposals/:proposalId/start',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/coordinator/sweep' },
+    // Named channels (#4792): the same per-room actions, addressed per channel.
+    // Create, rename, topic and archive compose the room's `edit` tier.
+    { method: 'GET', path: '/api/projects/:slug/channels' },
+    { method: 'POST', path: '/api/projects/:slug/channels' },
+    { method: 'PATCH', path: '/api/projects/:slug/channels/:channelId' },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    { method: 'PUT', path: '/api/projects/:slug/channels/:channelId/note' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/presence',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/typing',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/members' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/delete',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/attachments',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/attachments/:attachmentId',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/reconcile',
     },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a

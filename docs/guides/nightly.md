@@ -27,7 +27,11 @@ ships skip before source tests and builds. Eligible candidates must pass lint,
 all typecheck lanes, native boundary checks and real browser smoke on the exact
 event SHA. Full qualification runs separately every six hours; Nightly's gate
 does not produce that receipt. Manual dispatch retains the same source and
-artifact gates for recovery.
+artifact gates for recovery. An ordinary manual dispatch uses the same early
+cadence decision. Supplying `rebuild_index` retains the explicit rebuild path;
+the publishers still enforce cadence and ancestry under the delivery lock.
+Terminal-failure recovery may complete a partial ship of the same source inside
+the interval; a recent ship of another source still blocks early admission.
 The hourly qualification-health watchdog reports stale or missing qualification
 and failed delivery; see [the release procedure](releasing.md#release-procedure).
 The cohort decision compares its source
@@ -64,9 +68,28 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 [Manually dispatching Nightly](./native-releases.md#manually-dispatching-nightly)
 section for an exceptional same-day rebuild (`rebuild_index`).
 
+The root product base is the next development train (`0.2.0` initially).
+After an immutable RC/final cut, the
+[release-cut command](native-releases.md#product-version-and-release-cut)
+advances main to the next minor through normal review. Nightly admission reads
+public release history and refuses a base at or below the highest public
+RC/final base. Unavailable, empty or malformed history does not count as
+first-run bootstrap. This check runs at top-level decision, portable publication and
+native cohort admission; it does not change CLI/library package versioning.
+
+Update summaries display recognized Nightly allocations as
+`Nightly · Nov 4 (build 249900)`, with the full exact version retained in the
+value's title. The displayed date/build is presentation only: comparisons,
+update authority and receipts continue to use the raw version. Unknown or
+non-allocation version shapes remain visible unchanged.
+
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
 select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
 requires that gate and completed staging. Full regression runs independently.
+The gate accepts the merge queue's passing `fast-checks statics` run on the
+same exact SHA instead of repeating it, and runs its own checks otherwise; the
+run's notice and job summary name the accepted run (see
+[testing](testing.md#default-implementation-loop)).
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,
@@ -93,6 +116,14 @@ Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
 provider outcomes retain their own status; a failed overall run can already have
 published a subset. See the [cohort and recovery contract](native-releases.md#native-nightly-cohort)
 before retrying or changing a marker.
+
+The protected verifier runs on a hosted macOS runner. When GitHub never gives
+it one, it cancels the job after about 15 minutes ("The job was not acquired by
+Runner of type hosted even after multiple attempts"), with the cohort already
+public. The same run then starts one second verifier attempt and records the
+ledger and marker from it if it verifies. A run whose verifier never ran in
+either attempt has a [manual finalize path](native-releases.md#when-the-verifier-gets-no-runner)
+that is only safe within a day of staging.
 
 ## Portable server nightly
 
@@ -140,7 +171,9 @@ which the publish job reads back byte for byte. See the
 [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
 The `publish` job is the only one with `contents: write` and the only one that
-reads a secret. The Nightly caller passes `secrets: inherit`; the called
+reads the Nightly signing secret. Planning uses the run's read-only GitHub
+token to fetch release history for the product-base guard. The Nightly caller
+passes `secrets: inherit`; the called
 `publish` job separately names the protected `portable-nightly-signing`
 environment. A retained earlier call without inheritance reported an empty
 signing key. Keep that incident's receipt separate from the
@@ -163,7 +196,7 @@ newer than the rolling manifest, uploads the archives, the manifest,
 (never marked latest), re-downloads them and compares digests (the archives
 against the signed manifest, the installers against the checkout), replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
-Unlike the stable and preview host pointers, Nightly checks "newer than the
+Unlike the Stable host pointer, Nightly checks "newer than the
 rolling manifest" against the cacheable download URL only and does not plan
 again against the release's own bytes before replacing, so a stale cached
 copy can let an older Nightly replace a newer one. Nightly also has no
@@ -273,13 +306,14 @@ keeps two independent mechanisms and separately labelled actions:
 A machine's [managed policy](managed-policy.md#update-control) can turn both
 checks off, make the nightly channel unavailable, or send them to a mirror.
 
-The update proposal shows **What’s new** for the offered version. Release notes
+The update proposal shows **What’s new** for the offered version. The connected
+server section also shows the installed server version’s changelog. Release notes
 come from the exact version’s GitHub Release, with the native updater’s notes
 available as a fallback for desktop downloads. GitHub prose is informational;
 it never determines whether an update is available or safe to install. Missing
 archives remain an explicit, retryable state; notes from another version are
-never substituted. When no update is offered, **What’s new** stays folded until
-opened. The
+never substituted. Installed server notes remain available without an offered
+update; an app’s installed notes stay folded until opened. The
 sidebar icon shows a circular download indicator using the updater’s byte
 counts, or an indeterminate arc when the total size is unknown. An observed
 server download can also drive the ring while the panel stays closed.
@@ -294,7 +328,11 @@ Controlled component examples: [phone status summary](../learn/media/updates-aft
 [desktop status summary](../learn/media/updates-after-1440-light.png), and
 [release history](../learn/media/updates-history-after-390-dark.png). These
 illustrate the UI with fixture data; they do not qualify an installed app or
-a provider delivery.
+a provider delivery. The saved status summaries predate friendly Nightly labels
+and retain their historical raw version strings. Current summaries show the
+Nightly date/build label and keep the raw version in the code element title;
+[the release UI review](https://github.com/kontourai/station/blob/main/docs/reviews/release-candidates-20261115/README.md)
+contains inspected before/after layouts at 390/1440 pixels in both themes.
 
 **Previous versions and changelogs** opens a release picker in the same panel.
 It lists versioned releases from GitHub’s most recent 100 releases; **All
@@ -308,7 +346,15 @@ popup; downgrades and repeated launches do not show one. **Show changelog after
 updates** is enabled by default and can be changed in that dialog, Updates, or
 Settings → System. It is a device preference. Automatic presentation requires
 working local storage and a release identity; an unstamped development UI
-never triggers it. Changing the connected server does not trigger it.
+never triggers the app prompt. A connected server version increase can open
+**Updated server …** separately, remembered per endpoint and instance. A newly
+observed server only establishes its baseline. App and server prompts share the
+preference; the app prompt appears first if both are pending. Browser clients
+suppress the server popup when it shares the bundle version or origin.
+In-app changelogs omit the Installation section and the legacy install-only
+Nightly template; GitHub retains them. An install-only body shows **Release
+notes unavailable**. In-app lists show the first 50 changes, with **See all
+changes** linking to the versioned release.
 
 Nightly desktop planning generates GitHub release notes from the previous
 `nightly-desktop` source to the planned source. The generated notes travel
@@ -319,6 +365,27 @@ do not become GitHub’s Latest release. Historical comparison links use commit
 SHAs so advancing the rolling marker cannot change their range. Mobile Nightlies read the same cohort’s changelog. If desktop publication
 did not produce an archive for a partial cohort, the notes remain unavailable.
 Earlier Nightlies without a versioned changelog are not reconstructed.
+
+Portable server Nightly publication and Stable/RC draft assembly generate
+notes against a previous published server `v*` tag, keeping install instructions.
+They select the highest older version in the same release channel. RC drafts compare against an older published RC when available; final Stable releases compare against the preceding Stable release, not their own RC. A new
+channel falls back to the highest older version across preceding-base Releases
+and plain stable git tags. Desktop and rolling tags are excluded. Moved tags
+stop publication. Missing predecessors or source commits, identical source bounds,
+and empty change notes are availability failures for Nightly: publication warns
+with a fixed reason category (never GitHub response details or token scopes) and
+retains installation instructions alone. Stable and RC
+still refuse missing predecessors, but identical sources or empty changes produce
+a clear “No changes since” line. Comparison links retain commit bounds.
+Generated notes retain at most 100 entries and stay below 50,000 characters,
+leaving room for installation instructions. Truncated bodies report the omitted
+change count and keep a full comparison link.
+
+Reads and note generation retry transient API failures once, honoring
+Retry-After, or the rate-limit reset time once the quota is exhausted, up to 30
+seconds (otherwise a short backoff). Configuration and invalid-history errors stop all channels.
+Stable and RC also stop on API availability errors. This source wiring does
+not qualify an end-to-end publication, and existing release bodies are not rewritten.
 
 Archive publication checks the Git tag reference before resolving its commit:
 GitHub's commit endpoint returns HTTP 422 for a missing tag. An existing tag
@@ -365,11 +432,10 @@ portable `X.Y.Z-nightly.YYYYMMDDNN` that names the same nightly allocation.
 The comparison bridge also retains legacy day-counter identities; #2962
 tracks replacing the bridge with one identity. An iOS
 build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
-stamped with the cohort's full Nightly version, or a Beta's full release
-version, instead. A bare `X.Y.Z` client never counts as newer than a
-prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
-against a `0.1.12-preview.N` server, which tracks another ring and cannot
-update itself to the stable release. When the server is older, the Updates
+stamped with the cohort's full Nightly version instead. Stable RC/final
+clients use the bare product version; RC is an acceptance step within Stable.
+A bare `X.Y.Z` client never counts as newer than a prerelease of the same
+`X.Y.Z`, preserving the existing comparison rule for retained legacy inputs. When the server is older, the Updates
 panel says so in one line in its server section
 ([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)),
 whose header already shows the server version; the notice has no action of
@@ -513,8 +579,13 @@ Local build/install success is not permission or evidence for hosted
 publication. A build-only archive can request notarization explicitly and its
 receipt distinguishes not-requested, notarized and failed outcomes. The hosted
 Nightly cohort already publishes notarized macOS downloads and a separate
-signed updater channel. Preserve the Stable/Beta trust contracts; do not mix
+signed updater channel. Preserve the Stable release trust contract; do not mix
 local archives into that feed or infer store/device delivery from signing.
+
+App Store-action custom feeds require attested Stable RC promotion authority.
+Nightly keeps native TestFlight/App Store update authority; this gate does not
+publish a Nightly App Store-action feed. See
+[the publication scope](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed).
 
 ## Windows desktop and the shared update feed
 
@@ -580,7 +651,7 @@ checks their GitHub sizes and digests. Then it replaces three more assets:
 the two installers again under fixed names,
 `station-nightly-macos-aarch64.dmg` and
 `station-nightly-windows-x86_64-setup.exe` (so
-`releases/download/nightly-desktop/<name>` is always the newest build), and
+`releases/download/nightly-desktop/<name>` normally serves the newest build), and
 `SHA256SUMS`, which lists this build's seven downloads under both names. It
 replaces `latest.json` last and reads every asset back. It refuses version
 regression. Previous versioned downloads are not overwritten, so an upload
@@ -590,7 +661,52 @@ is a delete then an upload, not a transaction: a download in between can
 miss a fixed name, or pair it with the other build's `SHA256SUMS`, which then
 fails the check. Interrupted provider writes remain unresolved until readback
 verifies them. The older `station-nightly-desktop-*` assets on the release
-come from builds before versioned names, and are not updated.
+come from builds before versioned names, and are not updated. Nothing current
+reads them: `latest.json` names the versioned downloads.
+
+GitHub refuses uploads to a release that holds 1,000 assets, and each cohort
+adds five. After the publication is read back and the provider claims are
+recorded, a retention step in the same job
+([`scripts/retain-nightly-desktop-assets.mjs`](../../scripts/retain-nightly-desktop-assets.mjs),
+planning in [`scripts/lib/publish-nightly-desktop.mjs`](../../scripts/lib/publish-nightly-desktop.mjs))
+keeps the versioned downloads of the newest 30 cohorts, ordered by parsed
+Nightly version. Thirty cohorts is a floor, not a time span: about two weeks
+at two cohorts a day, but every publishing run, including a manual dispatch
+or a re-run, can remove up to 25 more assets. It always keeps the cohort just
+published, every cohort the live `latest.json` names as its version or in a
+download URL, and every asset whose name is not exactly one of the five
+versioned shapes with a canonical version: the fixed names, `SHA256SUMS`,
+`latest.json` and the legacy assets. A cohort with any upload that is not
+complete is kept whole, indefinitely, because it may be an upload in
+progress; this includes two stale `starter` uploads from 2026-09-17
+(`0.1.11-nightly.2451.1` and `.2451.2`), which GitHub's asset listing shows
+but the release object hides. Older cohorts are removed whole, oldest first,
+at most 25 assets (five cohorts) per run; a larger backlog is worked off over
+later runs. It plans nothing from a listing that is truncated, duplicated,
+longer than 1,000 assets or changed between its reads; when the live
+`latest.json` names a version older than this cohort or this cohort's five
+downloads are not all uploaded; or when a `latest.json` download URL is not
+exactly one versioned asset of this release (a query, fragment, encoded or
+dot segment, or other name refuses the plan). Each asset is re-read by ID
+and must keep its exact name and download URL before it is deleted. Each
+GitHub request is bounded to 15 seconds and no request starts after three
+minutes, within the step's 5-minute timeout.
+
+The step always prints its plan: how many assets, how many it would delete,
+and the window it keeps. It deletes only when `vars.STATION_NIGHTLY_DESKTOP_PRUNE`
+is exactly `enabled`; any other value, or none, reports only. The job runs in
+the `native-release` environment, so a variable of that name at the
+environment, repository or organization level controls deletion, and an
+environment-level one takes precedence over the repository's (which takes
+precedence over the organization's). The owner switch is the repository
+variable
+(`gh variable set STATION_NIGHTLY_DESKTOP_PRUNE --repo kontourai/station --body enabled`),
+with no variable of that name in the environment. Deletion is permanent: once
+enabled, builds cited as evidence elsewhere, such as ADR 0015's
+`0.1.11-nightly.2463.2` downloads and the `0.1.11-nightly.2475.3` Windows
+installer above, stop being downloadable; the citations remain as records.
+A failure is a `::warning` and does not change the job's outcome or the
+published cohort; a cohort left partly deleted is finished by the next run.
 
 The final receipt records separate macOS and Windows claims for this shared
 publication. Android retains its separate provider outcome. A build or release

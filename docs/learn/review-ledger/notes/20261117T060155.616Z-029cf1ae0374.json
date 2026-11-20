@@ -1,0 +1,7 @@
+{
+  "revision": "beb7d165937c061af8f31f3916c8e39341652fc2",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Re-checked after regenerating patches/voltagent-core-2.11.0.patch with one context line (no blank context lines): applied to the pristine package it reproduces byte-identical dist/index.js and dist/index.mjs, the same files pnpm installs. The paragraph's claims are unchanged.","inputs":["docs/guides/dependency-security.md","patches/voltagent-core-2.11.0.patch","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

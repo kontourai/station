@@ -1,4 +1,5 @@
 import type { FlowRunBinding } from '../contexts/active-chats-state';
+import { formatDateTime } from './relativeTime';
 
 /**
  * Whether a bound run sits on a step that declares no gate. The chip and the
@@ -45,6 +46,5 @@ export function describeFlowRunFreshness(
 }
 
 function formatEvaluatedAt(iso: string): string {
-  const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? iso : parsed.toLocaleString();
+  return formatDateTime(iso, iso);
 }

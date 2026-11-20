@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/guides/native-shell-verification.md","note":"#4517 managed settings. Changed: index.ts: startup checks managed setting values against the settings schema inside the existing fail-closed policy load. The STATION_MANAGED_POLICY_INVALID terminal handling is unchanged; an invalid managed setting value uses the same marker.","inputs":["docs/guides/native-shell-verification.md","src-server/index.ts"]}
-  ]
-}

@@ -1,5 +1,6 @@
 /**
  * #3483: read and clear a conversation's durable untrusted-content mark.
+ * #4828: and read, per engine, whether its native web reads set that mark.
  *
  * Clearing relaxes a protection, so only an authenticated person who may
  * manage integrations can do it, and each clear writes a receipt naming
@@ -10,6 +11,7 @@
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
+import { nativeWebReadCoverage } from '../../services/plugins/native-web-read-marks.js';
 import type { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 
 export interface UntrustedContentRouteDeps {
@@ -35,6 +37,16 @@ export function createUntrustedContentRoutes(deps: UntrustedContentRouteDeps) {
       { success: false, error: 'Untrusted-content marks are unavailable.' },
       503,
     );
+
+  // #4828: per engine, whether reading the web with its own tools marks the
+  // conversation. Derived from the marking seams; an engine with none is
+  // `uncovered`, never assumed safe.
+  app.get('/untrusted-content/coverage', (c) =>
+    c.json({
+      success: true,
+      data: { nativeWebReads: nativeWebReadCoverage() },
+    }),
+  );
 
   app.get('/untrusted-content/conversations/:conversationId', async (c) => {
     const id = conversationId.safeParse(c.req.param('conversationId'));

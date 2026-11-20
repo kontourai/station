@@ -40,6 +40,7 @@ import {
 } from '../../../tests/helpers/css-cascade-fixture';
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   usePersonalLayoutsQuery: () => ({
     data: [{ slug: 'daily', name: 'Daily brief', icon: '▦' }],
   }),
@@ -104,17 +105,15 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterEach(cleanup);
 
-    async function measure(hasTouch: boolean) {
-      // Desktop-sized, so the narrow drawer rules stay out of it and only the
-      // pointer type differs between the two runs.
+    async function measure(hasTouch: boolean, width = 1024) {
       const context = await browser.newContext({
-        viewport: { width: 1024, height: 800 },
+        viewport: { width, height: 800 },
         hasTouch,
       });
       try {
         const page = await context.newPage();
         await page.setContent(
-          `<style>${css}</style><div class="sidebar">${openMenuMarkup()}</div>`,
+          `<style>${css}</style><div class="sidebar ${width <= 768 ? 'sidebar--expanded' : ''}">${openMenuMarkup()}</div>`,
         );
         return await page.evaluate(() => {
           const trigger = document.querySelector(
@@ -122,15 +121,28 @@ describe.skipIf(!chromiumAvailable)(
           );
           const menu = document.querySelector('.sidebar__board-menu');
           const sidebar = document.querySelector('.sidebar');
-          if (!trigger || !menu || !sidebar) {
+          const launch = document.querySelector(
+            '.sidebar__board-row-main .sidebar__project-btn',
+          );
+          const add = document.querySelector('.sidebar__section-add');
+          if (!trigger || !menu || !sidebar || !launch || !add) {
             throw new Error('the open Board row did not render');
           }
           const t = trigger.getBoundingClientRect();
           const m = menu.getBoundingClientRect();
+          const launchBox = launch.getBoundingClientRect();
+          const addBox = add.getBoundingClientRect();
           return {
             coarse: matchMedia('(pointer: coarse)').matches,
             opacity: getComputedStyle(trigger).opacity,
-            trigger: { width: t.width, height: t.height, bottom: t.bottom },
+            trigger: {
+              width: t.width,
+              height: t.height,
+              bottom: t.bottom,
+              left: t.left,
+            },
+            launchRight: launchBox.right,
+            add: { width: addBox.width, height: addBox.height },
             menuTop: m.top,
             centerHitsTrigger:
               document
@@ -145,14 +157,25 @@ describe.skipIf(!chromiumAvailable)(
       }
     }
 
-    test('on touch the trigger is visible, at least 44x44, and hit-testable', async () => {
-      const result = await measure(true);
-      expect(result.coarse).toBe(true);
-      expect(result.opacity).toBe('1');
-      expect(result.trigger.width).toBeGreaterThanOrEqual(44);
-      expect(result.trigger.height).toBeGreaterThanOrEqual(44);
-      expect(result.centerHitsTrigger).toBe(true);
-    }, 120_000);
+    test.each([
+      { hasTouch: true, width: 1024 },
+      { hasTouch: true, width: 390 },
+      { hasTouch: false, width: 390 },
+    ])(
+      'drawer/coarse controls stay 44px and separate (touch=$hasTouch, width=$width)',
+      async ({ hasTouch, width }) => {
+        const result = await measure(hasTouch, width);
+        expect(result.coarse).toBe(hasTouch);
+        expect(result.opacity).toBe('1');
+        expect(result.trigger.width).toBeGreaterThanOrEqual(44);
+        expect(result.trigger.height).toBeGreaterThanOrEqual(44);
+        expect(result.add.width).toBeGreaterThanOrEqual(44);
+        expect(result.add.height).toBeGreaterThanOrEqual(44);
+        expect(result.launchRight).toBeLessThanOrEqual(result.trigger.left);
+        expect(result.centerHitsTrigger).toBe(true);
+      },
+      120_000,
+    );
 
     test('a mouse leaves the trigger hidden until hover', async () => {
       const result = await measure(false);

@@ -15,7 +15,13 @@ import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contra
 import type {
   ConversationListItem,
   ConversationOpenResolution,
+  ConversationReadState,
+  ConversationReadStateUnavailable,
 } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+} from '@kontourai/station-contracts/peer-chat';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import {
@@ -70,7 +76,20 @@ import {
   forkRequestMatches,
 } from '../../services/orchestration/conversation-fork-context.js';
 import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
+import { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
+import {
+  conversationImportRequestSchema,
+  importedConversationMessages,
+  importedSourceConversationId,
+} from '../../services/peers/peer-conversation-handoff.js';
+import {
+  type AgentConversationVersion,
+  type AgentConversationVersionItem,
+  type AgentConversationVersionSource,
+  ReadMarkerFutureVersionError,
+  type ReadMarkerService,
+} from '../../services/read-markers/read-marker-service.js';
 import type { SummaryRelatedEvidenceObservation } from '../../services/session-summary/conversation-intent-summary-source.js';
 import { AuthoritativeConversationIntentSummarySource } from '../../services/session-summary/conversation-intent-summary-source.js';
 import {
@@ -311,6 +330,11 @@ async function sanitizePublicConversationUpdate(
  * events into the same conversation-message shape via the shared projection.
  */
 interface SessionMessageReader {
+  isRuntimeConversation?(id: string): boolean;
+  resolveConversationOpen?(
+    id: string,
+    authority: SessionReadAuthority,
+  ): Promise<ConversationOpenResolution | null>;
   readForkConversationTranscript?(
     id: string,
     scope: SessionReadAuthority,
@@ -336,6 +360,7 @@ interface SessionMessageReader {
   deleteUnstartedConversationForkContext?(
     id: string,
     scope: SessionReadAuthority,
+    isCurrent?: () => boolean,
   ): Promise<boolean>;
   readSessionMessages(
     threadId: string,
@@ -763,6 +788,17 @@ export function createConversationRoutes(
    */
   stationControlDispatchScope?: StationControlDispatchScope,
   nativeForkStoredRead?: NativeForkStoredRoutePorts,
+  /**
+   * The paired Station an import comes from, read from the authenticated
+   * delegation Device, or `undefined` for any other caller (which is refused).
+   */
+  importCaller?: (
+    request: Request,
+  ) => { deviceId: string; stationName: string } | undefined,
+  mayUseOwnedConversationRoute?: (
+    context: Context,
+    expectedUserId?: string,
+  ) => boolean,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -773,6 +809,10 @@ export function createConversationRoutes(
         : '.station',
     );
   const summaryCoordinator = new SessionSummaryCoordinator();
+  const conversationWorkState =
+    typeof configLoader?.getProjectHomeDir === 'function'
+      ? new ConversationWorkStateStore(configLoader.getProjectHomeDir())
+      : undefined;
   const summarySource = new AuthoritativeConversationIntentSummarySource();
   const sourceForSummary = (
     messages: ConversationMessage[],
@@ -873,6 +913,56 @@ export function createConversationRoutes(
         idempotent,
       },
     });
+
+  /**
+   * Runs an import's save. Once saving starts, the import may exist, so a
+   * failure (including a refusal-shaped one) is not definite: the sender must
+   * retry the same key, which answers with that conversation, rather than mint
+   * a new key and create a second one.
+   */
+  const savedImportUnconfirmed = () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        outcome: 'indeterminate',
+        error:
+          'The conversation may have been saved. Retry with the same request.',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
+  const afterSave = async (save: () => Promise<Response>) => {
+    try {
+      const response = await save();
+      if (response.ok || response.status >= 500) return response;
+      throw new Error('The import save was refused after it began.');
+    } catch {
+      return savedImportUnconfirmed();
+    }
+  };
+
+  /**
+   * An import's answer, read from what was SAVED, so a same-key retry reports
+   * the first request's counts rather than whatever the sender reads now.
+   */
+  const importReply = (
+    c: Context,
+    snapshot: ConversationForkContextSnapshot,
+    idempotent: boolean,
+  ) => {
+    const pin = readConversationContextSeedPin(snapshot.seedPinJson);
+    const carried = (JSON.parse(snapshot.copiedMessagesJson) as unknown[])
+      .length;
+    return c.json({
+      success: true,
+      data: {
+        conversationId: snapshot.targetConversationId,
+        carriedMessages: carried,
+        omittedMessages: Math.max(0, pin.omission.totalMessages - carried),
+        nonTextMessages: pin.omission.nonTextMessages,
+        idempotent,
+      },
+    });
+  };
 
   const guardSavedNativeFork = (
     c: Context,
@@ -1471,6 +1561,258 @@ export function createConversationRoutes(
     },
   );
 
+  // Continue a conversation from a paired Station (`conversationStationHandoff`).
+  // Only an authenticated paired Station (a delegation Device) may import; its
+  // own Device record names it, never the body. It sends its bounded text
+  // history; this one saves it as a fork context on a new conversation for
+  // `:slug`, so its first `/chat` start and every later continuation carry it.
+  // The rows are that Station's claim: stored with `importedFrom`, and quoted
+  // line by line in the seed, but this Station's transcript views show them as
+  // ordinary user and assistant rows.
+  app.post('/:slug/conversation-imports', async (c) => {
+    try {
+      const sender = importCaller?.(c.req.raw);
+      if (!sender)
+        return c.json(
+          {
+            success: false,
+            code: PAIRED_STATION_REQUIRED_CODE,
+            error: 'Only a paired Station can continue a conversation here.',
+          },
+          403,
+        );
+      let targetAgent: string;
+      try {
+        targetAgent = agentId(param(c, 'slug'));
+      } catch {
+        return c.json({ success: false, error: 'Invalid Agent identity' }, 400);
+      }
+      const parsed = conversationImportRequestSchema.safeParse(
+        await c.req.json().catch(() => undefined),
+      );
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid conversation import' },
+          400,
+        );
+      const body = parsed.data;
+      let sourceAgent: string;
+      try {
+        sourceAgent = agentId(body.source.agent);
+      } catch {
+        return c.json({ success: false, error: 'Invalid Agent identity' }, 400);
+      }
+      if (sourceAgent !== targetAgent)
+        return c.json(
+          {
+            success: false,
+            error:
+              'A conversation continues on another Station with the same Agent.',
+          },
+          400,
+        );
+      const projectSlug = body.projectSlug;
+      // A Station Control caller imports only where it could start a Session.
+      const scopeRefused = refuseOutOfScopeDispatch(
+        c,
+        stationControlDispatchScope,
+        (ownerId) =>
+          ownerId
+            ? {
+                kind: 'new',
+                ownerId,
+                ...(projectSlug ? { projectSlug } : {}),
+                remote: false,
+              }
+            : undefined,
+      );
+      if (scopeRefused) return scopeRefused;
+      const resolvedTarget = isKnownAgent
+        ? await isKnownAgent(targetAgent)
+        : true;
+      if (!eventStore || !resolvedTarget)
+        return c.json({ success: false, error: 'Target agent not found' }, 404);
+      let authority: SessionReadAuthority;
+      try {
+        authority = resolveForkReadAuthority?.(c) ?? authorityFor(c.req.raw);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Import caller identity could not be resolved',
+          },
+          403,
+        );
+      }
+      // Paired Stations have no tenant-owned peer records, so a hosted
+      // deployment does not accept one (it withdraws the capability flag).
+      if (isHostedSessionReadAuthority(authority))
+        return c.json(
+          { success: false, error: 'Conversation import is not served here' },
+          404,
+        );
+      if (!hasForkContextPorts(eventStore))
+        throw new ConversationForkContextError(
+          'Fork context persistence is unavailable.',
+        );
+      const actionOperationActor = actionOperationActorForRequest(
+        c.req.raw,
+        authority,
+        async (sessionId) =>
+          (await sessionMessageReader?.readSessionConversation(
+            sessionId,
+            authority,
+          )) != null,
+      );
+      const sourceConversationId = importedSourceConversationId(
+        sender.deviceId,
+        body.source.conversationId,
+      );
+      const previous = eventStore.readConversationForkContextForRequest(
+        sourceConversationId,
+        body.idempotencyKey,
+        authority,
+      );
+      if (previous) {
+        // A key that names a different request, or an import deleted before
+        // it started, is a definite refusal; one saved but now unreadable is
+        // not (it may exist, so a new key could make a second one).
+        if (
+          previous.state !== 'deleted' &&
+          !forkRequestMatches(previous, {
+            sourceAgent,
+            targetAgent,
+            requestedProjectSlug: projectSlug,
+            requestedBranchPointTurnId: undefined,
+          })
+        )
+          throw new ConversationForkContextError(
+            'The import key already names another request.',
+          );
+        // Deletion happens only before its first turn and clears the saved
+        // context: nothing remains to duplicate, so a new key is safe.
+        if (previous.state === 'deleted')
+          return c.json(
+            {
+              success: false,
+              code: CONVERSATION_IMPORT_DELETED_CODE,
+              error:
+                'This continued conversation was deleted before it started. Start the handoff again.',
+            },
+            409,
+          );
+        const saved = eventStore.readConversationForkContextSnapshot(
+          previous.targetConversationId,
+          authority,
+        );
+        if (!saved) return savedImportUnconfirmed();
+        if (previous.state !== 'ready') {
+          const finished = await afterSave(() =>
+            finishSavedFork(c, saved, authority, actionOperationActor),
+          );
+          if (!finished.ok) return finished;
+        }
+        return importReply(c, saved, true);
+      }
+      const ownedTargetProject =
+        typeof resolvedTarget === 'object' ? resolvedTarget.project : undefined;
+      if (ownedTargetProject && projectSlug !== ownedTargetProject)
+        return c.json({ success: false, error: 'Target agent not found' }, 404);
+      // A project-owned Agent was refused above unless the request names it.
+      if (projectSlug) {
+        const target =
+          typeof resolvedTarget === 'object'
+            ? resolvedTarget
+            : await configLoader?.loadAgent(targetAgent);
+        const project = projectScope?.getProject(projectSlug);
+        if (
+          !target ||
+          !project ||
+          !agentAvailableInProject(projectSlug, project.agents, {
+            slug: agentId(targetAgent),
+            project: target.project,
+          })
+        )
+          return c.json(
+            { success: false, error: 'Target agent not found' },
+            404,
+          );
+      }
+      if (!getAdapter(runtimeAgentKey(targetAgent)))
+        return c.json({ success: false, error: 'Target agent not found' }, 404);
+      const targetConversationId = `conversation:import:${createHash('sha256')
+        .update(
+          JSON.stringify([
+            authority.userId,
+            authority.tenantExecutionContext?.tenantId ?? null,
+            sourceConversationId,
+            body.idempotencyKey,
+          ]),
+        )
+        .digest('hex')
+        .slice(0, 32)}`;
+      const snapshot = createConversationForkContext({
+        forkEventId: `conversation-fork:${createHash('sha256').update(`${sourceConversationId}\u0000${targetConversationId}`).digest('hex')}`,
+        sourceConversationId,
+        sourceAgent,
+        targetConversationId,
+        targetAgent,
+        ownerUserId: authority.userId,
+        createdAt: new Date().toISOString(),
+        sourceTitle: body.source.title,
+        messages: importedConversationMessages(body),
+        imported: {
+          stationName: sender.stationName,
+          upstream: {
+            omittedMessages: body.omittedMessages,
+            nonTextMessages: body.nonTextMessages,
+            shortenedMessages: body.shortenedMessages,
+          },
+        },
+        idempotencyKey: body.idempotencyKey,
+        ...(authority.tenantExecutionContext
+          ? { tenantId: authority.tenantExecutionContext.tenantId }
+          : {}),
+        ...(projectSlug
+          ? { projectSlug, requestedProjectSlug: projectSlug }
+          : {}),
+      });
+      return await afterSave(async () => {
+        const finished = await finishSavedFork(
+          c,
+          snapshot,
+          authority,
+          actionOperationActor,
+        );
+        if (!finished.ok) return finished;
+        const saved = eventStore.readConversationForkContextSnapshot(
+          snapshot.targetConversationId,
+          authority,
+        );
+        if (!saved)
+          throw new ConversationForkContextError(
+            'Saved import context is unavailable.',
+          );
+        return importReply(
+          c,
+          saved,
+          (
+            (await finished.clone().json()) as {
+              data?: { idempotent?: boolean };
+            }
+          ).data?.idempotent === true,
+        );
+      });
+    } catch (error: unknown) {
+      return conversationRouteFailure(
+        c,
+        logger,
+        'Failed to import conversation',
+        error,
+      );
+    }
+  });
+
   // Get conversations for an agent
   app.get('/:slug/conversations', async (c) => {
     try {
@@ -1755,8 +2097,30 @@ export function createConversationRoutes(
   );
 
   // Delete conversation
-  app.delete('/:slug/conversations/:conversationId', async (c) => {
+  const deleteConversation = async (c: Context, ownerOnly: boolean) => {
+    const ownedNotFound = () =>
+      c.json(
+        {
+          success: false,
+          error: 'Conversation not found',
+          code: 'owned_conversation_not_found',
+        },
+        404,
+      );
+    const incompleteRetirement = () =>
+      c.json(
+        {
+          success: false,
+          error:
+            'The fork was retired, but its saved conversation cleanup did not finish.',
+          code: 'owned_conversation_deletion_incomplete',
+        },
+        409,
+      );
+    let forkRetired = false;
     try {
+      if (ownerOnly && !mayUseOwnedConversationRoute?.(c))
+        return ownedNotFound();
       conversationOps.add(1, { operation: 'delete', agent: param(c, 'slug') });
       const slug = param(c, 'slug');
       const conversationId = param(c, 'conversationId');
@@ -1766,11 +2130,14 @@ export function createConversationRoutes(
       // fence before the adapter because the file store is process-global in a
       // hosted deployment.
       if (isHostedSessionReadAuthority(authority)) {
+        if (ownerOnly) return ownedNotFound();
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       }
-      const adapter = getAdapter(runtimeAgentKey(slug));
+      const agentKey = runtimeAgentKey(slug);
+      const adapter = getAdapter(agentKey);
 
       if (!adapter) {
+        if (ownerOnly) return ownedNotFound();
         return c.json({ success: false, error: 'Agent not found' }, 404);
       }
       // #2377 slice B: a station-control agent deletes only a conversation
@@ -1785,12 +2152,28 @@ export function createConversationRoutes(
             404,
           );
       }
+      const current = () =>
+        mayUseOwnedConversationRoute?.(c, authority.userId) === true;
+      const ownsStoredConversation = (
+        stored: { userId: string; resourceId: string } | null,
+      ) =>
+        stored?.userId === authority.userId &&
+        (stored.resourceId === agentKey || stored.resourceId === slug);
       if (
+        ownerOnly &&
+        (!ownsStoredConversation(
+          await adapter.getConversation(conversationId),
+        ) ||
+          !current())
+      )
+        return ownedNotFound();
+      const runtimeConversation =
         await sessionMessageReader?.readSessionConversation(
           conversationId,
           authority,
-        )
-      ) {
+        );
+      if (ownerOnly && !current()) return ownedNotFound();
+      if (runtimeConversation) {
         return c.json(
           {
             success: false,
@@ -1800,7 +2183,15 @@ export function createConversationRoutes(
         );
       }
 
-      await reserveFork(conversationId, async () => {
+      const deleted = await reserveFork(conversationId, async () => {
+        if (
+          ownerOnly &&
+          (!ownsStoredConversation(
+            await adapter.getConversation(conversationId),
+          ) ||
+            !current())
+        )
+          return false;
         const fork = sessionMessageReader?.readForkConversation?.(
           conversationId,
           authority,
@@ -1819,13 +2210,26 @@ export function createConversationRoutes(
             );
           // Tombstone before file cleanup: a failed file deletion must never
           // leave the retained seed eligible for a provider start.
-          await sessionMessageReader.deleteUnstartedConversationForkContext(
+          const retired =
+            await sessionMessageReader.deleteUnstartedConversationForkContext(
+              conversationId,
+              authority,
+              ...(ownerOnly ? [current] : []),
+            );
+          if (ownerOnly && !retired) return false;
+          forkRetired = ownerOnly && retired;
+        }
+        if (ownerOnly) {
+          return adapter.deleteOwnedConversation(
             conversationId,
-            authority,
+            (stored) => ownsStoredConversation(stored) && current(),
           );
         }
         await adapter.deleteConversation(conversationId);
+        return true;
       });
+      if (!deleted)
+        return forkRetired ? incompleteRetirement() : ownedNotFound();
       // Derived summaries do not outlive their source conversation. Their
       // owner-scoped coordinate prevents an ID reused later from inheriting
       // this conversation's derived text.
@@ -1838,9 +2242,26 @@ export function createConversationRoutes(
       if (sessionSummaries.delete)
         await sessionSummaries.delete(summaryCoordinate);
       else await sessionSummaries.dismiss(summaryCoordinate);
+      // Nobody's settled or hidden record outlives the conversation, so the
+      // per-person inbox maps stay bounded by what still exists. The delete
+      // has happened; a failed prune is logged, not reported as a failure.
+      try {
+        conversationWorkState?.forget([conversationId]);
+      } catch (error) {
+        logger.warn('Could not prune inbox records of a deleted conversation', {
+          error,
+        });
+      }
 
       return c.json({ success: true });
     } catch (error: unknown) {
+      if (forkRetired) {
+        logger.warn(
+          'Could not finish owned conversation cleanup after fork retirement',
+          { error },
+        );
+        return incompleteRetirement();
+      }
       return conversationRouteFailure(
         c,
         logger,
@@ -1848,18 +2269,25 @@ export function createConversationRoutes(
         error,
       );
     }
-  });
+  };
+  app.delete('/:slug/conversations/:conversationId', (c) =>
+    deleteConversation(c, false),
+  );
+  app.delete('/:slug/conversations/:conversationId/owned', (c) =>
+    deleteConversation(c, true),
+  );
 
   // Get messages for a conversation
   // The one unified read seam (`conversation-message-reader.ts`): every
   // Session in the conversation's lineage, memory store then the runtime-
   // event projection per Session, served sanitized.
-  const { readConversationMessages } = createConversationMessageReader({
-    getAdapter,
-    authorityFor,
-    sessionMessageReader,
-    logger,
-  });
+  const { readConversationMessages, readAddressedConversationMessages } =
+    createConversationMessageReader({
+      getAdapter,
+      authorityFor,
+      sessionMessageReader,
+      logger,
+    });
 
   const summaryCoordinateFor = (
     authority: SessionReadAuthority,
@@ -1998,11 +2426,14 @@ export function createConversationRoutes(
       });
       const slug = param(c, 'slug');
       const conversationId = param(c, 'conversationId');
-      const { messages, source } = await readConversationMessages(
+      const read = await readAddressedConversationMessages(
         c.req.raw,
         slug,
         conversationId,
       );
+      if (!read)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const { messages, source } = read;
       if (source !== 'store') {
         conversationOps.add(1, {
           operation: 'history_restore',
@@ -2320,11 +2751,14 @@ export function createConversationRoutes(
         agent: slug,
         format,
       });
-      const { messages, source, absence } = await readConversationMessages(
+      const read = await readAddressedConversationMessages(
         c.req.raw,
         slug,
         conversationId,
       );
+      if (!read)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const { messages, source, absence } = read;
       if (messages.length === 0) {
         // Three different answers, and the read already knows which one it
         // is. The undetermined case keeps the either/or wording on purpose:
@@ -2469,6 +2903,271 @@ export function createConversationRoutes(
   return app;
 }
 
+interface ConversationForkProvenanceReader {
+  readConversationForkProvenance(conversationId: string): {
+    forkedFrom?: ConversationForkProvenance;
+    forkedTo: ConversationForkProvenance[];
+  };
+  readConversationForkProvenanceBatch?(conversationIds: readonly string[]): Map<
+    string,
+    {
+      forkedFrom?: ConversationForkProvenance;
+      forkedTo: ConversationForkProvenance[];
+    }
+  >;
+}
+
+interface ConversationInventoryDeps {
+  memoryAdapters: Map<string, FileMemoryAdapter>;
+  sessionConversationReader: Pick<
+    SessionMessageReader,
+    'successorConversationId'
+  > & {
+    listConversationHistoryPage(
+      authority: SessionReadAuthority,
+      options: { limit: number; cursor?: string },
+    ): Promise<{
+      items: ConversationListItem[];
+      hasMore: boolean;
+      nextCursor?: string;
+    }>;
+  };
+  eventStore?: ConversationForkProvenanceReader;
+}
+
+/**
+ * One page of the caller's conversation inventory, without read state. The
+ * inventory route and the read-marker version source (#3075) both read
+ * through here, so "the version the inbox shows" has exactly one derivation.
+ * Hosted requests read only the cursor-paged, authority-scoped runtime index;
+ * personal requests also fold in one bounded page of local file records.
+ */
+async function readConversationInventoryPage(
+  {
+    memoryAdapters,
+    sessionConversationReader,
+    eventStore,
+  }: ConversationInventoryDeps,
+  authority: SessionReadAuthority,
+  query: { limit: number; cursor?: string },
+): Promise<{
+  items: ConversationListItem[];
+  hasMore: boolean;
+  nextCursor?: string;
+  historyItemCount: number;
+}> {
+  const hosted = isHostedSessionReadAuthority(authority);
+  const historyPage =
+    await sessionConversationReader.listConversationHistoryPage(
+      authority,
+      query,
+    );
+  const sessionItems = historyPage.items.map((item) => ({
+    ...item,
+    agentSlug: publicAgentIdFromRuntimeKey(item.agentSlug),
+  }));
+  const storePage = hosted
+    ? { items: [], hasMore: false }
+    : await _listPersonalFileConversationItems(
+        memoryAdapters,
+        authority.userId,
+        query.limit,
+        sessionConversationReader,
+      );
+  const byId = new Map(
+    [...storePage.items, ...sessionItems].map((item) => [item.id, item]),
+  );
+  const combined = [...byId.values()]
+    .sort(compareConversationRecency)
+    .slice(0, query.limit);
+  const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
+    combined.map((item) => item.id),
+  );
+  const items = combined.map((item): ConversationListItem => {
+    const forkProvenance =
+      provenanceById?.get(item.id) ??
+      eventStore?.readConversationForkProvenance(item.id);
+    return {
+      ...item,
+      referenceEligibility: hosted
+        ? {
+            eligible: false as const,
+            reason: 'destination-visibility-unavailable' as const,
+          }
+        : {
+            eligible: true as const,
+            visibility: 'personal-private' as const,
+          },
+      ...(forkProvenance ? { forkProvenance } : {}),
+    };
+  });
+  return {
+    items,
+    hasMore:
+      historyPage.hasMore || storePage.hasMore || byId.size > items.length,
+    ...(hosted && historyPage.nextCursor
+      ? { nextCursor: historyPage.nextCursor }
+      : {}),
+    historyItemCount: historyPage.items.length,
+  };
+}
+
+/** An inventory item's read-marker version: epoch ms of its `updatedAt`. */
+function conversationReadVersion(
+  item: Pick<ConversationListItem, 'updatedAt'>,
+): number | undefined {
+  const version = Date.parse(item.updatedAt);
+  return Number.isSafeInteger(version) && version >= 0 ? version : undefined;
+}
+
+/**
+ * A file conversation id that names exactly one file (#3075 review): the
+ * existing id contract (`parseConversationIdSegment`, which keeps ids such
+ * as `createChatConversationId`'s `human:tailscale-serve:casey@example.test`
+ * and refuses separators, `.`/`..` and control characters including NUL),
+ * plus a percent-encoded separator a later decode could turn into one.
+ * `undefined` when refused.
+ */
+const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
+function parseFileConversationId(value: string): string | undefined {
+  const segment = parseConversationIdSegment(value);
+  return segment === null || ENCODED_SEPARATOR.test(segment)
+    ? undefined
+    : segment;
+}
+
+/**
+ * A personal file-backed conversation past the inventory window (#3075
+ * review): the point read the inventory list would have made, under the same
+ * ownership rule (`_listPersonalFileConversationItems` reads the caller's
+ * `userId` within each adapter's own resource, skipping a conversation a
+ * successor has taken over) and the same version (`updatedAt`). The id must
+ * parse as one file name, and the record read must carry exactly that id.
+ * Hosted Stations have no file conversations here; another owner's is
+ * `undefined`.
+ */
+async function ownedFileConversationVersion(
+  deps: ConversationInventoryDeps,
+  authority: SessionReadAuthority,
+  requestedId: string,
+): Promise<number | undefined> {
+  if (isHostedSessionReadAuthority(authority)) return undefined;
+  const conversationId = parseFileConversationId(requestedId);
+  if (conversationId === undefined) return undefined;
+  if (
+    deps.sessionConversationReader.successorConversationId?.(conversationId) !==
+    undefined
+  )
+    return undefined;
+  for (const [slug, adapter] of deps.memoryAdapters) {
+    const conversation = await adapter.getConversation(conversationId);
+    if (
+      conversation &&
+      conversation.id === conversationId &&
+      conversation.userId === authority.userId &&
+      (conversation.resourceId || slug) === slug
+    )
+      return conversationReadVersion(conversation);
+  }
+  return undefined;
+}
+
+/**
+ * The agent-conversation version source for read markers (#3075): the
+ * caller's own first inventory page (the window the inbox renders), falling
+ * back to the authority-checked point read for an older runtime conversation.
+ * A conversation the caller cannot read answers no version.
+ */
+export function createAgentConversationVersionSource(
+  deps: ConversationInventoryDeps & {
+    sessionConversationReader: Pick<
+      SessionMessageReader,
+      'readSessionConversation'
+    >;
+    authorityFor(request: Request): SessionReadAuthority;
+    /** The event store's content-version projection. */
+    conversationContent: {
+      readConversationContentVersions(
+        conversationIds: readonly string[],
+      ): ReadonlyMap<string, number>;
+    };
+  },
+): AgentConversationVersionSource {
+  /**
+   * A runtime conversation's content version is its projected content
+   * sequence (0 before any readable content); its inventory `updatedAt` also
+   * moves on lifecycle bookkeeping, so it bounds the last-viewed record only.
+   * A file-backed conversation has no lifecycle events: its own `updatedAt`
+   * is its version (`space: 'time'`).
+   */
+  const versionsOf = (
+    items: readonly AgentConversationVersionItem[],
+  ): Map<string, AgentConversationVersion> => {
+    const runtimeIds = items.flatMap((item) =>
+      item.source === 'runtime' ? [item.id] : [],
+    );
+    const contentVersions =
+      deps.conversationContent.readConversationContentVersions(runtimeIds);
+    const result = new Map<string, AgentConversationVersion>();
+    for (const item of items) {
+      const acknowledgeableUntil = conversationReadVersion(item);
+      if (acknowledgeableUntil === undefined) continue;
+      if (item.source !== 'runtime') {
+        result.set(item.id, {
+          version: acknowledgeableUntil,
+          space: 'time',
+          acknowledgeableUntil,
+        });
+        continue;
+      }
+      result.set(item.id, {
+        version: contentVersions.get(item.id) ?? 0,
+        space: 'content',
+        acknowledgeableUntil,
+      });
+    }
+    return result;
+  };
+  return {
+    versionsOf,
+    async latestVersions(conversationIds, request) {
+      const result = new Map<string, AgentConversationVersion>();
+      if (conversationIds.length === 0) return result;
+      const authority = deps.authorityFor(request);
+      const page = await readConversationInventoryPage(deps, authority, {
+        limit: 100,
+      });
+      const wanted = new Set(conversationIds);
+      const found: AgentConversationVersionItem[] = page.items.filter((item) =>
+        wanted.has(item.id),
+      );
+      const seen = new Set(found.map((item) => item.id));
+      for (const id of wanted) {
+        if (seen.has(id)) continue;
+        const conversation =
+          await deps.sessionConversationReader.readSessionConversation(
+            id,
+            authority,
+          );
+        if (conversation) {
+          // The point read is the runtime conversation's own record.
+          found.push({ ...conversation, source: 'runtime' });
+          continue;
+        }
+        const version = await ownedFileConversationVersion(deps, authority, id);
+        if (version !== undefined)
+          result.set(id, {
+            version,
+            space: 'time',
+            acknowledgeableUntil: version,
+          });
+      }
+      for (const [id, versions] of versionsOf(found)) result.set(id, versions);
+      return result;
+    },
+  };
+}
+
 /**
  * Global conversation lookup — resolves a conversation ID across all agents/projects.
  */
@@ -2508,25 +3207,13 @@ export function createGlobalConversationRoutes(
   acknowledgementStore?: ConversationAcknowledgementStore,
   /** See `createConversationRoutes` for the request-scoped authority rule. */
   getSessionReadAuthority?: (request: Request) => SessionReadAuthority,
-  eventStore?: {
-    readConversationForkProvenance(conversationId: string): {
-      forkedFrom?: ConversationForkProvenance;
-      forkedTo: ConversationForkProvenance[];
-    };
-    readConversationForkProvenanceBatch?(
-      conversationIds: readonly string[],
-    ): Map<
-      string,
-      {
-        forkedFrom?: ConversationForkProvenance;
-        forkedTo: ConversationForkProvenance[];
-      }
-    >;
-  },
+  eventStore?: ConversationForkProvenanceReader,
   /** Remote peers report only their own server-authorized excerpts. */
   searchRemoteMessages?: (
     query: string,
     signal?: AbortSignal,
+    /** Whose search this is: a remote read is the bound owner's alone. */
+    request?: Request,
   ) => Promise<{
     matches: Array<{
       conversationId: string;
@@ -2560,6 +3247,15 @@ export function createGlobalConversationRoutes(
    * unknown.
    */
   principalSecurity?: CurrentRuntimeRequestPrincipalSecurity,
+  /**
+   * #3075: server-kept read state. When wired, inventory items carry
+   * `readState` and an acknowledgement is refused past the conversation's
+   * current version. Unwired, items carry no `readState`, never a guessed one.
+   */
+  readMarkers?: Pick<
+    ReadMarkerService,
+    'acknowledgeConversation' | 'conversationReadStates'
+  >,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -2625,7 +3321,11 @@ export function createGlobalConversationRoutes(
         20,
       ) ?? [];
     const remote = searchRemoteMessages
-      ? await searchRemoteMessages(parsed.data.query, c.req.raw.signal)
+      ? await searchRemoteMessages(
+          parsed.data.query,
+          c.req.raw.signal,
+          c.req.raw,
+        )
       : { matches: [], instances: [], deferredInstanceCount: 0 };
     // The local index retains its established rank order. Remote rows are
     // independently capped before this final, cross-instance 20-hit cap.
@@ -2689,64 +3389,70 @@ export function createGlobalConversationRoutes(
           400,
         );
       }
-      const historyPage =
-        await sessionConversationReader.listConversationHistoryPage(
-          authority,
-          pageQuery.data,
-        );
+      const page = await readConversationInventoryPage(
+        { memoryAdapters, sessionConversationReader, eventStore },
+        authority,
+        pageQuery.data,
+      );
       conversationOps.add(1, {
         operation: 'history_page',
-        outcome: historyPage.items.length > 0 ? 'available' : 'empty',
+        outcome: page.historyItemCount > 0 ? 'available' : 'empty',
       });
-      const sessionItems = historyPage.items.map((item) => ({
-        ...item,
-        agentSlug: publicAgentIdFromRuntimeKey(item.agentSlug),
-      }));
-      const storePage = hosted
-        ? { items: [], hasMore: false }
-        : await _listPersonalFileConversationItems(
-            memoryAdapters,
-            authority.userId,
-            pageQuery.data.limit,
-            sessionConversationReader,
-          );
-      const byId = new Map(
-        [...storePage.items, ...sessionItems].map((item) => [item.id, item]),
-      );
-      const combined = [...byId.values()]
-        .sort(compareConversationRecency)
-        .slice(0, pageQuery.data.limit);
-      const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
-        combined.map((item) => item.id),
-      );
       const acknowledgementKey = conversationAcknowledgementKey(
         authority,
         acknowledgementStore?.isOwnerDevice,
       );
-      const acknowledgements = acknowledgementKey
-        ? acknowledgementStore?.getMany(
-            acknowledgementKey,
-            combined.map((item) => item.id),
-          )
-        : undefined;
-      const data = combined.map((item) => {
+      // #3075 review: a store that does not decode never takes the
+      // conversations down with it. Without the stored fact the item carries
+      // no `acknowledgedAt` (no view on record), and its read state below
+      // reads as unknown.
+      let acknowledgements: ReadonlyMap<string, string> | undefined;
+      try {
+        acknowledgements = acknowledgementKey
+          ? acknowledgementStore?.getMany(
+              acknowledgementKey,
+              page.items.map((item) => item.id),
+            )
+          : undefined;
+      } catch (error) {
+        logger.warn('Conversation acknowledgements unavailable', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+      }
+      // #3075: the derived answer every surface reads, from the caller's own
+      // person key. `acknowledgedAt` stays the inherited stored fact.
+      let readStates:
+        | ReadonlyMap<
+            string,
+            ConversationReadState | ConversationReadStateUnavailable
+          >
+        | undefined;
+      try {
+        readStates = readMarkers?.conversationReadStates(c, page.items);
+      } catch (error) {
+        // Unreadable read state is unknown, never "read" and never absent
+        // (which reads as "no read state is kept").
+        logger.warn('Conversation read state unavailable', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+        // The version reported is the inventory's own; nothing finer could
+        // be read either.
+        readStates = new Map(
+          page.items.flatMap((item) => {
+            const version = conversationReadVersion(item);
+            return version === undefined
+              ? []
+              : [[item.id, { version, unavailable: true as const }]];
+          }),
+        );
+      }
+      const data = page.items.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
-        const forkProvenance =
-          provenanceById?.get(item.id) ??
-          eventStore?.readConversationForkProvenance(item.id);
+        const readState = readStates?.get(item.id);
         return {
           ...item,
-          referenceEligibility: hosted
-            ? {
-                eligible: false as const,
-                reason: 'destination-visibility-unavailable' as const,
-              }
-            : {
-                eligible: true as const,
-                visibility: 'personal-private' as const,
-              },
           ...(acknowledgedAt ? { acknowledgedAt } : {}),
-          ...(forkProvenance ? { forkProvenance } : {}),
+          ...(readState ? { readState } : {}),
         };
       });
 
@@ -2759,11 +3465,8 @@ export function createGlobalConversationRoutes(
         success: true,
         data: {
           items: data,
-          hasMore:
-            historyPage.hasMore || storePage.hasMore || byId.size > data.length,
-          ...(hosted && historyPage.nextCursor
-            ? { nextCursor: historyPage.nextCursor }
-            : {}),
+          hasMore: page.hasMore,
+          ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
         },
       });
     } catch (error: unknown) {
@@ -2822,6 +3525,22 @@ export function createGlobalConversationRoutes(
         400,
       );
     }
+    // #3075: the content version the client rendered (`readState.version`).
+    // Absent from older clients; anything else must be a version.
+    const readVersion: unknown = body.readVersion;
+    if (
+      readVersion !== undefined &&
+      !(
+        typeof readVersion === 'number' &&
+        Number.isSafeInteger(readVersion) &&
+        readVersion >= 0
+      )
+    ) {
+      return c.json(
+        { success: false, error: 'readVersion must be a read state version' },
+        400,
+      );
+    }
     // The same key the inventory GET reads (`conversationAcknowledgementKey`):
     // what a person viewed on one device clears it on all of theirs.
     const acknowledgementKey = conversationAcknowledgementKey(
@@ -2837,12 +3556,47 @@ export function createGlobalConversationRoutes(
         403,
       );
     }
-    acknowledgementStore.acknowledge({
-      userId: acknowledgementKey,
-      conversationId,
-      updatedAt: new Date(parsedUpdatedAt).toISOString(),
-    });
-    return c.json({ success: true });
+    if (!readMarkers) {
+      acknowledgementStore.acknowledge({
+        userId: acknowledgementKey,
+        conversationId,
+        updatedAt: new Date(parsedUpdatedAt).toISOString(),
+      });
+      return c.json({ success: true });
+    }
+    // #3075: the same monotonic write, through the one service that also
+    // refuses a version the conversation has not reached (the server does
+    // not take the client's word for what it was shown) and moves the
+    // caller's own read marker.
+    try {
+      const outcome = await readMarkers.acknowledgeConversation(
+        c,
+        conversationId,
+        {
+          updatedAt,
+          ...(readVersion === undefined ? {} : { readVersion }),
+        },
+        acknowledgementKey,
+      );
+      if (!outcome)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      return c.json({
+        success: true,
+        ...(outcome.state ? { data: outcome.state } : {}),
+      });
+    } catch (error) {
+      if (error instanceof ReadMarkerFutureVersionError)
+        return c.json(
+          {
+            success: false,
+            code: error.code,
+            error: "That version is past the conversation's current version.",
+            latestVersion: error.latestVersion,
+          },
+          409,
+        );
+      throw error;
+    }
   });
 
   // Resolve a picker row before a tab exists.  This keeps discovery,

@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"Regenerated with docs:metrics:generate; adds station.workload.scope_cleanup.attempts and .backlog, remaining rows only shift line numbers.","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a66e7c20797875944340f07666f4f529317ba46d",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gained one entry classifying the new child-process test gallery-pr-composition.test.ts, which is what this file's rule requires (new child-process tests are classified there); no claim here changes.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

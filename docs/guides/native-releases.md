@@ -4,12 +4,16 @@ The [release process](releasing.md) owns integration, scheduled qualification,
 repair sweeps and promotion decisions. This guide owns platform operations.
 
 Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
-or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
+or release-candidate `vMAJOR.MINOR.PATCH-rc.N` tag; Beta `-preview.N` tags are
+retired ([#4929](https://github.com/kontourai/station/issues/4929)) and
+`Release: Publish` publishes a candidate with `mode=rc` and promotes its
+unchanged bytes with `mode=promote`. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
 one assembler creates a draft only after the deterministic inventory and every
 checksum validate. `Release: Publish` is a separately approved manual
 workflow that downloads and revalidates the draft before making it public. Its
-terminal availability job has only `contents:read`, `attestations:read`,
+terminal availability job runs only for final publication and has only
+`contents:read`, `attestations:read`,
 `pull-requests:read`, and `issues:write`: after publication it redownloads and
 attests the complete public release again, derives a bounded same-channel
 previous-public-release range, and advances only the implicated issue labels.
@@ -25,7 +29,7 @@ That proves the command entry points, not a hosted tagged release.
 
 The cross-platform/channel authority is
 `config/release-platform-matrix.json`. It declares every development, Nightly,
-preview, and Stable cell's artifact, producing job, test lane, signing and
+and Stable cell's artifact, producing job, test lane, signing and
 publication requirements, update authority, rollback source, and evidence
 selector. `node scripts/release-platform-matrix.mjs` fails when a cell or
 workflow job disappears. `--project` resolves current evidence from the deploy
@@ -37,9 +41,13 @@ comes from the ledger-writing path. Missing cells remain `NOT_VERIFIED` or
 The [variant owner](../../scripts/lib/release-variants.mjs) and checked-in
 [inventory schema](../../schemas/release-artifact-manifest.schema.json)
 cover portable server, macOS arm64 and x86_64, Windows x86_64, Linux x86_64,
-and Android universal APK/AAB. Stable additionally inventories the iOS simulator
-archive and device IPA. Preview excludes iOS from this GitHub asset inventory
-while its separate Beta TestFlight job remains required by draft assembly.
+and Android universal APK/AAB, plus the iOS simulator archive and device IPA.
+A final `vX.Y.Z` and a candidate `vX.Y.Z-rc.N` inventory the same variants:
+asset names carry the tag (`station-v0.2.0-rc.1-…`), while the inventory's
+`version` is the base `X.Y.Z` and its `channel` is `stable`. One parser,
+[`release-tag.mjs`](../../scripts/lib/release-tag.mjs), reads the tag for every
+staging script and refuses retired `-preview.N` tags
+([#4929](https://github.com/kontourai/station/issues/4929)).
 Every desktop updater bundle must have its
 matching Tauri `.sig` file, and that signature must name the manifest's
 version in its trusted comment (`version:`): assembling `latest.json`
@@ -64,7 +72,8 @@ and container fragments in a separate scratch directory with fixed predicates
 (`runtime`, `native`, and `image`). The generator rejects traversal, symlinks, duplicate component IDs,
 cross-scope subjects, source/predicate disagreement, non-canonical JSON, and
 invalid UTF-8 before the existing inventory authority recomputes the four asset
-digests and binds them to the exact stable or preview tag.
+digests and binds them to the exact release tag; each SBOM names the base
+version as its component version.
 
 The production JavaScript fragment now comes from
 [`generate-pnpm-sbom.mjs`](../../scripts/generate-pnpm-sbom.mjs), which reads
@@ -72,9 +81,10 @@ the authoritative lock graph rather than guessing from installed layout.
 `@cyclonedx/cyclonedx-npm` remains pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
-`3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
+`66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c` and Syft `1.51.0`: after push it
 scans `ghcr.io/kontourai/station@sha256:...` (never a mutable tag) as
-CycloneDX JSON. Its nonempty package inventory is bound to the recorded image
+CycloneDX 1.6 JSON, the version the release validator requires. Its nonempty
+package inventory is bound to the recorded image
 digest, source SHA, and two-platform descriptor, transferred as a runner
 scratch artifact, and converted to the canonical `container/image` fragment.
 Scratch source is never admitted to `release-assets` or uploaded to the draft;
@@ -107,21 +117,45 @@ distribution-readiness claim. The release workflow retains the archive as a
 diagnostic/smoke input, not an end-user install channel. That historical
 observation was not rerun in this documentation audit. All other variants
 marked distributable must satisfy the platform-signing contract for that
-operating system. Desktop updater signing is tracked separately: macOS and
-Windows tagged releases require both a valid platform signature and a Tauri updater signature;
+operating system. Desktop updater signing is tracked separately: macOS tagged
+releases require both a valid platform signature and a Tauri updater signature;
 Linux AppImage has no platform-signing mechanism but still requires its updater
-signature. The validator rejects false or conflated signing claims, missing
-bytes, duplicate variants, source/tag disagreement, invalid checksums, and
-missing updater signatures.
+signature. Windows always requires its updater signature, but its Authenticode
+claim is recorded rather than assumed
+([#3591](https://github.com/kontourai/station/issues/3591)): the
+`desktop-windows` job stages `station-<tag>-windows-x86_64-signing.json`, an
+attested receipt bound to the MSI checksum with `platformSigningState`
+`VERIFIED` (a `Valid` signature by the imported certificate) or `NOT_SIGNED`.
+The job's PowerShell step only records what `Get-AuthenticodeSignature`
+reported; `scripts/lib/windows-release-signing.mjs` decides, and refuses every
+other status (`HashMismatch`, `NotTrusted`, `UnknownError`, ...). The inventory's
+`windows-x86_64` `platformSigning` claim (`signed`/`platform-signature` or
+`unsigned`/`not-applicable`) must match it. Until Windows signing is
+provisioned, tagged MSIs ship `NOT_SIGNED`, as Nightly does, and users see the
+SmartScreen prompt once; `release-artifacts.mjs draft-notes` derives the draft
+signing notice from the inventory and appends it to the generated changelog and installation instructions before creating the draft. The validator rejects false or conflated signing
+claims, a Windows claim that differs from its receipt, missing bytes, duplicate
+variants, source/tag disagreement, invalid checksums, and missing updater
+signatures.
+
+Release Stage invokes the same `npm run build:desktop` wrapper as Windows
+Nightly. It supplies the Stable signing and version overlays. The wrapper
+appends the generated WiX resource overlay, which uses shallow source paths
+while preserving the installed Node dependency layout.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
-requires both `vX.Y.Z-preview.N` and `vX.Y.Z` to match that base, then creates
-a release-only Tauri overlay from the tag's exact version. Preview-to-Stable
-promotion can therefore retain the exact reviewed commit.
+requires both `vX.Y.Z-rc.N` and `vX.Y.Z` to match that base, then creates a
+release-only Tauri overlay with Stable identity and the bare base version
+`X.Y.Z` for both, so a candidate's bytes can later be promoted unchanged.
 The overlay also derives Android `versionCode` and iOS `CFBundleVersion` from
-the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + channel`, where
-channel is the preview number 1–98 or `99` for the stable tag). That integer is
+the tag (`major * 10_000_000 + minor * 10_000 + patch * 100 + slot`, where
+slot is the candidate number 1–98 or `99` for a direct-final build).
+Promotion retains the accepted candidate's slot N; it never builds slot 99.
+Minor is limited
+to 0–999 and patch to 0–99, and a tag outside those bounds is refused, because
+an overflowing component would collide with or outrank a later release
+(`v0.1.100-rc.1` and `v0.2.0-rc.1` would both be `20001`). That integer is
 what Play and App Store Connect use as the monotonic build number; do not
 fall back to Gradle's `1` / `1.0` defaults for a store upload. Nightly
 Android uses a different application id and its own day-based numbering. Before
@@ -144,6 +178,44 @@ tags keep their existing allocation. Dated versions sort after legacy
 day-counter versions of the same base release. Portable server versions
 encode the same allocation as `base-nightly.YYYYMMDDNN`, with a two-digit
 build index, to preserve the installer's single numeric prerelease suffix.
+
+## Product version and release cut
+
+The private root package owns Station's product number, initially `0.2.0` for
+the first full release train. `scripts/product-version.mjs` synchronizes its
+native mirrors. Published CLI and library packages retain their independent
+Changesets versions; do not reset them to the product number.
+
+After an immutable RC/final tag is cut, move main to the next development
+minor through a normal isolated delivery PR. The existing tag/source remains
+frozen. From a clean sibling worktree descended from that source:
+
+```sh
+npm run release:cut -- --tag v0.2.0-rc.1
+npm run release:cut -- --tag v0.2.0-rc.1 --apply
+```
+
+The first command prints the plan without editing. Explicit apply changes only
+the root product number and native mirrors to `0.3.0`. It checks clean state,
+exact source/head identities, tag/base agreement and source ancestry, and is a
+no-op if the base already advanced. It never creates, moves or pushes a tag;
+commit and verify the resulting branch through ordinary hooks and review.
+Subsequent candidates still use their release train's frozen base, not main's
+new development base. Their exact source must continue to satisfy the existing
+main-ancestry and qualification guards. The cut helper does not create a
+release branch or grant off-main publication authority; this repository has no
+automated frozen-train fix procedure. Coordinate such a source through normal
+integration while preserving main's next development base.
+
+Nightly publication independently reads bounded public release history and
+refuses a root base at or below the highest public RC/final base. A failed or
+malformed history query cannot authorize publication, and neither can an empty
+listing. A successfully read, non-empty history with no public RC/final permits
+initial bootstrap. The guard runs in
+the top-level Nightly decision, portable publication and native cohort
+admission. Forgetting the cut bump therefore stops publication rather than
+shipping a Nightly that orders below the released train. Source tests of this
+guard do not prove an installed client's update offer.
 
 ## Manually dispatching Nightly
 
@@ -208,7 +280,11 @@ attestation, then writes an Android row and a shared desktop row for the
 providers the receipt verified as published, with `native cohort final receipt <state>` in the gate
 column and, on every row it writes, a note per `NOT_VERIFIED` or
 `NOT_PUBLISHED` platform and an `ios:` note carrying the TestFlight job
-result (iOS has no ledger channel of its own). The rolling Android marker `refs/tags/nightly` moves only when the
+result (iOS has no ledger channel of its own). The same commit carries the
+run's `nightly-npm` row when the CLI receipt from this run verifies; one commit
+means one push, so a night disturbs in-flight merge groups once, and
+[releasing](releasing.md) describes the fallback that records the npm row
+alone. The rolling Android marker `refs/tags/nightly` moves only when the
 receipt says Android published; the desktop publisher binds `nightly-desktop` in
 its publishing job, before its claim step. The next plan's decide step
 (`scripts/nightly-cohort-decide.mjs`, rule in
@@ -270,11 +346,72 @@ git push origin refs/tags/nightly-recovery-lock
 and removes the tag explicitly when done; without it, the next Nightly plans
 normally.
 
+### When the verifier gets no runner
+
+`protected-finalize` runs on `macos-15` after the providers have published. It
+needs macOS for its tools, not for trust: it reads the updater archive's
+`Info.plist` with `/usr/bin/plutil` and records `sw_vers` in the receipt.
+The trust comes from the protected environment, the hosted runner and the
+workflow identity the final receipt is attested under. On the Free plan a
+hosted macOS job can wait in a queue and then be cancelled by GitHub with
+zero steps and the annotation "The job was not acquired by Runner of type
+hosted even after multiple attempts". From 2026-11-02 to 2026-11-16 this
+happened to at least 24 macOS jobs in Nightly and iOS build runs, all
+between 13:00Z and 21:40Z on weekdays. Two of them were this verifier (runs
+42242672641 and 43863134706).
+
+When that happens, `confirm-finalize-runner-loss` reads the run attempt's
+jobs API (`scripts/nightly-finalize-runner-loss.mjs`). It reports
+`runner_lost=true` only when the verifier concluded `cancelled` with runner
+id `0`, no runner name and no steps. In that case
+`protected-finalize-retry` runs the same job once more on the same image. A
+verifier that ran and failed, timed out or succeeded is never retried, and a
+human-cancelled run skips both jobs. Both attempts upload the one
+`nightly-cohort-final-<run>` artifact name. `record-native-completion` runs
+only when exactly one attempt verified: the first one, or the second after
+the first never started. The run stays red because the first attempt shows
+as cancelled, but the ledger rows and marker are recorded. The
+incomplete-cohort receipt counts a verified second attempt as confirmed
+finality. A second runner loss is not retried again.
+
+If no verifier attempt ever ran, the cohort is public without a final
+receipt and without ledger rows. The next eligible Nightly treats the source
+as a failed delivery and rebuilds every platform under a new identity. To
+finalize the published cohort instead, re-run only that run's failed jobs:
+
+```sh
+gh run rerun <run-id> --failed --repo kontourai/station
+```
+
+This path is only for a run in which no verifier attempt ever got a runner.
+If either attempt ran and failed, `--failed` would re-run a real verification
+failure; do not use it. Even then it is safe under the workflow's own rules
+only when all of these hold:
+
+- No later Nightly has published. The verifier observes the live Play track,
+  rolling tag and `latest.json`, so a newer cohort fails it closed.
+- It is less than 24 hours after the staged attestations were made. The
+  verifier refuses older attestation timestamps.
+- Only the cancelled verifier jobs and their dependents re-run. The fence
+  job and the publishers succeeded, so they are not re-run. If one were re-run
+  without the fence job, it would fail its live fence check before any
+  provider write, because the first attempt cleared the fence.
+  `record-cli-ledger` and the record job's npm row both use `--if-absent`.
+
+Never use "Re-run all jobs". It re-stages and republishes the cohort. Run
+41720227898's attempt 2 (a `--failed` re-run on 2026-11-03) re-ran only the
+failed `Build and smoke darwin-x64` job of the reusable portable workflow and
+its dependents. Its `Plan the Nightly version`, `Create promotion fence` and
+`Verify providers and finalize` jobs were carried over with their original
+start times and runner ids, and the re-run jobs downloaded artifacts that
+attempt 1 had uploaded. That was observed for the portable workflow in that
+run. It has not yet been observed for the cohort workflow's publishers.
+
 macOS staging passes `--overlap-notarization`, so the two `notarytool submit
 --wait` waits run concurrently: the Nightly disk image encloses a signed but
 not-yet-stapled application, whose own ticket Gatekeeper resolves online, while
 the disk image and the updater archive's application both carry stapled
-tickets. Preview and stable releases keep the serial staple-then-package order,
+tickets. RC and direct-final releases keep the serial staple-then-package order,
 so an application copied out of one of their disk images validates offline.
 The macOS packager retries `stapler staple` or `stapler validate` once when
 exit 68 carries the specific Apple CloudKit ticket-lookup transport diagnostics.
@@ -293,7 +430,10 @@ completion remains `NOT_VERIFIED`.
 
 ## macOS installer disk image
 
-Preview, Stable, and Nightly disk images open as an installer window: fixed
+Tagged builds ask Tauri to produce only the application bundle. The release
+packager seals that app and owns disk image creation.
+
+Stable RC/final and Nightly disk images open as an installer window: fixed
 660×400 icon view, toolbar, sidebar, path bar and status bar hidden, 128-point
 icons, the application on the left at (170, 210), and an `Applications` link on
 the right at (490, 210) over background art with a drag arrow. The
@@ -491,20 +631,14 @@ safe for the staged vendor executables in the Node dependency tree.
 
 The release job therefore builds `.deb` and `.rpm` first with the ordinary
 `tauri.linux.conf.json` resource layout. It then invokes Tauri again for only
-the AppImage with `tauri.linux-appimage.conf.json`. The merge overlay deletes
-only the inherited server and raw `node_modules` resources, then colocates them
-at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
-`usr/lib/Station` remains free of the vendor tree.
-
-**Current source mismatch:** the
-[AppImage overlay](../../src-desktop/tauri.linux-appimage.conf.json) places the
-server and dependencies under `usr/share/Station`, but the
-[native host](../../src-desktop/src/lib.rs) currently joins both the registry
-bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
-The pinned `tauri-utils` 2.10.1 resolves the AppImage resource directory under
-`usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
-callers. Package-layout checks alone therefore do not establish a working
-AppImage startup; this source mismatch needs repair and an actual Linux launch.
+the AppImage with `tauri.linux-appimage.conf.json`. The merge overlay moves
+the server, Node dependencies, examples, and schemas to `usr/share/Station`
+and enables the Rust `appimage-runtime` feature. The
+[native host](../../src-desktop/src/lib.rs) resolves that runtime relative to
+the executable in the same AppDir. The registry bridge, desktop sidecar,
+and tray build label use this path. The packaging check extracts the AppImage
+and verifies the resource layout and build identity. A working startup still
+requires a launch on Linux.
 
 The staged server and `node_modules` are adjacent for ordinary Node module
 resolution once the correct entrypoint is selected. Desktop releases also ship
@@ -561,7 +695,7 @@ before any protected signing run:
 npm run dependencies:ci
 npm run build:sdk && npm run build:connect
 npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles deb,rpm
-npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage --config tauri.linux-appimage.conf.json
+npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage --config "$PWD/src-desktop/tauri.linux-appimage.conf.json"
 
 appimage=$(find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
 test -n "$appimage"
@@ -570,6 +704,7 @@ test ! -e squashfs-root/usr/lib/Station/node_modules
 test ! -e squashfs-root/usr/lib/Station/dist-server
 test -f squashfs-root/usr/share/Station/dist-server/command-station.js
 test -d squashfs-root/usr/share/Station/node_modules/@kontourai/flow-agents
+test -d squashfs-root/usr/share/Station/schemas/agent-plugins
 rm -rf squashfs-root
 ```
 
@@ -597,7 +732,7 @@ TAURI_SIGNING_PRIVATE_KEY="$(cat "$test_root/updater.key")" \
 TAURI_SIGNING_PRIVATE_KEY_PASSWORD=test-only \
   npm run tauri -- build --target x86_64-unknown-linux-gnu --bundles appimage \
   --config "$test_root/tauri.release.conf.json" \
-  --config tauri.linux-appimage.conf.json
+  --config "$PWD/src-desktop/tauri.linux-appimage.conf.json"
 ```
 
 Never publish artifacts signed by that disposable key. The protected tag
@@ -616,8 +751,9 @@ reviewers and branch/tag policies must be inspected separately:
   host-stream manifest, read only when the repository variable
   `STATION_PORTABLE_RELEASE_PUBLISH` is `enabled` (see
   [signed host-stream manifests](release-rings.md#signed-host-stream-manifests)).
-- `ios-beta` and `ios-nightly`: the corresponding reusable TestFlight channels;
-  Stable iOS uses `native-release`.
+- `ios-nightly`: reusable Nightly TestFlight delivery; Stable RC/final and
+  internal Stable delivery use `native-release`. The retired `ios-beta`
+  environment is not a current workflow target.
 
 `native-release` requires the matching `TAURI_SIGNING_PRIVATE_KEY`,
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_SIGNING_PUBLIC_KEY`. The
@@ -644,9 +780,12 @@ signing and API-key notarization data
 `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY`), iOS distribution data
 (`APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`,
 `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`,
-`APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and Windows
-Authenticode certificate data
-(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`).
+`APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64`), and
+optional Windows Authenticode certificate data
+(`WINDOWS_CERTIFICATE_BASE64`, `WINDOWS_CERTIFICATE_PASSWORD`). With neither
+Windows value set, the tagged MSI ships unsigned and records `NOT_SIGNED`;
+with both set it must verify as `Valid`, signed by that certificate. Setting only one, or setting
+`WINDOWS_SIGN_COMMAND` (which only Nightly implements so far), fails the job.
 Each protected platform job checks only its own credentials before it starts
 its signing operation. There is no shared credential-aggregator job and no
 desktop matrix with cross-platform secrets: macOS receives Apple plus Tauri
@@ -663,21 +802,22 @@ Nightly-on-main and Release-on-version-tag workflow identities, and scope Secret
 Manager access to the two Android upload-key secrets. Those account policies
 must be checked by the owner; workflow variables alone do not establish them. iOS similarly treats
 `APPLE_API_KEY_ID`/`APPLE_API_ISSUER_ID`/`APPLE_API_PRIVATE_KEY` as the
-required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above remains required
-and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
+required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above except
+the optional Windows pair remains required and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
 configuration and store-side first-run steps. Never commit certificate,
 provisioning, keystore, updater-key, or store credential files.
 
 The tag workflow fails closed when a required credential is absent. It verifies
-macOS code signing and the notarization staple, Windows Authenticode, Android
-APK/AAB signatures, and Tauri updater signatures before inventory assembly. An
-unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
-distributable release asset. Tagged Android releases require the configured
+macOS code signing and the notarization staple, Windows Authenticode when it is
+configured, Android APK/AAB signatures, and Tauri updater signatures before
+inventory assembly. An unsigned APK, IPA, macOS or Linux desktop bundle, or
+updater is never uploaded as a distributable release asset; the Windows MSI is
+the one recorded exception above. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
 Nightly staging also fails when its required signing setup is absent.
-Stable, Beta, and Nightly App Store upload is required and fail-closed once a
-channel is configured. The shared iOS delivery workflow uses three distinct
-bundle IDs and protected environments; it binds each upload to the caller's
+Stable and Nightly TestFlight upload is required and fail-closed once a
+channel is configured. The shared iOS delivery workflow uses two distinct
+bundle IDs and their protected environments; it binds each upload to the caller's
 already frozen SHA and numeric `CFBundleVersion`, reconciles a pre-existing
 build before upload, waits for VALID processing, attaches the owned internal
 group, and retains a provider receipt binding Apple's app/build IDs to the
@@ -694,53 +834,92 @@ cohort authority tags never opt in. See [Nightly external setup](mobile-release.
 
 ## Stage, inspect, publish, and roll back
 
-Push an immutable tag. The `Release: Stage` preflight binds that tag to
-one source SHA, then the reusable hosted full-regression gate must pass on that
-exact SHA before any preview or stable producer can build, sign, upload, or
-publish. The workflow preserves the GHCR image under
-`ghcr.io/kontourai/station:sha-<source-sha>` and creates a GitHub draft only
-after the inventory passes. Inspect the draft's
-`station-release-inventory.json`, `station-release-checksums.txt`, and
-`station-container-release.json`, then run `Release: Publish` with its
-tag through `native-release-publish`. Every platform payload is attested by its
-producing job. The inventory and checksum manifest are separately attested
-protocol roots because they cannot hash each other; the inventory covers every
-other uploaded sidecar and payload.
+App Store review may outlast publication on other platforms. An enabled App
+Store-action feed retains its previous payload until authenticated readback
+confirms the exact RC build is released. The
+[held-feed procedure](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed)
+uses `repair_app_store_feed_only` after manual release; the existing desktop
+pointer repair flag keeps its original scope.
 
-Publish resolves the tag again and normally requires the release to still be a draft,
-downloads every `station-*` asset, verifies every asset's GitHub provenance
-(except the signed host-stream manifest, described below) and
-the inventory/checksums, and compares the live `sha-<source-sha>` image to the
-digest recorded in `station-container-release.json`. It promotes only
-`image@recorded-digest` to the recorded version/channel aliases, then changes
-the draft visibility. One repository-wide publish lock serializes Stable and
-Preview releases because both mutate rolling container aliases and desktop
-updater releases. Before any public mutation, the read-only resolve job also
-requires the selected `stable-desktop` or `beta-desktop` release to exist and
-be public. Bootstrap each rolling release once with signed-in owner credentials,
-for example:
+
+Push an immutable RC or direct-final tag only after an authorized release
+handoff. `Release: Stage` binds it to one source SHA, and hosted full regression
+must pass on that exact source before a producer can build, sign or upload.
+Container staging uses an immutable candidate-specific tag,
+`ghcr.io/kontourai/station:staging-<producer-tag>`, so another RC at the same
+qualified source does not overwrite the first. The draft is created only after
+platform delivery, inventory, checksums and advisory checks succeed. Inspect
+`station-release-inventory.json`, `station-release-checksums.txt`,
+`station-release-store-authority.json` and `station-container-release.json`.
+Every platform payload is attested by its producer; inventory and checksums are
+separately attested roots because they cannot hash each other.
+
+Dispatch `Release: Publish` on main through `native-release-publish`:
+`mode=rc` publishes the candidate prerelease without moving Stable authorities;
+`mode=promote` takes that public RC and creates the final tag/release from its
+unchanged bytes; `mode=stable` publishes a separately built direct-final draft.
+All normal modes re-admit exact-source qualification and a fresh advisory audit.
+The source checkout supplies content, a pinned default-branch policy checkout
+supplies release policy, and the workflow event commit supplies the publication
+receipt's certificate source. These SHAs are retained separately.
+
+Promotion authenticates the RC assets against `release.yml` at the producer ref
+and source digest, verifies the exact transfer plan, and attests
+`station-release-promotion.json` using `publish-release.yml` at its recorded
+workflow SHA. RC names, inventory and SBOMs remain unchanged; the final release
+adds transfer lineage instead of pretending those assets were rebuilt under a
+final tag. The immutable final ref is created with the workflow credential so
+it does not trigger another producer. A pre-existing destination is refused
+unless an explicit repair authenticates its completed publication receipt.
+Attempted GitHub and store effects are journaled before mutation and retained
+as run artifacts. After interruption or a lost response, inspect the unknown
+outcome and actual provider state rather than repeating the operation blindly.
+
+Promotion first plans and then applies exact-build store operations. Configure a
+dedicated Play identity through `GCP_PLAY_PROMOTION_WORKLOAD_IDENTITY_PROVIDER`
+and `GCP_PLAY_PROMOTION_SERVICE_ACCOUNT`, restricted to this repository's
+main-branch `publish-release.yml` identity and protected publication environment.
+It needs the intended production-track authority for Stable, not Android upload
+key access. Preserve the separate tag-scoped Stage WIF trust. The publication
+environment also needs `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` and
+`APPLE_API_PRIVATE_KEY`. These declarations do not establish live IAM or secret
+configuration. See [store entry](store-entry.md#same-build-production-promotion)
+for first-launch and listing requirements.
+
+For final publication the workflow verifies the candidate-specific staging image
+against the container descriptor, then promotes only `image@recorded-digest` to
+Stable aliases. RC publication skips aliases, mobile feeds, rolling desktop/host
+pointers, deploy-ledger writes and availability projection. The repository-wide
+publish lock serializes public authority changes.
+
+Final publication requires the public `stable-desktop` rolling release to exist.
+Bootstrap it once with signed-in owner credentials:
 
 ```sh
 gh release create stable-desktop --title stable-desktop --notes "Rolling desktop updater channel."
 ```
 
-Repeat for `beta-desktop`. A workflow `GITHUB_TOKEN` must not create this
-workflow-crossing ref. Leave the new release public and empty, then explicitly enable
-`allow_empty_updater_channel_bootstrap` for its first publish only. A missing
-`latest.json` on a non-empty rolling release is treated as damage and fails
-closed. A failed draft is fixed with a new tag; never replace an immutable tag
-release asset under the same tag.
+A workflow `GITHUB_TOKEN` must not create this workflow-crossing ref. Leave the
+new release public and empty, then explicitly set
+`allow_empty_updater_channel_bootstrap` for its first final publish. A non-empty
+rolling release missing `latest.json` is damage and fails closed. First-release
+issue projection additionally requires `allow_empty_availability_baseline`;
+a successful no-prior-release result writes no issue labels, while unavailable
+or ambiguous history still fails. A failed draft takes a new immutable tag,
+never replacement assets under a reused tag.
 
 The draft also carries the host stream: the five `station-server-*` archives
 and `station-server-manifest-payload.json`, attested by release.yml. Publish
 checks the payload against the tag and the archive bytes and dry-run signs it
-on every run. The attestation loop skips one asset,
-`station-portable-<ring>-manifest.json`. Publish attaches that signed
-manifest itself, so it carries no release.yml attestation; the inventory
-revalidation verifies it against the pinned release key and the attested
-payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, publish signs
-the manifest and attaches it before publication. The separate `host-pointer`
-job then moves the `portable-<ring>` pointer. It runs once publish reports
+on every run. The producer-attestation loop skips
+`station-portable-<ring>-manifest.json`, which Publish attaches and verifies
+against the pinned release key and attested payload instead of a release.yml
+attestation. A promoted release also carries `station-release-promotion.json`;
+its separate publish-release.yml attestation and digest-bound lineage are
+verified before the unchanged producer assets. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, publish signs
+the manifest and attaches it before publication. For final publication the
+separate `host-pointer` job then moves `portable-stable`; RC publication attaches a signed versioned
+manifest when enabled but never moves that pointer. It runs once publish reports
 the release public, even if the deploy ledger later fails, and its own
 failure never skips the ledger or release availability. It takes the signed
 manifest from the public versioned release and verifies it with the pinned
@@ -753,7 +932,9 @@ to the release compares its bytes and never replaces it. Details and the
 owner actions are in
 [signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
 
-Stable and Preview desktop builds embed the endpoint for their rolling release.
+Stable RC and final desktop builds embed the Stable rolling endpoint. An RC
+therefore uses Stable identity; acceptance testing must reinstall later RCs
+manually because they share the same base version.
 The default branch's policy checkout runs the updater manifest assembly and
 remote channel verification scripts before and after rolling asset changes.
 The target tag's release-artifact validation still verifies the updater archive
@@ -775,7 +956,7 @@ version, and all eight assets for that recorded previous version; delete only
 assets from older versions with `gh release delete-asset`. Never prune the
 previous version before the next publish: pointer compensation can restore its
 manifest, which must continue to resolve to those archives. Apply this procedure
-independently to `stable-desktop` and `beta-desktop`, and verify every asset URL
+to `stable-desktop`, and verify every asset URL
 in the retained current and previous manifests before completing the sweep.
 The locally installed GitHub CLI 2.97.0 help documents the `assets` JSON field
 but does not document whether `gh release view --json assets` imposes a result
@@ -788,24 +969,26 @@ the protected `allow_published_pointer_repair` and
 `allow_updater_pointer_regression` dispatch inputs only after
 reviewing the candidate tag, the current rolling `latest.json`, and the target
 channel. This break-glass permits the older pointer and is recorded in the
-workflow dispatch. With both flags set, an already-published older tag is
-accepted as a pointer-repair source: the workflow revalidates its signed assets,
+workflow dispatch. For a direct-final build select `mode=stable` and its
+published final tag. For a promoted build select `mode=promote` and its original
+published RC tag, retaining the completed final transfer receipt for
+authentication. With both flags set, an admitted published source is
+accepted for pointer repair: the workflow revalidates its signed assets,
 updates only the rolling desktop archives and `latest.json`, and skips the
-container aliases, mobile feed, and deploy-ledger publication. Tauri will not
+store promotion, container aliases, mobile feed and deploy-ledger publication. Tauri will not
 downgrade clients that already installed the newer version; those clients still
 require a higher fixed release. After the repair, verify the rolling release's
 archives and `latest.json`, then leave the guard enabled only for that single
 dispatch.
 
 To withdraw a bad public desktop build, first repair its rolling channel:
-dispatch this workflow with the last known-good published tag and
+dispatch this workflow with the last known-good source and matching mode above, with
 both `allow_published_pointer_repair` and `allow_updater_pointer_regression`
 enabled, then verify that
-`stable-desktop` or `beta-desktop` serves that version's matching archives,
-signatures, and `latest.json`. The tag selects the channel: a Stable tag repairs
-`stable-desktop`, while a Preview tag repairs `beta-desktop`. Using the wrong
-channel's tag can successfully repair the wrong rolling release, so confirm the
-computed target before approving the dispatch. Changing only the bad tag release
+`stable-desktop` serves the intended version's matching archives,
+signatures, and `latest.json`. Confirm the computed source, authenticated
+promotion lineage when applicable, and rolling target before approval.
+Changing only the bad tag release
 back to a draft does not repair the independent rolling release and must never be
 treated as desktop rollback. After the rolling pointer is repaired, remove the bad tag
 from installer resolution by changing it back to a draft, revoke any affected
@@ -815,5 +998,11 @@ release. Container aliases are convenience pointers, not rollback evidence:
 recover by retagging the exact prior `image@sha256:...` recorded in its public
 release descriptor, and verify the alias resolves to that digest. Never rebuild
 a rollback image or infer its digest from a mutable alias. The immutable GHCR
-`sha-<source-sha>` staging tag is retained for forensic review and must never be
-overwritten.
+`staging-<producer-tag>` tag is retained for forensic review and must never
+be overwritten.
+
+For a promoted release, retain its original RC release and assets as public
+objects while referenced by the signed host payload. Re-drafting or deleting
+that RC breaks the promoted host downloads even if the final copies still
+exist. Withdrawing visibility alone also does not undo Play production or an
+App Store review submission; inspect and recover each provider separately.

@@ -1,0 +1,7 @@
+{
+  "revision": "f347f235a9bba843490da4606e3689b71f3739aa",
+
+  "notes": [
+    {"path":"docs/guides/private-runner-partition.md","note":"Verified the current workflow selects GitHub-hosted Ubuntu for container smoke and still runs the Docker and pinned Chromium setup. Shared native Windows jobs retain their capacity policy.","inputs":["docs/guides/private-runner-partition.md"]}
+  ]
+}

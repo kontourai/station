@@ -9,13 +9,9 @@
       "sourceAuthority": "one validated commit that is an ancestor of main",
       "versionAuthority": "UTC-day identity plus immutable Android build reservation"
     },
-    "preview": {
-      "sourceAuthority": "one immutable vMAJOR.MINOR.PATCH-preview.N tag",
-      "versionAuthority": "the exact preview tag"
-    },
     "stable": {
-      "sourceAuthority": "one immutable vMAJOR.MINOR.PATCH tag",
-      "versionAuthority": "the exact stable tag"
+      "sourceAuthority": "one immutable vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N producer tag",
+      "versionAuthority": "bare product version shared by the release candidate and final publication"
     }
   },
   "platforms": {
@@ -28,8 +24,8 @@
       "signingRequirement": "Apple Developer ID, notarization staple, and Tauri updater signature"
     },
     "windows": {
-      "artifactIdentity": "signed MSI/installer and updater archive/signature",
-      "signingRequirement": "Tauri updater signature; Authenticode optional for Nightly and required for tagged preview/stable"
+      "artifactIdentity": "MSI installer, signing-state receipt and signed updater archive",
+      "signingRequirement": "Tauri updater signature; Authenticode optional and recorded when no publisher authority is configured"
     },
     "linux": {
       "artifactIdentity": "AppImage, deb, rpm, updater archive/signature",
@@ -157,7 +153,10 @@
         "rollbackSource": "previous rolling prerelease asset retained by release history",
         "requiredForPromotion": true,
         "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
-        "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
+        "evidence": {
+          "kind": "deploy-ledger",
+          "selector": "nightly-desktop"
+        }
       },
       "windows": {
         "state": "configured",
@@ -196,7 +195,10 @@
         "rollbackSource": "previous immutable Play version code",
         "requiredForPromotion": true,
         "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
-        "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
+        "evidence": {
+          "kind": "deploy-ledger",
+          "selector": "nightly-android"
+        }
       },
       "ios": {
         "state": "configured",
@@ -208,87 +210,6 @@
         "rollbackSource": "previous processed TestFlight Nightly build",
         "requiredForPromotion": false,
         "availabilityPolicy": "independent TestFlight delivery (#1774): a failed upload reddens Nightly and is disclosed as an ios: note on the nightly-android and nightly-desktop ledger rows whenever the cohort records (an all-platform failure discloses it in the recovery receipt instead), but never blocks Android/macOS finality or writes the recovery lock; fleet completion remains NOT_VERIFIED",
-        "evidence": {
-          "kind": "not-verified",
-          "owner": "#1016",
-          "reason": "Provider prerequisites and a processed channel receipt are required before the first upload."
-        }
-      }
-    },
-    "preview": {
-      "web-portable": {
-        "state": "configured",
-        "buildJob": "release.yml#portable and release.yml#container",
-        "testLane": "tag preflight, release inventory, SBOM, and container checks",
-        "publicationTarget": "draft GitHub preview release and GHCR preview digest",
-        "updateAuthority": "approved preview release/feed",
-        "rollbackSource": "previous immutable preview tag",
-        "evidence": {
-          "kind": "not-verified",
-          "owner": "#844",
-          "reason": "No current-repository preview release run receipt."
-        }
-      },
-      "macos": {
-        "state": "configured",
-        "buildJob": "release.yml#desktop-macos",
-        "testLane": "signature, notarization, inventory, and updater checks",
-        "publicationTarget": "immutable GitHub preview release plus rolling beta-desktop release",
-        "updateAuthority": "signed Tauri updater endpoint on beta-desktop/latest.json",
-        "rollbackSource": "higher fixed preview tag or protected rolling-pointer repair",
-        "evidence": {
-          "kind": "not-verified",
-          "owner": "#844",
-          "reason": "No current-repository preview release run receipt."
-        }
-      },
-      "windows": {
-        "state": "configured",
-        "buildJob": "release.yml#desktop-windows",
-        "testLane": "Authenticode, installer, inventory, and updater checks",
-        "publicationTarget": "immutable GitHub preview release plus rolling beta-desktop release",
-        "updateAuthority": "signed Tauri updater endpoint on beta-desktop/latest.json",
-        "rollbackSource": "higher fixed preview tag or protected rolling-pointer repair",
-        "evidence": {
-          "kind": "not-verified",
-          "owner": "#844",
-          "reason": "No current-repository preview release run receipt."
-        }
-      },
-      "linux": {
-        "state": "configured",
-        "buildJob": "release.yml#desktop-linux",
-        "testLane": "package layout, inventory, and updater checks",
-        "publicationTarget": "immutable GitHub preview release plus rolling beta-desktop release",
-        "updateAuthority": "AppImage only: signed Tauri updater endpoint on beta-desktop/latest.json; deb/rpm have no in-app updater",
-        "rollbackSource": "higher fixed preview tag or protected rolling-pointer repair",
-        "evidence": {
-          "kind": "not-verified",
-          "owner": "#844",
-          "reason": "No current-repository preview release run receipt."
-        }
-      },
-      "android": {
-        "state": "configured",
-        "buildJob": "release.yml#android",
-        "testLane": "signed APK/AAB, 16 KiB, package identity, and inventory checks",
-        "publicationTarget": "Google Play Internal io.kontourai.station.beta",
-        "updateAuthority": "Google Play Internal testing track",
-        "rollbackSource": "previous immutable preview version code",
-        "evidence": {
-          "kind": "not-verified",
-          "owner": "#844",
-          "reason": "No current-repository preview Play receipt."
-        }
-      },
-      "ios": {
-        "state": "configured",
-        "buildJob": "release.yml#ios-device",
-        "iconSource": "src-desktop/icons/beta/icon.png",
-        "testLane": "tag full regression plus signed IPA/profile/package checks",
-        "publicationTarget": "TestFlight for io.kontourai.station.beta",
-        "updateAuthority": "TestFlight internal group",
-        "rollbackSource": "previous processed TestFlight Beta build",
         "evidence": {
           "kind": "not-verified",
           "owner": "#1016",

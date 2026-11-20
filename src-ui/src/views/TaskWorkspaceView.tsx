@@ -29,6 +29,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -56,6 +57,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { describeStationFailure } from '../utils/stationFailure';
+import { nextTabIndex } from '../utils/tab-navigation';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import {
   ProjectTaskRoomConversation,
@@ -75,12 +77,14 @@ import {
   type TaskExperienceId,
 } from './task-experiences';
 import { TaskCapabilityPath } from './task-workspace/TaskCapabilityPath';
+import { TaskCodeReviewPanel } from './task-workspace/TaskCodeReviewPanel';
 import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
   type TaskOutputPromotion,
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
+import { TaskPullRequestWatchPanel } from './task-workspace/TaskPullRequestWatchPanel';
 import { TaskRelationships } from './task-workspace/TaskRelationships';
 import {
   TaskRoomHeader,
@@ -242,7 +246,10 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const requestedView = useNavigation(() =>
     new URLSearchParams(window.location.search).get('taskView'),
   );
-  const { updateParams } = useNavigationActions();
+  const threadId = useNavigation(() =>
+    new URLSearchParams(window.location.search).get('thread'),
+  );
+  const { navigate, updateParams } = useNavigationActions();
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
   const setTab = useCallback(
     (tab: string) => {
@@ -316,6 +323,14 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           chatAppsEnabled={chatAppsEnabled}
           tab={tab}
           setTab={setTab}
+          threadAddress={{
+            id: tab === 'Conversation' ? (threadId ?? undefined) : undefined,
+            open: (id) =>
+              navigate(window.location.pathname, {
+                taskView: 'conversation',
+                thread: id ?? null,
+              }),
+          }}
         />
       </ProjectTaskRoomProvider>
     </>
@@ -378,8 +393,8 @@ function StarterLinkRetry({ task }: { task: TaskRecord }) {
       </Button>
       {failed && (
         <p>
-          Still couldn’t link it. Your task is safe — try again later, and
-          Station won’t create a second one.
+          Still couldn’t link it. Your task is safe; try again later and it
+          won’t create a second task.
         </p>
       )}
     </section>
@@ -452,6 +467,7 @@ function TaskWorkspaceContent({
   chatAppsEnabled,
   tab,
   setTab,
+  threadAddress,
 }: {
   taskId: string;
   graph: TaskGraph;
@@ -462,6 +478,7 @@ function TaskWorkspaceContent({
   chatAppsEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
+  threadAddress: { id: string | undefined; open(id: string | undefined): void };
 }) {
   const supervisionAuthority = useHostRequestAuthorityScope();
   const { updateParams } = useNavigationActions();
@@ -469,7 +486,7 @@ function TaskWorkspaceContent({
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
   // only when an installed, ENABLED plugin declares it provides that
-  // contract; everything else stays behind the one Add capabilities
+  // contract; everything else stays behind the one Add plugins
   // affordance.
   const { data: plugins = [] } = usePluginsQuery() as {
     data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
@@ -552,6 +569,35 @@ function TaskWorkspaceContent({
   const integrations = references.filter(
     (reference) => reference.kind === 'external',
   );
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  const revealTab = useCallback((button: HTMLElement) => {
+    const strip = tabStripRef.current;
+    if (!strip) return;
+    const stripBounds = strip.getBoundingClientRect();
+    const buttonBounds = button.getBoundingClientRect();
+    const stripStyle = getComputedStyle(strip);
+    const buttonStyle = getComputedStyle(button);
+    const paddingLeft = Number.parseFloat(stripStyle.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(stripStyle.paddingRight) || 0;
+    const outline =
+      (Number.parseFloat(buttonStyle.outlineWidth) || 0) +
+      Math.max(0, Number.parseFloat(buttonStyle.outlineOffset) || 0);
+    const left = stripBounds.left + strip.clientLeft + paddingLeft;
+    const right =
+      stripBounds.left + strip.clientLeft + strip.clientWidth - paddingRight;
+    const clippedLeft = buttonBounds.left - outline - left;
+    const clippedRight = buttonBounds.right + outline - right;
+    if (clippedLeft < 0) strip.scrollLeft += clippedLeft;
+    else if (clippedRight > 0) strip.scrollLeft += clippedRight;
+  }, []);
+  // The selected tab or its position can change when Review becomes available.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selection and tab insertion change the DOM geometry.
+  useLayoutEffect(() => {
+    const selected = tabStripRef.current?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    if (selected) revealTab(selected);
+  }, [tab, reviewEnabled, revealTab]);
   return (
     <div className="page page--full task-workspace">
       <TaskRoomHeader
@@ -563,6 +609,7 @@ function TaskWorkspaceContent({
       />
       <div
         className="task-room-tabs page__tabs"
+        ref={tabStripRef}
         role="tablist"
         aria-label="Task views"
       >
@@ -578,31 +625,26 @@ function TaskWorkspaceContent({
               id={`task-tab-${name.replaceAll(' ', '-')}`}
               className="page__tab"
               onClick={() => setTab(name)}
+              onFocus={(event) => revealTab(event.currentTarget)}
               onKeyDown={(event) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return;
                 const tabs = Array.from(
                   event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
                     '[role="tab"]',
                   ) ?? [],
                 ).filter((button) => button.offsetParent !== null);
-                const index = tabs.indexOf(event.currentTarget);
-                const next =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : (index +
-                          (event.key === 'ArrowRight' ? 1 : -1) +
-                          tabs.length) %
-                        tabs.length;
+                const next = nextTabIndex(
+                  tabs.indexOf(event.currentTarget),
+                  tabs.length,
+                  event.key,
+                );
+                if (next === null) return;
                 event.preventDefault();
-                tabs[next]?.focus();
-                tabs[next]?.click();
+                const target = tabs[next];
+                if (target) {
+                  target.focus({ preventScroll: true });
+                  revealTab(target);
+                  target.click();
+                }
               }}
             >
               {name}
@@ -633,6 +675,7 @@ function TaskWorkspaceContent({
           taskId={taskId}
           projectSlug={projectSlug}
           taskCreatedAt={graph.task.createdAt}
+          threadAddress={threadAddress}
         />
       </div>
       <div
@@ -685,6 +728,20 @@ function TaskWorkspaceContent({
             }}
           />
         )}
+        {reviewEnabled &&
+          supervisionAuthority &&
+          (graph.task.workspaceBinding?.repoRoot ||
+            graph.task.taskWorktree ||
+            graph.task.taskWorktreeUnknown) && (
+            <TaskCodeReviewPanel
+              key={`${supervisionAuthority.apiBase}:${supervisionAuthority.authorityKey}:${projectId}:${graph.task.id}:${graph.task.createdAt}`}
+              authority={supervisionAuthority}
+              projectId={projectId}
+              taskId={graph.task.id}
+              taskCreatedAt={graph.task.createdAt}
+              visible={tab === 'Overview'}
+            />
+          )}
         {supervisionAuthority && (
           <TaskSupervisionPanel
             taskId={graph.task.id}
@@ -713,6 +770,7 @@ function TaskWorkspaceContent({
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />
+          <TaskPullRequestWatchPanel task={graph.task} />
         </div>
       </div>
       <div
@@ -737,6 +795,11 @@ function TaskWorkspaceContent({
             taskCreatedAt={graph.task.createdAt}
           />
         )}
+        {/* #4511: why an automation started (and stopped) this Task is shown
+          outright, not folded into the record details. */}
+        {graph.task.automation ? (
+          <AutomationMandateSection automation={graph.task.automation} />
+        ) : null}
         <details className="task-workspace__record-details">
           <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />
@@ -1012,9 +1075,9 @@ function DirectExperienceBoundary({
   return (
     <aside
       className="task-workspace__direct-boundary"
-      aria-label="Direct experience authority"
+      aria-label="Direct experience"
     >
-      <strong>Authority: {experience.authority}</strong>
+      <strong>From {experience.owner}</strong>
       <span>{experience.description}</span>
     </aside>
   );
@@ -1038,14 +1101,10 @@ function TaskExperienceNavigation({
         <div className="task-workspace__experience-heading">
           <div>
             <h3 id="task-inspection-heading">Task inspection</h3>
-            <p>
-              Inspect this Task's recorded workspace and references. Additional
-              product capabilities appear here only when their owner attaches a
-              verified contract.
-            </p>
+            <p>Plugins can add more ways to open this Task.</p>
           </div>
           <a className="editor-btn" href="/plugins">
-            Add capabilities
+            Add plugins
           </a>
         </div>
       </section>
@@ -1056,10 +1115,6 @@ function TaskExperienceNavigation({
       <div className="task-workspace__experience-heading">
         <div>
           <h3>Task experiences</h3>
-          <p>
-            Task identity stays in Station; each experience keeps its owning
-            product authority.
-          </p>
         </div>
       </div>
       <div className="task-workspace__experience-list">
@@ -1072,7 +1127,7 @@ function TaskExperienceNavigation({
                 ? ' task-workspace__experience--active'
                 : ''
             }`}
-            aria-label={`${experience.label} ${experience.authority} ${experience.availability}`}
+            aria-label={`${experience.label} from ${experience.owner}, ${experience.availability}`}
             aria-pressed={activeExperienceId === experience.id}
             onClick={() => onSelect(experience.id)}
           >
@@ -1080,7 +1135,7 @@ function TaskExperienceNavigation({
               {experience.label}
             </span>
             <span className="task-workspace__experience-owner">
-              {experience.authority}
+              {experience.owner}
             </span>
             <span
               className={`task-workspace__experience-status task-workspace__experience-status--${experience.availability}`}
@@ -1108,7 +1163,7 @@ function TaskExperienceBoundary({
       <div className="task-workspace__section-heading">
         <div>
           <p className="task-workspace__experience-eyebrow">
-            Authority: {experience.authority}
+            From {experience.owner}
           </p>
           <h3
             id={`task-experience-${experience.id}`}
@@ -1119,23 +1174,23 @@ function TaskExperienceBoundary({
           <p>{experience.description}</p>
         </div>
       </div>
-      <div className="task-workspace__experience-callout">
-        <p>{experience.unavailableDescription}</p>
-        {experience.alternativeHref && experience.alternativeLabel ? (
-          <a
-            className="editor-btn"
-            href={experience.alternativeHref}
-            target={isExternalAlternative ? '_blank' : undefined}
-            rel={isExternalAlternative ? 'noreferrer' : undefined}
-          >
-            {experience.alternativeLabel}
-          </a>
-        ) : null}
-      </div>
-      <p className="task-workspace__experience-boundary-note">
-        Station preserves Task identity and availability disclosure;{' '}
-        {experience.authority} remains authoritative for this experience.
-      </p>
+      {/* The callout and its alternative explain an experience that cannot
+          open; an attached, available one has nothing to apologize for. */}
+      {experience.availability === 'unavailable' && (
+        <div className="task-workspace__experience-callout">
+          <p>{experience.unavailableDescription}</p>
+          {experience.alternativeHref && experience.alternativeLabel ? (
+            <a
+              className="editor-btn"
+              href={experience.alternativeHref}
+              target={isExternalAlternative ? '_blank' : undefined}
+              rel={isExternalAlternative ? 'noreferrer' : undefined}
+            >
+              {experience.alternativeLabel}
+            </a>
+          ) : null}
+        </div>
+      )}
     </section>
   );
 }
@@ -1248,6 +1303,103 @@ function TaskIdentitySection({ task }: { task: TaskRecord }) {
           <TaskDetail label="Work item" value={task.workItemRef} />
         ) : null}
         <TaskDetail label="Last action origin" value={originDetail} />
+      </dl>
+    </section>
+  );
+}
+
+/**
+ * #4511: the read-only authority an automation-started Task was created
+ * under. Everything here is server-derived from the private intent bound to
+ * this Task; nothing is editable.
+ */
+function AutomationMandateSection({
+  automation,
+}: {
+  automation: NonNullable<TaskRecord['automation']>;
+}) {
+  const { mandate } = automation;
+  const fields = mandate.event.fields;
+  const action = mandate.action;
+  const runUrl = fields['run.html_url'];
+  return (
+    <section
+      className="task-workspace__section"
+      aria-labelledby="task-automation-mandate"
+    >
+      <h3
+        id="task-automation-mandate"
+        className="task-workspace__section-title"
+      >
+        Started by automation
+      </h3>
+      {automation.revocation ? (
+        <p className="task-workspace__work-item-note" role="status">
+          {automation.revocation.message}
+        </p>
+      ) : null}
+      {automation.personTakeoverAt ? (
+        <p className="task-workspace__work-item-note">
+          A person took over this Task’s chat using their own permissions.
+        </p>
+      ) : null}
+      <dl className="task-workspace__details">
+        <TaskDetail label="Rule" value={mandate.ruleName} />
+        <TaskDetail label="Rule ID" value={mandate.ruleId} />
+        <TaskDetail
+          label="Policy version at start"
+          value={mandate.policyFingerprint.slice(0, 12)}
+        />
+        <TaskDetail label="Episode" value={mandate.episodeId} />
+        {mandate.retry ? (
+          <TaskDetail label="Operator retry" value={String(mandate.retry)} />
+        ) : null}
+        <TaskDetail label="Repository" value={fields.repository} />
+        <TaskDetail label="Workflow" value={fields['workflow.path']} />
+        <TaskDetail label="Run" value={fields['run.id']} />
+        <TaskDetail label="Conclusion" value={fields['run.conclusion']} />
+        <div className="task-workspace__detail">
+          <dt>Run link</dt>
+          <dd>
+            {runUrl?.startsWith('https://github.com/') ? (
+              <a href={runUrl} target="_blank" rel="noreferrer">
+                {runUrl}
+              </a>
+            ) : (
+              unavailable(runUrl)
+            )}
+          </dd>
+        </div>
+        <TaskDetail
+          label="Action"
+          value={`${action.kind} · Agent ${action.agentId}`}
+        />
+        {action.kind === 'dispatch-task' ? (
+          <>
+            <TaskDetail
+              label="Approval"
+              value={action.approvalMode ?? 'Agent default'}
+            />
+            <TaskDetail
+              label="Budget"
+              value={`${action.budget.maxTurns} turns · ${action.budget.maxTokens.toLocaleString()} tokens · ${Math.round(action.budget.maxWallRuntimeMs / 60_000)} min`}
+            />
+          </>
+        ) : null}
+        <TaskDetail label="Instructions" value={action.instructions} />
+        <TaskDetail
+          label="Amendments"
+          value={
+            automation.amendments.length === 0
+              ? 'None'
+              : automation.amendments
+                  .map(
+                    (amendment) =>
+                      `${amendment.at} (${amendment.changed.join(', ')})`,
+                  )
+                  .join('; ')
+          }
+        />
       </dl>
     </section>
   );

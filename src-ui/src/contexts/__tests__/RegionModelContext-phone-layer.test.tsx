@@ -15,6 +15,7 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { flushHistoryTraversals } from '../../__tests__/fixtures/history-traversals';
 import { DIALOG_HISTORY_KEY } from '../../components/dialog-history';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
@@ -116,8 +117,13 @@ beforeEach(() => {
   stubDevice({ phone: true });
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Unmounting folds an open phone layer by travelling back. Let that Back
+  // land before anything pushes history again: jsdom cancels a queued
+  // traversal on the next `pushState`, which would leave the dialog-history
+  // module waiting for it and every later layer in this file unpublished.
+  await flushHistoryTraversals();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.clear();

@@ -1,0 +1,13 @@
+{
+  "revision": "d6e7b35a63f0b841537cdf7f2b1e59548af366e7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"SettingsView change is a comment only (WorkloadBudgetSettings now also shows abandoned workloads); no section ids, order, deep links, or telemetry semantics change.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"SettingsView change is a comment only (WorkloadBudgetSettings now also shows abandoned workloads); no section ids, order, deep links, or telemetry semantics change.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"SettingsView change is a comment only (WorkloadBudgetSettings now also shows abandoned workloads); no section ids, order, deep links, or telemetry semantics change.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"SettingsView change is a comment only (WorkloadBudgetSettings now also shows abandoned workloads); no section ids, order, deep links, or telemetry semantics change.","inputs":["src-ui/src/views/SettingsView.tsx"]}
+  ]
+}

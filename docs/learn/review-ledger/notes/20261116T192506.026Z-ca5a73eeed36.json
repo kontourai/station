@@ -1,0 +1,15 @@
+{
+  "revision": "90565b49548be914ad93309ffd0efe561bffd16a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Adds only the ./project-lifecycle export subpath; no existing subpath changed, so pages describing the contracts package layout stay accurate.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Adds only the ./project-lifecycle export subpath; no existing subpath changed, so pages describing the contracts package layout stay accurate.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds only the ./project-lifecycle export subpath; no existing subpath changed, so pages describing the contracts package layout stay accurate.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Adds only the ./project-lifecycle export subpath; no existing subpath changed, so pages describing the contracts package layout stay accurate.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Adds only the ./project-lifecycle export subpath; no existing subpath changed, so pages describing the contracts package layout stay accurate.","inputs":["packages/contracts/package.json#/exports"]}
+  ]
+}

@@ -235,22 +235,26 @@ describe('verification reporter', () => {
     expect(summary.firstCausalExcerpt).not.toContain('suppressions/unused');
   });
 
-  // The fallback matters as much as the ranking: a capture with nothing but
-  // warnings must still name one, or a lane fails with no cause at all.
-  test('still reports a warning when the capture holds no error (station#1871)', () => {
+  test('keeps a passing-step warning as context when the failing step is silent', () => {
     const summary = summarizeVerificationOutput({
       stdout: [
         '> station@0.1.0 lint:check',
         'src-ui/src/probe.ts:1:1 suppressions/unused \u2501\u2501\u2501\u2501\u2501',
         '  ! Suppression comment has no effect.',
         'Found 1 warning.',
+        '> station@0.1.0 gate:workflows',
       ].join('\n'),
       terminal: { status: 'failed' },
       counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
       cleanup: { status: 'passed', survivingOwnedChildren: 0 },
       maxBytes: 2048,
     });
-    expect(summary.firstCausalExcerpt).toContain('suppressions/unused');
+    expect(summary.failingStep).toBe('gate:workflows');
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.causalExcerpts).toBeUndefined();
+    expect(summary.diagnosticExcerpts).toEqual([
+      expect.stringContaining('suppressions/unused'),
+    ]);
   });
 
   // A truncated capture is a PREFIX: the child kept running and its later
@@ -1338,10 +1342,7 @@ describe('verification reporter', () => {
     expect(JSON.stringify(summary)).not.toContain('A'.repeat(20));
   });
 
-  // The failed-run fallback is exactly what #1459 must not have disturbed:
-  // the SAME capture -- byte-identical to the passing case above -- still
-  // names its warning when the run failed. Only the terminal differs.
-  test('keeps the warnings-only fallback for a run that FAILED (#1459 changes nothing here)', () => {
+  test('preserves stderr warnings as diagnostic context on a failed run', () => {
     const failed = summarizeVerificationOutput({
       stdout: [
         '> @kontourai/station-core@0.0.0 lint:check',
@@ -1357,16 +1358,18 @@ describe('verification reporter', () => {
       cleanup: { status: 'passed', survivingOwnedChildren: 0 },
       maxBytes: 2048,
     });
-    expect(failed.firstCausalExcerpt).toContain('noAssignInExpressions');
-    expect(failed.causalExcerpts).toEqual([failed.firstCausalExcerpt]);
+    expect(failed.firstCausalExcerpt).toBeUndefined();
+    expect(failed.causalExcerpts).toBeUndefined();
+    expect(failed.diagnosticExcerpts).toEqual([
+      expect.stringContaining('noAssignInExpressions'),
+    ]);
   });
 
   // #1459 review: the withdrawal above is keyed on a CONSERVATIVE reading of
   // the run, not on `terminal.status` alone. `classifyTerminal` also requires
   // clean counts, clean cleanup and no surviving owned child before it calls a
   // run passed, so a capture that says `completed` with a failed cleanup is a
-  // run that FAILED — and withdrawing its only reported cause would leave the
-  // reader with a red verdict and nothing at all naming why.
+  // non-passing run that must retain its captured diagnostic context.
   test('keeps the warnings-only fallback when cleanup failed despite a completed status (#1459)', () => {
     const summary = summarizeVerificationOutput({
       stdout: [
@@ -1388,7 +1391,10 @@ describe('verification reporter', () => {
       cleanup: { status: 'failed', survivingOwnedChildren: 2 },
       maxBytes: 2048,
     });
-    expect(summary.firstCausalExcerpt).toContain('noAssignInExpressions');
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.diagnosticExcerpts).toEqual([
+      expect.stringContaining('noAssignInExpressions'),
+    ]);
   });
 
   // The counts half of the same predicate: a failed test with a zero exit code
@@ -1415,7 +1421,10 @@ describe('verification reporter', () => {
       cleanup: { status: 'passed', survivingOwnedChildren: 0 },
       maxBytes: 2048,
     });
-    expect(summary.firstCausalExcerpt).toContain('noAssignInExpressions');
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.diagnosticExcerpts).toEqual([
+      expect.stringContaining('noAssignInExpressions'),
+    ]);
   });
 
   // station#4249: `causalExcerpts` is the plural companion that lets a run
@@ -1498,7 +1507,7 @@ describe('verification reporter', () => {
       );
     });
 
-    test('falls back to every warning when the capture holds no error, same fallback firstCausalExcerpt uses', () => {
+    test('reports each warning as diagnostic context when the capture has no failure excerpt', () => {
       const summary = summarizeVerificationOutput({
         stdout: [
           '> station@0.1.0 lint:check',
@@ -1513,7 +1522,9 @@ describe('verification reporter', () => {
         cleanup: { status: 'passed', survivingOwnedChildren: 0 },
         maxBytes: 4096,
       });
-      expect(summary.causalExcerpts).toEqual([
+      expect(summary.firstCausalExcerpt).toBeUndefined();
+      expect(summary.causalExcerpts).toBeUndefined();
+      expect(summary.diagnosticExcerpts).toEqual([
         'src-ui/src/probe.ts:1:1 suppressions/unused ━━━━━',
         'src-ui/src/other.ts:2:1 suppressions/unused ━━━━━',
       ]);

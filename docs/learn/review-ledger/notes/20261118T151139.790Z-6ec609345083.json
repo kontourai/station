@@ -1,0 +1,15 @@
+{
+  "revision": "2d95ec133db451d56e8130ce30a00db7b85e804c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the two observation-error routes after the follow-up. Transport and Project admission refusals precede the unavailable legacy Project result. Directory cause remains internal to sanitized runtime logging.","inputs":["docs/reference/api.md","src-server/routes/system/auth.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The Project entry now distinguishes existing transport and Project admission refusals. No response or authority claim changes in citing guides.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The Project entry now distinguishes existing transport and Project admission refusals. No response or authority claim changes in citing guides.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"The directory RouteError now names cause explicitly for the egress scanner. The shared runtime logs it internally and still emits only the reviewed status, message, code, and correlation ID. Mounted route tests preserve results and zero matches.","inputs":["src-server/routes/system/auth.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"The directory RouteError now names cause explicitly for the egress scanner. The shared runtime logs it internally and still emits only the reviewed status, message, code, and correlation ID. Mounted route tests preserve results and zero matches.","inputs":["src-server/routes/system/auth.ts"]}
+  ]
+}

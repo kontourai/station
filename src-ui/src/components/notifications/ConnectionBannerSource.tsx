@@ -13,14 +13,26 @@ import {
   usePendingPairingApproval,
 } from '@kontourai/station-connect';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   BANNER_IDS,
   BANNER_PRIORITY,
   bannerStore,
 } from '../../contexts/banner-store';
+import { toastStore } from '../../contexts/ToastContext';
 import { recordReplayConnection } from '../../hooks/orchestration/replay/capture-tap';
-import { setStreamConnectionState } from '../../hooks/orchestration/streamConnectionState';
+import {
+  getStreamConnectionState,
+  setStreamConnectionState,
+  subscribeStreamConnectionState,
+} from '../../hooks/orchestration/streamConnectionState';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { checkHostCompatibility } from '../../lib/compatibility';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
@@ -70,6 +82,7 @@ function isLoopbackEndpoint(url: string): boolean {
 // Guardrailed by proof:repo-governance.
 export function ConnectionBannerSource() {
   const { activeConnection, apiBase, removeConnection } = useConnections();
+  const activeStationName = useActiveStationName();
   const { isDesktop } = usePlatformProfile();
   const { status, reason, failureStreak, blocked, recheck } =
     useConnectionStatus({
@@ -78,6 +91,10 @@ export function ConnectionBannerSource() {
       pollInterval: 10_000,
     });
   const endpoint = activeConnection?.url ?? apiBase;
+  const stream = useSyncExternalStore(subscribeStreamConnectionState, () =>
+    getStreamConnectionState(apiBase),
+  );
+
   useEffect(() => {
     if (!blocked) return;
     if (setStreamConnectionState(apiBase, 'closed'))
@@ -140,7 +157,8 @@ export function ConnectionBannerSource() {
     !isDesktop &&
     new URL(endpoint).origin !== window.location.origin &&
     failureStreak >= 3 &&
-    reason !== 'busy';
+    reason !== 'busy' &&
+    reason !== 'authentication-rate-limited';
 
   /**
    * archive#3297 — a banner requires a decision.
@@ -149,8 +167,8 @@ export function ConnectionBannerSource() {
    * missed three probes". That put a paragraph of prose with an address in it
    * on a phone screen for a condition that is usually transient and
    * self-healing, which is what the owner asked to stop. Transient
-   * reachability is now carried by the connection indicator, which is exactly
-   * as loud as it needs to be and costs no vertical space.
+   * reachability uses the connection indicator and a deduplicated toast after
+   * three failures, without adding permanent mobile chrome.
    *
    * The 3-probe streak has NOT been deleted, only narrowed to the one
    * reachability case that is a decision (above): archive#2630's finding that load is
@@ -164,6 +182,102 @@ export function ConnectionBannerSource() {
     reason !== 'unsupported-capability-version' &&
     reason !== 'awaiting-approval' &&
     (connectionFailureNeedsDecision(reason) || loopbackFromElsewhere);
+
+  const noticeRef = useRef({
+    scope: '',
+    connected: false,
+    lost: false,
+    toast: '',
+    message: '',
+  });
+  useEffect(() => {
+    const scope = `${activeConnection?.id ?? 'local'}:${apiBase}`;
+    if (noticeRef.current.scope !== scope) {
+      if (noticeRef.current.toast) toastStore.dismiss(noticeRef.current.toast);
+      noticeRef.current = {
+        scope,
+        connected: false,
+        lost: false,
+        toast: '',
+        message: '',
+      };
+    }
+    const notice = noticeRef.current;
+    const decision =
+      showDecision ||
+      showCompat ||
+      credentialOwned ||
+      pendingApproval ||
+      reason === 'awaiting-approval';
+    if (decision) {
+      if (notice.lost) toastStore.dismiss(notice.toast);
+      notice.lost = false;
+      return;
+    }
+    if (status === 'connected') {
+      notice.connected = true;
+      // A terminal stream has no catch-up pending. Clear the stale reconnect
+      // notice without claiming that event delivery recovered.
+      if (notice.lost && stream.phase === 'closed') {
+        toastStore.dismiss(notice.toast);
+        notice.lost = false;
+      }
+      // Health recovery alone cannot declare an interrupted stream live.
+      if (
+        notice.lost &&
+        (stream.phase === 'caught-up' || stream.phase === 'unknown')
+      ) {
+        toastStore.dismiss(notice.toast);
+        notice.toast = toastStore.upsert({
+          dedupeKey: `connection:${scope}`,
+          message: 'Server connection restored.',
+          tone: 'success',
+        });
+        notice.lost = false;
+      }
+    } else if (
+      !showDecision &&
+      !showCompat &&
+      !credentialOwned &&
+      !pendingApproval &&
+      status === 'error' &&
+      failureStreak >= 3 &&
+      notice.connected
+    ) {
+      const name = activeStationName || 'Station';
+      const explanation =
+        reason === 'authentication-rate-limited' || reason === 'timeout'
+          ? connectionFailureCopy(reason, name).summary
+          : reason === 'busy'
+            ? `${name} is busy.`
+            : `Connection to ${name} lost.`;
+      const message = blocked
+        ? `${explanation} Reconnect needs attention.`
+        : `${explanation} Reconnecting…`;
+      if (notice.lost && notice.message === message) return;
+      notice.lost = true;
+      notice.message = message;
+      notice.toast = toastStore.upsert({
+        dedupeKey: `connection:${scope}`,
+        message,
+        tone: 'warning',
+        duration: 0,
+      });
+    }
+  }, [
+    activeConnection?.id,
+    activeStationName,
+    showDecision,
+    showCompat,
+    credentialOwned,
+    pendingApproval,
+    apiBase,
+    status,
+    failureStreak,
+    reason,
+    blocked,
+    stream.phase,
+  ]);
 
   const { data: compat } = useQuery({
     queryKey: ['host-compatibility', apiBase],
@@ -180,8 +294,8 @@ export function ConnectionBannerSource() {
     }
     const copy = connectionFailureCopy(
       reason,
-      activeConnection?.name || apiBase,
-      activeConnection?.url || apiBase,
+      activeConnection?.name,
+      endpoint,
     );
     const hasStaleContext = activeConnection?.lastSuccessAt !== undefined;
     const connectionId = activeConnection?.id;
@@ -295,14 +409,21 @@ export function ConnectionBannerSource() {
                   },
                 ];
               })()
-            : [
-                {
-                  label: 'Try now',
-                  onClick: () => {
-                    recheck();
+            : reason === 'relay-authority-unavailable'
+              ? [
+                  {
+                    label: 'Open Connections',
+                    onClick: () => openConnectionsModal({ mode: 'list' }),
                   },
-                },
-              ],
+                ]
+              : [
+                  {
+                    label: 'Try now',
+                    onClick: () => {
+                      recheck();
+                    },
+                  },
+                ],
     });
 
     return () => {
@@ -314,9 +435,8 @@ export function ConnectionBannerSource() {
     blocked,
     activeConnection?.id,
     activeConnection?.name,
-    activeConnection?.url,
     activeConnection?.lastSuccessAt,
-    apiBase,
+    endpoint,
     recheck,
     removeConnection,
     removeArmed,

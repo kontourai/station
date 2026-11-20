@@ -27,6 +27,7 @@ import {
   canGrant as roleGrantable,
 } from '../../components/people/projectRoles';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
+import { formatDateTime } from '../../utils/relativeTime';
 import { projectAccessErrorMessage } from './projectAccessErrorText';
 
 /** Shares the authorized administration view; enablement stays with the caller. */
@@ -37,6 +38,7 @@ export function AccessPanelView({
   writeDisabledReason,
   expectedActor,
   stationActions,
+  invitationShareId,
 }: {
   view: ProjectAccessAdministrationView;
   busy: boolean;
@@ -45,6 +47,7 @@ export function AccessPanelView({
   /** Captured with the rendered action or confirmation; never replaced by a refresh. */
   expectedActor?: string;
   stationActions?: ReactNode;
+  invitationShareId?: string;
 }) {
   const [notice, setNotice] = useState<string>();
   const [link, setLink] = useState<{ url: string; expiresAt: string }>();
@@ -81,7 +84,11 @@ export function AccessPanelView({
       if (outcome.kind === 'invited') {
         if (view.invitationOrigin)
           setLink({
-            url: invitationLink(view.invitationOrigin, outcome.token),
+            url: invitationLink(
+              view.invitationOrigin,
+              outcome.token,
+              invitationShareId,
+            ),
             expiresAt: outcome.invitation.expiresAt,
           });
         setNotice('Invitation created. Copy the link to share it.');
@@ -185,6 +192,53 @@ export function AccessPanelView({
     );
   }
 
+  const invitationForm = (
+    <>
+      {(!invitationShareId || !link) && (
+        <InviteFlow
+          fromTask={!!invitationShareId}
+          {...(view.invitationOrigin
+            ? { invitationOrigin: view.invitationOrigin }
+            : {})}
+          busy={busy}
+          {...(readOnly ? { writeDisabledReason } : {})}
+          canGrant={canGrant}
+          create={({ email, role }) =>
+            submit(
+              stamp({
+                kind: 'invite',
+                scope: view.scope,
+                email,
+                role,
+                expiresAt: new Date(
+                  Date.now() + 7 * 86400_000 - 60_000,
+                ).toISOString(),
+              }),
+            )
+          }
+        />
+      )}
+      {link && (
+        <InvitationLinkReveal
+          link={link.url}
+          expiresAt={link.expiresAt}
+          onCopied={(copied) =>
+            setNotice(
+              copied ? 'Invitation copied.' : 'Couldn’t copy the invitation.',
+            )
+          }
+        />
+      )}
+      {notice && <p role="status">{notice}</p>}
+      {error && (
+        <p role="alert" className="project-access__error">
+          {error}
+        </p>
+      )}
+    </>
+  );
+  if (invitationShareId) return invitationForm;
+
   return (
     <PageSection
       id="section-access"
@@ -212,44 +266,7 @@ export function AccessPanelView({
         </li>
       </ol>
       {stationActions}
-      <InviteFlow
-        {...(view.invitationOrigin
-          ? { invitationOrigin: view.invitationOrigin }
-          : {})}
-        busy={busy}
-        {...(readOnly ? { writeDisabledReason } : {})}
-        canGrant={canGrant}
-        create={({ email, role }) =>
-          submit(
-            stamp({
-              kind: 'invite',
-              scope: view.scope,
-              email,
-              role,
-              expiresAt: new Date(
-                Date.now() + 7 * 86400_000 - 60_000,
-              ).toISOString(),
-            }),
-          )
-        }
-      />
-      {link && (
-        <InvitationLinkReveal
-          link={link.url}
-          expiresAt={link.expiresAt}
-          onCopied={(copied) =>
-            setNotice(
-              copied ? 'Invitation copied.' : 'Couldn’t copy the invitation.',
-            )
-          }
-        />
-      )}
-      {notice && <p role="status">{notice}</p>}
-      {error && (
-        <p role="alert" className="project-access__error">
-          {error}
-        </p>
-      )}
+      {invitationForm}
       <h3>Project members</h3>
       <PersonList
         items={view.members}
@@ -274,7 +291,7 @@ export function AccessPanelView({
               <p>
                 {ROLE_NAMES[invitation.role]} ·{' '}
                 <Badge value={invitation.status} /> · Expires{' '}
-                {new Date(invitation.expiresAt).toLocaleString()}
+                {formatDateTime(invitation.expiresAt)}
               </p>
             </div>
             {invitation.status === 'pending' && (

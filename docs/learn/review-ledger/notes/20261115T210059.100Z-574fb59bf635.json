@@ -1,0 +1,7 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#4995: monitoring guide and metrics catalog gained three additive metric rows/declarations; the abstraction review's references to them remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/metrics.md"]}
+  ]
+}

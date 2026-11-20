@@ -1,0 +1,7 @@
+{
+  "revision": "326975393da61ab40788bf199358caacfc2678f7",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Merge of main (Kiro #4912, Grok #4927) into the Antigravity change. Kept both the Google Antigravity and Grok Build sections. Rewrote the Grok unsupported row for token counts: ACP token totals now come only from the prompt answer's usage for engines in ACP_PER_TURN_PROMPT_USAGE_ENGINES (Antigravity only), and Grok's turn_completed counts have no recorded mapping, which matches acp-adapter.ts and acp-engine-extension-events.grok.test.ts (cost published, no promptTokens). Antigravity's subagent and rewind rows still hold: its handshake names no subagent reporter, so it publishes not-reported, as the Grok section's child-work paragraph states.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

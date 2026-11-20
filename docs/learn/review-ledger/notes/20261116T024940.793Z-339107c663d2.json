@@ -1,0 +1,45 @@
+{
+  "revision": "6cdf7ee981863c53634f317172e8084da6920b18",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Review round 4: checked the pre-send vs after-send wording against credential-profile-recovery.restartRecoverySession, recovery-dispatch-adapter and the module's rejected branch, using production-adapter tests; checked the for-everyone disclosure against the active-profile rule in this guide.","inputs":["docs/guides/connections.md","packages/contracts/src/connection-recovery.ts","src-server/services/orchestration/credential-recovery-module.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review round 4: checked not-switched vs failed outcomes against the coordinator result mapping and the production-adapter tests.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 4: checked the RecoveryNotSentError boundary sentence against the adapter, restart and module code.","inputs":["docs/architecture/module-map.md","packages/contracts/src/connection-recovery.ts","src-server/services/orchestration/credential-recovery-module.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 4: doc comment only: stopId is an equality token derived from Session/turn ids that clients must not parse.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 4: doc comment only: stopId is an equality token derived from Session/turn ids that clients must not parse.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 4: doc comment only: stopId is an equality token derived from Session/turn ids that clients must not parse.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 4: doc comment only: stopId is an equality token derived from Session/turn ids that clients must not parse.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Review round 4: doc comment only: stopId is an equality token derived from Session/turn ids that clients must not parse.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 4: restartRecoverySession throws RecoveryNotSentError for any failure before adapter.sendTurn is called (restart, posture, workspace checks); failures after it rethrow unchanged and stay indeterminate; error messages are preserved. Executed coordinator tests with the production adapter and orchestration-service tests.","inputs":["src-server/services/orchestration/credential-profile-recovery.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 4: a rejected dispatch with sessionTouched now restores (or quarantines) the session after rollback; automatic attempts end failed, a person's Continue on returns to waiting. Indeterminate handling unchanged. module-map documents the boundary.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 4: a rejected dispatch with sessionTouched now restores (or quarantines) the session after rollback; automatic attempts end failed, a person's Continue on returns to waiting. Indeterminate handling unchanged. module-map documents the boundary.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 4: a rejected dispatch with sessionTouched now restores (or quarantines) the session after rollback; automatic attempts end failed, a person's Continue on returns to waiting. Indeterminate handling unchanged. module-map documents the boundary.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Review round 4: a rejected dispatch with sessionTouched now restores (or quarantines) the session after rollback; automatic attempts end failed, a person's Continue on returns to waiting. Indeterminate handling unchanged. module-map documents the boundary.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 4: a rejected dispatch with sessionTouched now restores (or quarantines) the session after rollback; automatic attempts end failed, a person's Continue on returns to waiting. Indeterminate handling unchanged. module-map documents the boundary.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 4: disclosure copy now says chats that start or restart on the connection use the account, for everyone; the switch line is cleared when a new stop waits.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 4: disclosure copy now says chats that start or restart on the connection use the account, for everyone; the switch line is cleared when a new stop waits.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 4: disclosure copy now says chats that start or restart on the connection use the account, for everyone; the switch line is cleared when a new stop waits.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Review round 4: regenerated shipped topics; changes are the module-map pre-send sentence and the connections guide paragraphs.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Review round 4: only the Continue on section changed; citing claims hold.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Review round 4: only the continue-on route text changed; citing claims hold.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

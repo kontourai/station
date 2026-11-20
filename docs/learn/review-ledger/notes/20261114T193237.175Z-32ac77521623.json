@@ -1,0 +1,123 @@
+{
+  "revision": "bfff3285ea626173d53214cf40e2aa2aa956556a",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked L9,L19 engine/capability mentions against the new opencode matrix row; names no engines or matrix rows, nothing untrue.","inputs":["CONTEXT-MAP.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"CONTEXT.md","note":"Checked L23-26 engine examples and ACP-as-transport, L34-38 matrix ownership link against the opencode row; non-exhaustive and still true.","inputs":["CONTEXT.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"README.md","note":"Checked L45-48 engine pitch and L172-177 Add engine step against the opencode matrix row; lists no engines or rows, defers to the guide.","inputs":["README.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked L3-10 status, L21 external chat, L70-82 listProviders station-agent filter (preview filter is additive); session-api diff is OpenCode 2 refusals.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked L55-66 dated fold-site sweep and L166-216 answerability; branch changes cwd defaults and inventory filter only, unrelated.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked L15-31 steer note (OpenCode row keyed on _meta.steering, consistent), L105-110 ext refusal, L223 slash commands (dispatch moved, same behaviour).","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked L252-264 chat sequence, L322-334 ACP section, L466-471 session sources against inventory/ACP-family cwd changes; still accurate.","inputs":["docs/architecture.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked L31-33 SessionCommand boundary and L262-268 baseline line counts; unaffected by the inventory filter and ACP-family cwd defaults.","inputs":["docs/architecture/abstraction-review.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked inspector ACP-backed projection, ACP family plus listedInProviderInventory and OpenCodeAdapter rows, ACP mapper provider EngineId; matches the diffs.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/services/connections/connection-inspector.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked ACP partial and new opencode paragraph against the partial toolPolicy cell, edit-kind check incl. OpenCode native, Ask refusal, tripwire list.","inputs":["docs/conformance/tool-policy-delivery.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked L8-12 engine/transport naming, L19-23 matrix link, L31 OrchestrationService row; no inventory or cwd-default claims.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Checked L62-67 Capability/matrix link and L69-72 Integration against the opencode row; generic wording, nothing untrue.","inputs":["docs/contexts/extension-ecosystem/CONTEXT.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked L59-70 telemetry/Lite, L84 full gate, L113-117 owners; no engine enumeration, so opencode counted as acp needs no edit.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md","src-server/services/telemetry-publisher-service.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked L3-11 superseded status and ACP adapter pointer, L18 and L40-61 historical topology; accurate after the acp.md and adapter changes.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked L3-12 status, L53-55 engine definition, L103-107 ACP vocabulary, L214-253 seed matrix (a dated snapshot); no edit.","inputs":["docs/design/agent-engine-unification.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked L3-12 status, L119-155 per-engine approvalMode (declared historical), L316-319 OpenCode refusal; nothing this branch made untrue.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Grepped providers/inventory/ACP/opencode/cwd; only the L29 successor-session mention; the branch does not touch channel-home authority.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked L377-382 run location, L934-958 approval chip, L969-977 opencode Model lock, L991-997 steer default (examples, not a list); nothing untrue.","inputs":["docs/design/chat-composer.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked L18-25 rail, L78-81 detection, L147 opencode env row, L149-151 app-home ids against inventory/cwd changes; dated audit, still true.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Grepped engine/ACP/opencode/orchestration; L77 and L800 generic mentions; the inventory and ACP-family cwd changes do not affect delivery.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked C1/listProviders inventory (136-142, 1007-1018) and cwd test rows; historical and anchored, the new filter and ACP-family default contradict nothing.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the subagentControl Stop rule (899-913) and ACP managed-workspace naming (2170-2176) against the opencode row (subagentControl none).","inputs":["docs/design/placement.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked resolveStartSessionCwd seam rows (111, 196, 223-235, 1978-1986); dated records, widening the ACP exclusion to the ACP family falsifies none.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked dock steer placement (152-165) and the steer channel table incl. OpenCode rows (178-186); opencode shares ACP durability, ACP text holds.","inputs":["docs/design/session-tape-replay.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked engine/ACP vocabulary (62-75, 101-107), matrix link and engineId data model against contracts.md and matrix diffs; OpenCode entry accurate.","inputs":["docs/glossary.md","packages/contracts/src/engine-capability-matrix.ts","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/acp.md","note":"Fixed the ACP-bound Agent engineId claim (opencode while the preview claims it) and added OpenCode 2.x to the steer table; rechecked 2.x section and slash routing.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked ACP account, browser, plan-exit, autoApprove and unattended passages (101,136,372,421,556); Agent sessions on opencode run over ACP, all hold.","inputs":["docs/guides/agent-configuration.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the Feature previews link (5-7); settings.md only gained the opencode-native-engine row, anchor unchanged.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked testing.md anchors (34,68,74,80,87,269,463); all resolve, the testing diff only adds the OpenCode captures subsection.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the engine table and matrix link (821-861) and the OpenCode native paragraph (863-870) against the matrix, inspector projection and inventory filter.","inputs":["docs/guides/connections.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the unbound/scratch workspace passage (64-78); acp-adapter.test additions cover steer, provider and connectionFilter only.","inputs":["docs/guides/development.md","src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the settings-table link (20) and add-a-row rule (174-177); settings.md has the opencode-native-engine row as required.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the contracts reference link (37); the contracts.md diff only extends the engine-commands, matrix and provider rows.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Connections links (7, 63); the connections.md diff adds one OpenCode paragraph and moves no anchor.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked MCP passthrough (27), ACP cwd scoping (303), no auto-resume (1034), first-turn instructions (1102); the opencode row matches ACP on each.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked OpenCode captures (incl. subagent-gap depth note) and real-binary text (181-214), process-heavy pool prose against the manifest diff; consistent.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked inspect-request (101-115) and Connections captures; with the preview off opencode is not inventory and connections project acp, UI unchanged.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked smoke targets (73-76), isolated inventory (158-165), the preview fingerprint text and skill table (515-527) against the adapter-shape/inventory diffs.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/adapter-shape.ts","src-server/services/orchestration/orchestration-service.ts","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked Agent engineId origin (1514), model launch/ACP apply boundary (3087-3130), engineId semantics (5743), usage provider kinds (6755); all hold.","inputs":["docs/reference/api.md","packages/contracts/src/engine-capability-matrix.ts","packages/contracts/src/provider.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked ACP model override (1228-1238), approvals provider resolution (1994-2002), acp commands (2461-2471); CLI code unchanged, doc accurate.","inputs":["docs/reference/cli.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked titleModel, attachedSessionsOutsideProjects and OTel id rows (78/96/405); no inventory or ACP-family folder-default claims.","inputs":["docs/reference/config.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified rows 342/345/403 (engine-command-dispatch, opencode matrix row, isAcpFamilyEngine) against the diffs; 1704 quota and 2247 ACP steering unaffected.","inputs":["docs/reference/contracts.md","packages/contracts/src/engine-capability-matrix.ts","packages/contracts/src/provider.ts","src-server/providers/adapter-shape.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked L50 cwd shadow, L52 idle parking, L116-117 sources; no claims touched by the ACP-family cwd default or inventory filter.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked 2446-2451 provider commands acp (useSlashCommands unchanged) and 6196 dispatch owner; no engine-id or matrix enumeration.","inputs":["docs/reference/sdk.md","packages/contracts/src/engine-capability-matrix.ts","packages/contracts/src/provider.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified 887-891 OpenCode 2 ACP refusal against the acp-adapter R1 probe and anchors; 1350 approval control and 1090 acceptForSession unchanged.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked provider types (791), provider interfaces (1117), none-folder rule (769); no PROVIDER_* or ACP-family claims affected.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked external engines (115), matrix (123-138, no row list), engine connections (146), 294; station-docs-content diff is module-map topics.","inputs":["docs/reference/station-docs.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked 590-594 opencode->acp terminal family (canonical-terminal-outcome), 652/683 engine domains, 492 producer cite.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked 506-510 no-folder project ACP-engine cwd (opencode takes the same path), 512-522 no-project folder, 1142, 1180-1209; accurate.","inputs":["docs/user/getting-started.md","packages/contracts/src/engine-capability-matrix.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Verified the opencode-native-engine row (serve vs ACP fallback, effort and Agent chats over ACP) against the adapter and matrix.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Read the whole doc (restore preview, refusals, capture timing, CLI); no engine, inventory or cwd claims affected.","inputs":["docs/user/workspace-checkpoints.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Read the whole README; Station-engine-only example (16) and a generic policy-delivery caution (47); the matrix and acp-adapter changes do not apply.","inputs":["examples/self-configuring-agent/README.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked the contracts.md link (rows verified) and the pure-helpers rule, which isAcpFamilyEngine and isOpenCodeAcpConnection respect.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the manifest-classification rule (opencode-native.process and opencode-serve-pool added) and the testing.md links and anchor.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the testing.md#fixture-fidelity anchor (intact); testing.md only adds the OpenCode capture and real-binary subsection.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the testing.md#fixture-fidelity anchor (intact); the OpenCode capture subsection is server-side.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked resource classification and lanes link, fixture anchor and checks; consistent with the testing.md OpenCode addition and manifest entries.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Inspector UI untouched; with the preview off opencode adds no inventory row and ACP folder defaults are unchanged; no visible difference.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Inspector open/identity/close flow untouched; with the preview off opencode adds no inventory row; cwd change is ACP-family only.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

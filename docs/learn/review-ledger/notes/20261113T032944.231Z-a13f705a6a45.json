@@ -1,0 +1,7 @@
+{
+  "revision": "0d819b6feae393a5360f329832e9100cca8931d6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared Run setup entry point across ChatInputArea and StartComposer, retained picker and approval owners, removal of reply/start clipboard button, and unchanged browser paste event intake. Focused suite passed 170 tests; gallery inspected at desktop, 390px and 412px in both themes; native keyboard insertion and provider execution are not qualified.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

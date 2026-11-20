@@ -71,7 +71,6 @@
  *   and any other registry approval are unmarked and carried.
  */
 import {
-  isNativePushSessionReference,
   type NativePushNotificationData,
   type NativePushNotificationPlaintext,
 } from '@kontourai/station-contracts/native-push';
@@ -92,7 +91,7 @@ import {
   NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
   type NativePushSendFloor,
 } from '../native-push-send-floor.js';
-import { notificationSessionIdentity } from '../notification-session.js';
+import { nativeSessionReference } from '../notification-session.js';
 import {
   osNotificationBody,
   osNotificationTitle,
@@ -228,7 +227,7 @@ export class FcmAlertChannel implements DeliveryChannel {
   ): Promise<DeliveryOutcome[]> {
     const urgent =
       envelope.urgency === 'attention' || envelope.urgency === 'failed';
-    const route = sessionReference(notification, envelope);
+    const route = nativeSessionReference(notification, envelope);
     return this.#sendAll(notification.id, to, urgent, (hideContent) => ({
       kind: 'alert',
       ...fitContent(
@@ -577,27 +576,6 @@ export class FcmAlertChannel implements DeliveryChannel {
       return undefined;
     }
   }
-}
-
-/**
- * The session a tap opens: the one the record names (the same identity the
- * audience was limited by), unless its target is a path, which the phone
- * cannot open. Only references in the contract grammar travel.
- */
-function sessionReference(
-  notification: Notification,
-  envelope: NotificationEnvelopeV1,
-): Pick<NativePushNotificationPlaintext, 'session_id' | 'project_slug'> {
-  if (envelope.target?.kind === 'path') return {};
-  const sessionId = notificationSessionIdentity(notification, envelope);
-  if (!isNativePushSessionReference(sessionId)) return {};
-  const projectSlug = notification.metadata?.projectSlug;
-  return {
-    session_id: sessionId,
-    ...(isNativePushSessionReference(projectSlug)
-      ? { project_slug: projectSlug }
-      : {}),
-  };
 }
 
 /**

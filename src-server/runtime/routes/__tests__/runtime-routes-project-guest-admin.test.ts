@@ -564,6 +564,9 @@ describe('project guest administration over the production composition', () => {
       orchestrationEventStore: new Proxy(
         {
           createPackageMcpAdmissionJournal: () => undefined,
+          // The real EventStore answers a sequence number; a callable here
+          // would start read state with a baseline that never decodes.
+          contentUpgradeFence: () => 0,
           sessionTurnBoundaryAuthority: () => ({
             reconcile: () => ({ kind: 'available', interrupted: [] }),
           }),
@@ -1488,6 +1491,408 @@ describe('project guest administration over the production composition', () => {
     expect(readFileSync(join(h.homeDir, 'task-graph.json'), 'utf8')).toBe(
       before,
     );
+  });
+
+  test('read markers: an account-bound member reads and marks their own Project room markers through the production gate (#3075)', async () => {
+    const h = await setup();
+    const { project, scope, guest } = await h.shareWithGuestAdmin(
+      'markers',
+      'Markers',
+    );
+    const other = await h.shareWithGuestAdmin('markers-b', 'Markers B');
+    const post = (
+      headers: (init?: RequestInit) => RequestInit,
+      path: string,
+      value: unknown,
+    ) =>
+      h.request(
+        path,
+        headers({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(value),
+        }),
+      );
+    const open = async (
+      headers: (init?: RequestInit) => RequestInit,
+      slug: string,
+      projectId: string,
+    ) => {
+      const opened = await post(headers, `/api/projects/${slug}/room/init`, {
+        expectedProjectId: projectId,
+      });
+      expect(opened.status, await opened.clone().text()).toBe(200);
+      return (await readJson<{ data: { roomId: string } }>(opened)).data.roomId;
+    };
+    const roomId = await open(guest, 'markers', project.id);
+    const otherRoomId = await open(other.guest, 'markers-b', other.project.id);
+    const actorId = (
+      await readJson<{ data: { actor: { id: string } } }>(
+        await h.request('/api/projects/markers/room', guest()),
+      )
+    ).data.actor.id;
+    const sent = await post(guest, '/api/projects/markers/room/messages', {
+      expectedRoomId: roomId,
+      expectedProjectId: project.id,
+      expectedActorId: actorId,
+      intentId: crypto.randomUUID(),
+      text: 'Unread for now',
+    });
+    expect(sent.status, await sent.clone().text()).toBe(200);
+    const target = (id: string, projectSlug = 'markers') => ({
+      kind: 'project-room',
+      projectSlug,
+      roomId: id,
+    });
+    const summary = async (
+      headers: (init?: RequestInit) => RequestInit,
+      targets: unknown[],
+    ) => {
+      const response = await post(headers, '/api/read-markers/summary', {
+        targets,
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      return (
+        await readJson<{ data: { items: Record<string, unknown>[] } }>(response)
+      ).data.items;
+    };
+
+    // A member reads and marks their own markers.
+    expect(await summary(guest, [target(roomId)])).toEqual([
+      expect.objectContaining({ latestVersion: 1, unread: true }),
+    ]);
+    const marked = await post(guest, '/api/read-markers/mark', {
+      target: target(roomId),
+      version: 1,
+    });
+    expect(marked.status, await marked.clone().text()).toBe(200);
+    expect(await summary(guest, [target(roomId)])).toEqual([
+      expect.objectContaining({ seenVersion: 1, unread: false }),
+    ]);
+    // The gate admits the leaf for every target kind; each target is still
+    // re-read under the member's own authority, so what they cannot read
+    // (an agent conversation, a Task) is unavailable, not a gate refusal.
+    expect(
+      await summary(guest, [
+        { kind: 'agent-conversation', conversationId: 'not-this-member' },
+        { kind: 'task-room', taskId: 'not-this-member' },
+      ]),
+    ).toEqual([
+      expect.objectContaining({ unavailable: true }),
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    // An unknown id, and another Project's room under this slug, read as
+    // unavailable and cannot be marked.
+    expect(
+      await summary(guest, [target(crypto.randomUUID()), target(otherRoomId)]),
+    ).toEqual([
+      expect.objectContaining({ unavailable: true }),
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    expect(
+      (
+        await post(guest, '/api/read-markers/mark', {
+          target: target(otherRoomId),
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
+
+    // A signed-in account that is not a member is refused.
+    const outsider = h.pairAccountBound(
+      'markers-outsider',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
+    const stranger = h.guestHeaders(
+      outsider.credential,
+      'fixture_account=peer',
+    );
+    expect(await summary(stranger, [target(roomId)])).toEqual([
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    expect(
+      (
+        await post(stranger, '/api/read-markers/mark', {
+          target: target(roomId),
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
+
+    // Revoked membership is refused on the next read and mark.
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const member = (
+      await readJson<{
+        data: { members: { principal: { id: string }; revision: number }[] };
+      }>(await h.request('/api/projects/markers/access', h.ownerHeaders()))
+    ).data.members.find((entry) => entry.principal.id === guestId)!;
+    const removed = await post(
+      h.ownerHeaders,
+      '/api/projects/markers/access/members',
+      {
+        scope,
+        principalId: guestId,
+        revision: member.revision,
+        role: 'viewer',
+        status: 'revoked',
+      },
+    );
+    expect(removed.status, await removed.clone().text()).toBe(200);
+    expect(await summary(guest, [target(roomId)])).toEqual([
+      expect.objectContaining({ unavailable: true }),
+    ]);
+    expect(
+      (
+        await post(guest, '/api/read-markers/mark', {
+          target: target(roomId),
+          version: 1,
+        })
+      ).status,
+    ).toBe(404);
+  });
+
+  test('Project Room channels: a member creates, posts in and archives a channel through the production mount', async () => {
+    const h = await setup();
+    const { project, guest } = await h.shareWithGuestAdmin(
+      'channel-project',
+      'Channel Project',
+    );
+    const projectBase = '/api/projects/channel-project';
+    const send = (method: string, value: unknown) =>
+      guest({
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    const opened = await h.request(
+      `${projectBase}/room/init`,
+      send('POST', { expectedProjectId: project.id }),
+    );
+    expect(opened.status, await opened.clone().text()).toBe(200);
+    const actorId = (
+      await readJson<{ data: { actor: { id: string } } }>(
+        await h.request(`${projectBase}/room`, guest()),
+      )
+    ).data.actor.id;
+    const guards = { expectedProjectId: project.id, expectedActorId: actorId };
+    const created = await h.request(
+      `${projectBase}/channels`,
+      send('POST', { ...guards, name: 'design' }),
+    );
+    expect(created.status, await created.clone().text()).toBe(200);
+    const channelId = (await readJson<{ data: { channelId: string } }>(created))
+      .data.channelId;
+    const channel = `${projectBase}/channels/${channelId}`;
+    const message = () =>
+      h.request(
+        `${channel}/messages`,
+        send('POST', {
+          ...guards,
+          expectedRoomId: channelId,
+          intentId: crypto.randomUUID(),
+          text: 'Channel message',
+        }),
+      );
+    const posted = await message();
+    expect(posted.status, await posted.clone().text()).toBe(200);
+    const archived = await h.request(
+      channel,
+      send('PATCH', { ...guards, archived: true }),
+    );
+    expect(archived.status, await archived.clone().text()).toBe(200);
+    expect((await message()).status).toBe(409);
+    const history = await h.request(`${channel}/messages`, guest());
+    expect(history.status).toBe(200);
+    expect(
+      (await readJson<{ data: { messages: unknown[] } }>(history)).data
+        .messages,
+    ).toHaveLength(1);
+    // Only the exact channel leaves are admitted past the Project read guard.
+    for (const [method, path] of [
+      ['POST', `${channel}/messages/extra`],
+      ['POST', `${channel}/note`],
+      ['PUT', `${projectBase}/channels`],
+      ['DELETE', channel],
+      ['PATCH', `${channel}/messages`],
+    ])
+      expect(
+        (await h.request(path, send(method, guards))).status,
+        `${method} ${path}`,
+      ).toBe(403);
+  });
+
+  test('Project Room live: an account-bound member types, lists members and opens the live stream through the production mount (#4798, #4799)', async () => {
+    const h = await setup();
+    const { project, guest } = await h.shareWithGuestAdmin(
+      'live-project',
+      'Live Project',
+    );
+    const projectBase = '/api/projects/live-project';
+    const send = (method: string, value: unknown) =>
+      guest({
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    const opened = await h.request(
+      `${projectBase}/room/init`,
+      send('POST', { expectedProjectId: project.id }),
+    );
+    expect(opened.status, await opened.clone().text()).toBe(200);
+    const view = (
+      await readJson<{ data: { roomId: string; actor: { id: string } } }>(
+        await h.request(`${projectBase}/room`, guest()),
+      )
+    ).data;
+    const guards = {
+      expectedRoomId: view.roomId,
+      expectedProjectId: project.id,
+      expectedActorId: view.actor.id,
+    };
+    // Typing is a room write past the Project read guard, at both addresses.
+    for (const path of [
+      `${projectBase}/room/typing`,
+      `${projectBase}/channels/${view.roomId}/typing`,
+    ]) {
+      const typed = await h.request(
+        path,
+        send('POST', {
+          ...guards,
+          clientId: crypto.randomUUID(),
+          typing: true,
+        }),
+      );
+      expect(typed.status, `${path}: ${await typed.clone().text()}`).toBe(200);
+    }
+    const members = await h.request(`${projectBase}/room/members`, guest());
+    expect(members.status, await members.clone().text()).toBe(200);
+    const live = await h.request(
+      `${projectBase}/rooms/live?channel=${view.roomId}&client=${crypto.randomUUID()}`,
+      guest(),
+    );
+    expect(live.status).toBe(200);
+    const first = new TextDecoder().decode(
+      (await live.body!.getReader().read()).value,
+    );
+    expect(first).toContain('event: subscribed');
+    await live.body?.cancel().catch(() => {});
+    // Typing is not a wildcard: another leaf of that name is still refused.
+    expect(
+      (
+        await h.request(
+          `${projectBase}/room/typing/extra`,
+          send('POST', guards),
+        )
+      ).status,
+    ).toBe(403);
+  });
+
+  test('Project Room message actions: an account-bound member reacts, edits, deletes and shares a file through the production mount (#4796, #4797, #4812)', async () => {
+    const h = await setup();
+    const { project, guest } = await h.shareWithGuestAdmin(
+      'activity-project',
+      'Activity Project',
+    );
+    const room = '/api/projects/activity-project/room';
+    const send = (method: string, value: unknown) =>
+      guest({
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    const opened = await h.request(
+      `${room}/init`,
+      send('POST', { expectedProjectId: project.id }),
+    );
+    expect(opened.status, await opened.clone().text()).toBe(200);
+    const view = (
+      await readJson<{ data: { roomId: string; actor: { id: string } } }>(
+        await h.request(room, guest()),
+      )
+    ).data;
+    const guards = {
+      expectedRoomId: view.roomId,
+      expectedProjectId: project.id,
+      expectedActorId: view.actor.id,
+    };
+    // A real PNG header, so the shared byte checks see matching bytes.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const uploaded = await h.request(
+      `${room}/attachments`,
+      send('POST', {
+        ...guards,
+        attachments: [
+          {
+            kind: 'image',
+            name: 'shot.png',
+            mimeType: 'image/png',
+            size: png.length,
+            dataUrl: `data:image/png;base64,${png.toString('base64')}`,
+          },
+        ],
+      }),
+    );
+    expect(uploaded.status, await uploaded.clone().text()).toBe(200);
+    const files = (await readJson<{ data: { id: string }[] }>(uploaded)).data;
+    const posted = await h.request(
+      `${room}/messages`,
+      send('POST', {
+        ...guards,
+        intentId: crypto.randomUUID(),
+        text: 'Draft copy',
+        attachments: files,
+      }),
+    );
+    expect(posted.status, await posted.clone().text()).toBe(200);
+    const messageId = (await readJson<{ data: { messageId: string } }>(posted))
+      .data.messageId;
+    const file = await h.request(
+      `${room}/attachments/${files[0]!.id}`,
+      guest(),
+    );
+    expect(file.status, await file.clone().text()).toBe(200);
+    expect(Buffer.from(await file.arrayBuffer())).toEqual(png);
+    for (const [leaf, body] of [
+      ['reactions', { emoji: '👍', reacted: true }],
+      ['edit', { intentId: crypto.randomUUID(), text: 'Final copy' }],
+      ['delete', { intentId: crypto.randomUUID() }],
+    ] as const) {
+      const response = await h.request(
+        `${room}/messages/${messageId}/${leaf}`,
+        send('POST', { ...guards, ...body }),
+      );
+      expect(response.status, `${leaf}: ${await response.clone().text()}`).toBe(
+        200,
+      );
+    }
+    const history = await readJson<{
+      data: { messages: { text: string; deletedAt?: string }[] };
+    }>(await h.request(`${room}/messages`, guest()));
+    expect(history.data.messages).toEqual([
+      expect.objectContaining({ text: '', deletedAt: expect.any(String) }),
+    ]);
+    // The deleted message's file is withheld with it.
+    expect(
+      (await h.request(`${room}/attachments/${files[0]!.id}`, guest())).status,
+    ).toBe(404);
+    // Only the exact leaves are admitted past the Project read guard.
+    for (const [method, path] of [
+      ['POST', `${room}/messages/${messageId}/pin`],
+      ['POST', `${room}/attachments/${files[0]!.id}`],
+      ['PUT', `${room}/messages/${messageId}/edit`],
+    ])
+      expect(
+        (await h.request(path, send(method, guards))).status,
+        `${method} ${path}`,
+      ).toBe(403);
   });
 
   test('Project Room production mount requires exact incarnation and independent transport and member actions', async () => {

@@ -1,0 +1,25 @@
+{
+  "revision": "f8bc2d4b16ff44d2086b1175766d6ab46b4565d1",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Combined-branch fix: openNew takes an optional URL (default about:blank) and the closed-session ActionRow names its overflow trigger. Type-level only; no behaviour these documents describe changed.","inputs":["src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
+  ]
+}

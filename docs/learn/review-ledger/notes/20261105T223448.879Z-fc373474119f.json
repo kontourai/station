@@ -1,7 +1,0 @@
-{
-  "revision": "5870083747ea7bd0707f7e9494366fdf5b28cff3",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Read the Station-chip switching paragraph against HeaderActions.tsx: the phone chip now shows its dot and name in every state (idle names the state); holding still reveals the full name. Paragraph updated to match.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx"]}
-  ]
-}

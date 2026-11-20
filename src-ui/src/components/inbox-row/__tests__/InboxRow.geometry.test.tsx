@@ -17,8 +17,13 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { createRef } from 'react';
+import {
+  cleanup,
+  fireEvent,
+  render as renderUI,
+  screen,
+} from '@testing-library/react';
+import { createRef, type ReactElement } from 'react';
 import {
   afterAll,
   afterEach,
@@ -46,7 +51,18 @@ import {
 import { SubagentTranscriptCard } from '../../chat/SubagentTranscriptCard';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
+import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
+
+// Inbox scope now reads Projects through the shared query boundary.
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderUI(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../../');
 const css = [
@@ -57,6 +73,8 @@ const css = [
   '../../header/HeaderMenu.css',
   '../WorkGroupLabel.css',
   '../../chat-dock/ChatDockInboxPanel.css',
+  '../../chat-dock/ChatDockHeader.css',
+  '../../NewChatAction.css',
   '../../chat-dock/MobileInboxPanel.css',
   '../../chat-dock/ChatInboxHoverCard.css',
   '../../icons/BrandIcon.css',
@@ -176,6 +194,7 @@ function sheetMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
   work = { items: ITEMS, facts: FACTS },
+  searchVisible = false,
 ): string {
   seed();
   const { unmount } = render(
@@ -200,6 +219,8 @@ function sheetMarkup(
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
+  if (searchVisible)
+    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
   const markup = document.body.innerHTML;
   unmount();
   return markup;
@@ -237,6 +258,162 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('the shared search control and hover actions align without custom input chrome', async () => {
+    const artifacts = resolve(REPO_ROOT, '.surface/inbox-chat-polish');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440])
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 900 } });
+        try {
+          await pg.setContent(
+            page(
+              width === 390
+                ? sheetMarkup(undefined, undefined, undefined, true)
+                : panelMarkup(),
+            ).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          const search = pg.getByRole('searchbox', {
+            name: width === 390 ? 'Search chats and tasks' : 'Search inbox',
+          });
+          const searchBox = (await search.boundingBox())!;
+          expect(searchBox.height).toBeGreaterThanOrEqual(
+            width === 390 ? 44 : 40,
+          );
+          expect(searchBox.height).toBeLessThanOrEqual(48);
+          if (width === 1440) {
+            const toolbar = (await pg
+              .locator('.filter-toolbar')
+              .boundingBox())!;
+            expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(
+              toolbar.x + toolbar.width,
+            );
+            const row = pg.locator('.inbox-row--card').first();
+            await row.hover();
+            // The actions take over the time slot, on the headline.
+            const slotLine = (await row
+              .locator('.inbox-row__headline')
+              .boundingBox())!;
+            for (const action of await row
+              .locator('.inbox-row__actions button')
+              .all()) {
+              const box = (await action.boundingBox())!;
+              expect(
+                Math.abs(
+                  box.y + box.height / 2 - (slotLine.y + slotLine.height / 2),
+                ),
+              ).toBeLessThanOrEqual(0.5);
+            }
+          }
+          await pg.screenshot({
+            path: resolve(artifacts, `inbox-${width}-${theme}.png`),
+            animations: 'disabled',
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+  });
+
+  test('renders lane D Station identity and mobile header controls at desktop and phone widths', async () => {
+    seed();
+    const row = item({
+      id: 'lane-d-peer',
+      title: 'Review the latest repository changes',
+      projectLabel: 'Station',
+      projectSlug: 'station',
+      environmentLabel: 'Build Station',
+    });
+    const { container, unmount } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatDockMobileHeader
+          showDrawerToggle={false}
+          showConnection
+          sessionTitle="Repository review"
+          agentIdentity={null}
+          activeCount={1}
+          unreadCount={0}
+          inboxTriggerRef={createRef<HTMLButtonElement>()}
+          onToggleInbox={vi.fn()}
+          onToggleSidebar={vi.fn()}
+          onDragPointerDown={vi.fn()}
+          onDragClickCapture={vi.fn()}
+          dockToggle={null}
+          extentToggle={{ maximized: false, onToggle: vi.fn() }}
+          onNewChat={vi.fn()}
+          overflow={{
+            onCollapseDock: vi.fn(),
+            onExpandDock: vi.fn(),
+            onRestoreDock: vi.fn(),
+            isDockMaximized: false,
+            onOpenConversation: vi.fn(),
+            onOpenChatSettings: vi.fn(),
+            onOpenProject: null,
+            openProjectName: null,
+            onOpenProfile: vi.fn(),
+            onOpenAppSettings: vi.fn(),
+          }}
+        />
+        <InboxRow
+          item={row}
+          isCurrent={false}
+          isSnoozed={false}
+          isOpenChat
+          now={NOW}
+          onActivate={vi.fn()}
+          hoverCard={false}
+          projectIcon="🚉"
+        />
+      </QueryClientProvider>,
+    );
+    const markup = container.innerHTML;
+    unmount();
+    const artifacts = resolve(REPO_ROOT, '.surface/ux-lane-D');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 412, 1440])
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 915 } });
+        try {
+          await pg.setContent(
+            page(markup).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          await expect(
+            pg.getByText('Station: Build Station').count(),
+          ).resolves.toBe(1);
+          const order = await pg.evaluate(() => {
+            const actions = document
+              .querySelector('[aria-label="Chat actions"]')!
+              .getBoundingClientRect();
+            const extent = document
+              .querySelector('[aria-label="Full screen chat"]')!
+              .getBoundingClientRect();
+            return {
+              actions: actions.x,
+              extent: extent.x,
+              sameLine:
+                Math.abs(
+                  actions.y + actions.height / 2 - extent.y - extent.height / 2,
+                ) < 1,
+              overflow: document.body.scrollWidth > innerWidth,
+            };
+          });
+          expect(order.actions).toBeLessThan(order.extent);
+          expect(order.sameLine).toBe(true);
+          expect(order.overflow).toBe(false);
+          const stationBorder = await pg
+            .locator('.inbox-row__chip--remote')
+            .evaluate((mark) => getComputedStyle(mark).borderTopWidth);
+          expect(stationBorder).toBe('1px');
+          await pg.screenshot({
+            path: resolve(artifacts, `identity-header-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+  });
 
   test('a Task family keeps its work-chat disclosure readable without horizontal overflow', async () => {
     const tasks = [
@@ -337,9 +514,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     );
     const artifacts = resolve(REPO_ROOT, '.surface/mobile-inbox-review');
     await mkdir(artifacts, { recursive: true });
-    for (const width of [390, 1440]) {
+    for (const width of [390, 412, 1440]) {
       for (const theme of ['dark', 'light']) {
-        const pg = await browser.newPage({ viewport: { width, height: 500 } });
+        const pg = await browser.newPage({ viewport: { width, height: 915 } });
         try {
           await pg.setContent(
             `<html data-theme="${theme}"><style>${css}\n${resolveCssImports(resolve(import.meta.dirname, '../../chat/SubagentTranscriptCard.css'))}</style><body><div style="max-width:560px;padding:16px">${container.innerHTML}</div></body></html>`,
@@ -362,7 +539,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           ).toContain('75 documents');
           expect(
             await card.locator('.subagent-card__elapsed').textContent(),
-          ).toBe('6:37');
+          ).toBe('6m 37s');
           expect(
             await pg.evaluate(
               () => document.documentElement.scrollWidth > innerWidth,
@@ -1066,8 +1243,13 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           MIN_TOUCH_TARGET_PX,
         );
       }
-      // Snooze stays beside the row, so the sheet holds only the rest.
-      expect(labels).toEqual(['Close chat']);
+      expect(labels).toEqual([
+        '1 hour',
+        '3 hours',
+        'Tomorrow 9am',
+        'Next Monday 9am',
+        'Close chat',
+      ]);
     } finally {
       await pg.close();
     }
@@ -1177,6 +1359,129 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         } finally {
           await pg.close();
         }
+      }
+    }
+  });
+});
+
+/**
+ * #3075: idle conversations whose titles grow one character at a time across
+ * the phone inbox's one-to-two-line boundary. A bold title is about two
+ * characters wider, so some title in this run fits one line in the regular
+ * weight and needs two in bold: exactly where a naive weight change would
+ * grow its row.
+ */
+const READ_STATE_TITLE_LENGTHS = Array.from({ length: 46 }, (_, i) => 15 + i);
+function readStateWork(unread: boolean) {
+  const sentence =
+    'Review the unread marker design for project channels and task rooms before the release';
+  return {
+    items: READ_STATE_TITLE_LENGTHS.map((length, index) =>
+      item({
+        id: `conversation-${index}`,
+        title: sentence.slice(0, length).trim(),
+        unread,
+        readVersion: 1,
+      }),
+    ),
+    facts: new Map() as WorkFactsById,
+  };
+}
+
+describe.skipIf(!chromiumAvailable)('unread row geometry (#3075)', () => {
+  let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+  beforeAll(async () => {
+    browser = await chromium.launch();
+  });
+  afterAll(async () => {
+    await browser?.close();
+  });
+  afterEach(() => cleanup());
+
+  test('unread draws a bold title and a dot, and moves no row, title or line in the panel or the phone inbox', async () => {
+    const cases = [
+      {
+        label: 'panel',
+        markup: (work: ReturnType<typeof readStateWork>) =>
+          panelMarkup(undefined, undefined, work),
+        viewport: { width: 1440, height: 4000 },
+        dot: '6px',
+      },
+      {
+        label: 'phone',
+        markup: (work: ReturnType<typeof readStateWork>) =>
+          sheetMarkup(undefined, undefined, work),
+        viewport: { width: 390, height: 6000 },
+        dot: '8px',
+      },
+    ];
+    for (const { label, markup, viewport, dot } of cases) {
+      const read = markup(readStateWork(false));
+      const unread = markup(readStateWork(true));
+      // The fixture must contain what it claims to compare.
+      expect(read, label).not.toContain('data-unread');
+      expect(unread, label).toContain('data-unread');
+      const pg = await browser.newPage({ viewport });
+      try {
+        const measure = async (html: string) => {
+          await pg.setContent(page(html));
+          await settle(pg);
+          return pg.locator('[data-testid="inbox-row"]').evaluateAll((rows) =>
+            rows.map((row) => {
+              const box = (element: Element | null) => {
+                const rect = element?.getBoundingClientRect();
+                return rect
+                  ? [rect.left, rect.top, rect.width, rect.height]
+                  : null;
+              };
+              const title = row.querySelector('.inbox-row__title');
+              const before = title ? getComputedStyle(title, '::before') : null;
+              return {
+                geometry: {
+                  row: box(row),
+                  title: box(title),
+                  text: box(row.querySelector('.inbox-row__title-text')),
+                  meta: box(row.querySelector('.inbox-row__meta')),
+                  status: box(
+                    row.querySelector('[data-testid="inbox-row-status"]'),
+                  ),
+                },
+                weight: title ? getComputedStyle(title).fontWeight : null,
+                dot:
+                  before && before.content !== 'none'
+                    ? {
+                        width: before.width,
+                        background: before.backgroundColor,
+                      }
+                    : null,
+              };
+            }),
+          );
+        };
+        const before = await measure(read);
+        const after = await measure(unread);
+        expect(before.length, label).toBe(READ_STATE_TITLE_LENGTHS.length);
+        expect(
+          after.map((row) => row.geometry),
+          `${label}: geometry`,
+        ).toEqual(before.map((row) => row.geometry));
+        // The two-line boundary is actually exercised on the phone.
+        if (label === 'phone') {
+          const heights = new Set(before.map((row) => row.geometry.row?.[3]));
+          expect(heights.size, 'phone has one- and two-line titles').toBe(2);
+        }
+        for (const row of before) {
+          expect(row.weight, `${label} read weight`).toBe('500');
+          expect(row.dot, `${label} read dot`).toBeNull();
+        }
+        for (const row of after) {
+          expect(row.weight, `${label} unread weight`).toBe('700');
+          expect(row.dot?.width, `${label} unread dot`).toBe(dot);
+          expect(row.dot?.background).not.toBe('rgba(0, 0, 0, 0)');
+        }
+      } finally {
+        await pg.close();
       }
     }
   });

@@ -11,6 +11,7 @@ import {
   openSqliteAgentJournal,
 } from '../index.js';
 import { key, nextOwner, owner } from './fixture.js';
+import { checkpointFixture } from './turn-checkpoint-fixture.js';
 
 export function gate<T = void>() {
   let resolve!: (value: T) => void;
@@ -34,6 +35,7 @@ export async function turnFixture() {
       return openSqliteAgentJournal({
         database,
         participants: options?.participants,
+        checkpoint: checkpointFixture(database),
       });
     },
     async dispose() {},

@@ -3,6 +3,7 @@ import { DetailHeader } from '../../components/DetailHeader';
 import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
 import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
@@ -17,6 +18,26 @@ type Message = {
   type: 'success' | 'warning' | 'error';
   text: string;
 } | null;
+
+/**
+ * Renames a variable where it sits. The rows are the entries of the merged
+ * `env`/`secretEnv` records and are keyed by position, so a rename that moved
+ * the entry to the end handed the focused input to a different variable.
+ */
+function renameVariable(
+  record: Record<string, string> | undefined,
+  from: string,
+  to: string,
+): Record<string, string> | undefined {
+  if (!record || !Object.hasOwn(record, from)) return record;
+  const renamed: Record<string, string> = {};
+  for (const [name, value] of Object.entries(record)) {
+    if (name === from) renamed[to] = value;
+    // A variable already called `to` gives way to the one being renamed.
+    else if (name !== to) renamed[name] = value;
+  }
+  return renamed;
+}
 
 export function IntegrationEditorPanel({
   editForm,
@@ -80,6 +101,7 @@ export function IntegrationEditorPanel({
   onUnlock: () => void;
   trustControlsEnabled?: boolean;
 }) {
+  useDecisionSurface('integration-editor');
   const isBuiltin = editForm.kind === 'builtin';
   /**
    * CI-R7: server-derived (`GET /integrations`), not inferred from `kind` —
@@ -98,7 +120,7 @@ export function IntegrationEditorPanel({
   return (
     <div className="detail-panel integration-editor-panel">
       <DetailHeader
-        title={editForm.displayName || editForm.id || 'New Tool Server'}
+        title={editForm.displayName || editForm.id || 'New tool server'}
         icon={
           !isNew ? (
             <IntegrationGlyph
@@ -205,7 +227,7 @@ export function IntegrationEditorPanel({
 
       <div className="agent-editor__section">
         <div className="agent-editor__section-header">
-          <h3 className="agent-editor__section-title">Editor Mode</h3>
+          <h3 className="agent-editor__section-title">Editor mode</h3>
           <p className="agent-editor__section-desc">
             {isBuiltin
               ? 'Built-in compatibility tools use a shared implementation across both runtimes.'
@@ -285,7 +307,7 @@ export function IntegrationEditorPanel({
       {!isBuiltin && viewMode === 'raw' ? (
         <div className="agent-editor__section">
           <div className="agent-editor__section-header">
-            <h3 className="agent-editor__section-title">Raw Configuration</h3>
+            <h3 className="agent-editor__section-title">Raw configuration</h3>
             <p className="agent-editor__section-desc">
               Paste a standard <code>mcp.json</code> config compatible with
               Claude Desktop, Cursor, Windsurf, and similar tools.
@@ -643,19 +665,21 @@ export function IntegrationEditorPanel({
                       disabled={
                         locked || Boolean(editForm.secretEnvKeys?.includes(key))
                       }
-                      onChange={(event) =>
-                        onUpdate((form) => {
-                          const { [key]: _oldSecret, ...secretEnv } =
-                            form.secretEnv || {};
-                          return {
-                            ...form,
-                            secretEnv: {
-                              ...secretEnv,
-                              [event.target.value]: value,
-                            },
-                          };
-                        })
-                      }
+                      onChange={(event) => {
+                        const nextKey = event.target.value;
+                        // Rename in whichever record holds the variable (both,
+                        // for an `env` value replaced here), so the old `env`
+                        // name goes with it and the row keeps its position.
+                        onUpdate((form) => ({
+                          ...form,
+                          env: renameVariable(form.env, key, nextKey),
+                          secretEnv: renameVariable(
+                            form.secretEnv,
+                            key,
+                            nextKey,
+                          ),
+                        }));
+                      }}
                     />
                     <input
                       className="editor-input editor-input--half"
@@ -682,6 +706,7 @@ export function IntegrationEditorPanel({
                     <button
                       type="button"
                       className="editor-btn--icon"
+                      aria-label={`Remove ${key || 'new variable'}`}
                       disabled={locked}
                       onClick={() =>
                         onUpdate((form) => {

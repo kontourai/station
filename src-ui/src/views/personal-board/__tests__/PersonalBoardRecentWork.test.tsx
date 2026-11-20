@@ -89,7 +89,7 @@ test('#4386: a conversation whose engine session was continued is one Recent wor
     'Another chat',
   ]);
   expect(links[0].getAttribute('href')).toBe(
-    `/?surface=activity&session=${encodeURIComponent('codex:abc:session:1111')}`,
+    `/?surface=chat&session=${encodeURIComponent('codex:abc:session:1111')}`,
   );
 });
 

@@ -13,6 +13,7 @@ import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
 import { type QueryConfig, useApiMutation, useApiQuery } from '../query-core';
+import { taskQueries } from '../queryFactories';
 
 type Result<T> = { success: boolean; data?: T; error?: string };
 export interface PullRequestResolvingContext {
@@ -290,6 +291,10 @@ export function useMergePullRequestMutation(
     {
       invalidateKeys: [
         pullRequestsQueryKey(provider, host, `${owner}/${repo}`),
+        // A merge moves a Task board card; the server cleared its own
+        // status cache on the write, so this refetch reads the forge. Every
+        // Project's facts: the merge route does not name one.
+        taskQueries.pullRequestFacts('').queryKey.slice(0, 1),
       ],
     },
   );

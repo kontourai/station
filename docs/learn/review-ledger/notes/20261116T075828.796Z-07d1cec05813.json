@@ -1,0 +1,7 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added only the optional getFeedbackObservation method (and its type import); existing provider shapes unchanged.","inputs":["packages/contracts/src/pull-request-provider.ts"]}
+  ]
+}

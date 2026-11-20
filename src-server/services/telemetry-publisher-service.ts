@@ -11,6 +11,7 @@ import {
   TELEMETRY_ENGINES,
   telemetrySendingForbidden,
 } from '@kontourai/station-contracts/product-telemetry';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
   liteTelemetryNoticeText,
@@ -395,7 +396,12 @@ export class TelemetryPublisherService {
           TELEMETRY_ENGINES.find(
             (engine) =>
               engine ===
-              (usage.provider === 'station-agent' ? 'station' : usage.provider),
+              (usage.provider === 'station-agent'
+                ? 'station'
+                : // OpenCode chats count as ACP, as before the engine existed.
+                  isAcpFamilyEngine(usage.provider)
+                  ? 'acp'
+                  : usage.provider),
           ) ?? 'other';
         const tokens =
           (cacheInclusivePromptTokens(usage.provider, usage) ??

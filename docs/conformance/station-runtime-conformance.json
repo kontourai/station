@@ -1,12 +1,13 @@
 {
-  "schemaVersion": "2",
+  "schemaVersion": "3",
   "adapters": [
     {
       "evidenceScope": "host-bound",
+      "installEvidence": "inert",
       "adapterId": "station-strands",
-      "adapterVersion": "0.7.1",
+      "adapterVersion": "0.8.0",
       "hostId": "station-strands",
-      "hostVersion": "1.22.0",
+      "hostVersion": "1.24.0",
       "capabilities": {
         "lifecycle": {
           "session-start": "unavailable",
@@ -63,6 +64,7 @@
         "capability.lifecycle.session-start=unavailable",
         "capability.lifecycle.stop=approximated",
         "message persistence is synchronized after invocation",
+        "probe.install-io=not-exercised",
         "stop is projected from AfterInvocationEvent"
       ],
       "results": [
@@ -100,6 +102,26 @@
         },
         {
           "check": "decision-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-stop",
           "status": "pass"
         },
         {
@@ -142,8 +164,9 @@
     },
     {
       "evidenceScope": "host-bound",
+      "installEvidence": "inert",
       "adapterId": "station-voltagent",
-      "adapterVersion": "0.7.1",
+      "adapterVersion": "0.8.0",
       "hostId": "station-voltagent",
       "hostVersion": "2.11.0",
       "capabilities": {
@@ -201,6 +224,7 @@
         "capability.lifecycle.before-model=unavailable",
         "capability.lifecycle.session-start=unavailable",
         "capability.lifecycle.stop=approximated",
+        "probe.install-io=not-exercised",
         "stop is projected from the existing onEnd hook"
       ],
       "results": [
@@ -238,6 +262,26 @@
         },
         {
           "check": "decision-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-after-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-before-model",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-before-tool",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-session-start",
+          "status": "pass"
+        },
+        {
+          "check": "decision-context-stop",
           "status": "pass"
         },
         {

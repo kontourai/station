@@ -1,0 +1,7 @@
+{
+  "revision": "bb92f90571eeebb284604a0f2dda3627b47e9419",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"testing.md change is limited to the Gallery control-record paragraph; the anchors and rules this document cites are unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

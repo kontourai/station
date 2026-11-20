@@ -5,6 +5,23 @@ import {
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
 
+export function assertProviderChatAttachments(
+  provider: { displayName: string; capabilities: readonly string[] },
+  attachments: ChatAttachmentInput[],
+): void {
+  const error = validateChatAttachments(attachments);
+  if (error) throw new Error(error);
+  for (const kind of ['image', 'file'] as const) {
+    if (
+      attachments.some((attachment) => attachment.kind === kind) &&
+      !provider.capabilities.includes(`${kind}-input`)
+    )
+      throw new Error(
+        `${provider.displayName} does not support ${kind} attachments.`,
+      );
+  }
+}
+
 /**
  * Narrow a persisted attachment back to a dispatchable one (archive#3374).
  *

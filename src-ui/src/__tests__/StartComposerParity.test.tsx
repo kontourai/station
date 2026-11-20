@@ -31,6 +31,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { StartComposer } from '../components/chat-start/StartComposer';
 import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -372,8 +373,14 @@ function renderBoth(projectSlug?: string) {
 
 const formOf = (root: HTMLElement) =>
   within(root).getByRole('form', { name: 'Start work' });
+function setupOf(root: HTMLElement) {
+  const trigger = within(formOf(root)).getByTestId('run-setup-trigger');
+  if (trigger.getAttribute('aria-expanded') !== 'true')
+    fireEvent.click(trigger);
+  return document.getElementById(trigger.getAttribute('aria-controls')!)!;
+}
 const agentChip = (root: HTMLElement) =>
-  within(formOf(root)).getByRole('button', { name: /^Agent:/ });
+  within(setupOf(root)).getByRole('button', { name: /^Agent:/ });
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
@@ -424,6 +431,85 @@ test('a draft can choose an unavailable profile to configure another execution S
   fireEvent.click(row);
   expect(agentChip(dock()).textContent).toContain('Claude');
   expect(dockSelect).not.toHaveBeenCalled();
+});
+
+describe('an Agent that is not set up is never selected for you', () => {
+  const MUSE = {
+    slug: 'muse',
+    name: 'Muse Code',
+    available: false,
+    unavailableReason:
+      "Agent 'muse' has no authored Agent definition, so Station cannot start new sessions.",
+    unavailableFix: { kind: 'unknown' },
+  } as unknown as AgentData;
+  const remember = (slug: string) =>
+    localStorage.setItem(
+      'station.newChat.lastAgentByContext',
+      JSON.stringify({ [JSON.stringify(['ns-1', '__global__'])]: slug }),
+    );
+  const remembered = () =>
+    JSON.parse(
+      localStorage.getItem('station.newChat.lastAgentByContext') ?? '{}',
+    )[JSON.stringify(['ns-1', '__global__'])];
+
+  test('a remembered Agent that cannot start yields to one that can, with no setup panel', async () => {
+    state.agents = [MUSE, CLAUDE];
+    remember('muse');
+    const { dock, home } = renderBoth();
+    expect(agentChip(dock()).textContent).toContain('Claude');
+    expect(agentChip(screen.getByTestId('home')).textContent).toContain(
+      'Claude',
+    );
+    expect(
+      within(dock()).queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+    expect(
+      home().queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+  });
+
+  test('picking an Agent that cannot start shows it in this tab but does not remember it', async () => {
+    state.agents = [CLAUDE, MUSE];
+    const { dock } = renderBoth();
+    fireEvent.click(agentChip(dock()));
+    await screen.findAllByRole('button', { name: /Muse Code/ });
+    const rows = document.querySelectorAll<HTMLButtonElement>(
+      'button[data-agent-slug="muse"]',
+    );
+    expect(rows).toHaveLength(1);
+    fireEvent.click(rows[0]);
+    expect(agentChip(dock()).textContent).toContain('Muse Code');
+    expect(remembered()).toBeUndefined();
+  });
+
+  test('Home shows no setup card when nothing can start: its Start prepares one', async () => {
+    state.agents = [MUSE];
+    const { home, dock } = renderBoth();
+    await within(dock()).findByRole(
+      'region',
+      { name: 'Set up an engine' },
+      { timeout: 15_000 },
+    );
+    expect(
+      home().queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+  }, 30_000);
+
+  test('when nothing can start, setup is one compact card with the reason folded away', async () => {
+    state.agents = [MUSE];
+    const { dock } = renderBoth();
+    const card = await within(dock()).findByRole(
+      'region',
+      { name: 'Set up an engine' },
+      { timeout: 15_000 },
+    );
+    expect(within(card).getByText('Not set up')).toBeTruthy();
+    const reason = within(card).getByText(/no authored Agent definition/);
+    expect(reason.closest('details')?.open).toBe(false);
+    expect(
+      within(card).getByRole('button', { name: 'Set up an engine' }),
+    ).toBeTruthy();
+  }, 30_000);
 });
 
 describe('a Project’s new-chat defaults preselect the composer', () => {
@@ -491,14 +577,14 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('last-used', 'sonnet') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Sonnet/,
     });
     expect(model.getAttribute('title')).toBe(
       'The model your last chat in this project started with.',
     );
     // The Project layer replaces the account default (Full access here).
-    expect(within(formOf(dock)).getByText('Auto')).toBeTruthy();
+    expect(within(setupOf(dock)).getByText('Auto')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect).toHaveBeenCalledTimes(1);
     expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
@@ -512,11 +598,11 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('fixed', 'sonnet') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBeNull();
-    expect(within(formOf(dock)).getByText('Full access')).toBeTruthy();
+    expect(within(setupOf(dock)).getByText('Full access')).toBeTruthy();
     startInDock(dock);
     expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
     ui.cleanupListener();
@@ -528,7 +614,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: null };
     const ui = renderBoth();
     expect(
-      await within(formOf(ui.dock())).findByText('Full access'),
+      await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
     ui.cleanupListener();
     cleanup();
@@ -536,7 +622,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = {};
     const unread = renderBoth();
     expect(
-      await within(formOf(unread.dock())).findByText('Set at start'),
+      await within(setupOf(unread.dock())).findByText('Set at start'),
     ).toBeTruthy();
     unread.cleanupListener();
   });
@@ -551,7 +637,7 @@ describe('a Project’s new-chat defaults preselect the composer', () => {
     state.chatDefaults = { station: lastUsed('last-used', 'retired-model') };
     const ui = renderBoth();
     const dock = ui.dock();
-    const model = await within(formOf(dock)).findByRole('button', {
+    const model = await within(setupOf(dock)).findByRole('button', {
       name: /^Model: Opus/,
     });
     expect(model.getAttribute('title')).toBe(
@@ -586,12 +672,12 @@ describe('Home and the dock start the same way', () => {
     ];
     const ui = renderBoth();
     expect(
-      await within(formOf(screen.getByTestId('home'))).findByText(
+      await within(setupOf(screen.getByTestId('home'))).findByText(
         'Full access',
       ),
     ).toBeTruthy();
     expect(
-      await within(formOf(ui.dock())).findByText('Full access'),
+      await within(setupOf(ui.dock())).findByText('Full access'),
     ).toBeTruthy();
   });
 
@@ -636,13 +722,13 @@ describe('Home and the dock start the same way', () => {
 
     // Home: Ask, chosen in the picker, is what the start sends.
     fireEvent.click(
-      await within(formOf(home)).findByRole('button', {
+      await within(setupOf(home)).findByRole('button', {
         name: /^Permissions: Full access/,
       }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
     expect(
-      await within(formOf(home)).findByRole('button', {
+      await within(setupOf(home)).findByRole('button', {
         name: /^Permissions: Ask\. Chosen for this chat/,
       }),
     ).toBeTruthy();
@@ -654,10 +740,10 @@ describe('Home and the dock start the same way', () => {
 
     // Default delegates to engine settings and explains the unknown startup mode.
     fireEvent.click(
-      within(formOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
+      within(setupOf(home)).getByRole('button', { name: /^Permissions: Ask/ }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Default/ }));
-    const engineDefault = await within(formOf(home)).findByRole('button', {
+    const engineDefault = await within(setupOf(home)).findByRole('button', {
       name: /^Permissions: Default/,
     });
     expect(within(engineDefault).getByText('Permissions')).toBeTruthy();
@@ -672,19 +758,17 @@ describe('Home and the dock start the same way', () => {
 
     // The dock: full access takes its confirmation, then reaches onSelect.
     fireEvent.click(
-      within(formOf(ui.dock())).getByRole('button', {
+      within(setupOf(ui.dock())).getByRole('button', {
         name: /^Permissions: /,
       }),
     );
     fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
     fireEvent.click(
-      within(formOf(ui.dock())).getByRole('button', {
+      within(setupOf(ui.dock())).getByRole('button', {
         name: /^Permissions: Auto/,
       }),
     );
-    fireEvent.click(
-      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
-    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Full access/ }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Enable full access' }),
     );
@@ -703,7 +787,7 @@ describe('Home and the dock start the same way', () => {
       'Project: No project',
     );
     expect(
-      within(formOf(home)).getByRole('button', {
+      within(setupOf(home)).getByRole('button', {
         name: 'Model: Opus',
       }),
     ).toBeTruthy();
@@ -1135,10 +1219,6 @@ describe('Home and the dock start the same way', () => {
       starts.push(event as CustomEvent);
     };
     window.addEventListener('station:open-new-chat', listener);
-    localStorage.setItem(
-      'station.newChat.lastAgentByContext',
-      JSON.stringify({ [JSON.stringify(['ns-1', '__global__'])]: 'claude' }),
-    );
     render(
       <AuthorityPersistenceContext.Provider
         value={{ status: 'verified', namespace: 'ns-1', observation: null }}
@@ -1150,6 +1230,14 @@ describe('Home and the dock start the same way', () => {
     fireEvent.change(
       within(form).getByRole('textbox', { name: 'What would you like done?' }),
       { target: { value: 'Keep this' } },
+    );
+    // Home offers setup only for an Agent picked from the menu.
+    fireEvent.click(agentChip(document.body));
+    await screen.findAllByRole('button', { name: /Claude/ });
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(
+        'button[data-agent-slug="claude"]',
+      )!,
     );
     // The setup guidance is a lazy chunk; a cold transform can be slow.
     const connect = await screen.findByRole(
@@ -2379,4 +2467,70 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     expect(menu.querySelector('.start-menu__hint')?.textContent).toBe(reason);
     ui.cleanupListener();
   }, 30_000);
+});
+
+test('start setup exposes an execution override independently of approval state', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'profile',
+          name: 'Writer',
+          engineId: 'station-agent',
+        } as AgentData,
+        executionAgentId: 'other-engine',
+      }}
+      onOpenAgents={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.textContent).not.toContain('⚠');
+  expect(trigger.textContent).toContain('·');
+  expect(trigger.getAttribute('aria-label')).toContain(
+    'changed for this conversation',
+  );
+});
+
+test('start setup names the requested effort on the trigger and the Model row', () => {
+  render(
+    <StartComposer
+      prompt=""
+      onPromptChange={vi.fn()}
+      agent={{
+        status: 'ready',
+        needsSetup: false,
+        agent: {
+          slug: 'claude-code',
+          name: 'Claude Code',
+          engineId: 'claude',
+        } as AgentData,
+        modelLabel: 'Opus',
+        effortLabel: 'High',
+      }}
+      onOpenAgents={vi.fn()}
+      onOpenModel={vi.fn()}
+      project={{ status: 'ready', label: 'No project', isGlobal: true }}
+      onOpenProject={vi.fn()}
+      canStart={false}
+      pending={false}
+      onStart={vi.fn()}
+    />,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  fireEvent.click(trigger);
+  expect(
+    screen.getByRole('button', { name: /^Model: Opus · High/ }),
+  ).toBeTruthy();
 });

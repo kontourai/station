@@ -1,5 +1,16 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
@@ -56,6 +67,261 @@ export async function allocateLiveStation(
   };
 }
 
+type LifecycleCommandOutcome = {
+  code: number | null;
+  signal: string | null;
+  error: boolean;
+  timedOut: boolean | null;
+};
+
+type LifecycleEvent = {
+  type: string;
+  instanceId: string;
+  bootId: string;
+  pid: number;
+  sha: string;
+  operationId?: string;
+  result?: string;
+};
+
+type LifecycleStartup = {
+  instance: string;
+  serverPort: number;
+  uiPort: number;
+  events: LifecycleEvent[];
+};
+
+const liveLifecycle = new WeakMap<
+  LiveStation,
+  {
+    journal: string;
+    start: LifecycleCommandOutcome | null;
+    startup: LifecycleStartup | null;
+  }
+>();
+
+function readLifecycleEvidence(
+  path: string,
+  instance: string,
+  startup: LifecycleStartup | null,
+) {
+  let descriptor: number | undefined;
+  const events: LifecycleEvent[] = [];
+  let binding: { bytes: number | null; sha256: string | null } = {
+    bytes: null,
+    sha256: null,
+  };
+  const gap = (reason: string) => ({
+    ...binding,
+    events,
+    started: null,
+    matched: false,
+    gap: reason,
+  });
+  try {
+    descriptor = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    if (!fstatSync(descriptor).isFile()) return gap('journal-not-regular');
+    const buffer = Buffer.alloc(128 * 1024 + 1);
+    const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+    if (bytes === buffer.length) return gap('journal-too-large');
+    const raw = buffer.subarray(0, bytes);
+    binding = {
+      bytes,
+      sha256: createHash('sha256').update(raw).digest('hex'),
+    };
+    const id = (value: unknown) =>
+      typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+    for (const line of raw.toString('utf8').split('\n').filter(Boolean)) {
+      const event = JSON.parse(line);
+      if (
+        event.type !== 'started' &&
+        event.type !== 'stop_intent' &&
+        event.type !== 'stop_result'
+      )
+        continue;
+      if (
+        event.instanceId !== instance ||
+        !id(event.bootId) ||
+        !Number.isSafeInteger(event.pid) ||
+        event.pid < 1 ||
+        typeof event.sha !== 'string' ||
+        !/^[a-f0-9]{40,64}$/.test(event.sha) ||
+        (event.type !== 'started' && !id(event.operationId)) ||
+        (event.type === 'stop_result' &&
+          !['completed', 'already_absent', 'failed'].includes(event.result))
+      )
+        return gap('journal-identity-mismatch');
+      if (events.length === 64) return gap('too-many-lifecycle-events');
+      events.push({
+        type: event.type,
+        instanceId: instance,
+        bootId: event.bootId,
+        pid: event.pid,
+        sha: event.sha,
+        ...(event.type !== 'started' ? { operationId: event.operationId } : {}),
+        ...(event.type === 'stop_result' ? { result: event.result } : {}),
+      });
+    }
+    const sameIdentity = (left: LifecycleEvent, right: LifecycleEvent) =>
+      left.instanceId === right.instanceId &&
+      left.pid === right.pid &&
+      left.bootId === right.bootId &&
+      left.sha === right.sha;
+    const starts = events.filter((event) => event.type === 'started');
+    if (starts.length === 0) return gap('startup-identity-missing');
+    if (
+      starts.some((event, index) =>
+        starts.slice(0, index).some((prior) => sameIdentity(event, prior)),
+      )
+    )
+      return gap('duplicate-start-or-restart');
+    const bootBuilds = new Set(
+      events.map((event) => `${event.bootId}:${event.sha}`),
+    );
+    if (bootBuilds.size !== 1) return gap('conflicting-boot-or-build');
+    if (startup) {
+      if (
+        startup.events.length === 0 ||
+        events.length < startup.events.length ||
+        startup.events.some((event, index) => {
+          const current = events[index];
+          return (
+            !current ||
+            event.type !== 'started' ||
+            current.type !== 'started' ||
+            !sameIdentity(event, current)
+          );
+        })
+      )
+        return gap('startup-prefix-changed');
+      if (
+        events
+          .slice(startup.events.length)
+          .some((event) => event.type === 'started')
+      )
+        return gap('new-start-after-startup');
+    } else if (events.some((event) => event.type !== 'started')) {
+      return gap('startup-snapshot-missing');
+    }
+    const intents = events.filter((event) => event.type === 'stop_intent');
+    const results = events.filter((event) => event.type === 'stop_result');
+    if (results.some((event) => event.result === 'failed'))
+      return gap('failed-stop');
+    if (intents.length === 0 && results.length === 0)
+      return gap('matching-stop-pair-missing');
+    if (intents.length !== 1 || results.length !== 1)
+      return gap('ambiguous-or-orphan-stop');
+    const [intent] = intents;
+    const [result] = results;
+    if (
+      !intent ||
+      !result ||
+      !sameIdentity(intent, result) ||
+      intent.operationId !== result.operationId
+    )
+      return gap('conflicting-stop-operation');
+    const candidates = starts.filter((event) => sameIdentity(event, intent));
+    const [started] = candidates;
+    if (candidates.length !== 1 || !started)
+      return gap('stop-identity-not-unique');
+    if (
+      events.indexOf(started) >= events.indexOf(intent) ||
+      events.indexOf(intent) >= events.indexOf(result)
+    )
+      return gap('stop-events-out-of-order');
+    if (!startup) return gap('startup-snapshot-missing');
+    if (!startup.events.some((event) => sameIdentity(event, started)))
+      return gap('stop-not-in-startup-set');
+    return { ...binding, events, started, matched: true, gap: null };
+  } catch {
+    return gap('journal-unreadable');
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function emitLiveLifecycleEvidence(
+  live: LiveStation,
+  action: 'start' | 'stop',
+  outcome: LifecycleCommandOutcome,
+): void {
+  const capture = liveLifecycle.get(live);
+  if (!capture) return;
+  try {
+    const startup = action === 'stop' ? capture.startup : null;
+    const evidence = readLifecycleEvidence(
+      capture.journal,
+      live.instance,
+      startup,
+    );
+    const nativeStart = capture.start;
+    const started = evidence.started;
+    const startSucceeded = Boolean(
+      nativeStart?.code === 0 &&
+        nativeStart.signal === null &&
+        !nativeStart.error &&
+        nativeStart.timedOut === false,
+    );
+    if (action === 'start') {
+      capture.startup =
+        startSucceeded && evidence.gap === 'matching-stop-pair-missing'
+          ? {
+              instance: live.instance,
+              serverPort: live.serverPort,
+              uiPort: live.uiPort,
+              events: evidence.events.map((event) => ({ ...event })),
+            }
+          : null;
+    }
+    const continuity = Boolean(
+      action === 'stop' &&
+        evidence.matched &&
+        startSucceeded &&
+        outcome.code === 0 &&
+        outcome.signal === null &&
+        !outcome.error &&
+        outcome.timedOut === false &&
+        startup?.instance === live.instance &&
+        startup.serverPort === live.serverPort &&
+        startup.uiPort === live.uiPort,
+    );
+    console.log(
+      `[e2e-lifecycle] ${JSON.stringify({
+        owner: 'spec',
+        action,
+        instance: live.instance,
+        roots: 'fixture-owned-home-and-output',
+        serverPort: live.serverPort,
+        uiPort: live.uiPort,
+        start: capture.start,
+        ...(action === 'stop' ? { stop: outcome } : {}),
+        journal: evidence,
+        candidateSetContinuity: continuity,
+        selectedMemberContinuity: Boolean(
+          continuity &&
+            started &&
+            startup?.events.some(
+              (event) =>
+                event.instanceId === started.instanceId &&
+                event.pid === started.pid &&
+                event.bootId === started.bootId &&
+                event.sha === started.sha,
+            ),
+        ),
+      })}`,
+    );
+  } catch {
+    try {
+      console.log('[e2e-lifecycle] {"owner":"spec","gap":"capture-failed"}');
+    } catch {
+      // Evidence output must not replace the original command outcome.
+    }
+  }
+}
+
 async function runCommand(
   file: string,
   args: string[],
@@ -63,16 +329,32 @@ async function runCommand(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     timeoutMs?: number;
+    onOutcome?: (outcome: LifecycleCommandOutcome) => void;
   } = {},
 ): Promise<{ stdout: string; stderr: string }> {
-  const { stdout, stderr } = await execFileAsync(file, args, {
-    cwd: options.cwd,
-    env: options.env,
-    timeout: options.timeoutMs ?? 120_000,
-    maxBuffer: 10 * 1024 * 1024,
-    windowsHide: true,
-  });
-  return { stdout: String(stdout), stderr: String(stderr) };
+  let result: { stdout: string | Buffer; stderr: string | Buffer };
+  try {
+    result = await execFileAsync(file, args, {
+      cwd: options.cwd,
+      env: options.env,
+      timeout: options.timeoutMs ?? 120_000,
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    const detail = error && typeof error === 'object' ? error : {};
+    const code = 'code' in detail ? detail.code : null;
+    const signal = 'signal' in detail ? detail.signal : null;
+    options.onOutcome?.({
+      code: typeof code === 'number' ? code : null,
+      signal: typeof signal === 'string' ? signal : null,
+      error: true,
+      timedOut: code === 'ETIMEDOUT' ? true : null,
+    });
+    throw error;
+  }
+  options.onOutcome?.({ code: 0, signal: null, error: false, timedOut: false });
+  return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
 
 async function waitForReady(
@@ -144,7 +426,13 @@ export async function startStation(
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
-  if (options.logFile) args.push(`--log=${options.logFile}`);
+  if (options.logFile) {
+    const journal = `${options.logFile}.lifecycle.ndjson`;
+    liveLifecycle.set(live, { journal, start: null, startup: null });
+    args.push(`--log=${options.logFile}`, `--lifecycle-journal=${journal}`);
+  } else {
+    liveLifecycle.delete(live);
+  }
   if (clean) args.splice(3, 0, '--clean');
   const inherited = options.environment ?? process.env;
   const startup = await runCommand(...stationCommand(args), {
@@ -152,6 +440,11 @@ export async function startStation(
     // build. A cold Windows or low-disk cache can exceed the ordinary helper's
     // two-minute command budget without the Station process being unhealthy.
     timeoutMs: options.performanceReference ? 300_000 : 120_000,
+    onOutcome: (outcome) => {
+      const capture = liveLifecycle.get(live);
+      if (capture) capture.start = outcome;
+      emitLiveLifecycleEvidence(live, 'start', outcome);
+    },
     env: {
       ...inherited,
       PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,
@@ -159,18 +452,6 @@ export async function startStation(
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY:
         options.deterministicReadiness === false ? undefined : '1',
-      ...(options.runtimeFramework
-        ? {
-            STATION_FEATURES: [
-              ...(inherited.STATION_FEATURES ?? '')
-                .split(',')
-                .filter((feature) => feature && feature !== 'strands-runtime'),
-              ...(options.runtimeFramework === 'strands'
-                ? ['strands-runtime']
-                : []),
-            ].join(','),
-          }
-        : {}),
       ...(options.performanceReference
         ? {
             STATION_PERFORMANCE_REFERENCE: '1',
@@ -202,7 +483,51 @@ export async function startStation(
     ),
     waitForReady(live.ui, 'Station UI'),
   ]);
+  if (options.runtimeFramework) {
+    // #3909: the persisted `runtime` setting is the only runtime selector,
+    // and Station reads it once at boot. A fresh home is seeded by the
+    // server itself, so persist the choice through the config route and
+    // restart once rather than writing config/app.json before first boot.
+    const headers = e2eOperatorAuthorizationHeaders(operatorCredential);
+    const persisted = await persistedRuntimeFramework(live, headers);
+    if (persisted !== options.runtimeFramework) {
+      const response = await fetch(`${live.api}/config/app`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runtime: options.runtimeFramework }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Persisting runtime ${options.runtimeFramework} failed: HTTP ${response.status}`,
+        );
+      }
+      await stopStation(live, { environment: options.environment });
+      // The restart boots on the persisted value; callers assert the
+      // runtime it reports (`/api/system/runtime`).
+      return startStation(live, false, {
+        ...options,
+        runtimeFramework: undefined,
+      });
+    }
+  }
   return bootstrapMatches[0]![1]!;
+}
+
+async function persistedRuntimeFramework(
+  live: LiveStation,
+  headers: Record<string, string>,
+): Promise<string> {
+  const response = await fetch(`${live.api}/config/app`, {
+    headers,
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Reading config/app failed: HTTP ${response.status}`);
+  }
+  const body = (await response.json()) as { data?: { runtime?: unknown } };
+  const runtime = body.data?.runtime;
+  return typeof runtime === 'string' ? runtime : 'voltagent';
 }
 
 export interface TaskRoomAgentEditReceipt {
@@ -283,6 +608,7 @@ export async function stopStation(
   ];
   const inherited = options.environment ?? process.env;
   await runCommand(...stationCommand(args), {
+    onOutcome: (outcome) => emitLiveLifecycleEvidence(live, 'stop', outcome),
     env: {
       ...inherited,
       PATH: `${NODE_BIN}${delimiter}${inherited.PATH ?? process.env.PATH ?? ''}`,

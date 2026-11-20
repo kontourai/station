@@ -43,18 +43,47 @@ import { inboxRowChips } from '../inbox-row-chips';
 // The details sheet's on-demand reads (git, pull requests, basis) need a
 // connection scope; with none they stay disabled, which is all these tests
 // need of them.
+const discardAuthority = vi.hoisted(() => ({ enabled: false }));
 vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<
     typeof import('../../../contexts/ApiBaseContext')
   >()),
-  useHostRequestAuthorityScope: () => null,
+  useHostRequestAuthorityScope: () =>
+    discardAuthority.enabled
+      ? {
+          apiBase: 'http://station.test',
+          authorityKey: 'inbox-row-test',
+          isCurrent: () => true,
+        }
+      : null,
 }));
 
-const discardCommand = vi.hoisted(() => vi.fn(async () => ({})));
+const discardCommand = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<object>>(async () => ({})),
+);
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   dispatchOrchestrationCommandWithReceipt: discardCommand,
 }));
+
+const resolutionState = vi.hoisted(() => ({
+  supported: false,
+  mutate: vi.fn(),
+}));
+vi.mock('../../chat-dock/useConversationWorkState', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../chat-dock/useConversationWorkState')
+    >();
+  return {
+    ...actual,
+    useConversationWorkState: () => ({
+      ...actual.useConversationWorkState(),
+      supported: resolutionState.supported,
+      change: { isPending: false, mutate: resolutionState.mutate },
+    }),
+  };
+});
 
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 
@@ -133,18 +162,13 @@ function statusText(): string {
   return clone.textContent ?? '';
 }
 
-/** What a screen reader is told about the row: its description, with
- *  `aria-hidden` content left out as the accessibility tree leaves it out. */
+// The off-screen reason and duration are directly referenced even when
+// hidden from the button's name.
 function describedText(): string {
   const open = screen.getByTestId('inbox-row').querySelector('button')!;
   return (open.getAttribute('aria-describedby') ?? '')
     .split(' ')
-    .map((id) => {
-      const clone = document.getElementById(id)?.cloneNode(true) as Element;
-      for (const hidden of clone.querySelectorAll('[aria-hidden="true"]'))
-        hidden.remove();
-      return clone.textContent ?? '';
-    })
+    .map((id) => document.getElementById(id)?.textContent ?? '')
     .join(' ');
 }
 
@@ -225,7 +249,7 @@ describe('the row says exactly what the ladder says', () => {
     expect(statusText()).toBe('Needs approval');
     expect(screen.queryByRole('button', { name: /approve|deny/i })).toBeNull();
     screen
-      .getByRole('button', { name: 'Migrate sessions table, station' })
+      .getByRole('button', { name: /^Migrate sessions table.*station/ })
       .click();
     expect(onActivate).toHaveBeenCalledWith(row.item);
   });
@@ -263,7 +287,7 @@ describe('the row says exactly what the ladder says', () => {
     healthy.unmount();
 
     renderRow(rowFor({ turnProgress: SILENCE }));
-    expect(statusText()).toBe('No progress · Bash · 6m');
+    expect(statusText()).toBe('No progress · Bash · 6m 0s');
     expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
     expect(glyphPath()).toBeTruthy();
     expect(glyphPath()).not.toBe(healthyGlyph);
@@ -273,24 +297,30 @@ describe('the row says exactly what the ladder says', () => {
 });
 
 describe('what a screen reader and a ticking clock each get', () => {
-  it('describes the row by its status, with a coarse duration instead of the ticking one', () => {
+  it('names the visible status once and describes the coarse duration', () => {
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     // The per-second number is hidden from the description; a duration that
     // only moves with the host's clock stands in for it.
-    expect(describedText()).toBe('Running · Bash, for about 1 minute');
+    expect(
+      screen.getByRole('button', {
+        name: /^Migrate sessions table.*Running · Bash.*station/,
+        description: /^for about 1 minute$/,
+      }),
+    ).toBeTruthy();
+    expect(describedText()).toBe('for about 1 minute');
   });
 
   it('ticks once a second', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(48_000);
     });
     // 72s + 48s: the shared clock moved the duration to the next minute.
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
   });
 
   it('shows the real elapsed time even when the list clock is 30s stale', () => {
@@ -299,11 +329,11 @@ describe('what a screen reader and a ticking clock each get', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor(), { now: NOW - 30_000 });
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(48_000);
     });
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
   });
 
   it('a host re-rendering with a fresh now does not restart the ticker', () => {
@@ -331,7 +361,7 @@ describe('what a screen reader and a ticking clock each get', () => {
       </QueryClientProvider>,
     );
     expect(setIntervalSpy.mock.calls.length).toBe(started);
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
     setIntervalSpy.mockRestore();
   });
 
@@ -353,9 +383,12 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.getByTestId('inbox-row-failure-reason').textContent).toBe(
       FAILED.terminalAttribution.detail,
     );
-    expect(describedText()).toBe(
-      `Failed · ${FAILED.terminalAttribution.detail}`,
-    );
+    expect(
+      screen.getByRole('button', {
+        name: /^Migrate sessions table.*Failed.*The engine reported an error/,
+      }),
+    ).toBeTruthy();
+    expect(describedText()).toBe('');
   });
 
   it('the unanswerable basis is on the row and in its description', () => {
@@ -393,9 +426,7 @@ describe('a reason is readable in full on every surface', () => {
   it('a slim failed row shows the word and still describes the reason', () => {
     renderRow(rowFor(FAILED), { size: 'slim' });
     expect(statusText()).toBe('Failed');
-    expect(describedText()).toBe(
-      `Failed · ${FAILED.terminalAttribution.detail}`,
-    );
+    expect(describedText()).toBe(FAILED.terminalAttribution.detail);
   });
 
   it('touch chrome opens the card as a sheet holding every fact the row leaves off', async () => {
@@ -495,24 +526,54 @@ describe('the chip line exists only when a chip does', () => {
     expect(
       [...document.querySelectorAll('.inbox-row__chip')].map((chip) => [
         chip.getAttribute('data-chip'),
-        chip.textContent,
+        chip.textContent?.trim(),
       ]),
     ).toEqual([
-      ['remote', 'home-media'],
+      ['remote', 'Station: home-media'],
       ['woke', 'Woke from snooze'],
     ]);
-    // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
+    // #4266: no full-line "Unsent draft" chip. A pencil after the project,
     // hidden from assistive tech: the row's name already says it.
     const marker = screen.getByTestId('inbox-row-draft-marker');
     expect(marker.getAttribute('title')).toBe('Unsent draft');
     expect(marker.getAttribute('aria-hidden')).toBe('true');
-    expect(marker.closest('.inbox-row__meta')).not.toBeNull();
+    expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
       screen.getByRole('button', { name: /, unsent draft$/ }),
     ).toBeTruthy();
     act(() => chatDraftsStore.clear('chat-with-draft'));
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
+  });
+
+  it('shows peer Station provenance from work facts with a project mark', () => {
+    const row = rowFor();
+    renderRow({
+      ...row,
+      facts: {
+        ...row.facts!,
+        station: { id: 'peer-1', label: 'Build Station' },
+      },
+    });
+    expect(screen.getByText('Station: Build Station')).toBeTruthy();
+    expect(document.querySelector('.project-icon')).not.toBeNull();
+  });
+
+  it('does not borrow host artwork or colour for a peer-bound chat with the same project slug', () => {
+    const row = rowFor();
+    renderRow(
+      {
+        ...row,
+        facts: {
+          ...row.facts!,
+          station: { id: 'peer', label: 'Peer Station' },
+        },
+      },
+      { projectIcon: '🚀', projectAccent: '#ff8800' },
+    );
+    expect(document.querySelector('.project-icon--icon')).toBeNull();
+    expect(document.querySelector('.project-icon--initials')).not.toBeNull();
+    expect(document.querySelector('[data-project-icon="dot"]')).toBeNull();
   });
 
   it('the chip derivation, fact by fact', () => {
@@ -522,7 +583,7 @@ describe('the chip line exists only when a chip does', () => {
     ]);
     expect(inboxRowChips({}, { isWoken: false })).toEqual([]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
-      { kind: 'remote', label: 'box' },
+      { kind: 'remote', label: 'Station: box' },
     ]);
   });
 });
@@ -706,6 +767,196 @@ describe('two sizes and two chromes', () => {
   });
 });
 
+describe('shared inbox actions', () => {
+  it('keeps snooze choices in Details when Snooze is also a row shortcut', async () => {
+    const row = rowFor();
+    const onSnoozeWake = vi.fn();
+    renderRow(row, {
+      chrome: 'touch',
+      hoverCard: true,
+      onSnoozeWake,
+    });
+    expect(
+      screen.getByRole('button', { name: 'Snooze Migrate sessions table' }),
+    ).toBeTruthy();
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    fireEvent.click(within(actions).getByRole('button', { name: '1 hour' }));
+    expect(onSnoozeWake).toHaveBeenCalledWith(
+      row.item,
+      NOW + 3_600_000,
+      details,
+    );
+    expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+  });
+
+  it.each([false, true])(
+    'runs the same resolution command from desktop and Details (settled: %s)',
+    async (settled) => {
+      const onChange = vi.fn();
+      const row = rowFor({
+        hasActiveTurn: false,
+        conversationActivity: undefined,
+      });
+      const resolution = { settled, pending: false, onChange };
+      const verb = settled ? 'Reopen' : 'Settle';
+      renderRow(row, { resolution });
+      fireEvent.click(
+        screen.getByRole('button', { name: `${verb} Migrate sessions table` }),
+      );
+      expect(onChange).toHaveBeenCalledTimes(1);
+      cleanup();
+
+      renderRow(row, { chrome: 'touch', hoverCard: true, resolution });
+      fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+      const actions = await screen.findByTestId(
+        'inbox-row-details-actions',
+        {},
+        { timeout: 8000 },
+      );
+      fireEvent.click(
+        within(actions).getByRole('button', { name: `${verb} conversation` }),
+      );
+      expect(onChange).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+    },
+  );
+
+  it.each(['hover', 'touch'] as const)(
+    'does not resubmit a pending resolution through %s actions',
+    async (chrome) => {
+      const onChange = vi.fn();
+      renderRow(rowFor(), {
+        chrome,
+        hoverCard: true,
+        resolution: { settled: false, pending: true, onChange },
+      });
+      if (chrome === 'touch') {
+        fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+        await screen.findByTestId(
+          'inbox-row-details-actions',
+          {},
+          { timeout: 8000 },
+        );
+      }
+      const settle = screen.getByRole('button', {
+        name:
+          chrome === 'touch'
+            ? 'Settle conversation'
+            : 'Settle Migrate sessions table',
+      });
+      expect(settle.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(settle);
+      expect(onChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it('names inbox dismissal separately from closing an open chat', async () => {
+    const row = rowFor();
+    const onDismiss = vi.fn();
+    const onCloseChat = vi.fn();
+    renderRow(row, {
+      chrome: 'touch',
+      hoverCard: true,
+      actionsInDetails: true,
+      isOpenChat: true,
+      onDismiss,
+      onCloseChat,
+    });
+    const details = screen.getByRole('button', { name: /^Details for/ });
+    fireEvent.click(details);
+    const actions = await screen.findByTestId(
+      'inbox-row-details-actions',
+      {},
+      { timeout: 8000 },
+    );
+    expect(
+      within(actions).queryByRole('button', { name: 'Close chat' }),
+    ).toBeNull();
+    fireEvent.click(
+      within(actions).getByRole('button', { name: 'Dismiss from inbox' }),
+    );
+    expect(onDismiss).toHaveBeenCalledWith(row.item, details);
+    expect(onCloseChat).not.toHaveBeenCalled();
+  });
+});
+
+it('owned running chats can be dismissed while idle chats can be settled', () => {
+  const running = { ...rowFor().item, conversationId: 'running-chat' };
+  const idle = {
+    ...rowFor({ hasActiveTurn: false }).item,
+    id: 'idle',
+    title: 'Review next steps',
+    lifecycleLabel: 'Ready' as const,
+    conversationId: 'idle-chat',
+  };
+  const dismiss = vi.fn();
+  resolutionState.supported = true;
+  try {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'running', label: 'Running', items: [running] },
+            { id: 'idle', label: 'Idle', items: [idle] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="hover"
+          onActivate={vi.fn()}
+          onDismiss={dismiss}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Dismiss ${running.title} from inbox`,
+      }),
+    );
+    expect(dismiss).toHaveBeenCalledWith(
+      running,
+      expect.any(HTMLButtonElement),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Settle Review next steps' }),
+    );
+    expect(resolutionState.mutate).toHaveBeenCalledWith({
+      conversationId: 'idle-chat',
+      settled: true,
+    });
+  } finally {
+    resolutionState.supported = false;
+    resolutionState.mutate.mockClear();
+  }
+});
+
+it('swipe actions place Settle to the right of Snooze', () => {
+  const row = rowFor({ hasActiveTurn: false });
+  renderRow(row, {
+    chrome: 'touch',
+    hoverCard: true,
+    swipeActions: true,
+    swipeOpen: true,
+    onSnoozeWake: vi.fn(),
+    resolution: { settled: false, pending: false, onChange: vi.fn() },
+  });
+  const tray = document.querySelector<HTMLElement>('.inbox-row__swipe-actions');
+  if (!tray) throw new Error('Missing swipe actions');
+  expect(
+    within(tray)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim()),
+  ).toEqual(['Snooze', 'Settle']);
+});
+
 describe('the Details sheet belongs to the item, not to the row instance', () => {
   const group = (id: 'idle' | 'running', item: HomeWorkItem) => ({
     id,
@@ -808,6 +1059,13 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
 });
 
 describe('a Draft row on touch chrome', () => {
+  beforeEach(() => {
+    discardAuthority.enabled = true;
+  });
+  afterEach(() => {
+    discardAuthority.enabled = false;
+    vi.useRealTimers();
+  });
   const draftRow = (): Row => {
     const base = rowFor({
       hasActiveTurn: false,
@@ -838,13 +1096,19 @@ describe('a Draft row on touch chrome', () => {
       'Details for Migrate sessions table',
       'Discard draft Migrate sessions table',
     ]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Discard draft Migrate sessions table',
       }),
     );
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    vi.useRealTimers();
     await vi.waitFor(() => expect(onDraftDiscarded).toHaveBeenCalledTimes(1));
-    expect(discardCommand).toHaveBeenCalledWith({
+    expect(discardCommand.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: 'T',
     });
@@ -875,7 +1139,13 @@ describe('a Draft row on touch chrome', () => {
       name: 'Discard draft Migrate sessions table',
     });
     expect(discard.textContent).toBe('Discard draft');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(discard);
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    vi.useRealTimers();
     await vi.waitFor(() => expect(onDraftDiscarded).toHaveBeenCalledTimes(1));
     // Not the portaled sheet button: the row's own Details trigger, which
     // the host can find its row from to move focus before the row goes.
@@ -1007,23 +1277,8 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
     expect(screen.queryByTestId('inbox-row-details')).toBeNull();
   });
 
-  it('a row that keeps nothing in the sheet renders no list at all', async () => {
-    // Home's Draft row: Discard is beside the row and there is no snooze.
-    const base = rowFor({
-      hasActiveTurn: false,
-      conversationActivity: undefined,
-    });
-    renderRow(
-      {
-        facts: undefined,
-        item: {
-          ...base.item,
-          lifecycleLabel: 'Draft',
-          turnProgress: undefined,
-        },
-      },
-      { chrome: 'touch', hoverCard: true, onDraftDiscarded: vi.fn() },
-    );
+  it('a host that supplies no actions renders no list in the sheet', async () => {
+    renderRow(rowFor(), { chrome: 'touch', hoverCard: true });
     await openSheet();
     expect(screen.queryByTestId('inbox-row-details-actions')).toBeNull();
     expect(
@@ -1127,19 +1382,21 @@ describe("the project's colour is a swatch, never the name's colour", () => {
     expect(swatch).not.toBeNull();
     expect(swatch!.getAttribute('aria-hidden')).toBe('true');
     expect(swatch!.style.backgroundColor).toBe('var(--event-tool-call)');
-    // Before the name, beside it on the meta line.
+    // Before the name, beside it on the state line.
     const project = row.querySelector<HTMLElement>('.inbox-row__project')!;
     expect(swatch!.nextElementSibling).toBe(project);
     expect(project.textContent).toBe('station');
     // The accent is never a text colour (accent-foreground ratchet).
     expect(project.style.color).toBe('');
     expect(
-      row.querySelector('.inbox-row__meta-text')!.getAttribute('style'),
+      row.querySelector('.inbox-row__context')!.getAttribute('style'),
     ).toBeNull();
     // The open button's name still says the project in words.
-    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
-      'station',
-    );
+    expect(
+      within(row).getByRole('button', {
+        name: /^Migrate sessions table.*station/,
+      }),
+    ).toBeTruthy();
   });
 
   it('a row with no accent draws no swatch', () => {
@@ -1202,9 +1459,11 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     expect(mark?.classList.contains('project-icon--dot')).toBe(false);
     expect(mark?.nextElementSibling?.textContent).toBe('station');
     // The open button's name still says the project in words, once.
-    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
-      'station',
-    );
+    expect(
+      within(row).getByRole('button', {
+        name: /^Migrate sessions table.*station/,
+      }),
+    ).toBeTruthy();
   });
 
   it('the phone sheet’s project line draws it too', () => {
@@ -1253,5 +1512,88 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     expect(marks[0]?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
     expect(marks[1]?.querySelector('img')).toBeNull();
     expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
+  });
+});
+
+it('renders the answer rung for an input request after server projection', () => {
+  renderRow(
+    rowFor({
+      lifecycleState: 'needs_input',
+      transitionReason: 'input_requested',
+      pendingReview: false,
+    }),
+  );
+  expect(statusText()).toBe('Needs input');
+});
+
+describe('a collapsed inbox section that holds the open chat', () => {
+  const idle = (threadId: string, title: string) =>
+    rowFor({
+      threadId,
+      displayTitle: title,
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    }).item;
+
+  it('still shows that one row under its header, and only that row', () => {
+    const open = idle('T-open', 'The chat on screen');
+    const other = idle('T-other', 'Another chat');
+    const activeId = open.orchestrationThreadId ?? open.chatSessionId ?? '';
+    expect(activeId).not.toBe('');
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'open', label: 'Open', items: [other, open] }]}
+          idPrefix="test"
+          activeChatSessionId={activeId}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{ sections: { open: false }, onToggle: vi.fn() }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    const section = screen.getByRole('region', { name: /^Open/ });
+    expect(
+      within(section)
+        .getByRole('button', { name: /^Open/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    const rows = within(section).getAllByTestId('inbox-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('The chat on screen');
+  });
+
+  it('stacks collapsed sections from the top when none is expanded', () => {
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'open', label: 'Open', items: [idle('T-a', 'A')] },
+            { id: 'external', label: 'Third-party', items: [idle('T-b', 'B')] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{
+            sections: { open: false, external: false },
+            onToggle: vi.fn(),
+          }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(container.querySelectorAll('.chat-dock-inbox__group')).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelector('.chat-dock-inbox__group--shelf-start'),
+    ).toBeNull();
   });
 });

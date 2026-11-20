@@ -1,0 +1,7 @@
+{
+  "revision": "d7c32634930b555d9703502e5cc66e1eb26ec1b3",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Fix round 2 (Muse): only the contracts.md Muse steer, sandbox and profile-key wording changed; this guide routes to contracts.md and makes no Muse, steering or sandbox claim (grep), so it stays accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

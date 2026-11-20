@@ -63,3 +63,26 @@ export function formatAverageTokens(
 
   return Math.round(totalTokens / turns).toLocaleString();
 }
+
+/**
+ * An engine-reported cost in the engine's own unit, never as USD: `0.0745
+ * credits`, `1.20 EUR`. A currency code stays a suffix; a vendor unit is
+ * pluralized only when it is a plain lowercase word.
+ */
+export function formatReportedCost(cost: {
+  amount: number;
+  unit: string;
+}): string {
+  const amount =
+    cost.amount >= 100
+      ? cost.amount.toFixed(0)
+      : cost.amount >= 1
+        ? cost.amount.toFixed(2)
+        : cost.amount.toPrecision(3).replace(/0+$/, '').replace(/\.$/, '');
+  const word = /^[a-z]+$/.test(cost.unit);
+  const unit =
+    word && cost.amount !== 1 && !cost.unit.endsWith('s')
+      ? `${cost.unit}s`
+      : cost.unit;
+  return `${amount} ${unit}`;
+}

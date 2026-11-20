@@ -26,6 +26,8 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
   readonly stopped = new Set<string>();
   failNextNativeReturn = false;
   failNextTranscriptSeed = false;
+  /** How a scripted seed failure ends its turn: an engine error, or a stop. */
+  seedFailureMethod: 'runtime.error' | 'turn.aborted' = 'runtime.error';
   announceNativeIdentityDuringTurn = false;
   private readonly nativeIds = new Map<string, string>();
   private readonly sessions = new Map<string, ProviderSession>();
@@ -182,13 +184,23 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
     ) {
       this.failNextNativeReturn = false;
       this.failNextTranscriptSeed = false;
-      this.events.push({
-        ...base,
-        eventId: `${turnId}:failed`,
-        method: 'runtime.error',
-        severity: 'error',
-        message: 'Scripted failure before processing the transcript seed.',
-      });
+      this.events.push(
+        this.seedFailureMethod === 'turn.aborted'
+          ? {
+              ...base,
+              eventId: `${turnId}:failed`,
+              method: 'turn.aborted',
+              reason: 'interrupted',
+            }
+          : {
+              ...base,
+              eventId: `${turnId}:failed`,
+              method: 'runtime.error',
+              severity: 'error',
+              message:
+                'Scripted failure before processing the transcript seed.',
+            },
+      );
       return { threadId: input.threadId, turnId };
     }
     const token =

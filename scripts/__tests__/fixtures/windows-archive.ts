@@ -118,9 +118,10 @@ export type WindowsArchive = {
 const FIXTURE_STATION_CLI = `import { appendFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 const args = process.argv.slice(2);
-const version = JSON.parse(
+const release = JSON.parse(
   readFileSync(new URL('../.station-release.json', import.meta.url), 'utf8'),
-).ref.replace(/^v/, '');
+);
+const version = release.schemaVersion === 3 ? release.version : release.ref.replace(/^v/, '');
 if (process.env.STATION_TEST_CLI_LOG)
   appendFileSync(
     process.env.STATION_TEST_CLI_LOG,

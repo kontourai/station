@@ -1,0 +1,7 @@
+{
+  "revision": "8162db1495114c6eb26f2a3b11bc95635167eb23",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked against the testing guide at this revision: its delta is CI-automation prose (retirement-path 409 warnings, CI health 5xx retries and stuck work); nothing this page states changed. No prose change.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

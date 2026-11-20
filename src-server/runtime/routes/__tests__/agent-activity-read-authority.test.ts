@@ -258,7 +258,7 @@ async function fixture() {
     listDevices: () => pairing.listDevices(),
     deviceLocality: (deviceId) => pairing.deviceLocality(deviceId),
     listSessionReadModel: (authority) =>
-      service.listSessionReadModel(authority),
+      service.listSessionReadModel(authority, { purpose: 'session-list' }),
     listProjectionEvents: (threadIds) =>
       new Map(
         [...store.listSessionProjectionEventsForThreads(threadIds)].map(
@@ -396,6 +396,7 @@ test('the OS alias is not a reading principal: it sees none of these sessions', 
         undefined,
         undefined,
       ),
+      { purpose: 'session-list' },
     ),
   ).toEqual([]);
 });

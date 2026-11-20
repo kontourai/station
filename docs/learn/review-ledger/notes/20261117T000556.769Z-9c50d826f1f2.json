@@ -1,0 +1,7 @@
+{
+  "revision": "2259840eb4309c4c0516a8d7723a0d8b81413efd",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-read against the removal of four dead workflows (CI throughput health, hosted capacity probe, PR conflict signer diagnostic, PR conflict admission): this page names none of them and its claims are unchanged; the actionlint gate drops only the removed probe's reviewed-queue entry and testing.md drops only the removed workflow's description.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

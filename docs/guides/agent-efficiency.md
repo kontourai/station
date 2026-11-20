@@ -9,9 +9,11 @@ additional tool permission.
 
 ## Review a Project's working configuration
 
-In **Project settings → Sources → Where new chats start**, discover the
-repository guidance, then review the proposed rules, validation commands,
-completion criteria, checkpoints and evidence pointers before applying them.
+In **Project settings → Sources → Working configuration**, discover the
+repository guidance, then choose **Review defaults** to select instruction
+files and validation commands. **Advanced defaults** opens source previews,
+editable instruction excerpts, completion criteria, checkpoints and evidence
+pointers.
 Only the operator in person can discover or change this host-filesystem
 configuration. Applying it saves defaults; it runs no setup, installation,
 validation command or model.
@@ -40,28 +42,145 @@ not establish a smaller whole model prompt or measured savings.
 
 ## Tool loading compatibility
 
-Station's experimental progressive-tools protocol initially lists `list_tool_families` and
-`load_tool_family` for eligible runtime tokens. Loading a family exposes the
-existing registrations and schemas under that token's private incarnation.
-Source selection, custody filters and call-time authorization remain in force.
-Another token starts with its own index; rotation and revocation invalidate the
-old capability. It is not offered as a Station preview until a native consumer
-is qualified.
+Station's tool-family protocol initially lists only `list_tool_families` and
+`load_tool_family` (about 420 bytes, against roughly 77 KB for the full
+delegated listing) for a credential minted at the family index. Loading a
+family exposes the existing registrations and schemas under that credential's
+private incarnation. Source selection, custody filters and call-time
+authorization remain in force. Another credential starts with its own index;
+rotation and revocation invalidate the old capability. Codex is the only engine
+admitted, behind the **Codex tool families** preview (see
+[Admit Codex to tool families](#admit-codex-to-tool-families)). Loading a family announces `notifications/tools/list_changed` on the
+`load_tool_family` call's own response stream, because the stateless HTTP route
+keeps no standing stream for a later notification.
 
-Claude keeps its existing native on-demand tool search. External leases and
-engines without this runtime admission retain their static selection. Native
-Codex retains the static catalog, including on hosts that previously saved an
-enabled progressive-tools choice. The 0.164.0
-qualification loaded a family but did not expose its tools, including on the next
-turn. MCP transport notification fixtures do not establish engine compatibility.
-A future native admission must prove an actual family tool call before hiding
-the static catalog. Current Claude tool search needs no Station preview switch.
+Each tool's family is stated in one map
+([`station-control-tool-families.ts`](../../src-server/tools/station-control-tool-families.ts)),
+not inferred from its name; device and browser tools have their own Devices and
+Browser families. The same family is the Tools catalog's `ai.kontour/tool-group`.
+
+Station lists its tool schemas without what tells a model nothing: the `$schema`
+dialect URL, zod's safe-integer bounds, `propertyNames: {type: "string"}` and
+`additionalProperties: {}`. It also omits the arguments only Station's runtime
+writes (`_userId`, `_sourceContext`), and `_delegation` and
+`_delegationAttestation`, which Station's engine no longer writes and strips
+from a model's call (the route derives a child's context from the caller).
+Calls are still validated by each tool's own schema, so the runtime's values
+still arrive and a value a model writes anyway is judged as before.
+
+Claude keeps its existing native on-demand tool search. Station's orchestration
+instructions tell Claude to load the named tools with ToolSearch only when the
+Agent's loading is **On demand**, the one setting under which Station turns that
+search on. Under **Harness default**, Claude Code decides and names the tools it
+defers itself. External leases, ACP engines and Claude retain their static
+selection, and so does Codex whenever it is not admitted. MCP transport
+notification fixtures do not establish engine compatibility: an admission must
+prove an actual family tool call before hiding the static catalog. Current
+Claude tool search needs no Station preview switch.
 
 Codex built-in Control and Knowledge credentials travel in private thread
 JSON-RPC configuration as HTTP headers. They stay outside spawn argv and retain
-**delegated-custody** assurance. Only Station's in-process credential supplies
+**delegated-custody** assurance. With the **Codex browser and device tools**
+preview on, a new Codex Session's Control tools travel on its bound
+`dynamicTools` channel instead: no header token, the full catalog on every
+thread, and no family loading. Only Station's in-process credential supplies
 bound assurance; private delivery does not itself authorize browser or device
 control.
+
+### Admit Codex to tool families
+
+Turn on **Codex tool families** in Settings > Feature Previews. It is off by
+default and uses a new preview id (`codex-tool-families`), so a host that saved
+the withdrawn progressive-tools choice is not opted in. With it on, a new Codex
+Session gets Station Control as tool families when all of these hold:
+
+- the installed Codex reports `codex-cli 0.167.0` or later (the version the
+  [qualification](#qualify-tool-family-loading) passed). Station reads
+  `codex --version` from the binary a Session spawn uses. An answer stands for
+  60 seconds, because a mise or asdf shim can switch the Codex behind one path,
+  and a probe that fails or hangs stands for 30 seconds before a retry. An
+  older, pre-release `0.167.0`, unreadable or unrecognised version keeps the
+  static catalog;
+- Station Control travels on the header-token path. The bound catalog of the
+  **Codex browser and device tools** preview never has families. A
+  coordinator-derived Control server is on the header path, has a per-Session
+  credential like any other, and is admitted;
+- the Session is not an adopted fork of a thread Station did not start.
+
+An admitted Session's credential starts at the family index, Station adds
+`features.mcp_tool_list_changed: true` to the same private `thread/start`
+configuration that carries the credential, and the orchestration instructions
+gain the family-loading line. The instructions and the Session start share one
+admission answer per start (one version probe at most), so the line appears
+when the listing starts at the index. A start whose instructions were composed
+without the line, including one composed for the bound catalog, holds a no, so
+a preview change before the engine starts cannot admit it. The one exception
+narrows: if this preview is switched off between composing the instructions
+and starting the engine, the Session gets the full catalog. Knowledge keeps its
+full listing.
+
+Every start and resume mints a new credential, and loaded families belong to a
+credential, so a resumed thread starts at the index again. Codex rejects a
+family tool the model still holds from the thread's history with
+`unsupported call` before it reaches Station; the model reloads the family and
+continues (the qualification's resume case). A resume keeps families only when
+its thread started with them (the resume cursor's `toolFamilies`); a thread
+started with the full catalog keeps it, so its tools never disappear under it.
+Changing the preview applies to new and resumed Sessions. A running Session
+keeps what its credential was minted with: Codex re-lists only after
+`list_changed`, which a switch-off could not send, so withdrawing families
+mid-Session would leave it holding an index whose tools no longer answer. A
+resume after the preview is off starts with the full catalog.
+
+## Qualify tool-family loading
+
+Run the live qualification before admitting an engine to tool families and again
+after each engine upgrade:
+
+```sh
+npm run qualify:tool-disclosure
+npm run qualify:tool-disclosure -- --codex /path/to/codex --receipt receipt.json
+```
+
+The [qualification command](../../scripts/qualify-tool-disclosure.ts) runs the
+installed `codex` binary (the one Station's resolver finds, or `--codex`)
+against Station's real station-control route with loading on for one fixture
+credential. A local scripted Responses endpoint plays the model, so no paid
+model is called and no operator configuration or credential is read. The script
+calls `load_tool_family` for Agents, then calls `list_agents` only if Codex
+offers it in a later model request. A case qualifies only when every step is
+observed: the first request offers just the index, the route loads the family,
+Codex lists tools again, a later request offers `list_agents`, that call reaches
+Station and runs its read, and the result returns to the model.
+
+It runs `codex exec`, and `codex app-server` with the station-control server in
+`thread/start` configuration as Station delivers it, each with the feature off
+and on. A resume case loads a family in one `app-server`, ends it, resumes the
+thread in a new one with a newly minted credential, and requires the index
+first, the held `list_agents` call refused, and a reload that works. Every case
+mints its credential with Station's own Codex mint. Exit status 0 means every required case qualified, 1 means one did not,
+and 3 means no binary was found (SKIPPED, not a pass). The feature-on cases
+are required; the feature-off cases are reported controls.
+
+Result on 2026-11-16 with codex-cli 0.167.0:
+
+| Case | Result |
+| --- | --- |
+| `exec` or `app-server`, feature off | Not qualified: no list after loading, `list_agents` never offered |
+| `exec -c features.mcp_tool_list_changed=true` | Qualified |
+| `app-server -c features.mcp_tool_list_changed=true` | Qualified |
+| `app-server`, `features.mcp_tool_list_changed: true` in `thread/start` configuration | Qualified |
+| Resume in a new `app-server` with a new credential, feature in `thread/resume` configuration | Qualified: index first, held `list_agents` refused as `unsupported call`, reload works |
+
+The qualifying configuration needs both halves: Codex's
+`features.mcp_tool_list_changed=true` (an under-development flag, default off)
+and Station's `list_changed` on the load call's own stream. Without either, the
+qualification fails at the list-after-loading step. It does not establish that a
+real model chooses to load a family, or recovers from a refused held name, as
+the scripted model does. Engines
+Station reaches over ACP (OpenCode, Kiro and custom engines) each bring their
+own MCP client and remain unqualified. Claude keeps native tool search and is
+not a candidate.
 
 ## Review and use a learning
 
@@ -120,9 +239,11 @@ repeated summary attempts on the turn's critical path.
 
 ## Retain supervision and question delivery
 
-Opted-in Task supervision retains the Task incarnation, coordinator identity,
-checkpoint and known wait state. Reconciliation reads canonical Task and Session
-facts; an idle Session does not prove unfinished work. Approval, capacity, quota
+Supervision wakes the person's coordinator, so it also needs the
+`coordinator-session` preview. Opted-in Task supervision retains the Task
+incarnation, coordinator identity, checkpoint and known wait state.
+Reconciliation reads canonical Task and Session facts; an idle Session does not
+prove unfinished work. Approval, capacity, quota
 and indeterminate delivery remain waits, not invitations to launch duplicates.
 The existing durable inbox places eligible work under the original request key.
 
@@ -222,6 +343,12 @@ run the Project's setup commands while preparing it.
    `{kind:"rule",id,mode:"live",expectedFingerprint}`. Earlier observed events
    are not replayed. Read a new fingerprint between writes. A stale one
    refuses the change. Source, rule, profile and preview checks remain separate.
+   A repair is bound to the rule's authority-bearing fields only (see
+   [policy changes](../design/automations.md#policy-changes-and-the-start-mandate)):
+   renaming the rule or changing its rate limit does not stop it, while any
+   change to its source grant, matcher or action does. A pending repair whose
+   rule was deleted or changed to another action kind is refused and never
+   dispatches, even if the identical rule is restored later.
 
 A matching failure creates one canonical Task and one durable repair run. The
 worker receives source files and a short-lived, model-bound provider capability;

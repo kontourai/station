@@ -29,11 +29,12 @@ import { FileDelegationAttemptClaimStore } from '../../services/orchestration/de
  * against a field-identical reason) and the remote-peer forwarding path.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   type ContentBlock,
   type PromptResponse,
@@ -51,9 +52,9 @@ import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
-import type {
+import {
   ACPProcess,
-  ACPProcessOptions,
+  type ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
 import { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
@@ -90,7 +91,7 @@ class QuotaStubProcess {
   constructor(readonly opts: ACPProcessOptions) {}
 
   async start() {
-    this.client = this.opts.createClient();
+    this.client = this.opts.createClient({ launchReplacedByPolicy: false });
     return this.initResult;
   }
 
@@ -171,6 +172,12 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
   let service: OrchestrationService;
   let adapter: AcpAdapter;
   let stubs: QuotaStubProcess[];
+  let processMode:
+    | 'stub'
+    | 'success'
+    | 'internal-error-on-prompt'
+    | 'exit-on-prompt';
+
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
@@ -226,6 +233,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
 
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     stubs = [];
+    processMode = 'stub';
     // The fake lives ONLY at the provider process boundary: the adapter is
     // the real `AcpAdapter`, driven through the same `processFactory` seam
     // the full adapter suite fakes.
@@ -241,6 +249,30 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       ],
       logger: { debug: () => {}, warn: () => {}, error: () => {} },
       processFactory: (opts) => {
+        if (processMode !== 'stub') {
+          const fixture = (relative: string) =>
+            fileURLToPath(
+              new URL(
+                `../../providers/__tests__/fixtures/${relative}`,
+                import.meta.url,
+              ),
+            );
+          const promptSteps = join(tmp, 'empty-prompt-steps.json');
+          writeFileSync(promptSteps, '[]');
+          return new ACPProcess({
+            ...opts,
+            args: [
+              fixture('fake-acp-agent.mjs'),
+              '--engine-profile',
+              fixture('acp-engine-profiles/opencode.json'),
+              '--prompt-steps',
+              promptSteps,
+              '--fail',
+              processMode,
+            ],
+          });
+        }
+
         const stub = new QuotaStubProcess(opts);
         stubs.push(stub);
         return stub as unknown as ACPProcess;
@@ -551,4 +583,75 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
     expect(body.data.status).toBe('failed');
     expect(body.data.reason?.code).not.toBe('provider-plan-quota-exhausted');
   });
+  test.each([
+    ['success', 'completed', undefined],
+    ['internal-error-on-prompt', 'failed', 'runtime_error'],
+    ['exit-on-prompt', 'failed', 'acp-transport-closed'],
+  ] as const)(
+    'local ACP process %s for an advertised model',
+    async (mode, status, reason) => {
+      processMode = mode;
+      const task = await delegateTask(
+        {
+          prompt: 'Controlled local turn',
+          userId: OWNER,
+          delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+            fakeHome,
+          ),
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('opencode-agent'),
+            model: { override: 'opencode/big-pickle' },
+          },
+        },
+        service,
+      );
+      const target = { taskId: task.taskId, userId: OWNER };
+      await expect
+        .poll(
+          async () => (await observeDelegatedTask(target, service)).status,
+          { timeout: 6000 },
+        )
+        .toBe(status);
+      const snapshot = await observeDelegatedTask(target, service);
+      expect(snapshot.reason?.code).toBe(reason);
+      expect(snapshot.pendingRequest).toBeUndefined();
+      expect(
+        eventStore
+          .listEvents(task.taskId)
+          .filter(({ payload }) => payload.method === 'turn.started'),
+      ).toHaveLength(1);
+
+      const page = await observeDelegatedTaskEvents(target, service);
+      const terminal = page.events.find(
+        (event) => event.method === 'runtime.error',
+      );
+      if (mode === 'success') {
+        expect(terminal).toBeUndefined();
+      } else {
+        expect(terminal).toMatchObject({
+          kind: 'runtime',
+          severity: 'error',
+          text: snapshot.reason?.detail,
+        });
+        expect(snapshot.resumable).toBe(true);
+      }
+      if (mode === 'internal-error-on-prompt') {
+        expect(snapshot.reason?.detail).toContain('without a classified cause');
+        expect(JSON.stringify(snapshot)).not.toContain(
+          'fixture provider refused the catalog model',
+        );
+        const durable = eventStore
+          .listEvents(task.taskId)
+          .find(({ payload }) => payload.method === 'runtime.error');
+        expect(durable?.payload).toHaveProperty(
+          'message',
+          snapshot.reason?.detail,
+        );
+        expect(JSON.stringify(durable)).not.toContain(
+          'fixture provider refused the catalog model',
+        );
+      }
+    },
+  );
 });

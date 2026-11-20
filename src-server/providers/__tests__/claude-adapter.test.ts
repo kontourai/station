@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
 import {
@@ -29,6 +29,7 @@ import {
   projectDelegatedTaskEvent,
   snapshotFor,
 } from '../../tools/station-control-delegation.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -123,7 +124,11 @@ vi.mock('../auth/cli-auth.js', () => ({
 }));
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestRuleGrantFromPayload,
+  toolRequestSessionGrantFromPayload,
+  toolRequestStrictSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import {
   createStagedPreToolPolicyEvaluator,
@@ -140,6 +145,7 @@ import {
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   installSessionTmpDirPolicy,
@@ -148,7 +154,6 @@ import {
 } from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
-import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
@@ -1719,6 +1724,83 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  describe('Claude API client-version refusal', () => {
+    const versionError =
+      '400 {"error":{"type":"invalid_request_error","message":"claude-cli does not support this model; version 2.1.251 or newer is required. Run claude update."}}';
+    const endpoint = 'https://proxy.example.invalid/private-route';
+
+    test.each([
+      {
+        label: 'configured proxy',
+        baseUrl: endpoint,
+        text: versionError,
+        explain: true,
+      },
+      {
+        label: 'direct connection',
+        baseUrl: undefined,
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'default endpoint',
+        baseUrl: 'https://api.anthropic.com/',
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'malformed endpoint',
+        baseUrl: 'not a URL',
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'unrelated API error',
+        baseUrl: endpoint,
+        text: '400 invalid_request_error: Extra inputs are not permitted',
+        explain: false,
+      },
+    ])('$label', async ({ baseUrl, text, explain }) => {
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () =>
+          baseUrl === undefined ? undefined : { ANTHROPIC_BASE_URL: baseUrl },
+      });
+      const events: Array<{ method: string }> = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'claude-client-version-refusal';
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [text],
+            num_turns: 1,
+            session_id: threadId,
+            uuid: 'version-refusal-result',
+          },
+        ]),
+      );
+      await adapter.startSession({ provider: 'claude', threadId });
+      try {
+        await vi.waitFor(() => {
+          expect(
+            events.find((event) => event.method === 'runtime.error'),
+          ).toMatchObject({
+            code: 'engine-turn-failed',
+            message: explain
+              ? 'Claude reported a client version requirement. If the connection uses a model proxy, check the proxy’s upstream client version.'
+              : text,
+          });
+        });
+      } finally {
+        await adapter.stopSession(threadId);
+      }
+    });
+  });
+
   describe('#2324 a send while the engine runs a turn it opened itself', () => {
     const replyFrame = (sessionId: string) => ({
       type: 'stream_event',
@@ -2851,7 +2933,7 @@ describe('ClaudeAdapter', () => {
         });
         const answer = async (
           decision: 'accept' | 'acceptForSession' | 'decline',
-          context?: { sessionGrantScope?: 'server' },
+          context?: { sessionGrantScope?: 'server' | 'rule' },
         ) => {
           await adapter.respondToRequest(
             threadId,
@@ -2942,7 +3024,7 @@ describe('ClaudeAdapter', () => {
       },
     );
 
-    test('a read-only tool mints no tool grant even from a read that carries no escalation signal', async () => {
+    test('a session answer to a read covers later reads: every read ask is an escalation', async () => {
       // The engine's own ask-rule and safety-check asks for Read carry no
       // suggestion and no blocked path (the SDK drops the reason's type), so
       // only the read-only rule keeps a session answer from covering them all.
@@ -2951,9 +3033,11 @@ describe('ClaudeAdapter', () => {
       if (first.kind !== 'prompted') throw new Error('expected a prompt');
       await first.answer('acceptForSession');
 
+      // Owner decision (2026-11-16): every Claude read ask is an escalation
+      // (the engine allows reads inside the folders itself), so a person's
+      // session answer to one covers the later ones.
       const next = await ask('Read', { file_path: '/work/a/.env.local' });
-      expect(next.kind).toBe('prompted');
-      if (next.kind === 'prompted') await next.answer('decline');
+      expect(next.kind).toBe('allowed');
 
       await adapter.stopSession('thread-read-no-signal');
     });
@@ -3212,7 +3296,10 @@ describe('ClaudeAdapter', () => {
       },
     );
 
-    test('under full access a file edit offers no session grant and forwards no mode change', async () => {
+    // Owner decision (2026-11-16): the session answer is offered, but as
+    // Station's own tool grant: no engine suggestion is forwarded, so full
+    // access is never switched to acceptEdits.
+    test('under full access a file edit session answer forwards no mode change', async () => {
       const query = createControlledMockQuery();
       const threadId = 'thread-edit-bypass';
       const { adapter, ask } = await grantHarness(threadId, {
@@ -3233,11 +3320,19 @@ describe('ClaudeAdapter', () => {
       expect(edit.event.payload).toMatchObject({
         permissionMode: 'bypassPermissions',
       });
-      await expect(edit.answer('acceptForSession')).resolves.toEqual({
+      expect(toolRequestSessionGrantFromPayload(edit.event.payload)).toBe(
+        'tool',
+      );
+      const answered = await edit.answer('acceptForSession');
+      expect(answered).toMatchObject({
         behavior: 'allow',
         updatedInput: input,
-        updatedPermissions: undefined,
       });
+      expect(
+        (answered as { updatedPermissions?: unknown[] }).updatedPermissions ??
+          [],
+      ).toEqual([]);
+      expect(query.setPermissionMode).not.toHaveBeenCalledWith('acceptEdits');
       await adapter.stopSession(threadId);
     });
 
@@ -3302,7 +3397,7 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    test('in plan mode a file edit offers no session grant and forwards no mode change', async () => {
+    test('in plan mode a file edit session answer forwards no mode change', async () => {
       const query = createControlledMockQuery();
       const threadId = 'thread-plan-edit';
       const { adapter, ask, waitFor } = await grantHarness(threadId, { query });
@@ -3335,11 +3430,17 @@ describe('ClaudeAdapter', () => {
       });
       if (sensitive.kind !== 'prompted') throw new Error('expected a prompt');
       expect(sensitive.event.payload).toMatchObject({ permissionMode: 'plan' });
-      await expect(sensitive.answer('acceptForSession')).resolves.toEqual({
+      // Owner decision (2026-11-16): offered as Station's own tool grant,
+      // which forwards nothing, so plan mode is never left by it.
+      const answered = await sensitive.answer('acceptForSession');
+      expect(answered).toMatchObject({
         behavior: 'allow',
         updatedInput: input,
-        updatedPermissions: undefined,
       });
+      expect(
+        (answered as { updatedPermissions?: unknown[] }).updatedPermissions ??
+          [],
+      ).toEqual([]);
 
       await adapter.stopSession(threadId);
     });
@@ -3426,11 +3527,24 @@ describe('ClaudeAdapter', () => {
       expect(ruleForced.event.payload).toMatchObject({
         matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
       });
-      await expect(ruleForced.answer('acceptForSession')).resolves.toEqual({
+      // Owner decision (2026-11-16): an escalation with nothing to forward
+      // offers Station's own tool grant. It forwards none of the engine's
+      // rules, and it answers the tool's later escalations.
+      const answered = await ruleForced.answer('acceptForSession');
+      expect(answered).toMatchObject({
         behavior: 'allow',
         updatedInput: { command: 'git push' },
-        updatedPermissions: undefined,
       });
+      expect(
+        (answered as { updatedPermissions?: unknown[] }).updatedPermissions ??
+          [],
+      ).toEqual([]);
+      const again = await ask(
+        'Bash',
+        { command: 'git push --tags' },
+        { matchedAskRule: { source: 'userSettings', toolName: 'Bash' } },
+      );
+      expect(again.kind).toBe('allowed');
 
       await adapter.stopSession('thread-folder-forward');
     });
@@ -3772,6 +3886,7 @@ describe('ClaudeAdapter', () => {
       function guardianPolicy(
         decision: 'allow' | 'deny' | 'defer',
         mode: 'review' | 'enforce' = 'enforce',
+        currentTurnInteractive = false,
       ) {
         const reviewToolCall = vi.fn(async () => ({
           decision,
@@ -3784,6 +3899,10 @@ describe('ClaudeAdapter', () => {
           approvalGuardian: {
             isEnabled: () => true,
             getMode: () => mode,
+            readConversation: () => ({
+              ...NO_PERSON_INTENT,
+              currentTurnInteractive,
+            }),
             reviewToolCall,
           },
           logger: { info: vi.fn(), warn: vi.fn() },
@@ -4183,9 +4302,9 @@ describe('ClaudeAdapter', () => {
         expect(reviewToolCall).toHaveBeenCalledTimes(1);
         const outside = await askFrame(outsideRead('toolu_read'));
         if (outside.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(outside.event.payload)).toBe(
-          'read-folder',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(outside.event.payload),
+        ).toBe('read-folder');
         await outside.answer('decline');
         await adapter.stopSession('thread-guardian-outside');
       });
@@ -4235,7 +4354,7 @@ describe('ClaudeAdapter', () => {
       });
 
       test('a guardian defer leaves the call to the person', async () => {
-        const { evaluator } = guardianPolicy('defer');
+        const { evaluator } = guardianPolicy('defer', 'enforce', true);
         const { adapter, askFrame, hook } = await grantHarness(
           'thread-guardian-defer',
           { agent, preToolPolicy: evaluator },
@@ -4247,6 +4366,27 @@ describe('ClaudeAdapter', () => {
         expect(asked.kind).toBe('prompted');
         if (asked.kind === 'prompted') await asked.answer('decline');
         await adapter.stopSession('thread-guardian-defer');
+      });
+
+      test('an unattended enforce guardian defer denies in the Claude hook', async () => {
+        const { evaluator } = guardianPolicy('defer');
+        const threadId = 'thread-guardian-unattended-defer';
+        const { adapter, hook } = await grantHarness(threadId, {
+          agent,
+          preToolPolicy: evaluator,
+        });
+        await expect(
+          hook('Bash', { command: 'git status' }, 'toolu_unattended_defer'),
+        ).resolves.toMatchObject({
+          continue: false,
+          hookSpecificOutput: {
+            permissionDecision: 'deny',
+            permissionDecisionReason: expect.stringContaining(
+              'nobody is present to decide',
+            ),
+          },
+        });
+        await adapter.stopSession(threadId);
       });
 
       test('a delegated child that may not grant approvals keeps a guardian-allowed plain call and is denied an escalation fail-fast', async () => {
@@ -4343,9 +4483,9 @@ describe('ClaudeAdapter', () => {
           'Allow network access to api.example.com',
         );
         // The surfaces read the payload and offer no session option.
-        expect(toolRequestSessionGrantFromPayload(first.event.payload)).toBe(
-          'none',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(first.event.payload),
+        ).toBe('none');
         // A session answer is a one-call accept: nothing is forwarded, so
         // the engine's localSettings rule is never written.
         await expect(first.answer('acceptForSession')).resolves.toEqual({
@@ -4496,9 +4636,9 @@ describe('ClaudeAdapter', () => {
         expect(override.event.payload).toMatchObject({
           decisionReason: 'dangerouslyDisableSandbox',
         });
-        expect(toolRequestSessionGrantFromPayload(override.event.payload)).toBe(
-          'none',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(override.event.payload),
+        ).toBe('none');
         await override.answer('decline');
         await adapter.stopSession('thread-override-grant');
       });
@@ -4691,14 +4831,6 @@ describe('ClaudeAdapter', () => {
           },
         ],
         [
-          'compound with decision_reason',
-          {
-            ...bashCompound,
-            decision_reason:
-              'This command uses the `&` background operator, which defers execution past approval-time safety checks. Approve only if you trust it.',
-          },
-        ],
-        [
           'compound with a directory suggestion',
           {
             ...bashCompound,
@@ -4758,6 +4890,30 @@ describe('ClaudeAdapter', () => {
         decision_reason_type: 'sandboxOverride',
         tool_use_id: 'toolu_bash',
       };
+      /**
+       * Claude's Bash command-analysis warnings, verbatim from a real
+       * Station event log: type `other`, no suggestions. Plain calls (owner
+       * decision): a whole-tool grant checks no prefix rule.
+       */
+      const bashWarning = (
+        decision_reason: string,
+        command = 'cd ../other && git status',
+      ): ClaudeCanUseToolRequest => ({
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command },
+        description: command,
+        permission_suggestions: [],
+        decision_reason,
+        decision_reason_type: 'other',
+        tool_use_id: 'toolu_bash',
+      });
+      const BASH_WARNINGS = [
+        "A variable in this command can't be checked before it runs",
+        'Contains brace with quote character (expansion obfuscation)',
+        'Tilde in assignment value — bash may expand at assignment time',
+        'This command changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration from the target directory. Approve only if you trust it.',
+      ];
       /** `other` with a reason that is not the ordinary one. */
       const bashShellOperators: ClaudeCanUseToolRequest = {
         tool_name: 'Bash',
@@ -4852,7 +5008,7 @@ describe('ClaudeAdapter', () => {
         if (outcome.kind !== 'prompted') throw new Error('unreachable');
         // The surfaces compute the same answer from the published payload.
         expect(
-          toolRequestSessionGrantFromPayload(outcome.event.payload),
+          toolRequestStrictSessionGrantFromPayload(outcome.event.payload),
           label,
         ).toBe('none');
         await outcome.answer('decline');
@@ -4867,9 +5023,9 @@ describe('ClaudeAdapter', () => {
           decisionReason: 'This command requires approval',
           claudeAsk: { decisionReasonType: 'other' },
         });
-        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('tool');
         await mint.answer('acceptForSession');
 
         // Positive control: the grant answers the next ordinary Bash ask.
@@ -4898,13 +5054,178 @@ describe('ClaudeAdapter', () => {
           await askFrame(bashSandboxOverride),
           'sandboxOverride',
         );
-        await expectPrompt(await askFrame(bashShellOperators), 'other prose');
+        // Owner decision: Bash `other` prose is a command-analysis warning,
+        // which the whole-tool grant answers.
+        await expect(askFrame(bashShellOperators)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
 
         // The grant is intact after all of them.
         await expect(askFrame(bashOrdinary('git diff'))).resolves.toMatchObject(
           { kind: 'allowed' },
         );
         await adapter.stopSession('thread-frame-bash');
+      });
+
+      test("a Bash grant answers Claude's command-analysis warnings and still prompts for a blocked path", async () => {
+        const { adapter, askFrame } = await grantHarness(
+          'thread-frame-warnings',
+        );
+        // Before the grant, a warning ask prompts and offers the whole tool.
+        const first = await askFrame(bashWarning(BASH_WARNINGS[0]));
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(first.event.payload).toMatchObject({
+          decisionReason: BASH_WARNINGS[0],
+          claudeAsk: { decisionReasonType: 'other' },
+        });
+        expect(
+          toolRequestStrictSessionGrantFromPayload(first.event.payload),
+        ).toBe('tool');
+        await first.answer('decline');
+
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+
+        // Each warning, and a chained command carrying one, is answered
+        // with no `request.opened`.
+        for (const reason of BASH_WARNINGS)
+          await expect(
+            askFrame(bashWarning(reason)),
+            reason,
+          ).resolves.toMatchObject({
+            kind: 'allowed',
+            result: { behavior: 'allow' },
+          });
+        await expect(
+          askFrame({ ...bashCompound, decision_reason: BASH_WARNINGS[0] }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+
+        // A path outside the workspace still prompts under the grant.
+        await expectPrompt(
+          await askFrame({
+            ...bashWarning(BASH_WARNINGS[0], 'cat /outside/f'),
+            blocked_path: '/outside/f',
+          }),
+          'blocked path',
+        );
+        await adapter.stopSession('thread-frame-warnings');
+      });
+
+      describe("the command-prefix answer (sessionGrantScope: 'rule')", () => {
+        const RULE = { sessionGrantScope: 'rule' as const };
+        /** As the live probe against SDK 0.3.304 saw it: a prefix suggestion. */
+        const npmLs: ClaudeCanUseToolRequest = {
+          tool_name: 'Bash',
+          display_name: 'Bash',
+          input: { command: 'npm ls react' },
+          description: 'npm ls react',
+          permission_suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+              behavior: 'allow',
+              destination: 'localSettings',
+            },
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+          decision_reason: 'This command requires approval',
+          decision_reason_type: 'other',
+          tool_use_id: 'toolu_npm',
+        };
+
+        test('forwards only the Bash prefix rule for the session and mints no tool grant', async () => {
+          const { adapter, askFrame } = await grantHarness('thread-rule-scope');
+          const asked = await askFrame(npmLs);
+          if (asked.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(toolRequestRuleGrantFromPayload(asked.event.payload)).toEqual({
+            rules: ['npm ls *'],
+            label: 'Allow "npm ls *" for this session',
+          });
+          await expect(asked.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm ls react' },
+              updatedPermissions: [
+                {
+                  type: 'addRules',
+                  rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+                  behavior: 'allow',
+                  destination: 'session',
+                },
+              ],
+            },
+          );
+          // No Station tool grant: a different Bash command still prompts.
+          const next = await askFrame(bashOrdinary('git log'));
+          expect(next.kind).toBe('prompted');
+          if (next.kind === 'prompted') await next.answer('decline');
+          await adapter.stopSession('thread-rule-scope');
+        });
+
+        test('a rule answer to a request that offered no prefix is a one-call accept', async () => {
+          const { adapter, askFrame } =
+            await grantHarness('thread-rule-forged');
+          // An exact-command suggestion offers no prefix choice.
+          const exact = await askFrame({
+            ...npmLs,
+            input: { command: 'npm --version' },
+            permission_suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Bash', ruleContent: 'npm --version' }],
+                behavior: 'allow',
+                destination: 'localSettings',
+              },
+            ],
+          });
+          if (exact.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(
+            toolRequestRuleGrantFromPayload(exact.event.payload),
+          ).toBeUndefined();
+          await expect(exact.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm --version' },
+              updatedPermissions: undefined,
+            },
+          );
+          // Nothing was minted: the next Bash call prompts.
+          const next = await askFrame(bashOrdinary('git log'));
+          expect(next.kind).toBe('prompted');
+          if (next.kind === 'prompted') await next.answer('decline');
+          await adapter.stopSession('thread-rule-forged');
+        });
+
+        test('a rule answer forwards no prefix the person was not shown (three prefixes)', async () => {
+          const { adapter, askFrame } = await grantHarness(
+            'thread-rule-unshown',
+          );
+          const three = await askFrame({
+            ...npmLs,
+            permission_suggestions: ['npm ls *', 'npm pkg *', 'rm *'].map(
+              (ruleContent) => ({
+                type: 'addRules' as const,
+                rules: [{ toolName: 'Bash', ruleContent }],
+                behavior: 'allow' as const,
+                destination: 'localSettings' as const,
+              }),
+            ),
+          });
+          if (three.kind !== 'prompted') throw new Error('expected a prompt');
+          // Too many prefixes for a short label: no prefix choice offered.
+          expect(
+            toolRequestRuleGrantFromPayload(three.event.payload),
+          ).toBeUndefined();
+          await expect(three.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm ls react' },
+              updatedPermissions: undefined,
+            },
+          );
+          await adapter.stopSession('thread-rule-unshown');
+        });
       });
 
       test('an ask whose frame was never recorded prompts under a Bash grant, and its payload says so', async () => {
@@ -4955,9 +5276,9 @@ describe('ClaudeAdapter', () => {
         // A compound command can mint the grant too.
         const mint = await askFrame(bashCompound);
         if (mint.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('tool');
         await mint.answer('acceptForSession');
         await expect(askFrame(bashCompound)).resolves.toMatchObject({
           kind: 'allowed',
@@ -4969,7 +5290,7 @@ describe('ClaudeAdapter', () => {
           if (outcome.kind !== 'prompted') throw new Error('unreachable');
           // Only a directory suggestion leaves a session option, the folder.
           expect(
-            toolRequestSessionGrantFromPayload(outcome.event.payload),
+            toolRequestStrictSessionGrantFromPayload(outcome.event.payload),
             label,
           ).toBe(
             label === 'compound with a directory suggestion'
@@ -5037,7 +5358,7 @@ describe('ClaudeAdapter', () => {
             if (outcome.kind === 'prompted') {
               // No prompting case offers a Bash tool grant.
               expect(
-                toolRequestSessionGrantFromPayload(outcome.event.payload),
+                toolRequestStrictSessionGrantFromPayload(outcome.event.payload),
               ).not.toBe('tool');
               await outcome.answer('decline');
             }
@@ -5054,24 +5375,41 @@ describe('ClaudeAdapter', () => {
           decisionReasonType: 'subcommandResults',
         });
         // Nothing tells an ordinary PowerShell command from one with a
-        // security warning, so no session option is offered and a session
-        // answer covers this call only.
+        // security warning, so every PowerShell ask is an escalation.
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('none');
+        // Owner decision (2026-11-16): the session option is still offered,
+        // and a person's answer to an escalation covers the tool's later
+        // escalations, a safety check included.
         expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'none',
+          'tool',
         );
         await mint.answer('acceptForSession');
-        await expectPrompt(
-          await askFrame(powerShellOrdinary),
-          'PowerShell ordinary ask',
-        );
+        await expect(askFrame(powerShellOrdinary)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+        await expect(
+          askFrame({ ...powerShellOrdinary, classifier_approvable: true }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+        await adapter.stopSession('thread-frame-ps');
+      });
+
+      // The other half of the owner decision: a grant given on a plain call
+      // never answers an escalation of the same tool.
+      test('a Bash grant given on an ordinary command still prompts for a safety check', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-plain');
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
         await expectPrompt(
           await askFrame({
-            ...powerShellOrdinary,
+            ...bashOrdinary('rm -rf build'),
             classifier_approvable: true,
           }),
-          'PowerShell safety check',
+          'Bash safety check under a plain grant',
         );
-        await adapter.stopSession('thread-frame-ps');
+        await adapter.stopSession('thread-frame-plain');
       });
 
       test('a Bash ask whose frame carries no reason type prompts under a Bash grant: the engine always sends one', async () => {
@@ -5116,6 +5454,14 @@ describe('ClaudeAdapter', () => {
           ).resolves.toMatchObject({ kind: 'allowed' });
 
         for (const [label, frame] of [
+          // Only a person's own session answer covers a Bash
+          // command-analysis warning; a pattern leaves it to a person.
+          ['shell operators warning', bashShellOperators],
+          ['variable warning', bashWarning(BASH_WARNINGS[0])],
+          [
+            'chained command warning',
+            { ...bashCompound, decision_reason: BASH_WARNINGS[1] },
+          ],
           ['safetyCheck', bashSafetyCheck],
           ['rule', bashAskRule],
           ...compoundEscalations,
@@ -5129,7 +5475,6 @@ describe('ClaudeAdapter', () => {
           ],
           ['ordinary ask flagged classifier_approvable', bashFlaggedOrdinary],
           ['sandboxOverride', bashSandboxOverride],
-          ['other prose', bashShellOperators],
           ['WebFetch ask rule', webFetchAskRule],
           ['sensitive-file edit', editSensitiveFile],
         ] as const) {
@@ -5174,9 +5519,9 @@ describe('ClaudeAdapter', () => {
         const { adapter, askFrame } = await grantHarness('thread-frame-mcp');
         const mint = await askFrame(mcpOrdinary);
         if (mint.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('tool');
         await mint.answer('acceptForSession');
         await expect(askFrame(mcpOrdinary)).resolves.toMatchObject({
           kind: 'allowed',
@@ -5188,9 +5533,9 @@ describe('ClaudeAdapter', () => {
         const { adapter, askFrame } = await grantHarness('thread-frame-edit');
         const plain = await askFrame(editOrdinary);
         if (plain.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(plain.event.payload)).toBe(
-          'edit-mode',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(plain.event.payload),
+        ).toBe('edit-mode');
         await plain.answer('decline');
 
         // Before part 2 this offered "Auto-accept file edits" (#2932).
@@ -5222,7 +5567,7 @@ describe('ClaudeAdapter', () => {
         if (outsideEdit.kind !== 'prompted')
           throw new Error('expected a prompt');
         expect(
-          toolRequestSessionGrantFromPayload(outsideEdit.event.payload),
+          toolRequestStrictSessionGrantFromPayload(outsideEdit.event.payload),
         ).toBe('folder');
         await outsideEdit.answer('decline');
 
@@ -5245,7 +5590,7 @@ describe('ClaudeAdapter', () => {
         if (outsideRead.kind !== 'prompted')
           throw new Error('expected a prompt');
         expect(
-          toolRequestSessionGrantFromPayload(outsideRead.event.payload),
+          toolRequestStrictSessionGrantFromPayload(outsideRead.event.payload),
         ).toBe('read-folder');
         await outsideRead.answer('decline');
         await adapter.stopSession('thread-frame-edit');
@@ -6276,6 +6621,60 @@ describe('ClaudeAdapter', () => {
       expect(after).toEqual({ continue: true });
       expect(JSON.stringify(after)).not.toContain('permissionDecision');
     });
+
+    test.each([true, false])(
+      'guardian escalation forces one prompt and reports the reason only for unchanged input (%s)',
+      async (unchanged) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const evaluator = vi.fn().mockResolvedValue({
+          behavior: 'ask',
+          required: true,
+          guardianReason: 'The only-if-asked rule requires a person.',
+        });
+        const adapter = new ClaudeAdapter({
+          resolvePreToolPolicy: async () => evaluator,
+        });
+        const events = adapter.streamEvents()[Symbol.asyncIterator]();
+        const threadId = 'thread-guardian-approval';
+        await adapter.startSession({
+          provider: 'claude',
+          threadId,
+          agent: { slug: 'engine-lab' },
+        });
+        await events.next();
+        await events.next();
+        const queryArgs = mockQuery.mock.calls[0][0];
+        await expect(
+          preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
+            signal: new AbortController().signal,
+          }),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: { permissionDecision: 'ask' },
+        });
+        const permission = queryArgs.options.canUseTool(
+          preToolInput.tool_name,
+          unchanged ? preToolInput.tool_input : { scope: 'changed' },
+          {
+            signal: new AbortController().signal,
+            toolUseID: preToolInput.tool_use_id,
+            description: 'Approval guardian: fake tool reason.',
+            suggestions: [],
+          },
+        );
+        const { value: opened } = await events.next();
+        expect(opened).toMatchObject({ method: 'request.opened' });
+        if (unchanged) {
+          expect(opened.guardianReason).toBe(
+            'The only-if-asked rule requires a person.',
+          );
+        } else {
+          expect(opened).not.toHaveProperty('guardianReason');
+        }
+        await adapter.respondToRequest(threadId, opened.requestId, 'decline');
+        await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+        expect(evaluator).toHaveBeenCalledTimes(1);
+      },
+    );
 
     test('routes the interactive approval to canUseTool without a duplicate request', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
@@ -8675,6 +9074,72 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('full access on a session spawned without the bypass grant asks for an engine relaunch; a granted one does not', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    vi.stubEnv('IS_SANDBOX', '1');
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    const adapter = new ClaudeAdapter();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-no-grant',
+      confinement: 'host',
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-granted',
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-no-grant', {
+        approvalMode: 'never',
+      }),
+    ).toBe(true);
+    // Only full access needs the spawn-time grant.
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-no-grant', {
+        approvalMode: 'auto',
+      }),
+    ).toBe(false);
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-granted', {
+        approvalMode: 'never',
+      }),
+    ).toBe(false);
+    expect(
+      adapter.turnNeedsEngineRelaunch('thread-unknown', {
+        approvalMode: 'never',
+      }),
+    ).toBe(false);
+  });
+
+  test('no relaunch is asked for as root outside a sandbox, where a fresh start with the grant would fail', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-root-no-grant',
+      confinement: 'host',
+    });
+    const realGetuid = process.getuid;
+    process.getuid = () => 0;
+    vi.stubEnv('IS_SANDBOX', undefined);
+    vi.stubEnv('CLAUDE_CODE_BUBBLEWRAP', undefined);
+    try {
+      expect(
+        adapter.turnNeedsEngineRelaunch('thread-root-no-grant', {
+          approvalMode: 'never',
+        }),
+      ).toBe(false);
+    } finally {
+      process.getuid = realGetuid;
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('a host start below full access is not granted bypass as root outside a sandbox, where the engine would refuse it', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     // Defined where the platform has none (Windows), so the guard sees root.
@@ -9257,6 +9722,7 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#895 wave B: agent-authored system prompt', () => {
+    const makeTempDir = trackTempDirs();
     test("startSession passes systemPrompt { type: 'preset', preset: 'claude_code', append } to query() when input.agent.systemPrompt is set, and merges a systemPrompt delivery report into session.configured", async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
@@ -9310,6 +9776,15 @@ describe('ClaudeAdapter', () => {
     });
 
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
+      // A Claude config home with no settings.json, so the developer's own
+      // settings cannot change the AGENTS.md setting below.
+      vi.stubEnv(
+        'CLAUDE_CONFIG_DIR',
+        makeTempDir('station-claude-options-shape-'),
+      );
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
@@ -9327,7 +9802,10 @@ describe('ClaudeAdapter', () => {
         disallowedTools: ['Artifact'],
         model: undefined,
         resume: undefined,
+        // A supplied title skips the engine's own session-naming request.
+        title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
+        includeHookEvents: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
         // status only when this is on, so without it a background subagent
@@ -9349,8 +9827,54 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
-        settings: undefined,
+        // AGENTS.md beside CLAUDE.md (claude-instruction-files.ts).
+        settings: {
+          pluginConfigs: {
+            'agents-md@builtin': {
+              options: { instructionFiles: 'claude-md-and-agents-md' },
+            },
+          },
+        },
+        // #4828: every session marks the conversation on a native web read;
+        // with no Agent there is no PreToolUse policy.
+        hooks: {
+          Stop: [{ hooks: [expect.any(Function)] }],
+          PostToolUse: [{ hooks: [expect.any(Function)] }],
+          PostToolUseFailure: [{ hooks: [expect.any(Function)] }],
+          UserPromptSubmit: [{ hooks: [expect.any(Function)] }],
+        },
       });
+    });
+
+    test('a new session names itself so the engine skips its title request; a resume keeps its recorded title', async () => {
+      // The engine asks the model to title a session from its first prompt
+      // unless `title` is supplied. Station names conversations itself, so a
+      // new session always supplies one. The SDK documents the option as having
+      // no effect on a resumed session's persisted title, so none is sent.
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+
+      await adapter.startSession({ provider: 'claude', threadId: 'titled' });
+      const fresh = mockQuery.mock.calls.at(-1)?.[0].options as Record<
+        string,
+        unknown
+      >;
+      expect(fresh.resume).toBeUndefined();
+      expect(fresh.title).toBe('Station conversation titled');
+      await adapter.stopSession('titled');
+
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'titled',
+        resumeCursor: 'native-titled',
+      });
+      const resumed = mockQuery.mock.calls.at(-1)?.[0].options as Record<
+        string,
+        unknown
+      >;
+      expect(resumed.resume).toBe('native-titled');
+      expect('title' in resumed).toBe(false);
+      await adapter.stopAll();
     });
   });
 
@@ -9416,6 +9940,33 @@ describe('ClaudeAdapter', () => {
       ).rejects.toThrow('needs sign-in');
       expect(mockQuery).not.toHaveBeenCalled();
     });
+
+    test.each([
+      [undefined, 'from-the-harness'],
+      ['on-demand', 'true'],
+      ['always', 'false'],
+    ] as const)(
+      'mcpLoading %s leaves ENABLE_TOOL_SEARCH at %s (unset keeps the harness value)',
+      async (loading, expected) => {
+        vi.stubEnv('ENABLE_TOOL_SEARCH', 'from-the-harness');
+        try {
+          mockQuery.mockReturnValue(createMockQuery([]));
+          const adapter = new ClaudeAdapter();
+          await adapter.startSession({
+            provider: 'claude',
+            threadId: `tool-search-${loading ?? 'harness'}`,
+            agent: {
+              slug: 'my-agent',
+              ...(loading ? { toolServerLoading: loading } : {}),
+            },
+          });
+          const { options } = mockQuery.mock.calls[0][0];
+          expect(options.env.ENABLE_TOOL_SEARCH).toBe(expected);
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      },
+    );
 
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
@@ -9618,7 +10169,7 @@ describe('ClaudeAdapter', () => {
       });
     });
 
-    test('injects the Station internal API token into the built-in station-control server only, never a third-party env-less server', async () => {
+    test('#2377 slice D: the stdio fallback for the built-in station-control server gets no internal API token, and a third-party server no env', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -9652,7 +10203,15 @@ describe('ClaudeAdapter', () => {
         type: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
-        env: { [INTERNAL_API_TOKEN_ENV]: expect.any(String) },
+        // The home's compile cache rides only the built-in child; no child
+        // receives the internal token.
+        env: {
+          NODE_COMPILE_CACHE: resolve(
+            resolveHomeDir(),
+            'cache',
+            'node-compile',
+          ),
+        },
       });
       expect(queryArgs.options.mcpServers['third-party']).toEqual({
         type: 'stdio',
@@ -10233,7 +10792,9 @@ describe('ClaudeAdapter', () => {
       vi.stubEnv('USERPROFILE', home);
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
       vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
       vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
     });
 
     afterEach(() => {
@@ -10313,7 +10874,9 @@ describe('ClaudeAdapter', () => {
       vi.stubEnv('HOME', makeTempDir('station-claude-keychain-home-'));
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
       vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
       vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
       // An existing config dir with no credentials file: the Keychain case.
       configHome = makeTempDir('station-claude-keychain-config-');
     });
@@ -11682,7 +12245,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -11692,7 +12255,7 @@ echo '{"loggedIn":true}'
         readBundledVersion: () => '2.1.224',
       }).getPrerequisites?.();
       expect(readiness?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
       );
     });
 
@@ -11703,7 +12266,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'installed',
           category: 'required',
         },
@@ -11725,7 +12288,7 @@ echo '{"loggedIn":true}'
         (prerequisite) => prerequisite.id === 'claude-cli',
       );
       expect(cli?.description).toBe(
-        `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
       );
       // The install status and the sentence come from ONE resolution: the
       // findBinary handed to the shared builder must answer with the same
@@ -11746,7 +12309,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -11758,7 +12321,7 @@ echo '{"loggedIn":true}'
       const prerequisites = await adapter.getPrerequisites?.();
 
       expect(prerequisites?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
       );
       expect(
         mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary('claude'),
@@ -11809,7 +12372,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -11828,7 +12391,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -11842,7 +12405,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -11856,7 +12419,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
         );
       });
 
@@ -11907,7 +12470,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
+          `Required to launch the Claude engine. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
         );
       });
 
@@ -11925,7 +12488,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
         );
       });
 
@@ -11944,7 +12507,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
         );
       });
 
@@ -11993,7 +12556,7 @@ echo '{"loggedIn":true}'
         );
         // Second inspection re-probes rather than inheriting that failure.
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
         expect(runCommand).toHaveBeenCalledTimes(2);
         // ...and the successful observation IS durable.
@@ -12236,7 +12799,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12251,7 +12814,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
+          'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
         );
         expect(runCommand).not.toHaveBeenCalled();
       });
@@ -12319,7 +12882,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12343,7 +12906,7 @@ echo '{"loggedIn":true}'
         expect(runCommand).toHaveBeenCalledWith(NATIVE, ['--version']);
         expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12362,7 +12925,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12396,7 +12959,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: CLIJS,
         });
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12406,7 +12969,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12420,7 +12983,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
+          `Required to launch the Claude engine. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
         );
         // Install status still reflects the resolver's own answer: a `claude`
         // IS on PATH, Station just cannot hand that entry to the SDK.
@@ -12634,6 +13197,86 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
       status: 'unresolved',
       turnId,
     });
+  });
+
+  // A backgrounded agent that ended its turn waiting on its own background
+  // command settles, then that command's notification wakes it under the
+  // SAME tool call. Its call was already marked terminal, so the session-end
+  // settle skipped it: the card stayed running after the engine stopped, and
+  // nothing told an idle park the engine was still busy.
+  test('a backgrounded agent woken after its terminal holds the engine open, and settles unresolved when the session ends', async () => {
+    const threadId = 'thread-woken-agent';
+    const query = createEndableMockQuery();
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({ provider: 'claude', threadId });
+    await adapter.sendTurn({ threadId, input: 'work' });
+    await nextOf(iterator, 'turn.started');
+    const agentFrame = (subtype: string, extra: Record<string, unknown>) => ({
+      type: 'system',
+      subtype,
+      task_id: 'agent-lane-2',
+      tool_use_id: 'toolu-agent',
+      uuid: `${subtype}-${Math.random()}`,
+      session_id: threadId,
+      ...extra,
+    });
+    const started = agentFrame('task_started', {
+      description: 'Lane 2',
+      subagent_type: 'general-purpose',
+      is_backgrounded: true,
+      spawn_depth: 1,
+      task_type: 'local_agent',
+    });
+    query.push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu-agent', name: 'Task', input: {} },
+        ],
+      },
+      uuid: 'assistant-agent',
+      session_id: threadId,
+    });
+    await nextOf(iterator, 'tool.started');
+    query.push(started);
+    await nextOf(iterator, 'child-work.updated');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+    query.push(
+      agentFrame('task_notification', {
+        status: 'completed',
+        summary: "I'll wait for the notification.",
+      }),
+    );
+    expect(await nextOf(iterator, 'tool.completed')).toMatchObject({
+      toolCallId: 'toolu-agent',
+      status: 'success',
+    });
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
+
+    // Woken by its own command's notification: the same call, working again.
+    query.push({ ...started, uuid: 'task_started-wake' });
+    await nextOf(iterator, 'tool.started');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
+
+    await adapter.stopSession(threadId);
+    const seen = await drainUntilQuiet(iterator);
+    expect(
+      seen.filter(
+        (event) =>
+          event.method === 'tool.completed' &&
+          event.toolCallId === 'toolu-agent',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        toolName: 'Task (general-purpose)',
+        status: 'unresolved',
+      }),
+    ]);
+    expect(seen.map((event) => event.method)).toContain('session.exited');
+    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
   });
 
   test('a completed TURN leaves the open call alone — only the session settles it', async () => {
@@ -13163,14 +13806,24 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
 
   async function runningChild(
     threadId: string,
-    options: { endOnClose?: boolean; streamStopGraceMs?: number } = {},
+    options: {
+      endOnClose?: boolean;
+      streamStopGraceMs?: number;
+      engineExitStreamGraceMs?: number;
+    } = {},
   ) {
     const query = endableQuery({ endOnClose: options.endOnClose });
     mockQuery.mockReturnValue(query);
-    const adapter = new ClaudeAdapter(
-      options.streamStopGraceMs !== undefined
+    const adapterOptions = {
+      ...(options.streamStopGraceMs !== undefined
         ? { streamStopGraceMs: options.streamStopGraceMs }
-        : undefined,
+        : {}),
+      ...(options.engineExitStreamGraceMs !== undefined
+        ? { engineExitStreamGraceMs: options.engineExitStreamGraceMs }
+        : {}),
+    };
+    const adapter = new ClaudeAdapter(
+      Object.keys(adapterOptions).length > 0 ? adapterOptions : undefined,
     );
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({ provider: 'claude', threadId });
@@ -13331,6 +13984,98 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     if (!child) throw new Error('no fake engine spawned');
     return child;
   }
+
+  // The SDK's stream (streaming input mode) neither ends nor throws after its
+  // `claude` process is SIGKILLed (reproduced against the real SDK). Before
+  // this, a memory-killed engine left no failure, no exit and no interrupted
+  // work: the session stayed `ready` and the inbox looked idle.
+  test('an engine killed while its stream stays open ends the session: children interrupted, failure, then exit', async () => {
+    const threadId = 'thread-engine-killed-silent-stream';
+    const { adapter, until, seen } = await runningChild(threadId, {
+      engineExitStreamGraceMs: 20,
+    });
+    const engine = spawnEngine();
+    // Killed, and the stream says nothing: no crash, no end.
+    engine.exit(null, 'SIGKILL');
+    engine.closeStderr();
+    const exited = await until((event) => event.method === 'session.exited');
+    expect(exited).toMatchObject({ reason: 'process-exit' });
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+    const failure = seen.find((event) => event.method === 'runtime.error');
+    expect(failure).toMatchObject({
+      code: 'claude-engine-exited',
+      kind: 'engine_crashed',
+      // The turn the background work belongs to, though it already ended.
+      turnId: expect.any(String),
+      message: expect.stringContaining('terminated by signal SIGKILL'),
+    });
+    const order = (method: string) =>
+      seen.findIndex((event) => event.method === method);
+    expect(order('runtime.error')).toBeLessThan(order('session.exited'));
+    expect(
+      seen.findIndex(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle',
+      ),
+    ).toBeLessThan(order('runtime.error'));
+    expect(await adapter.hasSession(threadId)).toBe(false);
+  });
+
+  test('an engine killed for memory reports memory exhaustion, which hands the chat to the continuation', async () => {
+    const threadId = 'thread-engine-memory-killed';
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        Promise.resolve({
+          result: 'oom-kill-in-scope',
+          oomKills: 1,
+          unreportedOomKills: 1,
+          memoryPeakBytes: 4450 * 1024 * 1024,
+          memoryMaxBytes: 4620 * 1024 * 1024,
+        }),
+      );
+    try {
+      const { until, seen } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      engine.exit(null, 'SIGKILL');
+      engine.closeStderr();
+      expect(
+        await until((event) => event.method === 'session.exited'),
+      ).toMatchObject({ reason: 'memory-exhausted' });
+      expect(
+        seen.find((event) => event.method === 'runtime.error'),
+      ).toMatchObject({
+        code: 'engine-memory-exhausted',
+        message: expect.stringContaining('Claude ran out of memory'),
+        details: {
+          exitSignal: 'SIGKILL',
+          workload: expect.objectContaining({ unreportedOomKills: 1 }),
+        },
+      });
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
+  test('a deliberate stop is never reported as an engine death', async () => {
+    const threadId = 'thread-engine-stopped-not-died';
+    const { adapter, until, seen } = await runningChild(threadId, {
+      engineExitStreamGraceMs: 20,
+    });
+    const engine = spawnEngine();
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+    await until((event) => event.method === 'session.exited');
+    expect(seen.some((event) => event.method === 'runtime.error')).toBe(false);
+    expect(
+      seen.filter((event) => event.method === 'session.exited'),
+    ).toHaveLength(1);
+  });
 
   test('the engine process dying settles the running child interrupted, not unresolved', async () => {
     const threadId = 'thread-child-process-death';

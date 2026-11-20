@@ -31,6 +31,161 @@ function writeFixturePackage(
 }
 
 describe('desktop runtime pruning', () => {
+  it('keeps installed stable and incubating semantic conventions identical through Node import and require', async () => {
+    const output = join(makeTempDir('station-runtime-semconv-'), 'release');
+    stageDesktopServerRuntime({
+      projectRoot: repoRoot,
+      outputRoot: output,
+      packages: ['@opentelemetry/semantic-conventions'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { createRequire } from 'node:module';
+import * as stable from '@opentelemetry/semantic-conventions';
+import * as incubating from '@opentelemetry/semantic-conventions/incubating';
+const require = createRequire(import.meta.url);
+console.log(JSON.stringify({
+  service: stable.ATTR_SERVICE_NAME,
+  model: incubating.ATTR_GEN_AI_REQUEST_MODEL,
+  stableIdentity: stable.default === require('@opentelemetry/semantic-conventions'),
+  incubatingIdentity: incubating.default === require('@opentelemetry/semantic-conventions/incubating'),
+}));`,
+      ],
+      { cwd: output, windowsHide: true, timeout: 10_000 },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual({
+      service: 'service.name',
+      model: 'gen_ai.request.model',
+      stableIdentity: true,
+      incubatingIdentity: true,
+    });
+    const staged = join(
+      output,
+      'node_modules/@opentelemetry/semantic-conventions',
+    );
+    expect(existsSync(join(staged, 'build/src/index.js'))).toBe(true);
+    expect(existsSync(join(staged, 'build/src/index-incubating.js'))).toBe(
+      true,
+    );
+    expect(readFileSync(join(staged, 'LICENSE'), 'utf8')).toContain(
+      'Apache License',
+    );
+    expect(existsSync(join(staged, 'build/esm'))).toBe(false);
+    expect(existsSync(join(staged, 'build/esnext'))).toBe(false);
+  });
+
+  it('scopes semantic-convention distribution pruning to the reviewed package', () => {
+    const project = makeTempDir('station-runtime-semconv-scope-');
+    const names = [
+      '@opentelemetry/semantic-conventions',
+      'other-semantic-conventions',
+    ];
+    for (const name of names) {
+      writeFixturePackage(
+        join(project, 'node_modules', name),
+        {
+          name,
+          version: '1.0.0',
+          main: 'build/src/index.js',
+          exports: {
+            '.': {
+              module: './build/esm/index.js',
+              default: './build/src/index.js',
+            },
+            './incubating': {
+              esnext: './build/esnext/index-incubating.js',
+              default: './build/src/index-incubating.js',
+            },
+          },
+        },
+        {
+          'build/src/index.js': 'node implementation',
+          'build/src/index-incubating.js': 'node incubating implementation',
+          'build/esm/index.js': 'bundler implementation',
+          'build/esnext/index-incubating.js': 'esnext implementation',
+          LICENSE: 'license',
+        },
+      );
+    }
+    const output = join(project, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: names,
+    });
+    for (const name of names) {
+      const staged = join(output, 'node_modules', name);
+      expect(existsSync(join(staged, 'build/src/index.js'))).toBe(true);
+      expect(existsSync(join(staged, 'build/src/index-incubating.js'))).toBe(
+        true,
+      );
+      expect(existsSync(join(staged, 'LICENSE'))).toBe(true);
+      const retained = name === 'other-semantic-conventions';
+      expect(existsSync(join(staged, 'build/esm'))).toBe(retained);
+      expect(existsSync(join(staged, 'build/esnext'))).toBe(retained);
+    }
+  });
+
+  it.each(['import', 'require', 'node', 'module-sync', 'default'])(
+    'retains semantic-convention variants when %s selects a new Node entry',
+    async (condition) => {
+      const project = makeTempDir('station-runtime-semconv-condition-');
+      writeFixturePackage(
+        join(project, 'node_modules/@opentelemetry/semantic-conventions'),
+        {
+          name: '@opentelemetry/semantic-conventions',
+          version: '2.0.0',
+          main: 'build/src/index.js',
+          exports: {
+            '.': {
+              [condition]: './build/esm/index.js',
+              ...(condition === 'default'
+                ? {}
+                : { default: './build/src/index.js' }),
+            },
+            './incubating': { default: './build/src/index-incubating.js' },
+          },
+        },
+        {
+          'build/src/index.js': "exports.runtime = 'node-cjs';",
+          'build/src/index-incubating.js':
+            "exports.runtime = 'incubating-cjs';",
+          'build/esm/package.json': '{"type":"module"}',
+          'build/esm/index.js': "export const runtime = 'node-esm';",
+          'build/esnext/index.js': 'future variant',
+          LICENSE: 'license',
+        },
+      );
+      const output = join(project, 'release');
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: ['@opentelemetry/semantic-conventions'],
+      });
+      const staged = join(
+        output,
+        'node_modules/@opentelemetry/semantic-conventions',
+      );
+      expect(existsSync(join(staged, 'build/esm/index.js'))).toBe(true);
+      expect(existsSync(join(staged, 'build/esnext/index.js'))).toBe(true);
+      if (condition === 'import' || condition === 'default') {
+        const probe = await execFileAsync(
+          process.execPath,
+          [
+            '--input-type=module',
+            '-e',
+            "import { runtime } from '@opentelemetry/semantic-conventions'; console.log(runtime);",
+          ],
+          { cwd: output, windowsHide: true, timeout: 10_000 },
+        );
+        expect(probe.stdout.trim()).toBe('node-esm');
+      }
+    },
+  );
+
   it('keeps the installed OTLP Node serializers usable through import and require', async () => {
     const output = join(makeTempDir('station-runtime-otlp-'), 'release');
     stageDesktopServerRuntime({

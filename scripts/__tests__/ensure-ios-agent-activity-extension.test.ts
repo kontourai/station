@@ -58,7 +58,7 @@ function ensure(
 ) {
   return YAML.parse(
     ensureIosAgentActivityExtension(project, {
-      appBundleId: 'io.kontourai.station.beta',
+      appBundleId: 'io.kontourai.station.nightly',
       ...options,
     }),
   );
@@ -71,7 +71,7 @@ describe('iOS agent-activity extension project spec', () => {
     expect(extension.platform).toBe('iOS');
     expect(extension.deploymentTarget).toBe('18.0');
     expect(extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER).toBe(
-      'io.kontourai.station.beta',
+      'io.kontourai.station.nightly',
     );
     expect(extension.settings.base.PRODUCT_BUNDLE_IDENTIFIER).toBe(
       '$(STATION_APP_BUNDLE_IDENTIFIER).AgentActivity',
@@ -344,7 +344,7 @@ describe('iOS agent-activity extension project spec', () => {
     expect(extension.deploymentTarget).toBe('16.4');
     expect(extension.deploymentTarget).toBe(IOS_APP_MINIMUM);
     expect(extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER).toBe(
-      'io.kontourai.station.beta',
+      'io.kontourai.station.nightly',
     );
     expect(extension.settings.base.PRODUCT_BUNDLE_IDENTIFIER).toBe(
       '$(STATION_APP_BUNDLE_IDENTIFIER).NotificationService',

@@ -120,8 +120,9 @@ test.describe('buffered answer delivery (#585)', () => {
     await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: 'Chat settings' }).click();
+    await page
+      .getByRole('button', { name: 'Chat settings', exact: true })
+      .click();
     const delivery = page.getByLabel('Answer delivery');
     await delivery.selectOption('buffered');
     await expect(delivery).toHaveValue('buffered');
@@ -165,6 +166,12 @@ test.describe('buffered answer delivery (#585)', () => {
       path: testInfo.outputPath('buffered-answer-tool-boundary-mobile.png'),
       fullPage: true,
     });
+    await emit(page, 'content.text-delta', {
+      itemId: 'answer-1',
+      delta: ' Visible at approval boundary.',
+    });
+    await settleBrowserFrames(page);
+    await expect(transcript).not.toContainText('Visible at approval boundary.');
     await page.setViewportSize({ width: 1280, height: 720 });
     // Back on a wide screen the Coding layout's centre takes Chat and the
     // phone's dock unmounts (#928 coding stack): let that settle, or
@@ -174,11 +181,6 @@ test.describe('buffered answer delivery (#585)', () => {
     await openChatRegion(page);
     await expect(transcript).toBeVisible();
 
-    await emit(page, 'content.text-delta', {
-      itemId: 'answer-1',
-      delta: ' Visible at approval boundary.',
-    });
-    await settleBrowserFrames(page);
     await expect(transcript).not.toContainText('Visible at approval boundary.');
     await emit(page, 'request.opened', {
       requestId: 'approval-1',
@@ -203,12 +205,19 @@ test.describe('buffered answer delivery (#585)', () => {
         'Visible at tool boundary. Visible at approval boundary. Visible at completion.',
     });
     await expect(transcript).toContainText('Visible at completion.');
+    await emit(page, 'request.resolved', {
+      requestId: 'approval-1',
+      status: 'approved',
+    });
     await expect(
-      transcript.getByText(
-        'Visible at tool boundary. Visible at approval boundary. Visible at completion.',
-        { exact: true },
-      ),
-    ).toHaveCount(1);
+      page.getByRole('button', { name: '1 pending approval' }),
+    ).toBeHidden();
+    await expect(
+      transcript.locator('p').filter({ hasText: /^Visible at / }),
+    ).toHaveText([
+      'Visible at tool boundary.',
+      'Visible at approval boundary. Visible at completion.',
+    ]);
 
     await emit(page, 'turn.started', {
       turnId: 'turn-buffered-2',
@@ -222,8 +231,9 @@ test.describe('buffered answer delivery (#585)', () => {
     await settleBrowserFrames(page);
     await expect(transcript).not.toContainText('Flushed by disabling.');
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: 'Chat settings' }).click();
+    await page
+      .getByRole('button', { name: 'Chat settings', exact: true })
+      .click();
     await page.getByLabel('Answer delivery').selectOption('token');
     await expect(transcript).toContainText('Flushed by disabling.');
     await page.getByRole('button', { name: 'Done' }).click();

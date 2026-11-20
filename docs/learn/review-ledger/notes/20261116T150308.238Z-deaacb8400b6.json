@@ -1,0 +1,7 @@
+{
+  "revision": "5ca66e716f4ebb1e13c4c876e76d6fb0a2807760",
+
+  "notes": [
+    {"path":"docs/guides/ui-copy.md","note":"Reviewed the complete Writing UI copy guide against the merged package scripts and static-hook callers. The branch adds only release:cut and release:nightly-base:check to the cited scripts object; ui-copy-length/style, ui-css-slop, noun-consistency and component-style commands remain wired into gate:ui-contracts and pre-push static checks as documented. Stable product version 0.2.0 changes no copy rule or baseline. No guide prose, UI behavior, gate threshold or publication/privacy contract changes are needed. This is a bounded source review after merging main, not a new UI or release qualification.","inputs":["docs/guides/ui-copy.md","package.json#/scripts"]}
+  ]
+}

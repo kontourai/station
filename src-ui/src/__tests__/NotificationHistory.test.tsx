@@ -75,7 +75,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useDismissNotificationMutation: () => ({
     isPending: false,
-    mutate: dismiss,
+    mutateAsync: async (id: string) => dismiss(id),
   }),
   useNotificationActionMutation: () => ({
     isPending: false,
@@ -232,7 +232,7 @@ describe('NotificationHistory', () => {
     expect(row?.textContent).toContain('Approval needed');
     expect(row?.textContent).not.toContain('Backup finished');
     // A refusal is not retried blindly; the way forward is the chat.
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('a network failure on a decision offers to try it again', () => {
@@ -262,7 +262,7 @@ describe('NotificationHistory', () => {
     expect(screen.getByTestId('decision-error').textContent).toMatch(
       /Couldn't reach Station/,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(action).toHaveBeenCalledTimes(2);
     expect(action.mock.calls[1]?.[0]).toEqual({
@@ -722,6 +722,52 @@ describe('NotificationHistory undo window', () => {
 
       expect(dismiss).toHaveBeenCalledTimes(1);
       expect(dismiss).toHaveBeenCalledWith('notif-undo');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a focused dismissal keeps other notifications visible while the server saves it', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderOne();
+      const close = vi.fn();
+      notifications = [
+        ...notifications,
+        {
+          ...notifications[0],
+          id: 'remaining',
+          title: 'Remaining notification',
+        },
+      ];
+      view.rerender(
+        <NotificationHistory isOpen onClose={close} onViewAll={vi.fn()} />,
+      );
+      let confirm: (() => void) | undefined;
+      dismiss.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirm = resolve;
+          }),
+      );
+      const menuItem = openRowAction('Dismiss', { index: 0 });
+      menuItem.focus();
+      fireEvent.click(menuItem);
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+      expect(screen.getByText('Remaining notification')).toBeTruthy();
+      expect(close).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.queryByText('Approval needed')).toBeNull();
+      expect(screen.getByText('Dismissing…')).toBeTruthy();
+      await act(async () => {
+        confirm?.();
+      });
+      expect(screen.queryByText('Approval needed')).toBeNull();
+      expect(screen.getByText('Remaining notification')).toBeTruthy();
+      expect(close).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

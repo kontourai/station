@@ -4,6 +4,7 @@ import type {
   WorkReference,
 } from '@kontourai/station-contracts';
 import {
+  SpatialBoardRequestError,
   useCleanupSpatialBoardPinsMutation,
   useCreateSpatialBoardPinMutation,
   useSetSpatialBoardCameraMutation,
@@ -18,8 +19,9 @@ export function BoardMutationError({ error }: { error: unknown }) {
   if (!error) return null;
   return (
     <p className="spatial-board__mutation-error" role="alert">
-      The Board change could not be confirmed. Refresh the Board before trying
-      again.
+      {error instanceof SpatialBoardRequestError && error.conflict
+        ? 'The Board change was refused. Review the latest Board before trying again.'
+        : 'The Board change could not be confirmed. Refresh the Board before trying again.'}
     </p>
   );
 }
@@ -237,7 +239,7 @@ export function AddPinForm({
             <option value="project">Project</option>
             <option value="approval">Approval request</option>
             <option value="scheduler-receipt">Scheduled outcome</option>
-            <option value="review-receipt">Receipt</option>
+            <option value="review-receipt">Review result</option>
             <option value="flow-run">Gate or run</option>
             <option value="artifact">Artifact</option>
             <option value="agent">Agent</option>

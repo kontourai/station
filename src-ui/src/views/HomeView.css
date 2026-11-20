@@ -7,7 +7,7 @@
     var(--k-space-3),
     calc(clamp(24px, 5vw, 64px) - var(--dock-bottom-clearance, 0px))
   );
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .home-view__intro {
@@ -186,6 +186,10 @@
   margin: 8px 0 0;
   font-size: var(--k-text-sm);
   color: var(--text-muted);
+}
+/* #3075 review: Home's column already sets the inset its headings use. */
+.home-view__recent .read-status-note {
+  padding-inline: 0;
 }
 .home-view__row-action {
   min-width: 44px;

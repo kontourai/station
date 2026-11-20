@@ -1,0 +1,7 @@
+{
+  "revision": "be64c7c6fda5c9640cfc571a9a272d44c33587f6",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"The pinned table adds continuation_source_active, and project_held from main #5098; contracts.md lists the mapped codes.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

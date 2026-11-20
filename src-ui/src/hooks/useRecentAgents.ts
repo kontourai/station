@@ -7,7 +7,13 @@ const CONTEXT_AGENT_STORAGE_KEY = 'station.newChat.lastAgentByContext';
 
 export function getRecentAgentSlugs(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(STORAGE_KEY) || '[]',
+    );
+    // A stored value this code did not write (an object, a string) is no
+    // history rather than a throw in every caller's `.filter`.
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((slug): slug is string => typeof slug === 'string');
   } catch {
     return [];
   }
@@ -16,10 +22,14 @@ export function getRecentAgentSlugs(): string[] {
 export function trackRecentAgent(slug: string): void {
   const recent = getRecentAgentSlugs().filter((s) => s !== slug);
   recent.unshift(slug);
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(recent.slice(0, MAX_RECENT)),
-  );
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(recent.slice(0, MAX_RECENT)),
+    );
+  } catch {
+    /* Recency memory must not block starting work. */
+  }
   telemetry.track('agent:selected', { slug });
 }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "6b607bf05107424304b00e32955a428525a76f1a",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the two fixture expectation changes against real UsageTelemetryService senders, mapRuntimeChannelToTelemetryChannel and the usage telemetry reference. A captured retired Beta identity stays unknown in Lite even with a Nightly environment fallback, and Full omits the unmapped channel. The guide already describes both rules and retained historical Preview wire compatibility. Six focused files passed154 tests; a clean-tree shared-mapper fault restoring Beta-to-Preview caused both intended publisher assertions to fail, then exact source restoration returned both controls green. No production source, schema, destination, consent/data inventory, privacy claim or deadline changed; no external website hash refresh or live telemetry qualification claimed.","inputs":["src-server/services/__tests__/telemetry-publishers.test.ts"]}
+  ]
+}

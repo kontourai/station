@@ -1,6 +1,9 @@
-import { devices, expect, type Page, test } from '@playwright/test';
+import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
+import { devices, expect, type Page } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
@@ -25,6 +28,7 @@ type ModelConnection = {
   status: string;
   prerequisites: unknown[];
   lastCheckedAt: string | null;
+  readinessEvidence?: ConnectionReadinessEvidence;
 };
 
 type RuntimeConnection = {
@@ -49,25 +53,7 @@ type RuntimeConnection = {
     models: Array<{ id: string; name: string }>;
     builtInModels: Array<{ id: string; name: string }>;
   };
-  readinessEvidence?: {
-    evidenceVersion: 1;
-    level:
-      | 'discovered'
-      | 'prerequisite-ready'
-      | 'catalog-ready'
-      | 'smoke-passed';
-    observedAt: string;
-    freshness: 'fresh' | 'stale' | 'unknown';
-    summary: string;
-    action?: string;
-    smoke: {
-      status: 'not-tested' | 'passed' | 'failed';
-      freshness: 'fresh' | 'stale' | 'unknown';
-      reason?: string;
-      action?: string;
-      turnLimit: 1;
-    };
-  };
+  readinessEvidence?: ConnectionReadinessEvidence;
 };
 
 type Integration = {
@@ -118,6 +104,16 @@ async function seedConnectionsRoutes(page: Page) {
         status: 'ready',
         prerequisites: [],
         lastCheckedAt: null,
+        readinessEvidence: {
+          evidenceVersion: 1,
+          level: 'prerequisite-ready',
+          observedAt: '2026-11-18T00:00:00.000Z',
+          freshness: 'fresh',
+          summary: 'Station has not checked these saved model settings.',
+          action: 'Choose Test connection to check the saved settings.',
+          check: { status: 'not-checked' },
+          smoke: { status: 'not-tested', freshness: 'unknown', turnLimit: 1 },
+        },
       },
     ],
     runtimes: [
@@ -379,24 +375,131 @@ async function seedConnectionsRoutes(page: Page) {
       return;
     }
 
+    if (path === '/api/connections/agents/catalog' && method === 'GET') {
+      return route.fulfill(
+        json({
+          success: true,
+          data: state.runtimes.filter(
+            (runtime) => runtime.setup.state === 'available',
+          ),
+        }),
+      );
+    }
+    if (path === '/api/relay-management/capabilities' && method === 'GET') {
+      return route.fulfill(
+        json({ data: { canManage: false, configured: false } }),
+      );
+    }
+    if (path === '/api/secret-bindings' && method === 'GET') {
+      return route.fulfill(json({ success: true, data: [] }));
+    }
+    const bindingConsumer =
+      /^\/api\/secret-bindings\/integrations\/([^/]+)$/.exec(path);
+    if (bindingConsumer && method === 'GET') {
+      const integrationId = decodeURIComponent(bindingConsumer[1]);
+      if (state.integrations.some((entry) => entry.id === integrationId)) {
+        return route.fulfill(
+          json({
+            success: true,
+            data: { integrationId, secretEnvBindingIds: {} },
+          }),
+        );
+      }
+    }
+    if (path === '/api/connections/agent/codex/app-home' && method === 'GET') {
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            profileDir: '/fixture/engines/codex',
+            exists: false,
+            seededFrom: null,
+            importedAt: null,
+            authState: 'unknown',
+            keychainAuthPossible: false,
+          },
+        }),
+      );
+    }
+    if (
+      method === 'GET' &&
+      (path === '/api/connections/agent/codex/credential-recovery' ||
+        path === '/api/connections/agent/codex/accounts')
+    ) {
+      return route.fulfill(
+        json(
+          {
+            success: false,
+            error: 'Credential recovery is not available for this connection.',
+          },
+          404,
+        ),
+      );
+    }
+    if (path === '/api/analytics/usage-rollup' && method === 'GET') {
+      return route.fulfill(
+        json({ success: false, error: 'Analytics not initialized' }, 500),
+      );
+    }
+
     const connectionMatch = path.match(
-      /^\/api\/connections\/([^/]+)(?:\/test)?$/,
+      /^\/api\/connections\/([^/]+)(?:\/(test|smoke))?$/,
     );
     if (connectionMatch) {
       const id = decodeURIComponent(connectionMatch[1]);
-      const isTest = path.endsWith('/test');
+      const operation = connectionMatch[2];
       const existingModel = state.models.find((entry) => entry.id === id);
       const existingRuntime = state.runtimes.find((entry) => entry.id === id);
 
-      if (isTest && method === 'POST') {
-        await route.fulfill(
-          json({
-            success: true,
-            data: { healthy: true, status: 'ready' },
-          }),
+      if (operation === 'test' && method === 'POST' && existingModel) {
+        const checkedAt = '2026-11-18T00:00:00.000Z';
+        existingModel.lastCheckedAt = checkedAt;
+        existingModel.readinessEvidence = {
+          evidenceVersion: 1,
+          level: 'catalog-ready',
+          observedAt: checkedAt,
+          freshness: 'fresh',
+          summary: 'The provider answered the last connection check.',
+          check: { status: 'passed', checkedAt, source: 'explicit-test' },
+          smoke: { status: 'not-tested', freshness: 'unknown', turnLimit: 1 },
+        };
+        return route.fulfill(
+          json({ success: true, data: { healthy: true, status: 'ready' } }),
         );
-        return;
       }
+      if (
+        operation === 'smoke' &&
+        method === 'POST' &&
+        existingRuntime?.id === 'codex'
+      ) {
+        const requestBody: unknown = route.request().postDataJSON();
+        if (
+          !requestBody ||
+          typeof requestBody !== 'object' ||
+          !('confirmed' in requestBody) ||
+          requestBody.confirmed !== true
+        )
+          return rejectUnexpectedFixtureRequest(route);
+        const testedAt = '2026-11-18T00:00:00.000Z';
+        existingRuntime.readinessEvidence = {
+          evidenceVersion: 1,
+          level: 'smoke-passed',
+          observedAt: testedAt,
+          freshness: 'fresh',
+          summary: 'A bounded chat smoke completed successfully.',
+          smoke: {
+            status: 'passed',
+            freshness: 'fresh',
+            testedAt,
+            provider: 'codex',
+            turnLimit: 1,
+          },
+        };
+        return route.fulfill(
+          json({ success: true, data: existingRuntime.readinessEvidence }),
+        );
+      }
+      if (operation) return rejectUnexpectedFixtureRequest(route);
 
       if (method === 'GET') {
         const connection = existingModel ?? existingRuntime;
@@ -440,171 +543,207 @@ async function seedConnectionsRoutes(page: Page) {
       }
     }
 
-    await route.fulfill(json({ success: true, data: [] }));
+    if (await fulfillStationShellRead(route, { environmentId: ENVIRONMENT_ID }))
+      return;
+    return rejectUnexpectedFixtureRequest(route);
   });
 
-  await page.route('**/integrations**', async (route) => {
-    const url = new URL(route.request().url());
-    const path = url.pathname;
-    const method = route.request().method();
+  await page.route(
+    (url) => /^\/integrations(?:\/|$)/.test(url.pathname),
+    async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
+      const method = route.request().method();
 
-    if (path === '/integrations' && method === 'GET') {
-      await route.fulfill(json({ success: true, data: state.integrations }));
-      return;
-    }
-
-    if (path === '/integrations' && method === 'POST') {
-      const body = route.request().postDataJSON() as Integration;
-      state.integrations.push(body);
-      await route.fulfill(json({ success: true, data: body }));
-      return;
-    }
-
-    const integrationMatch = path.match(
-      /^\/integrations\/([^/]+)(?:\/reconnect)?$/,
-    );
-    if (integrationMatch) {
-      const id = decodeURIComponent(integrationMatch[1]);
-      const existing = state.integrations.find((entry) => entry.id === id);
-
-      if (path.endsWith('/reconnect') && method === 'POST') {
-        if (existing) existing.connected = true;
-        await route.fulfill(json({ success: true }));
+      if (path === '/integrations' && method === 'GET') {
+        await route.fulfill(json({ success: true, data: state.integrations }));
         return;
       }
 
-      if (method === 'GET') {
-        if (!existing) {
-          await route.fulfill(
-            json({ success: false, error: 'Not found' }, 404),
-          );
+      if (path === '/integrations' && method === 'POST') {
+        const body = route.request().postDataJSON() as Integration;
+        state.integrations.push(body);
+        await route.fulfill(json({ success: true, data: body }));
+        return;
+      }
+
+      const integrationMatch = path.match(
+        /^\/integrations\/([^/]+)(?:\/reconnect)?$/,
+      );
+      if (integrationMatch) {
+        const id = decodeURIComponent(integrationMatch[1]);
+        const existing = state.integrations.find((entry) => entry.id === id);
+
+        if (path.endsWith('/reconnect') && method === 'POST') {
+          if (existing) existing.connected = true;
+          await route.fulfill(json({ success: true }));
           return;
         }
-        await route.fulfill(json({ success: true, data: existing }));
-        return;
-      }
 
-      if (method === 'PUT') {
-        const body = route.request().postDataJSON() as Integration;
-        if (existing) {
-          Object.assign(existing, body);
+        if (method === 'GET') {
+          if (!existing) {
+            await route.fulfill(
+              json({ success: false, error: 'Not found' }, 404),
+            );
+            return;
+          }
           await route.fulfill(json({ success: true, data: existing }));
           return;
         }
+
+        if (method === 'PUT') {
+          const body = route.request().postDataJSON() as Integration;
+          if (existing) {
+            Object.assign(existing, body);
+            await route.fulfill(json({ success: true, data: existing }));
+            return;
+          }
+        }
+
+        if (method === 'DELETE') {
+          state.integrations = state.integrations.filter(
+            (entry) => entry.id !== id,
+          );
+          await route.fulfill(json({ success: true }));
+          return;
+        }
       }
 
-      if (method === 'DELETE') {
-        state.integrations = state.integrations.filter(
-          (entry) => entry.id !== id,
+      return rejectUnexpectedFixtureRequest(route);
+    },
+  );
+
+  await page.route(
+    (url) => url.pathname.startsWith('/acp/'),
+    async (route) => {
+      const url = new URL(route.request().url());
+      const path = url.pathname;
+
+      if (path === '/acp/connections' && route.request().method() === 'GET') {
+        await route.fulfill(
+          json({
+            success: true,
+            data: [
+              ...(state.acpInstalled
+                ? [
+                    {
+                      id: 'kiro',
+                      name: 'Kiro CLI',
+                      command: 'kiro',
+                      args: ['--acp'],
+                      enabled: true,
+                      status: 'available',
+                      source: 'user' as const,
+                      slashCommands: [],
+                    },
+                  ]
+                : []),
+              ...state.customACPConnections,
+            ],
+          }),
         );
-        await route.fulfill(json({ success: true }));
         return;
       }
-    }
 
-    await route.fulfill(json({ success: true, data: [] }));
-  });
+      if (path === '/acp/connections' && route.request().method() === 'POST') {
+        const draft = route.request().postDataJSON() as {
+          id: string;
+          name?: string;
+          command: string;
+          args?: string[];
+        };
+        const connection = {
+          id: draft.id,
+          name: draft.name || draft.id,
+          command: draft.command,
+          args: draft.args ?? [],
+          enabled: true,
+          status: 'available',
+          source: 'user' as const,
+          slashCommands: [],
+        };
+        state.customACPConnections.push(connection);
+        await route.fulfill(json({ success: true, data: connection }));
+        return;
+      }
 
-  await page.route('**/acp/**', async (route) => {
-    const url = new URL(route.request().url());
-    const path = url.pathname;
+      if (
+        path === '/acp/connections/unregistered' &&
+        route.request().method() === 'GET'
+      ) {
+        return route.fulfill(json({ success: true, data: [] }));
+      }
+      if (
+        path === '/acp/registry/source' &&
+        route.request().method() === 'GET'
+      ) {
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              enabled: false,
+              origin: 'none',
+              fetchedAt: null,
+              checkedAt: null,
+              lastError: null,
+              refreshing: false,
+              refused: [],
+            },
+          }),
+        );
+      }
+      if (path === '/acp/registry' && route.request().method() === 'GET') {
+        await route.fulfill(
+          json({
+            success: true,
+            data: [
+              {
+                id: 'kiro',
+                name: 'Kiro CLI',
+                command: 'kiro',
+                args: ['--acp'],
+                description: 'Connect Kiro through ACP',
+                installed: state.acpInstalled,
+                detected: true,
+              },
+              {
+                id: 'opencode',
+                name: 'OpenCode',
+                command: 'opencode',
+                args: ['acp'],
+                description: 'Connect OpenCode through ACP',
+                installed: false,
+                detected: false,
+              },
+            ],
+          }),
+        );
+        return;
+      }
 
-    if (path === '/acp/connections' && route.request().method() === 'GET') {
-      await route.fulfill(
-        json({
-          success: true,
-          data: [
-            ...(state.acpInstalled
-              ? [
-                  {
-                    id: 'kiro',
-                    name: 'Kiro CLI',
-                    command: 'kiro',
-                    args: ['--acp'],
-                    enabled: true,
-                    status: 'available',
-                    source: 'user' as const,
-                    slashCommands: [],
-                  },
-                ]
-              : []),
-            ...state.customACPConnections,
-          ],
-        }),
-      );
-      return;
-    }
-
-    if (path === '/acp/connections' && route.request().method() === 'POST') {
-      const draft = route.request().postDataJSON() as {
-        id: string;
-        name?: string;
-        command: string;
-        args?: string[];
-      };
-      const connection = {
-        id: draft.id,
-        name: draft.name || draft.id,
-        command: draft.command,
-        args: draft.args ?? [],
-        enabled: true,
-        status: 'available',
-        source: 'user' as const,
-        slashCommands: [],
-      };
-      state.customACPConnections.push(connection);
-      await route.fulfill(json({ success: true, data: connection }));
-      return;
-    }
-
-    if (path === '/acp/registry') {
-      await route.fulfill(
-        json({
-          success: true,
-          data: [
-            {
+      if (
+        path === '/acp/registry/kiro/install' &&
+        route.request().method() === 'POST'
+      ) {
+        state.acpInstalled = true;
+        await route.fulfill(
+          json({
+            success: true,
+            data: {
               id: 'kiro',
               name: 'Kiro CLI',
               command: 'kiro',
               args: ['--acp'],
-              description: 'Connect Kiro through ACP',
-              installed: state.acpInstalled,
-              detected: true,
+              enabled: true,
             },
-            {
-              id: 'opencode',
-              name: 'OpenCode',
-              command: 'opencode',
-              args: ['acp'],
-              description: 'Connect OpenCode through ACP',
-              installed: false,
-              detected: false,
-            },
-          ],
-        }),
-      );
-      return;
-    }
+          }),
+        );
+        return;
+      }
 
-    if (path === '/acp/registry/kiro/install') {
-      state.acpInstalled = true;
-      await route.fulfill(
-        json({
-          success: true,
-          data: {
-            id: 'kiro',
-            name: 'Kiro CLI',
-            command: 'kiro',
-            args: ['--acp'],
-            enabled: true,
-          },
-        }),
-      );
-      return;
-    }
-
-    await route.fulfill(json({ success: true, data: [] }));
-  });
+      return rejectUnexpectedFixtureRequest(route);
+    },
+  );
 }
 
 async function fillStable(page: Page, selector: string, value: string) {
@@ -937,9 +1076,10 @@ test.describe('Connections CRUD', () => {
     await expect(page).toHaveURL(/\/connections\/models$/);
     await expect(row).toBeFocused();
 
-    const add = page
-      .locator('.page__actions')
-      .getByRole('button', { name: 'Add model connection', exact: true });
+    const add = page.getByRole('button', {
+      name: 'Add model connection',
+      exact: true,
+    });
     await add.focus();
     await add.press('Enter');
     await expect(page).toHaveURL(/\/connections\/models\/new$/);
@@ -1002,19 +1142,25 @@ test.describe('Connections CRUD', () => {
 
     await expect(setup.getByRole('status')).toContainText('Ready');
     await setup.getByRole('button', { name: 'Done' }).click();
-    await expect(page).toHaveURL(/\/connections\/engines$/);
+    await expect(page).toHaveURL(/\/connections\/engines\/kiro$/);
+    await expect(setup).toBeHidden();
   });
 
   test('custom setup checks in the same pane and failures stay repairable', async ({
     page,
   }) => {
+    const submissions: unknown[] = [];
     await page.route('**/acp/connections', async (route) => {
       if (route.request().method() !== 'POST') {
         await route.fallback();
         return;
       }
+      submissions.push(route.request().postDataJSON());
       await route.fulfill(
-        json({ success: false, error: 'The command could not be reached.' }),
+        json(
+          { success: false, error: 'The command could not be reached.' },
+          503,
+        ),
       );
     });
     // A deep link to the custom entry opens on its form.
@@ -1029,11 +1175,14 @@ test.describe('Connections CRUD', () => {
 
     await expect(setup.getByRole('alert')).toContainText('Unavailable');
     await expect(setup.getByRole('alert')).toContainText(
-      'The command could not be reached.',
+      'Try again in a moment.',
     );
+    expect(submissions).toEqual([
+      expect.objectContaining({ name: 'Gemini CLI', command: 'gemini' }),
+    ]);
     await expect(setup.getByText('Ready', { exact: true })).toHaveCount(0);
     await expect(
-      setup.getByRole('button', { name: 'Try again' }),
+      setup.getByRole('button', { name: 'Retry', exact: true }),
     ).toBeVisible();
     await setup.getByRole('button', { name: 'Edit setup' }).click();
     await expect(setup.getByLabel('Name')).toHaveValue('Gemini CLI');
@@ -1118,11 +1267,11 @@ test.describe('Connections CRUD', () => {
         ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
 
-      const overflowsX = () =>
-        page
-          .locator('.pane-host.connections-section-frame')
-          .evaluate((element) => element.scrollWidth > element.clientWidth);
-      expect(await overflowsX()).toBe(false);
+      const overflowsX = (element: HTMLElement) =>
+        element.scrollWidth > element.clientWidth;
+      expect(await page.locator('.engine-catalog').evaluate(overflowsX)).toBe(
+        false,
+      );
 
       // Buttons animate `color`/`background-color`
       // (accessibility-core.spec.ts documents the hazard this causes: a
@@ -1152,7 +1301,23 @@ test.describe('Connections CRUD', () => {
       expect((await connect.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
         MIN_TOUCH_TARGET_PX,
       );
-      expect(await overflowsX()).toBe(false);
+      expect(await setup.evaluate(overflowsX)).toBe(false);
+      const bounds = await connect.boundingBox();
+      expect(bounds?.y ?? -1).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+        page.viewportSize()!.height,
+      );
+      expect(
+        await connect.evaluate((button) => {
+          const box = button.getBoundingClientRect();
+          return button.contains(
+            document.elementFromPoint(
+              box.x + box.width / 2,
+              box.y + box.height / 2,
+            ),
+          );
+        }),
+      ).toBe(true);
     });
   });
 
@@ -1289,9 +1454,47 @@ test.describe('Connections CRUD', () => {
     ).toHaveCount(0);
   });
 
-  test('provider create flow and runtime save flow settle', async ({
+  test('provider checks, provider creation and runtime saving settle', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const desktopViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVisualViewportFixture(page);
+    await page.goto('/connections/models/ollama-local');
+    await expect(
+      page.getByText('Choose Test connection to check the saved settings.'),
+    ).toBeVisible();
+    const testConnection = page.getByRole('button', {
+      name: 'Test connection',
+      exact: true,
+    });
+    await testConnection.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath('model-check-before-390.png'),
+      animations: 'disabled',
+    });
+    const modelCheck = page.waitForResponse((response) => {
+      const { pathname } = new URL(response.url());
+      return (
+        pathname === '/api/connections/ollama-local/test' &&
+        response.request().method() === 'POST'
+      );
+    });
+    await testConnection.click();
+    expect((await modelCheck).status()).toBe(200);
+    await expect(page.getByText('Connection healthy')).toBeVisible();
+    await expect(
+      page
+        .locator('.provider-detail__summary')
+        .getByText('Ready', { exact: true }),
+    ).toBeVisible();
+
+    await page.screenshot({
+      path: testInfo.outputPath('model-check-after-390.png'),
+      animations: 'disabled',
+    });
+    await page.setViewportSize(desktopViewport);
+
     // `/connections/providers` redirects to Models. The add flow is a ROUTE
     // now, not a dialog: the frame's action navigates to `/models/new`, where
     // the split pane's detail is the provider type picker.
@@ -1338,8 +1541,18 @@ test.describe('Connections CRUD', () => {
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(engineName).toHaveValue('Codex Runtime Updated');
 
-    await page.getByRole('button', { name: 'Check again' }).click();
-    await expect(page.getByText(/Healthy/)).toBeVisible();
+    const smoke = page.waitForRequest(
+      (request) =>
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname === '/api/connections/codex/smoke',
+    );
+    await page
+      .getByRole('button', { name: 'Check connection', exact: true })
+      .click();
+    expect((await smoke).postDataJSON()).toEqual({ confirmed: true });
+    await expect(
+      page.getByText('Connected — your engine answered successfully.'),
+    ).toBeVisible();
   });
 
   test('preset click resolves to openai-compat with prefilled config', async ({
@@ -1419,10 +1632,33 @@ test.describe('Connections CRUD', () => {
     await page.waitForSelector('#int-name', { timeout: 15_000 });
     await page.getByRole('button', { name: 'Delete' }).click();
 
-    const confirm = page.getByRole('dialog', { name: 'Delete Tool Server' });
+    const confirm = page.getByRole('alertdialog', {
+      name: 'Delete tool server',
+    });
     await expect(confirm).toBeVisible();
-    await expect(confirm).toBeFocused();
-    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    const cancel = confirm.getByRole('button', { name: 'Cancel', exact: true });
+    await expect(cancel).toBeFocused();
+    const deleteAction = confirm.getByRole('button', {
+      name: 'Delete',
+      exact: true,
+    });
+    const bounds = await deleteAction.boundingBox();
+    expect(bounds?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+      page.viewportSize()!.height,
+    );
+    expect(
+      await deleteAction.evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        return button.contains(
+          document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+    await cancel.click();
     await expect(confirm).toBeHidden();
     await expect(page.locator('#int-name')).toBeVisible();
   });

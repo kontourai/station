@@ -1,0 +1,7 @@
+{
+  "revision": "e6379790f297f4bf8dc11ae1b4dfc0cc697204dd",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"SDK reference gained one sentence on child readers returning to the working parent; the AGENTS routing and import rules are unaffected.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

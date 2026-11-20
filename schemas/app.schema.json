@@ -123,6 +123,31 @@
       "description": "Agent framework runtime. Default: voltagent",
       "default": "voltagent"
     },
+    "confinedNetwork": {
+      "description": "Network a confined session may reach (#4769). full: open, as before. restricted: only the engine's model endpoint and allowedHosts, through Station's loopback egress broker; a start whose mechanism cannot restrict the network is refused. Default: full",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "mode": { "const": "full" } },
+          "required": ["mode"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": { "const": "restricted" },
+            "allowedHosts": {
+              "type": "array",
+              "maxItems": 256,
+              "items": { "type": "string", "minLength": 1, "maxLength": 261 },
+              "description": "Entries: host, host:port, *.domain (subdomains only) or an IP literal (IPv6 in brackets); port 443 unless named"
+            }
+          },
+          "required": ["mode", "allowedHosts"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "approvalGuardian": {
       "type": "object",
       "description": "Optional AI review layer for approval-bound tool calls",

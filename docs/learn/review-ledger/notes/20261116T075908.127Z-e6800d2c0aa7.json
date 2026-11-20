@@ -1,0 +1,7 @@
+{
+  "revision": "e0f1a16c1979f66c04cf09f714ab5f53883e2cd8",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Correction to note 20261116T075228.656Z-e16f650780ec: both new chat.css var(--error-text) uses come from #5027 (3b8e9d763c) alone; #5023 changed chat.css but added none. The rest of that note stands: main added them, not this branch.","inputs":["docs/guides/code-hygiene.md"]}
+  ]
+}

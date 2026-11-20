@@ -70,6 +70,8 @@ let projectsResult: {
   error?: Error;
   refetch: ReturnType<typeof vi.fn>;
 };
+let roomHistoryPages: import('@kontourai/station-contracts/project-task-room-browser').ProjectTaskRoomBrowserHistory[] =
+  [];
 let roomDiscoveryResult: {
   data: any;
   isLoading: boolean;
@@ -147,6 +149,33 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
+  // #5066: the Task's pull request watch panel; this host does not serve it.
+  usePullRequestFeedbackCapability: () => ({ data: false }),
+  useTaskPullRequestWatchQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSetTaskPullRequestWatchMutation: () => ({
+    isPending: false,
+    error: null,
+    mutate: vi.fn(),
+  }),
+  useTaskCodeReviewQuery: () => ({
+    data: undefined,
+    error: new Error('Code review is unavailable in this Task-view fixture.'),
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useRequestTaskCodeReviewMutation: () => ({
+    isPending: false,
+    isError: false,
+    mutateAsync: vi.fn(async () => {
+      throw new Error('Code review execution is outside this fixture.');
+    }),
+  }),
   telemetry: { track: vi.fn() },
   getJson: vi.fn(
     async () => new Response(JSON.stringify({ success: true, data: [] })),
@@ -188,6 +217,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     });
   },
   useDiffCommentsQuery: () => ({ data: [] }),
+  // The Task room marks itself read through the server read markers (#4795).
+  useMarkReadMutation: () => ({ mutate: vi.fn() }),
   useCreateDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),
@@ -293,7 +324,7 @@ vi.mock(
     useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
     useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
     useProjectTaskRoomHistoryQuery: () => ({
-      data: { pages: [] },
+      data: { pages: roomHistoryPages },
       isError: false,
     }),
     useProjectTaskRoomStream: () => vi.fn(),
@@ -392,6 +423,64 @@ function render(
   const details = screen.queryByRole('tab', { name: 'Details' });
   if (openDetails && details) fireEvent.click(details);
   return view;
+}
+
+// jsdom has no layout: make each tab's viewport rectangle depend on the
+// actual scroll position, including the strip's padding and scroll limits.
+function installTaskTabGeometry(strip: HTMLElement, tabs: HTMLElement[]) {
+  const width = 200;
+  const padding = 10;
+  const tabWidth = 100;
+  const currentTabs = () =>
+    Array.from(strip.querySelectorAll<HTMLElement>('[role="tab"]'));
+  const contentWidth = () => padding * 2 + currentTabs().length * tabWidth;
+  let scrollLeft = 0;
+  strip.style.paddingLeft = `${padding}px`;
+  strip.style.paddingRight = `${padding}px`;
+  Object.defineProperties(strip, {
+    clientWidth: { configurable: true, value: width },
+    clientLeft: { configurable: true, value: 0 },
+    scrollWidth: { configurable: true, get: contentWidth },
+    scrollLeft: {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = Math.max(0, Math.min(contentWidth() - width, value));
+      },
+    },
+    getBoundingClientRect: {
+      configurable: true,
+      value: () => new DOMRect(0, 0, width, 44),
+    },
+  });
+  tabs.forEach((tab) => {
+    Object.defineProperties(tab, {
+      offsetParent: { configurable: true, value: strip },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () =>
+          new DOMRect(
+            padding + currentTabs().indexOf(tab) * tabWidth - scrollLeft,
+            0,
+            tabWidth,
+            44,
+          ),
+      },
+    });
+  });
+}
+
+function expectTaskTabVisible(strip: HTMLElement, tab: HTMLElement) {
+  const bounds = tab.getBoundingClientRect();
+  expect(bounds.left).toBeGreaterThanOrEqual(10);
+  expect(bounds.right).toBeLessThanOrEqual(strip.clientWidth - 10);
+}
+
+function expectTaskTabSelected(tab: HTMLElement) {
+  expect(tab.getAttribute('aria-selected')).toBe('true');
+  expect(
+    screen.getByRole('tabpanel', { name: tab.textContent ?? '' }),
+  ).toBeTruthy();
 }
 
 function openAnswerDetails() {
@@ -522,6 +611,7 @@ describe('TaskWorkspaceView', () => {
     featurePreviews = [];
     navigationStore.navigate('/projects/project-alpha/tasks/task-alpha', {
       taskView: null,
+      thread: null,
       starter: null,
       starterLink: null,
     });
@@ -565,6 +655,7 @@ describe('TaskWorkspaceView', () => {
     appendOutputFeedback.mockReset();
     vi.stubGlobal('crypto', webcrypto);
     pluginsResult.data = [];
+    roomHistoryPages = [];
     roomDiscoveryResult = {
       data: { kind: 'unavailable' },
       isLoading: false,
@@ -575,6 +666,75 @@ describe('TaskWorkspaceView', () => {
       isFetching: false,
       refetch: vi.fn(),
     };
+  });
+
+  test('a Task thread opens at its own history address and reloads there', async () => {
+    roomDiscoveryResult = {
+      data: {
+        kind: 'existing',
+        scope: { taskId: 'task-alpha' },
+        capabilities: { historyRead: true },
+      },
+      isLoading: false,
+    };
+    roomHistoryPages = [
+      {
+        kind: 'available',
+        checkpoint: {
+          throughSeq: 1,
+          checkpointDigest: 'b'.repeat(64),
+          retainedAnchorSeq: 0,
+          retainedAnchorDigest: 'c'.repeat(64),
+        },
+        hasMore: false,
+        integrity: 'L0',
+        records: [
+          {
+            actor: { kind: 'agent', label: 'Researcher' },
+            sequence: 1,
+            body: { kind: 'human-message', text: 'An answer in the Task' },
+            occurredAt: '2026-10-15T10:04:00.000Z',
+            digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+            integrity: 'L0',
+            execution: { sessionId: 'research-run', turnId: 'turn-1' },
+          },
+        ],
+      },
+    ];
+    act(() =>
+      navigationStore.navigate('/tasks/task-alpha', {
+        taskView: 'conversation',
+      }),
+    );
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const historyLength = window.history.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+
+    expect(new URLSearchParams(window.location.search).get('thread')).toBe(
+      'research-run',
+    );
+    expect(window.history.length).toBe(historyLength + 1);
+    expect(
+      within(screen.getByRole('region', { name: 'Agent thread' })).getByText(
+        'An answer in the Task',
+      ),
+    ).toBeTruthy();
+    view.unmount();
+    render(<TaskWorkspaceView taskId="task-alpha" />, { openDetails: false });
+    expect(screen.getByRole('region', { name: 'Agent thread' })).toBeTruthy();
+
+    await act(async () => window.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Agent thread' })).toBeNull(),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'conversation',
+    );
+    expect(new URLSearchParams(window.location.search).has('thread')).toBe(
+      false,
+    );
   });
 
   describe('linked work item header (#4003)', () => {
@@ -741,6 +901,108 @@ describe('TaskWorkspaceView', () => {
     ).toBe('Raw room history');
   });
 
+  test.each([false, true])(
+    'reveals keyboard-selected Task tabs at both edges (Review enabled: %s)',
+    (reviewEnabled) => {
+      if (reviewEnabled)
+        featurePreviews = [{ id: 'task-review', enabled: true }];
+      render(<TaskWorkspaceView taskId="task-alpha" />, { openDetails: false });
+      const strip = screen.getByRole('tablist', { name: 'Task views' });
+      const tabs = within(strip).getAllByRole('tab');
+      installTaskTabGeometry(strip, tabs);
+      const first = tabs[0];
+      const last = tabs[tabs.length - 1];
+      const readingPosition = strip.parentElement!;
+      readingPosition.scrollTop = 75;
+      first.focus();
+
+      fireEvent.keyDown(first, { key: 'End' });
+      expect(document.activeElement).toBe(last);
+      expectTaskTabSelected(last);
+      expect(strip.scrollLeft).toBeGreaterThan(0);
+      expectTaskTabVisible(strip, last);
+      expect(readingPosition.scrollTop).toBe(75);
+      strip.scrollLeft = 0;
+      fireEvent.keyDown(last, { key: 'End' });
+      expectTaskTabSelected(last);
+      expectTaskTabVisible(strip, last);
+
+      fireEvent.keyDown(last, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(first);
+      expectTaskTabSelected(first);
+      expectTaskTabVisible(strip, first);
+      expect(strip.scrollLeft).toBe(0);
+      strip.scrollLeft = strip.scrollWidth;
+      fireEvent.keyDown(first, { key: 'Home' });
+      expectTaskTabSelected(first);
+      expectTaskTabVisible(strip, first);
+      fireEvent.keyDown(first, { key: 'ArrowLeft' });
+      expect(document.activeElement).toBe(last);
+      expectTaskTabVisible(strip, last);
+      fireEvent.keyDown(last, { key: 'Home' });
+      expect(document.activeElement).toBe(first);
+      expectTaskTabVisible(strip, first);
+      fireEvent.keyDown(first, { key: 'ArrowRight' });
+      expect(document.activeElement).toBe(tabs[1]);
+      expectTaskTabVisible(strip, tabs[1]);
+      expect(readingPosition.scrollTop).toBe(75);
+    },
+  );
+
+  test('reveals changed URL-selected tabs without stealing focus or undoing later manual scrolling', () => {
+    featurePreviews = [{ id: 'task-review', enabled: true }];
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const strip = screen.getByRole('tablist', { name: 'Task views' });
+    const tabs = within(strip).getAllByRole('tab');
+    installTaskTabGeometry(strip, tabs);
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    const readingPosition = strip.parentElement!;
+    readingPosition.scrollTop = 75;
+
+    act(() => navigationStore.updateParams({ taskView: 'details' }));
+    const details = within(strip).getByRole('tab', { name: 'Details' });
+    expect(strip.scrollLeft).toBeGreaterThan(0);
+    expectTaskTabVisible(strip, details);
+    expect(document.activeElement).toBe(outside);
+    expect(readingPosition.scrollTop).toBe(75);
+
+    act(() => navigationStore.updateParams({ taskView: 'review' }));
+    const review = within(strip).getByRole('tab', { name: 'Review' });
+    expectTaskTabVisible(strip, review);
+    expect(document.activeElement).toBe(outside);
+    strip.scrollLeft = 0;
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(strip.scrollLeft).toBe(0);
+    expect(readingPosition.scrollTop).toBe(75);
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
+  test('reveals the selected Details tab when Review becomes available later', () => {
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const strip = screen.getByRole('tablist', { name: 'Task views' });
+    installTaskTabGeometry(strip, within(strip).getAllByRole('tab'));
+    act(() => navigationStore.updateParams({ taskView: 'details' }));
+    const details = within(strip).getByRole('tab', { name: 'Details' });
+    expectTaskTabSelected(details);
+    expectTaskTabVisible(strip, details);
+
+    featurePreviews = [{ id: 'task-review', enabled: true }];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(within(strip).getByRole('tab', { name: 'Review' })).toBeTruthy();
+    expectTaskTabSelected(details);
+    expectTaskTabVisible(strip, details);
+    strip.scrollLeft = 0;
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(strip.scrollLeft).toBe(0);
+  });
+
   test('renders a retained Task as orphaned when its Project has been deleted', () => {
     projectsResult.data = [];
 
@@ -753,6 +1015,78 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     expect(
       screen.queryByRole('region', { name: 'Task room workspace' }),
+    ).toBeNull();
+  });
+
+  test('shows the automation mandate outright on Details, with its stop reason (#4511)', () => {
+    queryResult.data = graph({
+      createdBy: 'automation-rule',
+      status: 'blocked',
+      automation: {
+        state: 'running',
+        amendments: [],
+        personTakeoverAt: '2026-11-06T00:01:00.000Z',
+        revocation: {
+          at: '2026-11-06T00:00:00.000Z',
+          cause: 'rule-disabled',
+          message: 'Stopped: automation rule “Diagnose” was disabled.',
+        },
+        mandate: {
+          ruleId: 'rule-1',
+          ruleName: 'Diagnose',
+          sourceId: 'source-1',
+          episodeId: '42',
+          policyFingerprint: 'a'.repeat(64),
+          capturedAt: '2026-11-06T00:00:00.000Z',
+          event: {
+            type: 'github.workflow_run.completed',
+            semanticKey: 'workflow_run:42:1:completed',
+            occurredAt: '2026-11-06T00:00:00.000Z',
+            fields: {
+              repository: 'kontourai/station',
+              'workflow.path': '.github/workflows/ci.yml',
+              'run.id': '42',
+              'run.conclusion': 'failure',
+              'run.html_url':
+                'https://github.com/kontourai/station/actions/runs/42',
+            },
+          },
+          action: {
+            kind: 'dispatch-task',
+            projectId: 'project-alpha',
+            agentId: 'agent-alpha',
+            instructions: 'Diagnose the failing run.',
+            budget: { maxTurns: 2, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+          },
+        },
+      },
+    });
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    const block = screen.getByRole('region', { name: 'Started by automation' });
+    // Not folded into the collapsed record details.
+    expect(block.closest('details')).toBeNull();
+    expect(
+      within(block).getByText(
+        'Stopped: automation rule “Diagnose” was disabled.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(block).getByText(
+        'A person took over this Task’s chat using their own permissions.',
+      ),
+    ).toBeTruthy();
+    expect(within(block).getByText('Diagnose the failing run.')).toBeTruthy();
+    expect(
+      within(block).getByRole('link', {
+        name: 'https://github.com/kontourai/station/actions/runs/42',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('a Task no automation started shows no mandate block', () => {
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.queryByRole('region', { name: 'Started by automation' }),
     ).toBeNull();
   });
 
@@ -842,7 +1176,7 @@ describe('TaskWorkspaceView', () => {
       await screen.findByRole('button', { name: 'Ask an agent' }),
     );
     fireEvent.click(
-      screen.getByRole('option', { name: 'Researcher @researcher' }),
+      screen.getByRole('option', { name: /^Researcher Agent @researcher\b/ }),
     );
     fireEvent.click(
       screen.getByRole('checkbox', {
@@ -905,16 +1239,10 @@ describe('TaskWorkspaceView', () => {
       screen.getByLabelText('Answer provenance for turn turn-answer'),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        'Execution captured; semantic support is separate and has not been assessed.',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('Execution captured; semantic support not assessed.'),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Associate support' }),
-    ).toBeTruthy();
+      screen.queryByText('No run details were recorded for this answer.'),
+    ).toBeNull();
+    expect(screen.getByText('No supporting claim linked yet.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Link support' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry support' })).toBeNull();
   });
 
@@ -1042,11 +1370,11 @@ describe('TaskWorkspaceView', () => {
       screen.getByText('provenance_gap · high · Missing direct provenance.'),
     ).toBeTruthy();
     expect(screen.getByText(/rationale not provided/)).toBeTruthy();
-    expect(screen.getByText(/explicit authored association/i)).toBeTruthy();
     expect(
-      screen.getByText(
-        'No supported execution provenance is recorded. The explicit authored semantic support shown below is separate.',
-      ),
+      screen.getByText('Linked by a person, not inferred from the run.'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('No run details were recorded for this answer.'),
     ).toBeTruthy();
   });
 
@@ -1080,13 +1408,18 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     expect(
-      screen.getByRole('dialog', { name: 'Associate answer support' }),
+      screen.getByRole('dialog', { name: 'Link answer support' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
+    // The trigger and the dialog's submit share the label; submit is in the dialog.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Link support',
+      }),
+    );
     await waitFor(() =>
       expect(createAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1113,13 +1446,18 @@ describe('TaskWorkspaceView', () => {
     );
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach support' }));
+    // The trigger and the dialog's submit share the label; submit is in the dialog.
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Link support',
+      }),
+    );
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
@@ -1150,7 +1488,7 @@ describe('TaskWorkspaceView', () => {
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     expect(
       screen.getByRole('dialog').querySelector('.station-dialog__subtitle')
         ?.textContent,
@@ -1179,7 +1517,7 @@ describe('TaskWorkspaceView', () => {
     ];
     const view = render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    fireEvent.click(screen.getByRole('button', { name: 'Associate support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link support' }));
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     answerSupportBundlesResult = {
@@ -1190,8 +1528,8 @@ describe('TaskWorkspaceView', () => {
     await waitFor(() =>
       expect(
         (
-          screen.getByRole('button', {
-            name: 'Attach support',
+          within(screen.getByRole('dialog')).getByRole('button', {
+            name: 'Link support',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true),
@@ -1201,7 +1539,7 @@ describe('TaskWorkspaceView', () => {
       error: new Error('denied'),
     };
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
-    expect(screen.getByText(/No cached support detail is shown/)).toBeTruthy();
+    expect(screen.getByText(/Couldn't load bundles/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'claim-a' })).toBeNull();
   });
 
@@ -1218,7 +1556,7 @@ describe('TaskWorkspaceView', () => {
     ];
     render(<TaskWorkspaceView taskId="task-alpha" />);
     openAnswerDetails();
-    const trigger = screen.getByRole('button', { name: 'Associate support' });
+    const trigger = screen.getByRole('button', { name: 'Link support' });
     trigger.focus();
     fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog');
@@ -1275,9 +1613,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('alertdialog', { name: 'Replace answer support?' }),
     ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Replace association' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace link' }));
     await waitFor(() =>
       expect(replaceAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1292,7 +1628,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('alertdialog', { name: 'Remove answer support?' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
     await waitFor(() =>
       expect(removeAnswerSupportMutation.mutateAsync).toHaveBeenCalledWith({
         taskId: 'task-alpha',
@@ -1308,12 +1644,10 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'bundle-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'claim-a' }));
     fireEvent.click(screen.getByRole('button', { name: 'Review replacement' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Replace association' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Replace link' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(
@@ -1328,10 +1662,10 @@ describe('TaskWorkspaceView', () => {
       new Error('unavailable server detail'),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove association' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(
-        /could not change answer support/i,
+        /Couldn't change answer support/i,
       ),
     );
     expect(
@@ -1343,13 +1677,13 @@ describe('TaskWorkspaceView', () => {
   });
 
   test.each([
-    ['claim-missing', 'The associated claim is no longer available.'],
-    ['corrupt', 'The associated Surface bundle/report cannot be interpreted.'],
+    ['claim-missing', 'The linked claim is no longer available.'],
+    ['corrupt', "The linked Surface bundle can't be read."],
     [
       'unsupported-version',
-      'The associated support record uses an unsupported version.',
+      "The linked claim uses a format this Station can't read.",
     ],
-    ['unavailable', 'Semantic support is unavailable.'],
+    ['unavailable', 'Support details are unavailable.'],
   ])(
     'keeps %s support state distinct and does not reveal protected detail',
     (state, label) => {
@@ -1370,19 +1704,19 @@ describe('TaskWorkspaceView', () => {
       render(<TaskWorkspaceView taskId="task-alpha" />);
       openAnswerDetails();
       expect(screen.getByText(label)).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Associate support' }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Link support' })).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Retry support' }),
       ).toBeTruthy();
       expect(
-        screen.getByText(
-          'No supported execution provenance is recorded. It is distinct from the semantic-support state shown below.',
-        ),
+        screen.getByText('No run details were recorded for this answer.'),
       ).toBeTruthy();
       if (state === 'unavailable') {
-        expect(screen.getByText(/No support detail is shown/)).toBeTruthy();
+        expect(
+          screen.getByText(
+            "This Station can't reopen support for this answer.",
+          ),
+        ).toBeTruthy();
       }
     },
   );
@@ -1560,6 +1894,24 @@ describe('TaskWorkspaceView', () => {
     expect(screen.queryByRole('button', { name: /^Learn/i })).toBeNull();
   });
 
+  test('an attached, available experience opens without a not-connected callout', () => {
+    pluginsResult.data = [
+      {
+        enabled: true,
+        manifest: { capabilities: ['station.task-experience.deliver'] },
+      },
+    ];
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Deliver/i }));
+    expect(
+      screen.getByRole('heading', { name: 'Deliver experience' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Continue delivery in Builder Kit.')).toBeTruthy();
+    expect(screen.queryByText(/isn't connected/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Manage plugins' })).toBeNull();
+  });
+
   test('a disabled producer is not a producer this page can open', () => {
     pluginsResult.data = [
       {
@@ -1596,15 +1948,13 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByText('Inspect worktree diff')).toBeTruthy();
     expect(screen.getByText('Local references')).toBeTruthy();
     expect(
-      screen.getByText(/Inspection is not a verification claim/i),
+      screen.getByText('Files and references recorded for this Task.'),
     ).toBeTruthy();
     expect(
       screen.getByRole('heading', { name: 'Task inspection' }),
     ).toBeTruthy();
     expect(
-      screen
-        .getByRole('link', { name: 'Add capabilities' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'Add plugins' }).getAttribute('href'),
     ).toBe('/plugins');
     expect(screen.queryByRole('button', { name: /Deliver/i })).toBeNull();
   });
@@ -1613,7 +1963,7 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     expect(screen.getAllByText('Inspect the workspace')).toHaveLength(2);
     expect(screen.getByText('task-alpha')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
     expect(screen.queryByText('Task experiences')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
@@ -1642,11 +1992,11 @@ describe('TaskWorkspaceView', () => {
     });
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
-    expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /attacker\.example/i }),
     ).toBeTruthy();
-    expect(screen.queryByText('Authority: Builder Kit')).toBeNull();
+    expect(screen.queryByText('From Builder Kit')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
         /^(complete|completed|done)$/i,
@@ -2621,9 +2971,7 @@ describe('TaskWorkspaceView', () => {
         'Add a completed assistant answer to this Task to reopen it here.',
       ),
     ).toBeTruthy();
-    expect(inputs.textContent).toContain(
-      'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
-    );
+    expect(inputs.textContent).toContain('Pinned to this Task by a person.');
     expect(inputs.textContent).toContain(
       'brief.pdf · application/pdf · 2,048 bytes',
     );

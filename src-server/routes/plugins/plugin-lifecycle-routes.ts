@@ -72,9 +72,9 @@ import { PluginInstallationPending } from '../../services/plugins/plugin-install
 import type { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import {
   PluginManifestReadRefusedError,
+  readContainedPluginManifestSyncWithFormat,
   readUntrustedPluginManifestSyncWithFormat,
 } from '../../services/plugins/plugin-manifest-bounded-read.js';
-import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   createPluginGrantMutationScope,
   hasGrant,
@@ -270,7 +270,10 @@ async function findOwningPluginRegistryProvider(
     registryId: string;
   }> = [];
 
-  for (const entry of getPluginRegistryProviders()) {
+  // Enumerated once: each enumeration returns fresh entry objects, and the
+  // second scan below tells entries apart by identity.
+  const providers = getPluginRegistryProviders();
+  for (const entry of providers) {
     const installed = await entry.provider.listInstalled();
     const providerMatches = installed
       .map((plugin) => {
@@ -295,7 +298,7 @@ async function findOwningPluginRegistryProvider(
   const matchedTargets = new Set(matches.map((match) => match.installedName));
   if (matchedTargets.size === 1) {
     const [matchedTarget] = matchedTargets;
-    for (const entry of getPluginRegistryProviders()) {
+    for (const entry of providers) {
       const installed = await entry.provider.listInstalled();
       for (const plugin of installed) {
         const installedName = plugin.installedPluginName ?? plugin.id;
@@ -458,7 +461,7 @@ export function registerPluginLifecycleRoutes(
         logger.error('Failed to check for updates', {
           error: errorMessage(error),
         });
-        return c.json({ updates: [] });
+        return c.json({ error: 'Could not check for plugin updates' }, 500);
       }
     }),
   );
@@ -777,6 +780,13 @@ export function registerPluginLifecycleRoutes(
           const { status, message, ...fields } = trustRefusal;
           return c.json({ success: false, ...fields, error: message }, status);
         }
+        // The same refusal status and code as install and preview, e.g. an
+        // agent catalog that cannot be read (503) or is ambiguous (409).
+        if (isRegistryAcquisitionRefusal(error))
+          return c.json(
+            { success: false, ...registryAcquisitionRefusalDetails(error) },
+            registryAcquisitionRefusalStatus(error),
+          );
         return c.json({ success: false, error: errorMessage(error) }, 409);
       }
     }
@@ -817,6 +827,20 @@ export function registerPluginLifecycleRoutes(
                 throw new PluginUpdateRejectedError(
                   'Plugin installation changed before legacy update; reload before retrying',
                 );
+              let original: ReturnType<
+                typeof readContainedPluginManifestSyncWithFormat
+              >;
+              try {
+                original = readContainedPluginManifestSyncWithFormat(pluginDir);
+              } catch {
+                throw new PluginUpdateRejectedError(
+                  'Installed plugin manifest is invalid or unreadable.',
+                );
+              }
+              const {
+                manifest: originalManifest,
+                format: originalManifestFormat,
+              } = original;
               backupRoot = createStationTempDirSync('plugin-update');
               const backupDir = join(backupRoot, 'plugin');
               // The installed tree is plugin-writable (its build runs
@@ -824,12 +848,6 @@ export function registerPluginLifecycleRoutes(
               await copyPluginTree(pluginDir, backupDir, {
                 skipSpecialFiles: true,
               });
-              const {
-                manifest: originalManifest,
-                format: originalManifestFormat,
-              } = await readPluginManifestFileWithFormat(
-                join(backupDir, 'plugin.json'),
-              );
               const originalIdentity = originalManifest.name || name;
               let integrationsPublished = false;
               backupPluginOwnedIntegrations(

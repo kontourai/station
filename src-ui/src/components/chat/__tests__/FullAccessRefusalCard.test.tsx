@@ -94,6 +94,17 @@ describe('a group-limited full-access refusal', () => {
     expect(element.querySelector('pre')).toBeNull();
   });
 
+  test('keeps the refusal visible while the longer recovery is collapsed', () => {
+    const element = card(details({ cli: CLI }));
+    const title = screen.getByText('Full access was not applied');
+    const summary = screen.getByText('Full access recovery');
+    const disclosure = element.querySelector('details');
+    expect(title.closest('details')).toBeNull();
+    expect(summary.closest('details')).toBe(disclosure);
+    expect(disclosure?.open).toBe(false);
+    expect(disclosure?.textContent).toContain(CLI);
+  });
+
   test('without a group limit the device grant keeps its two alternatives', () => {
     const text = card(
       details({

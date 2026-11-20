@@ -5,6 +5,36 @@ your signed-in identity, so devices connected as that person see the same saved
 Board. Its live sections read work you can access; saving a Board does not copy
 Tasks, approvals or conversations into it.
 
+## Browse Apps
+
+Enable **Apps library** in **Settings → Advanced → Feature previews**, then
+choose **Browse apps** in the **Apps** section. In the collapsed rail,
+choose **Apps** first. On a phone, open the navigation drawer.
+
+The Apps launcher searches your personal layouts by name, description, address
+and plugin. **Your Boards** lists records without a plugin source; **Plugin
+layouts** lists records with a plugin source. Each tile shows the saved icon,
+name and description. Open a tile to use its existing Board or Layout tabs.
+**Details** edits its name, icon and description without replacing its sections
+or panes. Your details draft stays open when the window switches between phone
+and desktop layouts. If you leave with unsaved details, **Cancel** keeps the
+editor and **Discard** closes it without saving. Closing Apps after a child dialog
+returns keyboard focus to its launcher.
+
+**Delete** asks for confirmation. If the open Board has unsaved edits, Station
+asks whether to discard them before deleting it. Cancel keeps the Board and draft;
+confirming the discard deletes the Board and returns the underlying page to Home.
+If you go Back while deletion finishes, Station keeps that newer page and closes
+the confirmation after the delete succeeds.
+
+**New Board** asks for a name before creation, then opens the existing editor
+with the starter choices below. A refused save keeps the form and its error.
+After an interrupted create, refresh the library and inspect it before retrying.
+The library uses the same signed-in owner and plugin permissions as the sidebar.
+It does not install plugins or offer another person's Boards. Turning the
+preview off hides the launcher; saved Boards and the existing sidebar actions
+remain available.
+
 ## Create and edit
 
 Choose **+** beside **Apps**, name the Board, and open it. Start with
@@ -31,7 +61,8 @@ shares the session list: live stream updates invalidate it, with a 60-second
 safety poll even while the stream is connected. Project sections refresh about
 every fifteen seconds. Failed reads show Retry rather than an empty success. Attention can
 report that an underlying source is unavailable. Links open the owning feature;
-review and approve requests there. A Board never approves work on your behalf.
+review and approve requests there. A Flow gate item links to its run console only
+while this device's Flow preview is on. A Board never approves work on your behalf.
 
 ## Build through chat
 
@@ -79,6 +110,16 @@ Station retains both and asks you to inspect them; retrying cannot discard the
 newer contents. Apply or dismiss a pending proposal before moving; unpublished
 content cannot travel into a Project. Saved dashboard sections and existing
 Layout tabs render in Main, a docked region, and the destination Project.
+
+After you confirm **Delete**, or choose a Project in **Move to project…**, the
+Board leaves the sidebar and a notice offers **Undo**. **⌘Z** on macOS or
+**Ctrl+Z** on Windows and Linux also undoes the latest one. Station deletes or
+moves the Board only when the notice closes, so Undo leaves the saved Board as
+it is, including edits made on another device in the meantime. The notice stays
+while you point at it or it has focus. Deleting or moving the open Board returns
+to Home; Undo returns to the Board if you are still there. If Station changes, or the
+page closes or reloads before the notice closes, the Board is kept. A refused
+delete or move is reported, and the Board comes back.
 
 Existing Boards with configured Layout tabs keep those tabs when you add a
 dashboard. Arbitrary plugin-pane composition still follows the existing Layout

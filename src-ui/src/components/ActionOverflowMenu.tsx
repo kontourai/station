@@ -554,6 +554,7 @@ export function ActionOverflowMenu({
               <div
                 ref={menuRef}
                 className="menu-surface dock-placement-menu chat-dock__more-menu"
+                data-surface="menu"
                 role="menu"
                 aria-label={label}
                 tabIndex={-1}

@@ -19,6 +19,8 @@
  * (`OrchestrationService` start admission -> `bindProjectTaskRoomExecution`)
  * is written here with that same store method.
  */
+
+import { existsSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -35,6 +37,11 @@ import { taskQuestionWakeKey } from '../../../services/orchestration/task-questi
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -178,6 +185,16 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     );
     const port = await listening;
     const context = deepStub({
+      // Only pull request agent feedback's preview is on; every other
+      // binding reads off, as on a fresh Station.
+      featurePreviews: {
+        bind: (definition: { id: string }) => ({
+          select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
+            definition.id === 'pull-request-agent-feedback'
+              ? branches.enabled()
+              : branches.disabled(),
+        }),
+      },
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -419,6 +436,8 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     };
 
     return {
+      base,
+      homeDir,
       store,
       orchestration,
       taskGraph,
@@ -778,6 +797,124 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     expect(e.stored(taskId).records).toMatchObject([
       { key: 'scope', version: 2, state: 'answered' },
     ]);
+  });
+
+  test("an operator reads a chat's pull request feedback through the production routes", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    // The route decides with the principal orchestration owns the chat
+    // under; without its authority binding the read failed (500).
+    const read = await e.asOperator(
+      'GET',
+      `/api/pull-request-feedback/conversations/${encodeURIComponent(conversation)}`,
+    );
+    expect(read.status, JSON.stringify(read.json)).toBe(200);
+    expect(read.json.data).toEqual({
+      conversationId: conversation,
+      pullRequests: [],
+      viewerMayChange: true,
+    });
+  });
+
+  test("Station's internal principal cannot turn a chat's pull request feedback on, with or without an agent's tool token", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const path = `/api/pull-request-feedback/conversations/${encodeURIComponent(conversation)}`;
+    const body = JSON.stringify({
+      identity: {
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'acme', name: 'widgets' },
+        ref: '42',
+      },
+      settings: { fixFailingChecks: true, addressReviewComments: true },
+    });
+    const internal = {
+      'content-type': 'application/json',
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+    };
+    // As an agent's tool call: the authority guard maps no tool to it.
+    const asTool = await fetch(`${e.base}${path}`, {
+      method: 'PUT',
+      headers: {
+        ...internal,
+        'x-station-control-caller-token': mintStationControlMcpToken(
+          sessionId,
+          'sdk-in-process',
+        ).token,
+      },
+      body,
+    });
+    expect(asTool.status).toBe(403);
+    expect(await asTool.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    // As Station's own internal principal with no tool caller: the guard
+    // refuses every internal caller on a route no tool maps (the route's
+    // own person check is a second line behind it).
+    const asInternal = await fetch(`${e.base}${path}`, {
+      method: 'PUT',
+      headers: internal,
+      body,
+    });
+    expect(asInternal.status).toBe(403);
+    expect(await asInternal.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    // Nothing was claimed: no store was even created.
+    expect(
+      existsSync(
+        join(
+          e.homeDir,
+          'pull-request-feedback',
+          'pull-request-feedback.sqlite',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  test("the production inbox asks pull request feedback's placement re-check before placing a queued prf- message", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const inbox = support.options?.threadInbox?.();
+    expect(inbox).toBeDefined();
+    const submit = (clientTurnId: string) =>
+      inbox!.submit({
+        conversationId: conversation,
+        clientTurnId,
+        payload: {
+          message: 'Pull request feedback.',
+          actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        },
+      });
+    const entry = (key: string) =>
+      e.store
+        .threadInboxStore()
+        .list(conversation)
+        .find((stored) => stored.key === key);
+    // A prf- key the feedback store never wrote: its re-check refuses it.
+    const key = `prf-${'0'.repeat(40)}`;
+    expect(submit(key).outcome).toBe('queued');
+    await vi.waitFor(() => expect(entry(key)?.state).toBe('refused'), {
+      timeout: 10_000,
+    });
+    expect(JSON.parse(String(entry(key)?.outcome))).toMatchObject({
+      reasonCode: 'pr_feedback_stale',
+    });
+    // The re-check passes over every other key.
+    const other = `tf-${'2'.repeat(40)}`;
+    expect(submit(other).outcome).toBe('queued');
+    await vi.waitFor(() => expect(entry(other)?.state).not.toBe('queued'), {
+      timeout: 10_000,
+    });
+    expect(entry(other)?.state).not.toBe('refused');
   });
 
   test("the production inbox asks the Task follow-up wake's placement re-check before placing a queued tf- wake (#4508)", async () => {

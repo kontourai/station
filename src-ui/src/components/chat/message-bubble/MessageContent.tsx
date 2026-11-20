@@ -1,10 +1,18 @@
-import { memo, useMemo } from 'react';
+import { memo, useContext, useMemo } from 'react';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import type { ChatMessage } from '../../../types';
 import {
   projectedRuntimeErrorRaw,
   translateChatError,
   translateProjectedRuntimeError,
 } from '../../../utils/chatErrorTranslation';
+import { ApprovalsHeldContext } from '../approvalsHeld';
+import { useBrowserActivityScope } from '../BrowserActivityContext';
+import {
+  BrowserActivityRun,
+  isBrowserActivityRun,
+} from '../BrowserActivityRun';
+import { splitBrowserActivityRuns } from '../browser-activity-calls';
 import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
@@ -25,6 +33,7 @@ import { TranscriptAppTools } from '../TranscriptAppTools';
 import {
   foldTurnWork,
   isToolCallPart,
+  runWithoutCalls,
   splitToolCallRuns,
 } from '../tool-call-runs';
 import {
@@ -48,6 +57,7 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
+  sessionId?: string;
   /**
    * What the server's open read says this caller may do in the
    * conversation; a reloaded runtime-error part picks its hint by it, as the
@@ -56,6 +66,7 @@ interface MessageContentProps {
   callerAccess?: { continue?: boolean; startChat?: boolean };
   contentParts?: MessageContentPart[];
   messageKey?: string;
+  pagedHistoryRowKey?: string;
   textContent: string;
   chatFontSize: number;
   showReasoning: boolean;
@@ -71,14 +82,16 @@ interface MessageContentProps {
   foldWork?: boolean;
   onToolApproval?: (
     part: MessageContentPart,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }
 
 function MessageContentComponent({
+  sessionId,
   callerAccess,
   contentParts,
   messageKey = 'message',
+  pagedHistoryRowKey,
   textContent,
   chatFontSize,
   showReasoning,
@@ -88,19 +101,27 @@ function MessageContentComponent({
   onToolApproval,
   appTools,
 }: MessageContentProps & { appTools: ReadonlySet<string> }) {
+  const browserScope = useBrowserActivityScope();
   const anchoredChildren = useTranscriptChildrenForCalls(
     contentParts?.flatMap((part) =>
       part.toolCallId ? [part.toolCallId] : [],
     ) ?? [],
   );
   const keepChildAnchors = anchoredChildren.length > 0;
+  // A call that spawned child work is drawn as that child's card, which
+  // carries its status; its own row would only repeat the title.
+  const cardCallIds = new Set(
+    anchoredChildren.flatMap((child) =>
+      child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
+    ),
+  );
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
       ? contentParts
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork && !keepChildAnchors
+    return foldWork && !keepChildAnchors && !browserScope
       ? foldTurnWork(parts, appTools, showReasoning)
       : splitToolCallRuns(parts, appTools, showReasoning);
   }, [
@@ -110,8 +131,24 @@ function MessageContentComponent({
     keepChildAnchors,
     appTools,
     showReasoning,
+    browserScope,
   ]);
-  const blocks = useTranscriptChildBlocks(baseBlocks);
+  const blocks = useTranscriptChildBlocks(
+    browserScope ? splitBrowserActivityRuns(baseBlocks) : baseBlocks,
+  );
+  const uniqueResultIds = useMemo(() => {
+    const unique = new Set<string>();
+    if (!pagedHistoryRowKey || foldWork) return unique;
+    const seen = new Set<string>();
+    for (const part of contentParts ?? []) {
+      const id = part.sourceEventId;
+      if (!isToolCallPart(part) || !id?.trim()) continue;
+      if (seen.has(id)) unique.delete(id);
+      else if (part.state === 'result') unique.add(id);
+      seen.add(id);
+    }
+    return unique;
+  }, [contentParts, foldWork, pagedHistoryRowKey]);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -134,17 +171,22 @@ function MessageContentComponent({
       ),
     );
 
+  const approvalsHeld = useContext(ApprovalsHeldContext);
+  const isMobile = useIsMobile();
   const renderToolCall = (part: MessageContentPart, index: number) => (
     <ToolCallDisplay
       key={index}
       toolCall={part as any}
+      sessionId={sessionId}
       showDetails={showToolDetails}
       onApprove={
         // #2316: a card bound to its request by the projection answers from
         // wherever its row sits — the server verifies the exact prompt
         // (`expectedRequestEventId`), which is what the last-row gate stood
         // in for. A part without that binding keeps the last-row gate.
-        part.needsApproval && (isStreamingMessage || part.approvalEventId)
+        !approvalsHeld &&
+        part.needsApproval &&
+        (isStreamingMessage || part.approvalEventId)
           ? (action) =>
               onToolApproval?.(part, action) ??
               Promise.reject(new Error('This chat cannot answer requests.'))
@@ -160,7 +202,8 @@ function MessageContentComponent({
         content={part.content ?? ''}
         fontSize={chatFontSize}
         show={showReasoning}
-        hasAnswerText
+        hasAnswerText={hasAnswerText}
+        autoExpand={false}
       />
     ) : (
       <LazyMarkdown key={`interlude:${index}`}>
@@ -184,6 +227,14 @@ function MessageContentComponent({
               <SubagentTranscriptCard key={block.key} child={block.child} />
             );
           if (block.type === 'tool-call-run') {
+            if (browserScope && isBrowserActivityRun(block))
+              return (
+                <BrowserActivityRun
+                  key={block.key}
+                  run={block}
+                  renderCall={renderToolCall}
+                />
+              );
             // A solo call stays inline. Calls with reasoning or sibling
             // calls share one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
@@ -196,12 +247,22 @@ function MessageContentComponent({
                 calls={block.calls}
               />
             );
+            // A call drawn as its child's card leaves the run, so the run
+            // neither repeats it nor folds it into "Ran N commands".
+            const run = runWithoutCalls(block, cardCallIds);
+            if (run.calls.length === 0)
+              return [
+                ...(run.interludes ?? []).map(({ part, index }) =>
+                  renderInterlude(part, index),
+                ),
+                subagents,
+              ];
             if (
-              block.calls.length + (block.interludes?.length ?? 0) <=
+              run.calls.length + (run.interludes?.length ?? 0) <=
               INLINE_RUN_LIMIT
             ) {
               return [
-                ...block.calls.map(({ part, index }) =>
+                ...run.calls.map(({ part, index }) =>
                   renderToolCall(part, index),
                 ),
                 subagents,
@@ -211,11 +272,11 @@ function MessageContentComponent({
             // back to its parts in original order — narration included — so
             // a load failure never drops the prose the fold moved.
             const inlineRows = [
-              ...block.calls.map(({ part, index }) => ({
+              ...run.calls.map(({ part, index }) => ({
                 index,
                 node: renderToolCall(part, index),
               })),
-              ...(block.interludes ?? []).map(({ part, index }) => ({
+              ...(run.interludes ?? []).map(({ part, index }) => ({
                 index,
                 node: renderInterlude(part, index),
               })),
@@ -225,7 +286,7 @@ function MessageContentComponent({
             return [
               <ToolCallBatchBoundary
                 key={block.key}
-                run={block}
+                run={run}
                 renderCall={renderToolCall}
                 renderInterlude={renderInterlude}
                 pending={inlineRows}
@@ -253,6 +314,7 @@ function MessageContentComponent({
                 // A settled reasoning-only row starts collapsed: the answer
                 // is not still coming, so there is nothing to follow along.
                 hasAnswerText={isStreamingMessage ? hasAnswerText : true}
+                autoExpand={!isMobile}
               />
             );
           }
@@ -303,10 +365,36 @@ function MessageContentComponent({
             }
             // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.
+            // Paging prepends parts to this same row. When prose borders a
+            // single durable result, its Markdown can keep its mounted state
+            // even though the part's position changed.
+            const next = contentParts?.[index + 1];
+            const neighbor = next ?? contentParts?.[index - 1];
+            const resultId =
+              isToolCallPart(neighbor) && !part.runtimeError
+                ? neighbor?.sourceEventId
+                : undefined;
+            const pagedKey =
+              resultId && uniqueResultIds.has(resultId)
+                ? JSON.stringify([
+                    pagedHistoryRowKey,
+                    next ? 'before' : 'after',
+                    resultId,
+                  ])
+                : undefined;
             return (
-              <LazyMarkdown key={block.key ?? index}>
+              <LazyMarkdown key={block.key ?? pagedKey ?? index}>
                 {part.content}
               </LazyMarkdown>
+            );
+          }
+          // A record's own note inside a turn (a stop, hook feedback, a
+          // part left out): shown, but not the agent's words.
+          if (part.type === 'notice' && part.content) {
+            return (
+              <p key={index} className="message-notice">
+                {part.content}
+              </p>
             );
           }
           if (part.type === 'file') {
@@ -367,6 +455,7 @@ function areMessageContentPropsEqual(
     return previous.textContent === next.textContent;
   }
   return (
+    previous.sessionId === next.sessionId &&
     previous.contentParts === next.contentParts &&
     previous.textContent === next.textContent &&
     previous.chatFontSize === next.chatFontSize &&
@@ -374,6 +463,7 @@ function areMessageContentPropsEqual(
     previous.showToolDetails === next.showToolDetails &&
     previous.isStreamingMessage === next.isStreamingMessage &&
     previous.foldWork === next.foldWork &&
+    previous.pagedHistoryRowKey === next.pagedHistoryRowKey &&
     previous.onToolApproval === next.onToolApproval &&
     // By value: an open read that lands later must refresh a reloaded error
     // part's hint, but a new object with the same answer must not re-render.

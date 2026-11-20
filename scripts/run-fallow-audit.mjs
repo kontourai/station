@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -16,6 +15,12 @@ import {
   fallowChildEnvironment,
   prepareFallowRun,
 } from './lib/fallow-base-cache.mjs';
+import {
+  assertWithinFallowMemoryBudget,
+  planFallowMemoryCap,
+  wrapFallowCommand,
+} from './lib/fallow-memory-bound.mjs';
+import { holdHeavyCheckSlotForProcess } from './lib/heavy-check-slots.mjs';
 import { scaleLivenessMs } from './lib/liveness-scale.mjs';
 import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -83,9 +88,30 @@ export function fallowCommands(scope) {
   throw new Error(`Unknown Fallow scope: ${scope}`);
 }
 
-/** Watchdog for one fallow command; a liveness bound, scaled by host pressure. */
-export const FALLOW_WATCHDOG_BASE_MS = 120_000;
+/**
+ * Watchdog for one fallow command; a liveness bound, scaled by host pressure.
+ * Four minutes: a single-thread audit against a base fallow has not cached
+ * took 114 s on a loaded host (#5111).
+ */
+export const FALLOW_WATCHDOG_BASE_MS = 240_000;
 
+let defaultMemoryCap;
+/** Planned once per process: the probe starts a scope, and the warning prints once. */
+function processMemoryCap() {
+  if (!defaultMemoryCap) {
+    defaultMemoryCap = planFallowMemoryCap();
+    if (defaultMemoryCap.warning)
+      console.warn(`warning: ${defaultMemoryCap.warning}`);
+  }
+  return defaultMemoryCap;
+}
+
+/**
+ * Run one fallow command to a JSON report.
+ *
+ * `options.memoryCap` replaces the host's planned memory budget and
+ * `options.fallowEntry` the installed analyzer; both exist for tests.
+ */
 export async function runFallowAnalysis(
   root,
   command,
@@ -94,18 +120,24 @@ export async function runFallowAnalysis(
   options = {},
 ) {
   const watchdogMs = scaleLivenessMs(FALLOW_WATCHDOG_BASE_MS, options.env);
+  // Each fallow child runs inside its own memory budget where the host can
+  // enforce one, so exceeding it fails this run, not its caller (#5111).
+  const memoryCap = options.memoryCap ?? processMemoryCap();
   // `fallow audit` leaves a full base checkout in its temp directory for every
-  // base commit: give each run a private one under Station's temp root and
-  // remove it when the run ends (#2529).
+  // base commit: give each run a private one under the disk-backed fallow
+  // cache root, never tmpfs (#5080), and remove it when the run ends (#2529).
   const fallowRun = prepareFallowRun();
+  const eventsFile = join(fallowRun.directory, 'memory.events');
   const startedAt = performance.now();
-  const execution = executeOwnedCommand(
+  const launch = wrapFallowCommand(
+    memoryCap,
     process.execPath,
     [
-      fileURLToPath(import.meta.resolve('fallow/bin/fallow')),
+      options.fallowEntry ??
+        fileURLToPath(import.meta.resolve('fallow/bin/fallow')),
       command,
       '--threads',
-      '2',
+      String(memoryCap.threads),
       '--format',
       'json',
       '--quiet',
@@ -113,6 +145,11 @@ export async function runFallowAnalysis(
       outputFile,
       ...args,
     ],
+    eventsFile,
+  );
+  const execution = executeOwnedCommand(
+    launch.executable,
+    launch.args,
     undefined,
     `fallow ${command}`,
     {
@@ -150,6 +187,7 @@ export async function runFallowAnalysis(
     const result = await execution.completion;
     if (execution.isAlive()) await stop();
     const output = capture.finish();
+    assertWithinFallowMemoryBudget(command, memoryCap, eventsFile);
     // Exit 1 can be a finding verdict. It is usable only with a complete,
     // separately written JSON report; a truncated stdout is never parsed.
     if (
@@ -206,15 +244,12 @@ export async function runFallowAudit(root, scope = 'changed') {
   const inventoryPath =
     scope === 'whole-tree' ? join(rawDirectory, 'inventory.json') : undefined;
   if (inventoryPath) {
-    const paths = execFileSync(
+    // The helper's bound, not a local 4 MiB one: this listing grows with the
+    // repository, and the tracked set alone is already over a third of that.
+    const paths = execFileSyncBounded(
       'git',
       ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
-      {
-        cwd: root,
-        encoding: 'utf8',
-        windowsHide: true,
-        maxBuffer: 4 * 1024 * 1024,
-      },
+      { cwd: root, encoding: 'utf8', windowsHide: true },
     )
       .split('\0')
       .filter(Boolean);
@@ -241,7 +276,7 @@ export async function runFallowAudit(root, scope = 'changed') {
     scope,
     completed: true,
     inventory: inventoryPath ? relative(root, inventoryPath) : undefined,
-    source_revision: execFileSync('git', ['rev-parse', 'HEAD'], {
+    source_revision: execFileSyncBounded('git', ['rev-parse', 'HEAD'], {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,
@@ -296,13 +331,23 @@ export async function runFallowAudit(root, scope = 'changed') {
 }
 
 if (invokedDirectly(import.meta.url)) {
-  await ensureLivenessScale();
   const args = process.argv.slice(2);
   if (args.some((arg) => arg !== '--whole-tree')) {
     console.error('usage: run-fallow-audit.mjs [--whole-tree]');
     process.exitCode = 1;
-  } else
+  } else if (
+    // A fallow audit can reach 5 GiB (#5080): queue for the host-wide
+    // heavy-check slot, however this runner was started.
+    !(await holdHeavyCheckSlotForProcess(
+      args.includes('--whole-tree')
+        ? 'fallow audit --whole-tree'
+        : 'fallow audit',
+    ))
+  )
+    process.exitCode = 1;
+  else
     try {
+      await ensureLivenessScale();
       console.log(
         JSON.stringify(
           await runFallowAudit(

@@ -15,6 +15,8 @@ export type SettingsSectionId =
   | 'system'
   | 'feature-previews'
   | 'answer-shares'
+  // #4513: GitHub automation sources, rules, episodes and deliveries.
+  | 'github-automations'
   | 'plugin-visibility'
   // Configuration the Browser and Device panes keep out of their chrome.
   | 'browser-devices'
@@ -55,12 +57,14 @@ export interface SettingsCatalogEntry {
   title: string;
   section: SettingsSectionId;
   keywords?: readonly string[];
+  help?: string;
   /** English-only discovery terms; stable across the render locale. */
   searchKeywords?: readonly string[];
   configKeys?: readonly string[];
   /** The persistence authority that owns an edit, when this is editable. */
   scope?:
     | 'account'
+    | 'personal'
     | 'station'
     | 'defaults'
     | 'device'
@@ -108,6 +112,12 @@ export const SETTINGS_SECTIONS = [
   // as a Station-scope section (previews persist on the Station).
   { id: 'feature-previews', title: 'Feature previews', group: 'this-station' },
   { id: 'answer-shares', title: 'Shared answers', group: 'this-station' },
+  // #4513: operator-only, like shared answers; the routes gate it.
+  {
+    id: 'github-automations',
+    title: 'GitHub automations',
+    group: 'this-station',
+  },
   // #2067: which installed plugins each paired person can see. Station scope
   // because the grants live on this Station; operator-only, gated by the
   // route, the same way 'answer-shares' is gated by its own scope tier.
@@ -241,6 +251,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['logLevel'],
   },
   {
+    id: 'local-accounts',
+    title: 'Accounts and sign-in',
+    section: 'system',
+    help: 'Manage who can sign in to this Station when local accounts are enabled.',
+    keywords: ['local accounts', 'sign-in', 'login', 'account administration'],
+  },
+  {
     id: 'backup-restore',
     title: 'Settings Export & Import',
     section: 'system',
@@ -313,6 +330,12 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Shared answers',
     section: 'answer-shares',
     keywords: ['permalink revoke expire'],
+  },
+  {
+    id: 'github-automations',
+    title: 'GitHub automations',
+    section: 'github-automations',
+    keywords: ['automation rules', 'sources', 'episodes', 'deliveries'],
   },
   {
     id: 'plugin-visibility',
@@ -460,6 +483,19 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Usage sharing',
     section: 'telemetry',
     configKeys: ['telemetryTier'],
+  },
+  {
+    id: 'usage-disclosure',
+    title: 'What usage sharing includes',
+    section: 'telemetry',
+    help: 'Review the fields this Station reports for each usage sharing choice.',
+    keywords: [
+      'usage disclosure',
+      'telemetry disclosure',
+      'counts',
+      'events',
+      'privacy',
+    ],
   },
   {
     id: 'telemetry-destination',
@@ -684,6 +720,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultChatFontSize'],
   },
   {
+    id: 'model-picker-preferences',
+    title: 'Model picker preferences',
+    section: 'chat',
+    keywords: ['favorites', 'hidden models', 'model order', 'recent models'],
+    configKeys: ['modelPickerPreferences'],
+  },
+  {
     id: 'chat-title-model',
     title: 'Chat title model',
     section: 'chat',
@@ -807,6 +850,13 @@ const SETTINGS_CATALOG_SOURCE = [
     searchKeywords: ['named accent', 'theme accent', 'appearance'],
   },
   {
+    id: 'skill-shortcuts',
+    title: 'Skill shortcuts',
+    section: 'keyboard-shortcuts',
+    keywords: ['command skills', 'keyboard shortcut', 'run skills'],
+    configKeys: ['skillShortcuts'],
+  },
+  {
     id: 'keyboard-shortcuts',
     title: 'Keyboard shortcuts',
     section: 'keyboard-shortcuts',
@@ -890,6 +940,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
   },
+  {
+    id: 'knowledge-conversation-history',
+    title: 'Past conversations in Knowledge',
+    section: 'knowledge',
+    keywords: ['chat history', 'search', 'root:conversations'],
+    configKeys: ['knowledgeStores'],
+  },
   // ── About ── appended last so earlier rows keep their order.
   {
     id: 'app-version',
@@ -920,6 +977,7 @@ const SETTINGS_MESSAGES = {
   scopeDefaults: 'Saved as Station defaults.',
   scopeAccount:
     'Saved to your account on this Station when signed in; otherwise saved on this device.',
+  scopePersonal: 'Managed by the Station operator.',
   scopeDevice: 'Saved to this device.',
   scopeMixed: 'Exports and imports include this Station and this device.',
   scopeTemporary: 'Available only for this browser session.',
@@ -972,6 +1030,8 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   // #2144 slice 6 item D: a derived status line with no writer, inside a
   // section whose other rows are all Station-scope writes.
   'telemetry-destination': 'informational',
+  'usage-disclosure': 'informational',
+  'personal-knowledge-store': 'personal',
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
@@ -1082,8 +1142,7 @@ type SettingsCatalogWithScope = readonly (SettingsCatalogEntry & {
 export const SETTINGS_CATALOG = SETTINGS_CATALOG_SOURCE.map((entry) => ({
   ...entry,
   // `configKeys` is absent from the literal type of every keyless row, and
-  // the source is a union of 54 such literals, so it is read through the
-  // declared shape rather than off the union member.
+  // the source is a union, so read this through the declared shape.
   scope: scopeForEntry(
     entry.id,
     entry.section,
@@ -1199,6 +1258,7 @@ export function matchingSettingsRows(
     ]);
     return [
       entry.title,
+      entry.help,
       ...(entry.keywords ?? []),
       ...(entry.searchKeywords ?? []),
       ...(entry.configKeys ?? []),
@@ -1256,6 +1316,7 @@ export function settingsPaletteCommands(options: {
         'settings',
         entry.title,
         entry.section,
+        ...(entry.help ? [entry.help] : []),
         ...(entry.keywords ?? []),
         ...(entry.searchKeywords ?? []),
         ...(entry.configKeys ?? []),

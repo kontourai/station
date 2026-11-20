@@ -32,7 +32,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/troubleshoot-playbook` — the bundled troubleshooting playbook constant, byte-identical to `troubleshoot-playbook.md` beside it
 - `@kontourai/station-shared/managed-policy` — Node-only reading of the machine's [managed policy](../guides/managed-policy.md): the fixed per-OS file path, the source interface, the macOS configuration-profile source (`/usr/bin/plutil`) and the Windows registry source (advapi32 through `koffi`) with its owner and access-list checks, the no-link, regular-file and (for system sources) root-ownership checks, the 1 MiB bound, the duplicate-key refusal, the bounded fatal message, the `sha256:` fingerprint, the `STATION_MANAGED_POLICY_TEST_FILE` override (refused while a system policy is installed) and `ManagedPolicyInvalidError`, whose message starts with `STATION_MANAGED_POLICY_INVALID`. The document parser and summary live in `@kontourai/station-contracts/managed-policy`
 - `@kontourai/station-shared/managed-policy-templates` — the Group Policy template (`station.admx`, `en-US/station.adml`) generated from the managed policy's control table, and the macOS `.mobileconfig` for a policy document; `station policy templates` writes them
-- `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
+- `@kontourai/station-shared/usage-semantics` — provider usage scope, the declared-usage-provider and context-occupancy-only checks, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
@@ -87,8 +87,10 @@ retention and operator-only counts belong to the
 [Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
 
 
-`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
-returns undefined for unmapped labels. Full omits that field; Lite supplies
+`mapRuntimeChannelToTelemetryChannel` preserves labels admitted by the telemetry
+contract and returns undefined for unmapped labels, including retired runtime
+`beta`. The historical `preview` wire dimension remains readable; current RCs
+report Stable identity. Full omits an unmapped field; Lite supplies
 `unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
 release list by default; the sender selects `semver` to admit valid versions
 or `custom` without claiming catalog membership.
@@ -194,6 +196,8 @@ to its source.
 | --- | --- | --- | --- |
 | Claude `AskUserQuestion` | `form` | `src-server/providers/adapters/harness-questions.ts` | ≤4 choice/multi-choice fields with their `header`, custom answer always |
 | Codex `item/tool/requestUserInput` | `form` | `src-server/providers/adapters/harness-questions.ts` | choice, or free text with no options; `header`; `isOther` custom; `isSecret` |
+| Cursor `cursor/ask_question` (ACP) | `form` | `src-server/providers/adapters/harness-questions.ts` | choice/multi-choice fields; options named by id; no header, custom answer or secret |
+| Grok `_x.ai/ask_user_question` (ACP) | `form` | `src-server/providers/adapters/harness-questions.ts` | choice/multi-choice fields, at least one option each, distinct question texts; no header, custom answer or secret |
 | MCP `elicitation/create` (form mode) | `form` | `@kontourai/station-shared/mcp-elicitation` | the MCP restricted schema; no header, custom answer or secret |
 | Tool approvals (every engine) | `decision` | `approvalDecisionBody`, derived at read time | allow once, allow for the session where a grant is offered, deny |
 
@@ -340,14 +344,8 @@ interface AgentSpec {
   project?: string;
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
-  maxSteps?: number;
+  maxSteps?: number | null;
   guardrails?: AgentGuardrails;
-  /** @deprecated Ignored; accepted so existing agent files load (#3879). */
-  streaming?: {
-    useNewPipeline?: boolean;
-    enableThinking?: boolean;
-    debugStreaming?: boolean;
-  };
   tools?: AgentTools;
   commands?: Record<string, SlashCommand>;
   ui?: AgentUIConfig;
@@ -358,7 +356,6 @@ interface AgentGuardrails {
   temperature?: number;
   topP?: number;
   stopSequences?: string[];
-  maxSteps?: number;
 }
 
 interface AgentTools {
@@ -386,7 +383,6 @@ interface SlashCommandParam {
 
 interface AgentUIConfig {
   component?: string;
-  quickPrompts?: AgentQuickPrompt[];
   workflowShortcuts?: string[];
 }
 
@@ -667,6 +663,9 @@ interface ProjectConfig {
   name: string;
   slug: string;
   icon?: string;
+  iconDisabled?: boolean;
+  derivedIcon?: string; // read-only display fallback
+  repositoryDisplay?: string; // full canonical remote of primary resource
   description?: string;
   workingDirectory?: string;
   defaultProviderId?: string;
@@ -696,7 +695,8 @@ number at most 128 KiB. [`projectIconProblem`](../../packages/contracts/src/proj
 is that rule; `POST /api/projects` and `PUT /api/projects/:slug` refuse any
 other value with 400, so a path or remote URL is never stored, and
 `ProjectService` applies it to a new icon from any other caller. `''` or `null`
-in a request clears the icon, and the stored record then omits it. An update
+in an update request clears the icon, and the stored record then omits it and
+sets `iconDisabled: true`. Choosing an explicit icon enables display again. An update
 that does not name `icon` leaves the stored one alone, including an older value
 the rule now refuses; the UI does not draw such a value.
 
@@ -713,6 +713,10 @@ interface ProjectMetadata {
   slug: string;
   name: string;
   icon?: string;
+  iconDisabled?: boolean;
+  derivedIcon?: string; // read-only display fallback
+  repositoryDisplay?: string; // full canonical remote of primary resource
+  repositorySource?: ProjectRepositorySource;
   description?: string;
   hasWorkingDirectory: boolean;
   workingDirectory?: string;
@@ -720,8 +724,15 @@ interface ProjectMetadata {
   hasKnowledge: boolean;
   defaultProviderId?: string;
   position?: number;
+  lifecycle?: ProjectLifecycle; // paused or archived; absent is active
 }
 ```
+
+Operator Project lists and details may return `derivedIcon` from repository
+artwork under 12 KiB without saving it. Explicit `icon` and `iconDisabled` take
+precedence. `repositoryDisplay` carries the manifest primary Git remote, with
+`repositorySource` as a fallback only when no manifest exists. These display
+fields do not match Projects across Stations.
 
 ### `ProjectRunLocations`
 
@@ -809,9 +820,10 @@ Re-exported from `@kontourai/station-contracts/notification` for compatibility.
 `delivered` is the notification service's record state, not a receipt that a
 browser or phone displayed it. For example, an immediate record receives
 `deliveredAt` when it is stored, before downstream surface delivery.
-Scheduling more than about 24.9 days ahead currently exceeds the service's
-native timer range and can leave a pending row without a live wakeup. This
-known limit is tracked in [#2810](https://github.com/kontourai/station/issues/2810).
+The service preserves scheduled delivery and expiry beyond Node's
+approximately 24.9-day timer range by waking in bounded intervals and
+rechecking the persisted deadline. Replacing a record's schedule retires
+the earlier wakeup.
 
 ```ts
 type NotificationStatus =

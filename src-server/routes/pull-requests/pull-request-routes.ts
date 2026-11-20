@@ -9,6 +9,7 @@ import { z } from 'zod/v3';
 import type { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { reviewGuideFailureDetail } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import { pullRequestOps } from '../../telemetry/metrics.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
 const mergeInputSchema = z
@@ -150,6 +151,12 @@ export function createPullRequestRoutes(
       data: {
         available: true,
         provider: provider.id,
+        providerLabel: provider.displayName,
+        automation: {
+          feedback: typeof provider.getFeedbackObservation === 'function',
+          taskBranchDiscovery:
+            typeof provider.findOpenPullRequestsByHead === 'function',
+        },
         host: provider.getHost(resolution.context),
         repository: {
           owner: resolution.context.repository.owner,
@@ -178,7 +185,11 @@ export function createPullRequestRoutes(
         x.provider,
         await x.provider.listPullRequests(x.context, {
           state: c.req.query('state'),
-          limit: Number(c.req.query('limit')) || undefined,
+          // Absent, unreadable or zero leaves the provider's own default.
+          // 100 is the most one GitLab page carries.
+          limit:
+            boundedIntQuery(c.req.query('limit'), { min: 0, max: 100 }) ||
+            undefined,
         }),
       ),
     });

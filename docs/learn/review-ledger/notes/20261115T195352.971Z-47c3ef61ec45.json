@@ -1,0 +1,149 @@
+{
+  "revision": "ddce5b17b3b6e3d24e2005b4b10fe1e71b1b905d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Review round on #5007: parking paragraphs rewritten against the fixed sources. Early parking now requires adapter.metadata.openEngineWork 'complete' (parkFinishedSession; only ClaudeAdapter declares it; Codex and ACP excluded). The Claude veto now includes scheduledWakeupsUnknown, set by PostToolUse on CronCreate/CronDelete/ScheduleWakeup and cleared only by a Stop hook reporting session_crons. The ACP veto lasts until the engine releases its terminal. hasPersonTurn counts unrecognised-origin turn starts as a person's, and both it and latestSentTurnDispatchOrigin skip provider-triggered turns. Each is covered by finished-session-parking, claude-adapter-scheduled-wakeups and acp-adapter-terminal-authority tests, all fault-injected.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Terminal sentence re-checked against acp-adapter.ts hasUnreleasedTerminal and acp-session-terminals.ts hasUnreleased: the veto lasts until releaseTerminal, whatever the command's state; the scratch reproduction showed a restarted bridge answering unknown terminal for an unreleased id. Added that ACP engines are not parked early (no openEngineWork declaration).","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"STATION_IDLE_SESSION_PARK_AFTER_MS row re-checked: unreleased terminals replace running commands in the veto list, and the early park is stated as applying only to an engine that reports all its open work (Claude today), per parkFinishedSession's openEngineWork check.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-weight.md","note":"New source-reviewed record. Delegated-run section rewritten to match measureDelegatedRun (three delegated tasks; per task a released then warm follow-up through /delegations/:taskId/continue; rounds and medians; no /chat, followUpSamplesMs or engineReleasedAgainAfterMs), moved out of the metrics table it had split, and step 5 names the optional step. The rest of the page was checked against the bench owners as the record's summary and limits state.","inputs":["docs/reference/station-weight.md","scripts/bench/station-weight.mjs"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Re-read against the ACP guide's revised terminal sentence and the acp-adapter.ts veto change; this design makes no terminal-retention or parking claim, so it remains accurate.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Adds the optional openEngineWork metadata declaration. The citing pages (agent smoke confidence, contracts) make no claim about adapter metadata fields or open-work vetoes; they remain accurate.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds the optional openEngineWork metadata declaration. The citing pages (agent smoke confidence, contracts) make no claim about adapter metadata fields or open-work vetoes; they remain accurate.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"hasOpenEngineWork now reports an unreleased terminal rather than only a running command, and its comment states the report is partial. Citing pages' ACP terminal and session claims re-read; only the ACP guide and module map describe the veto and have their own notes.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Declares openEngineWork 'complete'; the PostToolUse hook marks wakeups unknown after a scheduling-tool call until a Stop hook reports them. Citing pages' hook and engine-option claims re-read; none enumerate the hook set or park vetoes beyond the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"hasPersonTurn widened to unrecognised-origin turn starts (excluding provider-triggered ones); new read-only latestSentTurnDispatchOrigin. No schema, write or retention change; citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"parkFinishedSession now requires openEngineWork 'complete' and the park reads latestSentTurnDispatchOrigin. Citing pages re-read for parking and dispatch-origin claims; only the module map and env-var reference describe them and have their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated by docs:mcp:generate from the revised module map, ACP guide and env-var reference; no hand edits.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/station-weight.md","note":"Cited only by the station-weight reference, which has its own note for this change.","inputs":["scripts/bench/station-weight.mjs"]}
+  ]
+}

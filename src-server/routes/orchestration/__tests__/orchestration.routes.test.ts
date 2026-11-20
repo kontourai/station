@@ -1931,7 +1931,7 @@ describe('Orchestration Routes', () => {
     ).toBe(200);
     expect(resolveRequestDelegation).toHaveBeenLastCalledWith(
       expect.any(Request),
-      { delegation, attestation: 'attestation' },
+      { tool: 'send_message', delegation, attestation: 'attestation' },
     );
     const forwarded = executeForegroundMessage.mock.lastCall![0];
     expect(forwarded.delegation).toEqual(resolvedDelegation);
@@ -4259,6 +4259,7 @@ describe('Orchestration Routes', () => {
     });
     expect(service.listSessionReadModel).toHaveBeenCalledWith(
       personalReadAuthority(ROUTE_TEST_USER_ID),
+      { purpose: 'session-list' },
     );
     expect(service.listLoadedSessionReadModel).toHaveBeenCalledWith(
       personalReadAuthority(ROUTE_TEST_USER_ID),
@@ -4698,6 +4699,7 @@ describe('Orchestration Routes', () => {
         mode: 'hosted',
         tenantExecutionContext: { tenantId: 'tenant-alpha', source: 'request' },
       }),
+      { purpose: 'session-list' },
     );
     expect(service.listSessionReadModel).toHaveBeenNthCalledWith(
       2,
@@ -4706,6 +4708,7 @@ describe('Orchestration Routes', () => {
         mode: 'hosted',
         tenantExecutionContext: { tenantId: 'tenant-bravo', source: 'request' },
       }),
+      { purpose: 'session-list' },
     );
     expect(
       JSON.stringify(await readJson(await requestFor('tenant-alpha'))),
@@ -4725,6 +4728,7 @@ describe('Orchestration Routes', () => {
         mode: 'hosted',
         tenantExecutionContext: undefined,
       }),
+      { purpose: 'session-list' },
     );
   });
 
@@ -7568,4 +7572,58 @@ describe('Orchestration Routes', () => {
       expect(liveEventIndex).toBeGreaterThan(caughtUpIndex);
     });
   });
+});
+
+describe('GET /sessions/read-model?limit (remote list size, delta review)', () => {
+  const summary = (threadId: string, createdAt: string) => ({
+    provider: 'claude',
+    threadId,
+    status: 'completed',
+    isLoaded: false,
+    isPersisted: true,
+    eventCount: 1,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  function routes() {
+    const service = {
+      listSessionReadModel: vi
+        .fn()
+        .mockResolvedValue([
+          summary('oldest', '2026-01-01T00:00:00.000Z'),
+          summary('middle', '2026-02-01T00:00:00.000Z'),
+          summary('newest', '2026-03-01T00:00:00.000Z'),
+        ]),
+    };
+    return createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+    });
+  }
+
+  test('answers the newest `limit` sessions, still oldest first', async () => {
+    const body = await readJson(
+      await routes().request('/sessions/read-model?limit=2'),
+    );
+    expect(body.data.map((row: { threadId: string }) => row.threadId)).toEqual([
+      'middle',
+      'newest',
+    ]);
+  });
+
+  test('without a limit every readable session is listed, as before', async () => {
+    const body = await readJson(await routes().request('/sessions/read-model'));
+    expect(body.data).toHaveLength(3);
+  });
+
+  test.each(['0', '1001', 'ten', '-1', '1.5'])(
+    'refuses limit=%s',
+    async (limit) => {
+      const response = await routes().request(
+        `/sessions/read-model?limit=${limit}`,
+      );
+      expect(response.status).toBe(400);
+    },
+  );
 });

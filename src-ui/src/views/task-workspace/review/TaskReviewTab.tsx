@@ -49,7 +49,7 @@ import { ReviewDocumentView } from './ReviewDocumentView';
 import { ReviewImageView } from './ReviewImageView';
 import { ReviewItemList } from './ReviewItemList';
 import { ReviewThreadCard } from './ReviewThreadCard';
-import { copyReviewThreadsForAgent } from './review-copy';
+import { copyReviewThreadLink, copyReviewThreadsForAgent } from './review-copy';
 import { type ReviewThreadActions, sameReviewArtifact } from './review-types';
 import { TaskReviewClips } from './TaskReviewClips';
 import { TaskReviewLayout } from './TaskReviewLayout';
@@ -589,11 +589,7 @@ export function TaskReviewTab({
       );
       await copyReviewThreadsForAgent(full.map((entry) => entry.thread));
     },
-    onCopyLink: async (id) => {
-      const url = new URL(window.location.href);
-      url.hash = `review-thread-${id}`;
-      await navigator.clipboard.writeText(url.href);
-    },
+    onCopyLink: copyReviewThreadLink,
     onOpenCapture: (id) => select('capture', id),
   };
   const content = item.data;

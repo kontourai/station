@@ -236,7 +236,7 @@ test('catches up only the latest observed unsent day, preserves weekly and month
 
 test.each([
   [undefined, undefined, 'unknown'],
-  ['beta', 'nightly', 'preview'],
+  ['beta', 'nightly', 'unknown'],
   ['stable', 'dev', 'stable'],
   [undefined, 'nightly', 'nightly'],
   ['private-build-label', undefined, 'unknown'],
@@ -261,7 +261,7 @@ test.each([
   [undefined, undefined],
   ['unknown', undefined],
   ['private-build-label', undefined],
-  ['beta', 'preview'],
+  ['beta', undefined],
   ['source-checkout', 'source-checkout'],
 ] as const)(
   'Full channel %s serializes as %s without unknown',

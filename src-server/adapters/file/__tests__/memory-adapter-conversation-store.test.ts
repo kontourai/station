@@ -109,6 +109,46 @@ describe('memory conversation store', () => {
     expect(cached).toEqual(disk);
   });
 
+  test('a touch issued while an update is still publishing keeps that update', async () => {
+    const base = {
+      id: 'conv-touch',
+      resourceId: 'agent-touch',
+      userId: 'user-touch',
+      title: 'Untitled',
+      metadata: { revision: 0 },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    await store.persistConversation(base as any);
+
+    // No `await` between the two: the touch starts while the update's publish
+    // is still in flight, which is what a message append during title
+    // generation does.
+    const update = store.updateConversation(base.id, () => ({
+      title: 'Generated title',
+      metadata: { revision: 1 },
+    }));
+    const touch = store.touchConversation(base.id);
+    await Promise.all([update, touch]);
+
+    const disk = JSON.parse(
+      readFileSync(paths.getConversationPath(base.resourceId, base.id), 'utf8'),
+    );
+    expect(disk.title).toBe('Generated title');
+    expect(disk.metadata).toEqual({ revision: 1 });
+    expect(disk.createdAt).toBe(base.createdAt);
+    expect(disk.updatedAt).not.toBe(base.updatedAt);
+    expect(await store.loadConversationFromDisk(base.id)).toEqual(disk);
+  });
+
+  test('touching a conversation that does not exist is a no-op', async () => {
+    await expect(store.touchConversation('conv-missing')).resolves.toBe(
+      undefined,
+    );
+    expect(await store.loadAllConversations()).toEqual([]);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   // The published bytes are this store's on-disk contract: two-space JSON with
   // no trailing newline. Pinned so that changing the publication mechanism has
   // to preserve the format, not merely keep the document parseable.

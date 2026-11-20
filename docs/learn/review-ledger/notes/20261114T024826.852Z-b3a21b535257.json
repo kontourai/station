@@ -1,0 +1,31 @@
+{
+  "revision": "5e4cd7f8313ee64b490439bfbcae13dfc6159ee6",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. Checked the rewind paragraph (ledger-wide resolution, the chain reason, a pointless turn stopping every rewind and fork while remembered, refusals for late notices and Grok clock steps) against promptIndexForTurn and the run-of-short-turns, blocked-turn and swapped-times tests.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. Its Grok paragraph (failed when points do not line up or files changed outside the engine; nothing changed) still holds.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-review after the Grok rewind ledger round: every turn the adapter remembers must resolve to its own point at a rising index (another turn that is a slash command may have none), replacing the predecessor-only check. This page states nothing about those mechanisms. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

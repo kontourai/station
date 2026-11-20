@@ -1,0 +1,7 @@
+{
+  "revision": "6c83a4dda393952f3bcc8ab18441af9354e84c9c",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Re-read against the qualification failure manifest change: the Vitest corpus runner, phase driver and e2e suite write a structured failure manifest only when STATION_QUALIFICATION_MANIFEST_DIR is set, corpus and Android jobs upload it on failure, and the repair and health trackers classify red runs from it in report mode unless STATION_QUALIFICATION_SIGNAL is enforce. No test selection, verdict, permission or release behaviour changes. This document makes no claim about those behaviors; no prose change needed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

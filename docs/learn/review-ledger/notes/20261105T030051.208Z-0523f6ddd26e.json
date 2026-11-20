@@ -1,7 +1,0 @@
-{
-  "revision": "743da749c88c9aa51aab7dd6dbddacc33c1e5924",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated src-server/tools/station-docs-content.ts (docs:mcp:generate) after the module-map Browser viewport sentence; the shipped topic text changed by that sentence only. Topic list and contracts in this reference unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

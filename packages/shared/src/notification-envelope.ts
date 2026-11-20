@@ -197,9 +197,20 @@ function parseSource(
     };
   }
   if (kind === 'system') {
-    const fields = knownFields(value, mode, ['kind', 'subsystem'], []);
+    const fields = knownFields(
+      value,
+      mode,
+      ['kind', 'subsystem'],
+      ['projectId'],
+    );
     if (!fields || !isCanonicalText(fields.subsystem)) return undefined;
-    return { kind: 'system', subsystem: fields.subsystem };
+    if (fields.projectId !== undefined && !isCanonicalText(fields.projectId))
+      return undefined;
+    return {
+      kind: 'system',
+      subsystem: fields.subsystem,
+      ...optionalText(fields, 'projectId'),
+    };
   }
   if (kind === 'provider') {
     const fields = knownFields(value, mode, ['kind', 'providerId'], []);

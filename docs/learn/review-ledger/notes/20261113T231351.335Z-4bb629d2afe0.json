@@ -1,0 +1,9 @@
+{
+  "revision": "160d99526d545384e5988b43767601c626058984",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#4929 S1 review: CLI install/channel claims are owned by install.sh, channel ports and npm dist-tags, none of which S1 changes; release.yml/publish-release.yml edits only alter tag recognition and Stable identity. Limits: the 'beta channel, whose signed release ring is preview' sentence stays until S2 removes the preview ring from installer and channel ports.","inputs":["docs/reference/cli.md",".github/workflows/publish-release.yml",".github/workflows/release.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#4929 S1 review: tagged releases now apply only the stable icon set (release.yml apply-android-channel-icons.mjs stable and ios-channel-icons.mjs verify stable); generator, apply/verify mechanics and the testflight-delivery.yml icon steps are unchanged. Limits: the beta icon set and 'Stable, Beta and Nightly are separate installations' prose remain until S4 deletes Beta icons and identity.","inputs":["src-desktop/icons/README.md",".github/workflows/release.yml",".github/workflows/testflight-delivery.yml"]}
+  ]
+}

@@ -1,5 +1,6 @@
 import {
   type AcpApprovalControl,
+  acpApprovalControl,
   acpStationApprovalEngine,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
@@ -39,8 +40,24 @@ const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
  * the Station agent runtime) has no native knob, so the composer chip
  * renders read-only for them.
  */
-export function approvalModeKnobSupported(engineId?: string | null): boolean {
-  return !!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId);
+export function nonAcpApprovalEngine(
+  connectionId: string | null | undefined,
+): string | undefined {
+  return connectionId === 'claude' ||
+    connectionId === 'codex' ||
+    connectionId === 'muse'
+    ? connectionId
+    : undefined;
+}
+
+export function approvalModeKnobSupported(
+  engineId?: string | null,
+  acpControl?: AcpApprovalControl,
+): boolean {
+  return (
+    acpControl === 'requests' ||
+    (!!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId))
+  );
 }
 
 /**
@@ -50,7 +67,11 @@ export function approvalModeKnobSupported(engineId?: string | null): boolean {
  * and never its id; `null` when the engine decides for itself.
  */
 export function acpApprovalFor(
-  connection?: { command?: string | null; name?: string | null } | null,
+  connection?: {
+    command?: string | null;
+    name?: string | null;
+    stationApprovalRequests?: true;
+  } | null,
 ):
   | {
       control: AcpApprovalControl;
@@ -59,10 +80,15 @@ export function acpApprovalFor(
     }
   | undefined {
   if (!connection) return undefined;
-  const engineId = acpStationApprovalEngine(connection.command) ?? null;
+  const control = acpApprovalControl(connection.command);
+  const supported =
+    control !== 'requests' || connection.stationApprovalRequests === true;
   return {
-    control: engineId ? 'station' : 'engine',
-    engineId,
+    control: supported ? control : 'engine',
+    engineId: supported
+      ? (acpStationApprovalEngine(connection.command) ??
+        (control === 'requests' ? 'acp' : null))
+      : null,
     ...(connection.name ? { engineName: connection.name } : {}),
   };
 }
@@ -111,9 +137,14 @@ export const APPROVAL_MODE_OPTIONS: Array<{
   },
   {
     value: 'never',
-    label: 'Never ask (full access)',
+    // One name everywhere: the chip, this list and Settings say "Full access";
+    // "Never ask (full access)" here beside "Full access" on the chip read as
+    // two modes. The narrower-mode caveat stays (a start with no full-access
+    // grant really is lowered), and the sheet's "In effect" line says which
+    // mode the engine reports, so the reader is not left to guess.
+    label: 'Full access',
     description:
-      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
+      'No approval prompts where the engine allows it. A start without full-access permission gets a narrower mode.',
   },
 ];
 
@@ -123,6 +154,9 @@ export const APPROVAL_MODE_OPTIONS: Array<{
  * `APPROVAL_MODE_OPTIONS` is the fallback for any other mode, or for a runtime
  * the chip doesn't recognize.
  */
+const ACP_FULL_ACCESS_DESCRIPTION =
+  'Approves ordinary requests automatically. Engine rules and required approvals still apply.';
+
 const ENGINE_MODE_DESCRIPTIONS: Partial<
   Record<ApprovalMode, Partial<Record<string, string>>>
 > = {
@@ -130,17 +164,21 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     codex:
       "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     claude: 'File edits auto-approved; other actions still ask.',
+    antigravity: 'Station allows file edit requests. Other requests still ask.',
     // #3290: Station answers OpenCode's requests; only edits are allowed.
     opencode:
       'File edits run on their own; shell commands, web access and MCP tools still ask.',
   },
   never: {
+    acp: ACP_FULL_ACCESS_DESCRIPTION,
+    antigravity: ACP_FULL_ACCESS_DESCRIPTION,
     // #3290: nothing asks; the built-in subagents may run (their rules cannot
     // ask either); plan mode's own edit block stays.
     opencode:
       'With full access granted, permitted actions run without approval prompts. Questions, plan exits and network-host requests may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
   },
   'connection-default': {
+    antigravity: 'Uses Antigravity’s permission settings.',
     // #3290 (owner decision): Station sends OpenCode no mode until it takes
     // over, as with Claude and Codex (`resolveDefaultPick`).
     opencode:
@@ -280,6 +318,7 @@ interface EffectiveApprovalMode {
  */
 export function resolveEffectiveApprovalMode({
   engineConnectionId,
+  acpControl,
   sessionOverride,
   agentDefault,
   projectDefault,
@@ -288,6 +327,7 @@ export function resolveEffectiveApprovalMode({
   stationDefault,
 }: {
   engineConnectionId?: string | null;
+  acpControl?: AcpApprovalControl;
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
@@ -331,7 +371,7 @@ export function resolveEffectiveApprovalMode({
   }
 
   const agentDefaultMode =
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(agentDefault) &&
     agentDefault !== 'connection-default'
       ? agentDefault
@@ -347,7 +387,7 @@ export function resolveEffectiveApprovalMode({
   if (
     !defaultPicked &&
     projectDefaultUnavailable &&
-    approvalModeKnobSupported(engineConnectionId)
+    approvalModeKnobSupported(engineConnectionId, acpControl)
   ) {
     return {
       mode: 'connection-default',
@@ -358,7 +398,7 @@ export function resolveEffectiveApprovalMode({
 
   const projectDefaultMode =
     !defaultPicked &&
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(projectDefault?.approvalMode)
       ? projectDefault.approvalMode
       : undefined;
@@ -375,7 +415,7 @@ export function resolveEffectiveApprovalMode({
 
   if (
     !defaultPicked &&
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(personalDefault) &&
     personalDefault !== 'connection-default'
   ) {
@@ -392,7 +432,7 @@ export function resolveEffectiveApprovalMode({
   // Settings row's own copy says so too, but the gate is here because this
   // is what every surface reads.
   const stationDefaultMode =
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(stationDefault) &&
     stationDefault !== 'connection-default'
       ? stationDefault
@@ -648,4 +688,28 @@ export function withoutLegacyApprovalMode(
   if (!bag || !('approvalMode' in bag)) return bag;
   const { approvalMode: _dropped, ...rest } = bag;
   return rest;
+}
+
+/** Risk and neutral conversation changes stay distinct on the setup trigger. */
+export function approvalChoiceIndicators({
+  mode,
+  override,
+  refused = false,
+  pending = false,
+}: {
+  mode: ApprovalMode;
+  override: boolean;
+  refused?: boolean;
+  pending?: boolean;
+}) {
+  return {
+    safetyLabel:
+      [
+        mode === 'never' ? 'Full access' : '',
+        refused ? 'Approval refused' : pending ? 'Approval pending' : '',
+      ]
+        .filter(Boolean)
+        .join('; ') || undefined,
+    changedForConversation: override,
+  };
 }

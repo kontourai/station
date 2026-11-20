@@ -1,0 +1,7 @@
+{
+  "revision": "f283653281c995a57733c459227c113f9cfafa98",
+
+  "notes": [
+    {"path":"docs/reference/play-data-safety.md","note":"Checked the pnpm-lock.yaml diff: only the @voltagent/core 2.11.0 patch hash changes (953e966e -> 87e508cf) in the patchedDependencies entry and the snapshot keys that embed it; no package is added, removed or changes version. The statements on this page are unchanged.","inputs":["docs/reference/play-data-safety.md","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

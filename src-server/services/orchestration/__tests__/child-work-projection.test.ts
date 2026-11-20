@@ -1,6 +1,10 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
 import { replayClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
+import {
+  MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
+  museExecChildWorkNotReportedEvent,
+} from '../../../providers/adapters/muse-serve-child-work.js';
 import { ChildWorkProjection } from '../child-work-projection.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
@@ -77,6 +81,35 @@ describe('ChildWorkProjection', () => {
       ],
     });
   });
+  test('an ACP session that has reported speaks as reported; one that has not, as not-reported', () => {
+    const projection = new ChildWorkProjection();
+    projection.observe(
+      event(
+        {
+          method: 'child-work.updated',
+          delta: {
+            kind: 'upsert',
+            item: {
+              producer: 'engine-subagent',
+              reporterThreadId: 'kiro-thread',
+              childId: 'sub-1',
+              status: 'running',
+              title: 'Explore',
+            },
+          },
+        },
+        'kiro-thread',
+        'acp',
+      ),
+    );
+    expect(projection.read('kiro-thread', 'acp')).toMatchObject({
+      observability: 'reported',
+      running: [{ childId: 'sub-1', status: 'running' }],
+    });
+    expect(projection.read('other-acp-thread', 'acp')).toMatchObject({
+      observability: 'not-reported',
+    });
+  });
   test('R2: with no report of its own (a fresh process after a restart) the view still speaks for every engine session', () => {
     const projection = new ChildWorkProjection();
     // A declared engine: reported, nothing running — truthful, because an
@@ -86,10 +119,13 @@ describe('ChildWorkProjection', () => {
       running: [],
       observedAt: 'now',
     });
-    // A `none` engine: not-reported, with the matrix's own reason.
+    // An engine that reports only on some connections (ACP: Kiro does,
+    // others do not): with no report seen by this process it cannot claim
+    // nothing is running.
     expect(projection.read(THREAD, 'acp')).toEqual({
       observability: 'not-reported',
-      reason: 'ACP 1.1.1 has no subagent concept.',
+      reason:
+        'Only some ACP engines report subagents, and this session has not reported since Station started.',
     });
     // #2452: Muse's workflow children are mapped (serve), so a Muse session
     // speaks like any declared engine...
@@ -470,5 +506,101 @@ describe('session summary child work', () => {
       answerability: { answerable: false } as never,
     });
     expect(ordinary).not.toHaveProperty('childWork');
+  });
+});
+
+describe('a session that reports no child work, after a restart', () => {
+  // The Muse exec fallback's own event, as its adapter publishes it once at
+  // session start.
+  const notReported = (threadId: string) =>
+    museExecChildWorkNotReportedEvent({
+      threadId,
+      createdAt: '2026-11-14T00:00:00.000Z',
+    });
+
+  test('live, it reads not-reported', () => {
+    const projection = new ChildWorkProjection();
+    projection.observe(notReported(THREAD));
+    expect(projection.read(THREAD, 'muse')).toEqual({
+      observability: 'not-reported',
+      reason: MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
+    });
+  });
+
+  test('seeded from history, it still reads not-reported, never "nothing running"', () => {
+    const projection = new ChildWorkProjection();
+    projection.seedHistoricalSettled(THREAD, [notReported(THREAD)]);
+    expect(projection.read(THREAD, 'muse')).toEqual({
+      observability: 'not-reported',
+      reason: MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
+    });
+    expect(projection.readWarmReporter(THREAD, 'muse')).toEqual({
+      kind: 'warm',
+      view: {
+        observability: 'not-reported',
+        reason: MUSE_EXEC_CHILD_WORK_NOT_REPORTED_REASON,
+      },
+    });
+  });
+
+  test('a statement from a session that has since exited is not restored', () => {
+    const projection = new ChildWorkProjection();
+    projection.seedHistoricalSettled(THREAD, [
+      notReported(THREAD),
+      event({ method: 'session.exited', sessionId: THREAD }, THREAD, 'muse'),
+      event({ method: 'session.started', sessionId: THREAD }, THREAD, 'muse'),
+    ]);
+    expect(projection.read(THREAD, 'muse')).toMatchObject({
+      observability: 'reported',
+      running: [],
+    });
+  });
+
+  // An unclean exit writes no `session.exited`; the session can then resume
+  // on `muse serve`, which reports its children.
+  const started = () =>
+    event({ method: 'session.started', sessionId: THREAD }, THREAD, 'muse');
+  const serveChild = () =>
+    event(
+      {
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: THREAD,
+            childId: 'c1',
+            status: 'running',
+            title: 'Explore',
+          },
+        },
+      },
+      THREAD,
+      'muse',
+    );
+  const runningIds = (projection: ChildWorkProjection) => {
+    const view = projection.read(THREAD, 'muse');
+    return view?.observability === 'reported'
+      ? view.running.map((item) => item.childId)
+      : view?.observability;
+  };
+
+  test('a later start in history drops the earlier statement', () => {
+    const projection = new ChildWorkProjection();
+    projection.seedHistoricalSettled(THREAD, [
+      started(),
+      notReported(THREAD),
+      started(),
+    ]);
+    expect(runningIds(projection)).toEqual([]);
+  });
+
+  test('a live start after the seed lets the resumed session report', () => {
+    const projection = new ChildWorkProjection();
+    projection.seedHistoricalSettled(THREAD, [started(), notReported(THREAD)]);
+    expect(runningIds(projection)).toBe('not-reported');
+    projection.observe(started());
+    projection.observe(serveChild());
+    expect(runningIds(projection)).toEqual(['c1']);
   });
 });

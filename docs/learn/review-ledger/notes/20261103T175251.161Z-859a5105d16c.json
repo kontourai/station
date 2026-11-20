@@ -1,7 +1,0 @@
-{
-  "revision": "66ffa84917f26f9cfed25f00cd1ec5d5ea4ae960",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Reviewed migration admission and empty namespace behavior against the real-registry tests. Unsupported providers are refused before source snapshot and registration even for discovered empty namespaces; supported providers keep the no-op.","inputs":["docs/guides/knowledge.md"]}
-  ]
-}

@@ -10,6 +10,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { MemoryReview } from '../MemoryReview';
 
 // A fresh host per test: the capability handshake is cached per host.
@@ -182,7 +183,13 @@ test('shows the conflict with both pieces of evidence and records a decision wit
   expect(
     await screen.findByText('Which version should Station remember?'),
   ).toBeTruthy();
+  // docs/guides/knowledge.md quotes this heading as the place to look.
+  expect(
+    screen.getByRole('heading', { name: 'Your saved memories' }),
+  ).toBeTruthy();
   expect(screen.getByText(/3 more memories didn’t need checking/)).toBeTruthy();
+  // Custom CSS is held off while this grant UI is on screen.
+  expect(mountedDecisionSurfaces()).toContain('memory-review');
   fireEvent.click(screen.getByRole('button', { name: 'Review' }));
   expect(
     await screen.findByText(/We moved the widget service to MySQL/),

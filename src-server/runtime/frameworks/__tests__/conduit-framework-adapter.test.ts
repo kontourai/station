@@ -1,4 +1,9 @@
-import { type LifecycleEvent, probeHostConformance } from '@kontourai/conduit';
+import {
+  createConformanceReport,
+  inertInstallLimitation,
+  type LifecycleEvent,
+  probeHostConformance,
+} from '@kontourai/conduit';
 import { describe, expect, it, vi } from 'vitest';
 import {
   conformAgentHooks,
@@ -13,6 +18,32 @@ describe('Station Conduit framework projection', () => {
         createStationFrameworkConduitAdapter(framework),
       );
       expect(results.every((result) => result.status === 'pass')).toBe(true);
+    },
+  );
+
+  it.each(['strands', 'voltagent'] as const)(
+    'reports %s with inert install evidence, never the caller install I/O',
+    async (framework) => {
+      // Conduit 0.8 refuses to probe a hand-built adapter
+      // (UnsafeConformanceProbeError, `no-inert-install`); only a
+      // factory-built adapter takes the I/O-free path the published
+      // docs/conformance report records as `installEvidence: "inert"`.
+      const report = await createConformanceReport([
+        {
+          adapter: createStationFrameworkConduitAdapter(framework),
+          evidenceScope: 'host-bound',
+          adapterVersion: 'test',
+          hostId: `station-${framework}`,
+          hostVersion: 'test',
+        },
+      ]);
+      expect(report.schemaVersion).toBe('3');
+      const [entry] = report.adapters;
+      expect(entry?.installEvidence).toBe('inert');
+      expect(entry?.limitations).toContain(inertInstallLimitation);
+      expect(entry?.results.every((result) => result.status === 'pass')).toBe(
+        true,
+      );
     },
   );
 
@@ -46,11 +77,29 @@ describe('Station Conduit framework projection', () => {
       for (const phase of ['session-start', 'before-model'] as const) {
         await expect(project(phase)).resolves.toEqual({
           decision: 'observe',
-          reason: `Station IAgentHooks does not expose ${phase}`,
+          reason: 'lifecycle phase unavailable',
         });
       }
       for (const phase of ['before-tool', 'after-tool', 'stop'] as const) {
         await expect(project(phase)).resolves.toEqual(deny);
+      }
+    },
+  );
+
+  it.each(['strands', 'voltagent'] as const)(
+    'strips model context on every delivered phase for %s',
+    async (framework) => {
+      // The framework host admits context injection, but Station's
+      // IAgentHooks seam does not deliver it; echoing modelContext would
+      // claim an influence this projection cannot exert.
+      const adapter = createStationFrameworkConduitAdapter(framework);
+      for (const phase of ['before-tool', 'after-tool', 'stop'] as const) {
+        const projected = await adapter.project(
+          { phase, sessionId: 'session', context: {} },
+          { decision: 'allow', modelContext: 'injected' },
+        );
+        expect(projected.decision).toBe('allow');
+        expect(projected.modelContext).toBeUndefined();
       }
     },
   );

@@ -6,7 +6,14 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
 
@@ -19,7 +26,9 @@ import {
 } from '@kontourai/station-shared/runtime-path-resolver';
 import {
   createStationTempDirSync,
+  STATION_SESSION_TMP_DIR_NAME,
   STATION_TEMP_ROOT_NAME,
+  stationSessionTmpRootName,
 } from '@kontourai/station-shared/temp-dir';
 import {
   type LifecycleCodeRoot,
@@ -125,7 +134,8 @@ const SYSTEM_TEMP_HOME_ROOT = join('/tmp', STATION_TEMP_ROOT_NAME);
  * agent can inherit: `STATION_HOME` and the resolved Station root (which is
  * that home when it is self-rooted). Station hands spawned engines
  * `<home>/tmp/engine-spawn`, reaped by age, or (chat-host-images preview) a
- * per-session `<home>/tmp/session-tmp/...` removed when the session exits, so
+ * per-session `<home>/tmp/session-tmp/...` (or one in a short root, below)
+ * removed when the session exits, so
  * nothing durable for the length of a run may live there. Only that subtree is refused: a temp root
  * elsewhere under a Station root, such as `STATION_ROOT=/tmp/station` with
  * the default `TMPDIR`, stays where it was.
@@ -158,13 +168,40 @@ function stationHomeTmpContaining(
   return undefined;
 }
 
+/**
+ * The per-session directory containing `candidate` when it sits in one of
+ * Station's short session roots (`<system temp>/stn-<uid>/<pid>-<digest>`,
+ * used instead of `<home>/tmp/session-tmp` when the home is too long for a
+ * socket path), which the session removes when it exits. Recognized by its
+ * layout, since the agent cannot see which system temp directory its
+ * Station chose.
+ */
+function stationSessionTmpContaining(candidate: string): string | undefined {
+  if (process.platform === 'win32') return undefined;
+  const rootName = stationSessionTmpRootName();
+  let dir = realpathSync.native(candidate);
+  for (;;) {
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    if (
+      basename(parent) === rootName &&
+      STATION_SESSION_TMP_DIR_NAME.test(basename(dir))
+    ) {
+      return dir;
+    }
+    dir = parent;
+  }
+}
+
 function mintAdmittedTemporaryHome(
   env: NodeJS.ProcessEnv,
   root?: string,
 ): string {
   const candidate = realpathSync(createStationTempDirSync('dev-home', root));
   try {
-    const ownedTmp = stationHomeTmpContaining(candidate, env);
+    const ownedTmp =
+      stationHomeTmpContaining(candidate, env) ??
+      stationSessionTmpContaining(candidate);
     if (ownedTmp) {
       throw new StationRuntimeHomeAdmissionError(
         candidate,
@@ -181,7 +218,8 @@ function mintAdmittedTemporaryHome(
 /**
  * A `--temp-home` lives under the Station temp root, which follows the ambient
  * `TMPDIR`. Station points every agent it spawns under `<home>/tmp`
- * (`engine-spawn-tmpdir.ts`, `session-tmpdir.ts`), so an agent running
+ * (`engine-spawn-tmpdir.ts`, `session-tmpdir.ts`) or, for a per-session
+ * directory when the home is long, `<system temp>/stn-<uid>`, so an agent running
  * `./station start --temp-home` would mint its home inside its parent's
  * Station tree. Under `instances/` the runtime-home guard refuses it; under a
  * self-rooted parent home (`--home`, `--temp-home`) the guard admits it, and

@@ -33,13 +33,14 @@ test('real-server scenario records observed phases and reads seeded images and s
   expect(receipt.phases.sessionList.sessionCount).toBe(5);
   expect(receipt.phases.idle.requests).toBe(0);
   expect(receipt.phases.sessionList.requests).toBe(1);
-  for (const phase of Object.values(receipt.phases)) {
-    expect(phase.elapsedMs).toBeGreaterThan(0);
-    expect(phase.rssBytes).toBeGreaterThan(0);
-    expect(phase.eventLoopDelayMs.samples).toBeGreaterThan(0);
+  for (const [name, phase] of Object.entries(receipt.phases)) {
+    const context = `${name}: ${JSON.stringify(phase)}`;
+    expect(phase.elapsedMs, context).toBeGreaterThan(0);
+    expect(phase.rssBytes, context).toBeGreaterThan(0);
+    expect(phase.eventLoopDelayMs.samples, context).toBeGreaterThan(0);
     if (phase.eventLoopDelayMs.p99 === null)
-      throw Error('missing delay samples');
-    expect(phase.eventLoopDelayMs.max).toBeGreaterThanOrEqual(
+      throw Error(`missing delay samples: ${context}`);
+    expect(phase.eventLoopDelayMs.max, context).toBeGreaterThanOrEqual(
       phase.eventLoopDelayMs.p99,
     );
   }

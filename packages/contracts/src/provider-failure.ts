@@ -19,10 +19,25 @@ import {
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
+  PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+} from './peer-chat.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
+import { PROJECT_HELD_REFUSAL_CODE } from './project-lifecycle.js';
+import {
+  PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
+  PROJECT_ROOM_FORBIDDEN_CODE,
+  PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
+} from './project-room.js';
+import { PROJECT_MEMORY_FULL_CODE } from './project-session-context.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -31,6 +46,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
+  ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
@@ -43,7 +59,11 @@ import {
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_MODEL_RETRY_SCHEDULED_CODE,
+  MUSE_MODEL_ROUTE_UNSERVED_CODE,
+  MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
+  MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -54,6 +74,8 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_REATTACH_CONFLICT_CODE,
   WORKLOAD_COMMAND_OOM_KILLED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CODE,
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
@@ -64,10 +86,18 @@ export const CODEX_DECISION_UNACKNOWLEDGED_CODE =
 export const CODEX_DECISION_REPLY_REFUSED_CODE = 'engine-decision-not-sent';
 export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
 export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
+export const ACP_RESUME_CONFIGURATION_CHANGED_CODE =
+  'acp_resume_configuration_changed';
 export const MCP_SIGN_IN_REQUIRED_CODE = 'mcp_sign_in_required';
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
   'confined_full_access_unavailable';
+/**
+ * #4769: a confined session's restricted network refused a connection to a
+ * host its policy does not allow (a `runtime.warning` naming the host and
+ * port, never a payload or path).
+ */
+export const CONFINED_NETWORK_DENIED_CODE = 'confined_network_denied';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
@@ -77,6 +107,11 @@ export const RESOURCE_ENGINE_START_CANCELLED_CODE =
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
+/**
+ * The attached source reads `active` (`AttachedSourceActivity`) and the
+ * request did not say `continueWhileSourceActive`. Nothing was created.
+ */
+export const ADOPTION_SOURCE_ACTIVE_CODE = 'continuation_source_active';
 
 export const ENGINE_STARTUP_FAILURE_GUIDANCE = {
   sandbox_unavailable:
@@ -140,6 +175,9 @@ export const PROVIDER_FAILURE_KINDS = {
   delegation_files_invalid_data: 'input_unsupported',
   delegation_files_ref_invalid: 'input_unsupported',
   delegation_files_unavailable: 'unavailable',
+  // A queued follow-up's file was no longer stored when it was due to send;
+  // like an expired stage, only attaching it again can help.
+  attachment_unavailable: 'input_unsupported',
   delegation_files_start_refused: 'provider_error',
   delegation_files_turn_refused: 'provider_error',
   delegation_files_outcome_unknown: 'indeterminate',
@@ -153,19 +191,34 @@ export const PROVIDER_FAILURE_KINDS = {
   stage_invalid_upload: 'input_unsupported',
   stage_capacity: 'busy',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
+  'acp-transport-closed': 'unavailable',
   sandbox_unavailable: 'permission_denied',
   provider_model_unavailable: 'model_unavailable',
   [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',
   [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
   [TRANSCRIPT_LINE_SKIPPED_CODE]: 'warning',
   [SESSION_RECOVERY_FAILED_CODE]: 'unavailable',
+  [ACP_RESUME_CONFIGURATION_CHANGED_CODE]: 'conflict',
   [SESSION_START_INDETERMINATE_CODE]: 'indeterminate',
   [CONFINED_FULL_ACCESS_UNAVAILABLE_CODE]: 'permission_denied',
+  [CONFINED_NETWORK_DENIED_CODE]: 'permission_denied',
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CANCELLED_CODE]: 'cancelled',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
+  // The current Session still has a turn running; the handoff waits for it.
+  [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // Continuing a conversation on a paired Station: the paired Station refused
+  // the import outright (not retryable as sent), refused this Station's
+  // credential, or takes imports only from a Station paired as a Station.
+  [PEER_CONVERSATION_HANDOFF_REFUSAL_CODE]: 'conflict',
+  [PEER_CONVERSATION_HANDOFF_ACCESS_CODE]: 'permission_denied',
+  [PEER_CONVERSATION_HANDOFF_PAIRING_CODE]: 'permission_denied',
+  [PAIRED_STATION_REQUIRED_CODE]: 'permission_denied',
+  // The import this key saved was deleted before it started.
+  [CONVERSATION_IMPORT_DELETED_CODE]: 'session_gone',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',
@@ -177,6 +230,9 @@ export const PROVIDER_FAILURE_KINDS = {
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',
   'muse-terminal-not-completed': 'provider_error',
+  // Station's own OpenCode server client refused a route it never calls
+  // (credential, auth, config writes): a retry cannot reach it.
+  opencode_serve_denied_path: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[0]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[1]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[2]]: 'permission_denied',
@@ -196,6 +252,17 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
+  // No such Project on this Station (#4855): like `stage_not_found`, an
+  // absent target, not an outage; a retry cannot find it.
+  [PROJECT_ROOM_PROJECT_NOT_FOUND_CODE]: 'input_unsupported',
+  // Someone else's (or an Agent's) room message (#4797): a retry is refused too.
+  [PROJECT_ROOM_FORBIDDEN_CODE]: 'permission_denied',
+  // A paused or archived Project admits no turn (#5069): only a person's
+  // Resume or Unarchive changes that, so a retry cannot succeed.
+  [PROJECT_HELD_REFUSAL_CODE]: 'conflict',
+  // The room's file store cannot prove its references (#4852): attachments
+  // pause until an operator repairs it; a later retry can succeed.
+  [PROJECT_ROOM_FILES_UNAVAILABLE_CODE]: 'unavailable',
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MODEL_NOT_ADVERTISED_CODE]: 'model_unavailable',
   [SESSION_REATTACH_CONFLICT_CODE]: 'conflict',
@@ -207,7 +274,11 @@ export const PROVIDER_FAILURE_KINDS = {
   [ENGINE_MEMORY_EXHAUSTED_CODE]: 'engine_crashed',
   // A command inside the engine's scope was killed; the engine kept running.
   [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
+  // The engine's own scope neared its memory limit, or left that state.
+  [WORKLOAD_MEMORY_PRESSURE_CODE]: 'warning',
+  [WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
+  [ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',
   [MUSE_LINGERING_CHILD_REAPED_CODE]: 'warning',
@@ -217,6 +288,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MUSE_APPROVAL_DECIDE_FAILED_CODE]: 'warning',
   [MUSE_SERVE_UNAVAILABLE_CODE]: 'warning',
   [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'warning',
+  [MUSE_MODEL_RETRY_SCHEDULED_CODE]: 'warning',
+  [MUSE_MODEL_ROUTE_UNSERVED_CODE]: 'warning',
+  [MUSE_SANDBOX_UNAVAILABLE_CODE]: 'warning',
+  [MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE]: 'warning',
   [ACP_APPROVAL_TAKEOVER_FAILED_CODE]: 'warning',
   [ACP_APPROVAL_GOVERNANCE_REFUSED_CODE]: 'permission_denied',
   // #4519: remote access the machine's managed policy forbids.
@@ -241,6 +316,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
+  // #5065: a Project's memory holds its maximum notes. Not retryable: like
+  // `project_held`, it is a state refusal that lasts until the state changes
+  // (a person or agent forgets a note), not a transient capacity limit.
+  [PROJECT_MEMORY_FULL_CODE]: 'conflict',
   // #4520: an engine the managed policy does not allow, or a launch that
   // cannot honor a locked pin.
   [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',

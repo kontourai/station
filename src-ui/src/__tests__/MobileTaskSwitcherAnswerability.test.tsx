@@ -24,6 +24,12 @@ import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
+// The app supplies connection authority; these isolated row tests supply the
+// project catalogue used by the scope labels without starting remote reads.
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+}));
+
 const NOTICE =
   "Unanswerable by the serving Station (no adapter for provider 'acme') — observed by station-7f3a at 2026-08-03T12:04:03.000Z.";
 
@@ -74,7 +80,7 @@ describe('MobileInboxPanel answerability basis', () => {
   // The ladder's own words, unshortened: the picker row says what the dock
   // row says for the same chat (one vocabulary, design round 2026-10).
   test.each([
-    { attention: 'answer' as const, label: 'Needs answer' },
+    { attention: 'answer' as const, label: 'Needs input' },
     { attention: 'approval' as const, label: 'Needs approval' },
   ])(
     'shows $label only for its recorded attention kind',
@@ -117,7 +123,7 @@ describe('MobileInboxPanel answerability basis', () => {
         open
         tasks={[]}
         loadError
-        onRetryLoad={retry}
+        refresh={{ run: retry, phase: 'idle', recovering: false }}
         activeChatSessionId={null}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
@@ -202,7 +208,7 @@ describe('MobileInboxPanel lane-move focus', () => {
       const view = render(
         <MobileInboxPanel {...props} tasks={[running, other]} />,
       );
-      const name = 'Moving row, Station';
+      const name = /^Moving row\b/;
       screen.getByRole('button', { name }).focus();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
 

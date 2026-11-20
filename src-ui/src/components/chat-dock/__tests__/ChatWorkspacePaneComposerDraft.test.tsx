@@ -142,20 +142,15 @@ vi.mock('../../../hooks/useDockShellChrome', async (importOriginal) => {
 vi.mock('../ChatDockMobileHeader', () => ({
   ChatDockMobileHeader: ({
     activeCount,
-    projectSwitcher,
     sessionProjectMismatchLabel,
     onToggleInbox,
   }: {
     activeCount: number;
-    projectSwitcher?: { projectName: string } | null;
     sessionProjectMismatchLabel?: string;
     onToggleInbox?: () => void;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
-      <div data-testid="mobile-dock-project-name">
-        {projectSwitcher?.projectName}
-      </div>
       <div data-testid="mobile-dock-mismatch">
         {sessionProjectMismatchLabel}
       </div>
@@ -259,8 +254,15 @@ vi.mock('../ChatDockBody', async () => {
     // Reports its composer as the real body does, so focus requests reach it.
     ChatDockBody: ({
       onComposerEnabledChange,
+      secondaryActions,
     }: {
       onComposerEnabledChange?: (el: HTMLTextAreaElement | null) => void;
+      secondaryActions?: {
+        onOpenCodingLayout?: () => void;
+        codingLayoutLabel?: string;
+        onOpenTerminal?: () => void;
+        terminalDisabledReason?: string;
+      };
     }) => {
       const composer = useRef<HTMLTextAreaElement>(null);
       useEffect(() => {
@@ -271,6 +273,22 @@ vi.mock('../ChatDockBody', async () => {
         <div data-testid="active-chat-body">
           <p data-testid="answer-selection">Ready for review.</p>
           <textarea aria-label="Chat composer" ref={composer} />
+          {/* The composer "+" menu's coding row, as the real composer wires it. */}
+          {secondaryActions?.onOpenCodingLayout && (
+            <button type="button" onClick={secondaryActions.onOpenCodingLayout}>
+              {secondaryActions.codingLayoutLabel}
+            </button>
+          )}
+          {secondaryActions?.onOpenTerminal && (
+            <button
+              type="button"
+              disabled={Boolean(secondaryActions.terminalDisabledReason)}
+              title={secondaryActions.terminalDisabledReason}
+              onClick={secondaryActions.onOpenTerminal}
+            >
+              Open terminal
+            </button>
+          )}
         </div>
       );
     },
@@ -568,7 +586,6 @@ test('the dock passes a background-only session into its mobile work badge', asy
       queuedMessages: [],
       inputHistory: [],
       messages: [],
-      hasUnread: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       conversationActivity: {
@@ -598,7 +615,6 @@ function chatSession(id: string): Record<string, any> {
     queuedMessages: [],
     inputHistory: [],
     messages: [],
-    hasUnread: false,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -683,26 +699,47 @@ test('a foreign chat’s code layout is its own Project’s, not the future defa
   await act(async () => {});
 
   // The bar carries no branch badge any more (the context card's Branch row
-  // does); the More menu's Open in Coding still follows the chat's Project.
+  // does); the composer menu's Open in Coding still follows the chat's Project.
   expect(
     document.querySelector('.chat-dock__project-context .git-badge'),
   ).toBeNull();
 
-  fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
   fireEvent.click(
-    await screen.findByRole('menuitem', { name: 'Open in Coding' }),
+    await screen.findByRole('button', { name: 'Open in Coding' }),
   );
   expect(navigationStore.getSnapshot().pathname).toBe(
     '/projects/other/layouts/other-code',
   );
 });
 
-test('the mobile header receives the dock’s future Project binding', async () => {
-  dockProbe.mobile = true;
+test('the composer’s Open terminal places this Project’s Terminal in the bottom dock', async () => {
   openForeignChatInPulseBoundDock();
-  expect(
-    (await screen.findByTestId('mobile-dock-project-name')).textContent,
-  ).toBe('Pulse');
+  // Bind the dock to the chat's own Project, so the Terminal is this chat's.
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'other'));
+  // The region shells are mounted, as in the app (`RegionShells` registers).
+  let unregister: (() => void) | undefined;
+  act(() => {
+    unregister = regionModel!.registerRegionSurfaceHost();
+  });
+  await act(async () => {});
+  const open = await screen.findByRole('button', { name: 'Open terminal' });
+  expect((open as HTMLButtonElement).disabled).toBe(false);
+  act(() => fireEvent.click(open));
+  await act(async () => {});
+  expect(regionModel!.readRegions().bottom.panes).toContain('coding:terminal');
+  expect(regionModel!.readRegions().bottom.visible).toBe(true);
+  act(() => unregister?.());
+});
+
+test('a dock bound to another Project refuses Open terminal and names that Project', async () => {
+  openForeignChatInPulseBoundDock();
+  await act(async () => {});
+  const open = await screen.findByRole('button', { name: 'Open terminal' });
+  expect((open as HTMLButtonElement).disabled).toBe(true);
+  expect(open.getAttribute('title')).toBe('Dock is on pulse');
+  expect(regionModel!.readRegions().bottom.panes).not.toContain(
+    'coding:terminal',
+  );
 });
 
 test('a changed future Project binding preserves the active chat and supplies the next draft', async () => {
@@ -817,9 +854,7 @@ test('a phone opens its dock at the inbox without adding a modal layer', async (
   const inbox = await screen.findByRole('region', { name: 'Inbox' });
   expect(inbox.closest('.chat-dock__workspace')).not.toBeNull();
   expect(screen.queryByRole('dialog', { name: 'Chats and tasks' })).toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Pulse chat, pulse' }),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Pulse chat\b/ })).toBeTruthy();
 });
 
 test('returning to the inbox keeps the reader mounted and preserves its unsent text', async () => {
@@ -1387,7 +1422,7 @@ test('a real failed history open stays at Inbox instead of falling back to the i
   act(addSavedConversation);
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
   const saved = await screen.findByRole('button', {
-    name: 'Saved conversation, pulse',
+    name: /^Saved conversation\b/,
   });
   fireEvent.click(saved);
   await act(async () => {});
@@ -1567,7 +1602,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
     act(addSavedConversation);
     fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Saved conversation, pulse' }),
+      await screen.findByRole('button', { name: /^Saved conversation\b/ }),
     );
     expect(finishOpen).toBeDefined();
     if (next === 'same-loading-chat') {
@@ -1592,7 +1627,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
       act(() => openChatsStore.focus({ sessionId: 'late-saved-tab' }));
     } else if (next === 'another-chat')
       fireEvent.click(
-        screen.getByRole('button', { name: 'Later conversation, pulse' }),
+        screen.getByRole('button', { name: /^Later conversation\b/ }),
       );
     else act(() => dispatchNewChatIntent({}));
     if (next === 'another-chat')
@@ -1863,14 +1898,10 @@ test('the header shows no project destination while a draft is open', async () =
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
-    'Pulse',
-  );
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe('');
 });
 
 // A phone opens the draft full height from a half sheet; a dismissed draft
@@ -1926,8 +1957,7 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
   expect(navigationStore.lastDockMaximized).toBe(true);
 });
 
-// On a phone the header's project switcher comes back with the draft gone,
-// and the covered chat's project-mismatch note stands down while it is open.
+// The covered chat's project-mismatch note stands down while a draft is open.
 test('the phone header hides the chat’s project facts only while a draft is open', async () => {
   dockProbe.mobile = true;
   openForeignChatInPulseBoundDock();
@@ -1935,22 +1965,13 @@ test('the phone header hides the chat’s project facts only while a draft is op
   const mismatch = () =>
     screen.getByTestId('mobile-dock-mismatch').textContent ?? '';
   expect(mismatch()).not.toBe('');
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
-    'Pulse',
-  );
   act(() => {
     dispatchNewChatIntent({});
   });
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(mismatch()).toBe('');
-  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe('');
   act(() => pickerProps.at(-1)!.onClose());
-  await waitFor(() =>
-    expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
-      'Pulse',
-    ),
-  );
-  expect(mismatch()).not.toBe('');
+  await waitFor(() => expect(mismatch()).not.toBe(''));
 });
 
 // Leaving a phone draft for a chat is going to that chat: the dock that the

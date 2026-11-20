@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from './tool-request-preview.js';
@@ -71,6 +72,7 @@ export interface MessagePart {
   progressMessage?: string;
   /** A station-control refusal, whole (see `ToolCompletedEvent`). */
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+  appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
   /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
   startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */
@@ -153,6 +155,11 @@ export interface MessagePart {
    */
   approvalServerGrant?: ToolRequestServerGrant;
   /**
+   * The command-prefix grant that request also offers
+   * (`toolRequestRuleGrantFromPayload`); absent offers nothing.
+   */
+  approvalRuleGrant?: ToolRequestRuleGrant;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated
@@ -179,6 +186,13 @@ export interface ConversationMessage {
     /** Immutable copied-context receipt; it is not an execution or read grant. */
     forkOrigin?: { eventId: string; digest: string };
     forkSourceMessageId?: string;
+    /**
+     * A row another Station sent (`conversation-imports`), named as that
+     * Station named itself when requesting pairing (the Device name this
+     * Station's operator approved). That Station's claim, not a row this
+     * Station recorded; every seed and memory copy quotes it.
+     */
+    importedFrom?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
@@ -207,6 +221,11 @@ export interface ConversationMessage {
      * (`isStationRestartContinuationTurn`). Shown as Station's.
      */
     stationRestartContinuation?: true;
+    /**
+     * An in-place engine rewind hid this turn from the engine
+     * (`ACP_SESSION_REWOUND_CODE`). The row stays; it is shown as rewound.
+     */
+    rewound?: true;
     /**
      * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
      * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The

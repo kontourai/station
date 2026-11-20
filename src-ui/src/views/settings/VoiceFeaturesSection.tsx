@@ -1,12 +1,12 @@
-import { CheckGlyph, MicGlyph } from '../../components/icons/Glyph';
+import { MicGlyph } from '../../components/icons/Glyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { usePushNotificationsState } from '../../contexts/PushNotificationsContext';
 import { useVoiceProviderContext } from '../../contexts/VoiceProviderContext';
 import type { BooleanFeatureSetting } from '../../hooks/useFeatureSettings';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { AgentActivitySetting } from './AgentActivitySetting';
+import { BrowserPushStatus } from './BrowserPushStatus';
 import { FeatureToggle, SettingsToggle } from './feature-toggle';
 import { NotificationSoundSettings } from './NotificationSoundSettings';
 import { SettingsSection } from './SettingsSection';
@@ -38,51 +38,6 @@ const FEATURE_META: Array<{
     description: 'Read each reply with the selected speech service.',
   },
 ];
-
-function NotificationSubscribeButton() {
-  const notifications = usePushNotificationsState();
-
-  if (!notifications.supported) {
-    return notifications.error ? (
-      <div className="settings__notif-error" role="alert">
-        {notifications.error}
-      </div>
-    ) : null;
-  }
-
-  return (
-    <div className="settings__notif-subscribe">
-      {notifications.subscribed ? (
-        <div className="settings__notif-subscribed">
-          <span className="settings__notif-status">
-            <CheckGlyph /> Subscribed to push notifications
-          </span>
-          <button
-            type="button"
-            className="button button--secondary button--small"
-            onClick={notifications.unsubscribe}
-          >
-            Unsubscribe
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="button button--secondary button--small"
-          onClick={notifications.subscribe}
-          disabled={notifications.permission === 'denied'}
-        >
-          {notifications.permission === 'denied'
-            ? 'Notifications blocked by browser'
-            : 'Enable push notifications'}
-        </button>
-      )}
-      {notifications.error && (
-        <div className="settings__notif-error">{notifications.error}</div>
-      )}
-    </div>
-  );
-}
 
 export function VoiceFeaturesSection() {
   const { settings, toggle } = useFeatureSettings();
@@ -235,11 +190,11 @@ export function NotificationsSection() {
               {settingsRow('push-notifications').title}
             </div>
             <div className="settings__toggle-desc" id="notif-desc">
-              Browser notifications for approvals and high-priority alerts
+              Turn off to unsubscribe this browser from Web Push.
             </div>
           </div>
         </SettingsToggle>
-        <NotificationSubscribeButton />
+        <BrowserPushStatus />
         {/* Native (FCM) delivery to the Android app. Independent of the browser
             push switch above, which a WebView cannot use. */}
         <AgentActivitySetting />

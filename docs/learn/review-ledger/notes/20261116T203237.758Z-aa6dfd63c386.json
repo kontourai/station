@@ -1,0 +1,209 @@
+{
+  "revision": "b80374f57cd0125851a085af951535667cba346e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the job-owner passage against the scheduler route (jobOwner), BuiltinScheduler (stores createdBy, personal backfill) and the ledger view (ownerNeeded).","inputs":["docs/reference/api.md","packages/contracts/src/scheduler.ts","src-server/routes/operations/scheduler.ts","src-server/runtime/bootstrap/orchestration-request-principal.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the voice passage against voice.ts (authenticate flag, principal resolution, refusal) and voice-session.ts (credential-free sessions get no Station tools).","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/operations/voice.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"#2377 slice D owner decisions: only wires jobOwner into the scheduler routes. Citing docs describe other route families; the API reference documents job owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D owner decisions: feedback analysis runs as a no-tool utility agent, and the voice listener resolves its credential's principal (personal Stations only). Checked citing docs for feedback-analysis and voice-auth claims; the threat model now records the voice change.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D owner decisions: untargeted scheduled runs act for the job's recorded owner through a request run; an ownerless run gets no caller and a model note; personal Stations backfill the operator. Automations docs and the API reference describe this; citing CONTEXT/design passages about targeted creators stay accurate.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D owner decisions: createdBy is documented for every job, and the additive read-only ownerNeeded field carries the reason an ownerless job has no Station tools. Citing contract and design references remain accurate; the API reference documents ownerNeeded.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/automations.md","note":"#2377 slice D owner decisions: createdBy is documented for every job, and the additive read-only ownerNeeded field carries the reason an ownerless job has no Station tools. Citing contract and design references remain accurate; the API reference documents ownerNeeded.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D owner decisions: createdBy is documented for every job, and the additive read-only ownerNeeded field carries the reason an ownerless job has no Station tools. Citing contract and design references remain accurate; the API reference documents ownerNeeded.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D owner decisions: createdBy is documented for every job, and the additive read-only ownerNeeded field carries the reason an ownerless job has no Station tools. Citing contract and design references remain accurate; the API reference documents ownerNeeded.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#2377 slice D owner decisions: createdBy is documented for every job, and the additive read-only ownerNeeded field carries the reason an ownerless job has no Station tools. Citing contract and design references remain accurate; the API reference documents ownerNeeded.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2377 slice D owner decisions: createdBy is documented for every job, and the additive read-only ownerNeeded field carries the reason an ownerless job has no Station tools. Citing contract and design references remain accurate; the API reference documents ownerNeeded.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/identity.md","note":"#2377 slice D: adds credentialPrincipal, the request-free equivalent of the HTTP resolver for a bare credential (operator credential, or pairedDevicePrincipal; account-bound devices resolve to none per #3586). Citing identity and principal docs describe the HTTP resolver, unchanged.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/design/principals.md","note":"#2377 slice D: adds credentialPrincipal, the request-free equivalent of the HTTP resolver for a bare credential (operator credential, or pairedDevicePrincipal; account-bound devices resolve to none per #3586). Citing identity and principal docs describe the HTTP resolver, unchanged.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"#2377 slice D: adds credentialPrincipal, the request-free equivalent of the HTTP resolver for a bare credential (operator credential, or pairedDevicePrincipal; account-bound devices resolve to none per #3586). Citing identity and principal docs describe the HTTP resolver, unchanged.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2377 slice D: adds credentialPrincipal, the request-free equivalent of the HTTP resolver for a bare credential (operator credential, or pairedDevicePrincipal; account-bound devices resolve to none per #3586). Citing identity and principal docs describe the HTTP resolver, unchanged.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D: adds credentialPrincipal, the request-free equivalent of the HTTP resolver for a bare credential (operator credential, or pairedDevicePrincipal; account-bound devices resolve to none per #3586). Citing identity and principal docs describe the HTTP resolver, unchanged.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: every job stores createdBy, and a personal Station backfills the operator on older ownerless jobs at start. Citing docs' targeted-creator claims stay accurate; the automations guide and API reference describe the rest.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D: every job stores createdBy, and a personal Station backfills the operator on older ownerless jobs at start. Citing docs' targeted-creator claims stay accurate; the automations guide and API reference describe the rest.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D: every job stores createdBy, and a personal Station backfills the operator on older ownerless jobs at start. Citing docs' targeted-creator claims stay accurate; the automations guide and API reference describe the rest.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D: every job stores createdBy, and a personal Station backfills the operator on older ownerless jobs at start. Citing docs' targeted-creator claims stay accurate; the automations guide and API reference describe the rest.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: POST /jobs records the requester as an untargeted job's owner (jobOwner). The API reference documents it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#2377 slice D: POST /jobs records the requester as an untargeted job's owner (jobOwner). The API reference documents it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#2377 slice D: POST /jobs records the requester as an untargeted job's owner (jobOwner). The API reference documents it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D: POST /jobs records the requester as an untargeted job's owner (jobOwner). The API reference documents it.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D: a signed-in voice session's Station tools act for its person through a per-session bound caller; a credential-free session is offered none and told so. The threat model records it; architecture and SDK citations are unaffected.","inputs":["src-server/voice/voice-session.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: a signed-in voice session's Station tools act for its person through a per-session bound caller; a credential-free session is offered none and told so. The threat model records it; architecture and SDK citations are unaffected.","inputs":["src-server/voice/voice-session.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D: a signed-in voice session's Station tools act for its person through a per-session bound caller; a credential-free session is offered none and told so. The threat model records it; architecture and SDK citations are unaffected.","inputs":["src-server/voice/voice-session.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: the voice listener resolves an authenticated credential to its person (refusing one that resolves to no one), and a loopback client may opt in to the handshake with ?authenticate=1. The threat model and connections passages on the credential-free loopback path remain accurate; the threat model now notes it has no Station tools.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#2377 slice D: the voice listener resolves an authenticated credential to its person (refusing one that resolves to no one), and a loopback client may opt in to the handshake with ?authenticate=1. The threat model and connections passages on the credential-free loopback path remain accurate; the threat model now notes it has no Station tools.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: the voice listener resolves an authenticated credential to its person (refusing one that resolves to no one), and a loopback client may opt in to the handshake with ?authenticate=1. The threat model and connections passages on the credential-free loopback path remain accurate; the threat model now notes it has no Station tools.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"README.md","note":"#2377 slice D: the UI voice client presents its credential whenever it holds one, loopback included, never in the URL. Citing README/architecture passages do not describe the handshake.","inputs":["src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D: the UI voice client presents its credential whenever it holds one, loopback included, never in the URL. Citing README/architecture passages do not describe the handshake.","inputs":["src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: backfillJobOwners and the ownerNeeded view field. Citing starter-work and module-map passages do not describe job ownership.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D: backfillJobOwners and the ownerNeeded view field. Citing starter-work and module-map passages do not describe job ownership.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: prompt test split into signed-in and credential-free cases. No cited claim changes.","inputs":["src-server/voice/__tests__/voice-session.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#2377 slice D adds the job-owner passage under Update Job; citing documents do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2377 slice D adds the job-owner passage under Update Job; citing documents do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/automations.md","note":"#2377 slice D adds a sentence on credential-free voice sessions; citing documents do not depend on it.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

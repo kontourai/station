@@ -21,27 +21,11 @@
  * trigger no toolbar change reaches, so on #1384's broken commit those three
  * did not merely lack power — they never executed.
  *
- * THE TWO THINGS THAT MAKE THIS GUARD REAL, both of which it asserts as
- * preconditions rather than assuming:
- *
- * 1. THE CONNECTION CHIP MUST BE IN THE DRIVEN STATE, WITH ITS FIXED NAME
- *    SLOT. Every state renders the dot and the Station name in one fixed-width
- *    slot on mobile, because `chat.css` hides `.app-toolbar__conn-state` in
- *    every state under the mobile breakpoint — the banner layer announces the
- *    states that need a decision, and the drawer footer owns Settings. EVERY
- *    defect in the retired class lived in a chip whose width followed its
- *    text, and two independent lanes have each measured this toolbar in the
- *    CONNECTED state and concluded it fits. So each case below drives ONE
- *    NAMED failure state and pins the exact modifier class it got (a drive
- *    that silently lands elsewhere measures a chip nobody chose), and the
- *    preconditions assert the state text lays out zero width, the name fills
- *    exactly its literal slot, and the chip meets the 44px touch floor. A
- *    regressed label shows up here as a wrong slot in exactly that state.
- *
- * 2. THE INVENTORY MUST NOT BE EMPTY OR HALF-EMPTY. A hit test over zero
- *    controls passes forever. `assertToolbarPreconditions` requires four
- *    named controls to be present in the measured inventory before any
- *    reachability verdict is read.
+ * The fixture uses a long saved Station name and 101 pending approvals.
+ * Both can grow the row: the saved name fills its cap where room permits,
+ * and the bell renders the widest badge (9+) while announcing the real count.
+ * Each case confirms the connection state and the complete control inventory
+ * before hit-testing every center and the toolbar's right gutter.
  *
  * A first-run overlay would legitimately cover the whole page in a fresh
  * profile. It is DISMISSED (`dismissSetupLauncher`, as the rest of this suite
@@ -51,6 +35,7 @@
  * at "More actions".
  */
 
+import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { devices, expect, type Page, test } from '@playwright/test';
 import { dismissSetupLauncher } from './helpers/orchestration';
@@ -111,56 +96,17 @@ const REQUIRED_CONTROL_KEYS = [
   'Toggle menu', // aria-label, .app-toolbar__sidebar-toggle
   'app-toolbar-connection', // data-testid, the connection chip
   'Notifications', // aria-label, the notification bell
+  'Search or jump to…', // aria-label, command palette
   'More actions', // aria-label, .app-toolbar__overflow-btn
 ] as const;
 
 /**
- * WHY 390 AND 360 ARE NO LONGER SKIPPED.
- *
- * `.app-toolbar__actions` is `flex-shrink: 0`, so the toolbar row's content
- * width is viewport-INDEPENDENT (the brand is the only shrinking member and it
- * has already bottomed out). When this guard was written the row ended at
- * x≈421 and the Settings gear occupied x=377..421 at EVERY width, so its
- * centre (x≈399) fell outside any viewport narrower than 399px — the row
- * clipped rather than reflowing. Both widths were present-but-skipped, each
- * naming in its own reason the fix that would un-skip it.
- *
- * Both fixes have landed and both cases are enforced:
- *
- * - 390 by #1401/#1424, which released the chip's 116px `min-width`
- *   reservation at the mobile breakpoint. Measured on a running app, the gear
- *   moved to x=348..392, centre x=370, inside 390. That reason said "un-skip it
- *   there — it is the check that proves that fix"; this is that.
- *
- * - 360 by #1132 — and that reason was WRONG about what it would take. It said
- *   a hamburger plus four 44px controls plus the chip "does not fit in 360px at
- *   all, so no amount of narrowing makes every control reachable", and
- *   concluded that only a control LEAVING the row could close it. The
- *   arithmetic omitted the chip's own label: #1132 drops it below a measured
- *   width, taking the chip from 110px to its 44px floor and the cluster from
- *   266px to 200px. Measured on a running app at 360, every control resolves to
- *   itself and the row ends at x=348. No control left the toolbar.
- *
- * All four widths are enforced now, which is what the header's
- * "present-but-skipped so the coverage stays visible" note was holding the
- * place for.
- */
-
-/**
- * Every width this guard enforces, widest first, all with zero tolerance: any
- * visible control at any of them that is not reachable at its own centre fails
- * the suite.
- *
- * 412 is the Pixel 7's own viewport. 402 is a second real Android width. 390
- * is the common iPhone width #1401 closed. 375 and 360 are the two sides of
- * the retired label-drop breakpoint (#1132/#1401): the chip shows the same
- * name slot at both now, and keeping both pins that no width-conditional
- * label rule crept back. Five rather than two because a single width cannot notice a defect
- * confined to a narrow band, and a narrow band is exactly what a regressed
- * breakpoint leaves behind.
+ * Check common phone widths, the current tight-gap boundary (360/361), the
+ * former label-drop boundary (374/375/376), and the 300px supported floor.
+ * 600px checks the same mobile toolbar with room for the full long-name slot.
  */
 const TOOLBAR_WIDTHS: readonly number[] = [
-  440, 412, 402, 393, 390, 375, 360, 320, 300,
+  600, 440, 412, 402, 393, 390, 376, 375, 374, 361, 360, 320, 300,
 ];
 
 /**
@@ -170,22 +116,9 @@ const TOOLBAR_WIDTHS: readonly number[] = [
  */
 const PRODUCT_NAMES: readonly string[] = ['Station', 'Station Nightly'];
 
-/**
- * Literal expectations for the app name that do NOT depend on the measured
- * slot (the slot check in `assertToolbarPreconditions` is derived from the
- * post-layout chip position, so a chip that grew past its fixed name slot
- * would shrink the slot and excuse a hidden name). Each list is pinned here as
- * literals.
- *
- * On a phone the chip shows the connected Station's name in every state
- * (owner decision, 2026-11-05), and that name wins over the app name: the
- * wordmark wraps away whole wherever the row cannot hold it, while the logo
- * stays. Measured: "Station" is whole at 440 in every connection state (412 is
- * whole or not by font metrics, so it is not listed), and "Station Nightly"
- * (107.41px) is wrapped away at every width this spec drives.
- */
 const NAME_WHOLE_WIDTHS: Readonly<Record<string, readonly number[]>> = {
-  Station: [440],
+  Station: [600],
+  'Station Nightly': [600],
 };
 const NAME_HIDDEN_WIDTHS: Readonly<Record<string, readonly number[]>> = {
   'Station Nightly': [320],
@@ -193,6 +126,45 @@ const NAME_HIDDEN_WIDTHS: Readonly<Record<string, readonly number[]>> = {
 
 /** The toolbar's own side padding (index.css `--app-toolbar-gutter` on a phone). */
 const TOOLBAR_GUTTER = 12;
+
+const STATION_NAME = 'Station for the Connected Operations Workspace';
+const PENDING_COUNT = 101;
+
+async function driveWideToolbar(page: Page): Promise<void> {
+  await page.addInitScript((name) => {
+    const key = 'station-connect-connections';
+    const profiles = localStorage.getItem(key);
+    if (!profiles) return;
+    const active = localStorage.getItem('station-connect-connections-active');
+    const connections: { id: string; name: string }[] = JSON.parse(profiles);
+    const connection = connections.find((profile) => profile.id === active);
+    if (!connection) return;
+    connection.name = name;
+    localStorage.setItem(key, JSON.stringify(connections));
+  }, STATION_NAME);
+
+  const date = '2026-01-01T00:00:00.000Z';
+  const data: AttentionProjection = {
+    pendingCount: PENDING_COUNT,
+    items: Array.from({ length: PENDING_COUNT }, (_, index) => ({
+      kind: 'approval',
+      id: `approval-${index}`,
+      title: `Approval ${index + 1}`,
+      createdAt: date,
+      updatedAt: date,
+      source: {
+        notificationId: `notification-${index}`,
+        notificationSource: 'toolbar-reachability',
+      },
+      actions: [],
+    })),
+  };
+  await page.route('**/api/attention', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: { success: true, data } })
+      : route.fallback(),
+  );
+}
 
 /**
  * The web profile always reports "Station", so a non-default name is applied
@@ -222,33 +194,11 @@ async function applyProductName(page: Page, name: string): Promise<void> {
   }, name);
 }
 
-/**
- * The connection chip on a phone is the dot plus the Station name in a
- * fixed-width slot, in every state (chat.css: `width: min(28vw, 120px)` on
- * `.app-toolbar__conn-label`). The slot is a literal here, not read from the
- * stylesheet, so a slot that started following its text, or the state, reds.
- * The chip never yields width to the app name; the lockup is the one member
- * of the row that does.
- */
 const CHIP_MIN_WIDTH = 44;
-const chipNameSlot = (viewportWidth: number) =>
+const chipNameCap = (viewportWidth: number) =>
   Math.min(0.28 * viewportWidth, 120);
 
-/**
- * The connection states this guard drives, each through the real
- * health-coordinator path, and each PINNED by the exact modifier class it must
- * produce. Driving "a failure" and accepting whichever state arrives is the
- * trap this list exists to close.
- *
- * The chip has the same fixed name slot in every state on mobile, so these
- * two cases no longer measure different widths — they exercise two different
- * MECHANISMS reaching the same chip (a dead host vs. a host answering with the
- * wrong identity, which also raises a Station notice and its "!" mark), plus a
- * named state in the failure output either way. The retired
- * widest-label derivation (`newsLabelWidths`, the `max-width` ceiling read,
- * the `coversClassMaximum` designation) went with the label it measured:
- * there is no text width left to bound.
- */
+/** Each drive exercises the health coordinator and asserts its exact state. */
 const NEWS_STATES: ReadonlyArray<{
   id: string;
   /** The `app-toolbar__conn--*` modifier this drive must produce, exactly. */
@@ -343,6 +293,7 @@ interface ToolbarMeasurement {
   } | null;
   /** The compact label's laid-out width (0 when the chip shows only its dot). */
   connectionLabelWidth: number;
+  notificationBadgeWidth: number;
   /** Visible links in the toolbar whose name ends "home", and the brand's tab/AT state. */
   homeLinks: string[];
   brandTabIndex: string | null;
@@ -541,6 +492,10 @@ async function measureToolbarControls(page: Page): Promise<ToolbarMeasurement> {
         connection
           ?.querySelector<HTMLElement>('.app-toolbar__conn-label')
           ?.getBoundingClientRect().width ?? 0,
+      notificationBadgeWidth:
+        toolbar
+          ?.querySelector('.app-toolbar__notification-badge')
+          ?.getBoundingClientRect().width ?? 0,
       homeLinks: Array.from(
         toolbar?.querySelectorAll<HTMLElement>('[role="link"]') ?? [],
       )
@@ -583,7 +538,7 @@ function renderInventory(measurement: ToolbarMeasurement): string {
     `connection chip ${measurement.connectionChipWidth}px ` +
     `(${measurement.connectionClass}, state text ${JSON.stringify(measurement.connectionStateText)} ` +
     `at ${measurement.connectionStateWidth}px)\n` +
-    `${measurement.controls.length} visible control(s):\n${lines.join('\n')}`
+    `${measurement.notificationBadgeWidth}px notification badge; ${measurement.controls.length} visible control(s):\n${lines.join('\n')}`
   );
 }
 
@@ -623,7 +578,7 @@ function assertToolbarPreconditions(
       `\n${context}`,
   ).toBe(true);
 
-  // Precondition 1 — the wide chip, in the exact state this case drove.
+  // Precondition 1 — the named chip, in the exact state this case drove.
   //
   // (a) The named state, not merely "some news state". A drive that silently
   //     landed somewhere else would still satisfy a class-level check while
@@ -635,9 +590,7 @@ function assertToolbarPreconditions(
       `an unchosen state\n${context}`,
   ).toContain(expectedModifier);
 
-  // (b) In the exact state this case drove, the chip lays out no state text
-  //     and shows the Station name in its fixed slot. The slot is the same in
-  //     every state, so a state flip cannot move its neighbours.
+  // (b) The compact chip shows the Station name and keeps its touch target.
   expect(
     measurement.connectionStateWidth ?? 0,
     `the ${expectedModifier} chip lays out state text on a phone - the ` +
@@ -649,11 +602,14 @@ function assertToolbarPreconditions(
     `the ${expectedModifier} chip must meet the ${CHIP_MIN_WIDTH}px touch ` +
       `floor at ${measurement.viewportWidth}px\n${context}`,
   ).toBeGreaterThanOrEqual(CHIP_MIN_WIDTH);
-  expect(
-    measurement.connectionLabelWidth,
-    `the ${expectedModifier} chip's Station name must fill its fixed slot at ` +
-      `${measurement.viewportWidth}px\n${context}`,
-  ).toBeCloseTo(chipNameSlot(measurement.viewportWidth), 0);
+  const nameCap = chipNameCap(measurement.viewportWidth);
+  expect(measurement.connectionLabelWidth, context).toBeGreaterThan(0);
+  expect(measurement.connectionLabelWidth, context).toBeLessThanOrEqual(
+    nameCap,
+  );
+  if (measurement.viewportWidth === 600) {
+    expect(measurement.connectionLabelWidth, context).toBeCloseTo(nameCap, 1);
+  }
 
   // (c) The app name: whole or absent, never a stub. A text-overflow ellipsis
   //     is the "S…" defect, and the name must be whole wherever it can fit.
@@ -676,17 +632,13 @@ function assertToolbarPreconditions(
       insideLockup || clippedAway,
       `the app name is partly clipped instead of whole or hidden\n${context}`,
     ).toBe(true);
-    // Hidden is only allowed when the slot genuinely cannot hold logo + gap +
-    // the whole name. The slot is measured, not assumed: it runs from the
-    // lockup's left edge to the chip (less the toolbar's 8px gap), and the
-    // name's own box keeps its full width even while it is wrapped away.
-    const chip = measurement.controls.find(
-      (control) => control.key === 'app-toolbar-connection',
+    // The palette now sits between the lockup and the Station control.
+    const palette = measurement.controls.find(
+      (control) => control.key === 'Search or jump to…',
     );
-    if (chip) {
-      // The toolbar's own gap: 8px, 2px at and below 360px (index.css).
+    if (palette) {
       const rowGap = measurement.viewportWidth <= 360 ? 2 : 8;
-      const slot = chip.rect.x - rowGap - brand.lockupRect.x;
+      const slot = palette.rect.x - rowGap - brand.lockupRect.x;
       const needed = 22 + 10 + brand.rect.width;
       if (slot >= needed) {
         expect(
@@ -721,6 +673,10 @@ function assertToolbarPreconditions(
       measurement.homeLinks,
       `exactly one home link\n${context}`,
     ).toHaveLength(1);
+    expect(
+      measurement.controls.map((control) => control.key),
+      context,
+    ).toContain(`${brand.text} home`);
     expect(measurement.brandTabIndex, context).toBeNull();
     expect(measurement.brandAriaHidden, context).toBe('true');
   }
@@ -747,6 +703,11 @@ function assertToolbarPreconditions(
  */
 function assertReachability(measurement: ToolbarMeasurement): void {
   const context = renderInventory(measurement);
+  const centers = measurement.controls.map((control) => control.centre.y);
+  expect(
+    Math.max(...centers) - Math.min(...centers),
+    `toolbar controls must stay in one row\n${context}`,
+  ).toBeLessThanOrEqual(1);
   const unreachable = measurement.controls.filter(
     (control) => !control.reachable,
   );
@@ -803,6 +764,7 @@ for (const width of TOOLBAR_WIDTHS) {
           page,
         }) => {
           await applyProductName(page, productName);
+          await driveWideToolbar(page);
           // Registered BEFORE the first navigation so the coordinator's opening
           // probe already resolves to this state and the chip never renders its
           // connected width at all.
@@ -832,7 +794,24 @@ for (const width of TOOLBAR_WIDTHS) {
             page.getByRole('dialog', { name: 'Starting Station', exact: true }),
           ).toBeHidden();
 
+          await expect(
+            connection.locator('.app-toolbar__conn-label'),
+          ).toHaveText(STATION_NAME);
+          const notifications = toolbar.getByRole('button', {
+            name: new RegExp(
+              `^Notifications, ${PENDING_COUNT} need attention$`,
+            ),
+          });
+          await expect(notifications).toBeVisible();
+          await expect(
+            notifications.getByText('9+', { exact: true }),
+          ).toBeVisible();
+          await page.evaluate(() => document.fonts.ready);
           const measurement = await measureToolbarControls(page);
+          await test.info().attach('toolbar geometry', {
+            body: JSON.stringify(measurement),
+            contentType: 'application/json',
+          });
           assertToolbarPreconditions(measurement, state.modifier);
           assertReachability(measurement);
         });

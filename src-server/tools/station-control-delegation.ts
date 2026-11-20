@@ -15,6 +15,13 @@ import {
   type AgentProfileCapability,
 } from '@kontourai/station-contracts/enriched-agent';
 import {
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  type PeerStationReadiness,
+  STATION_READINESS_STATUSES,
+  stationReadinessIsReady,
+  stationReadinessReason,
+} from '@kontourai/station-contracts/environment-security';
+import {
   type ExecutionConfinementRecord,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
 } from '@kontourai/station-contracts/execution-confinement';
@@ -26,6 +33,7 @@ import type {
   WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import type { StagedConversationHandoff } from '@kontourai/station-contracts/orchestration';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
@@ -50,6 +58,7 @@ import { engineStartupFailureGuidance } from '@kontourai/station-contracts/provi
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
+  describeAcpTurnStopFailure,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
@@ -87,6 +96,12 @@ import {
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
 import {
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
+  delegatedRuntimeFailureGuidance,
+  nativeUsageLimitReason,
+} from '../providers/delegated-runtime-failure.js';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../providers/finish-reason-authority.js';
+import {
   formatProviderQuotaEventText,
   formatProviderQuotaReasonDetail,
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
@@ -96,6 +111,7 @@ import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-te
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
+import { managedEngineRefusalFor } from '../security/managed-engine-limits.js';
 import {
   assertPreparationRequirementSupported,
   verifyPreparedCheckout,
@@ -135,6 +151,7 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
+import { assertInheritedDelegationToolPolicy } from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -410,6 +427,9 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  appearanceProposal?: boolean;
+  /** Composed from the verified parent at the local route. */
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -1354,10 +1374,21 @@ export function delegatedTaskReason(
   // The CURRENT outcome is the newest terminal event, not the newest budget
   // code anywhere in history: a prior budget failure followed by a newer
   // turn's terminal (or a still-running turn) must not reuse the old code.
-  const terminal = reversed.find(isDelegationTerminalEvent);
+  const terminal = reversed.find((event) => {
+    if (!isDelegationTerminalEvent(event)) return false;
+    if (session.lifecycleState !== 'failed') return true;
+    if (event.method === 'turn.aborted') return false;
+    return (
+      event.method !== 'turn.completed' ||
+      Boolean(describeAcpTurnStopFailure(event)) ||
+      (typeof event.finishReason === 'string' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(event.finishReason))
+    );
+  });
   if (!terminal) return undefined;
   // A clean completion ends the story even when older errors linger.
-  if (terminal.method === 'turn.completed') return undefined;
+  const acpFailure = describeAcpTurnStopFailure(terminal);
+  if (terminal.method === 'turn.completed' && !acpFailure) return undefined;
   const terminalCode =
     (terminal.method === 'runtime.error' ||
       terminal.method === 'runtime_error') &&
@@ -1372,14 +1403,30 @@ export function delegatedTaskReason(
   // on its own (honest bounded behavior, documented on
   // `delegatedTurnSupervision`). A successful continuation or a newer
   // failure therefore never revives a previous turn's reason.
-  const newestStartTurnId = reversed.find(
-    (event) => event.method === 'turn.started',
-  )?.turnId;
+  const newestStart = reversed.find((event) => event.method === 'turn.started');
+  const newestStartTurnId = newestStart?.turnId;
   const terminalScopedToLatestTurn =
     typeof newestStartTurnId !== 'string' ||
     typeof terminal.turnId !== 'string' ||
     newestStartTurnId === terminal.turnId;
-  const startupGuidance = engineStartupFailureGuidance(terminalCode);
+  if (acpFailure)
+    return terminalScopedToLatestTurn
+      ? { code: acpFailure.code, detail: acpFailure.message }
+      : undefined;
+  const usageLimit = nativeUsageLimitReason(terminal);
+  if (usageLimit) {
+    if (
+      !terminalScopedToLatestTurn ||
+      (typeof newestStart?.invocationId === 'string' &&
+        typeof terminal.invocationId === 'string' &&
+        newestStart.invocationId !== terminal.invocationId)
+    )
+      return undefined;
+    return usageLimit;
+  }
+  const startupGuidance =
+    engineStartupFailureGuidance(terminalCode) ??
+    delegatedRuntimeFailureGuidance(terminalCode);
   if (startupGuidance && terminalCode) {
     if (!terminalScopedToLatestTurn) return undefined;
     return { code: terminalCode, detail: startupGuidance };
@@ -1419,6 +1466,10 @@ export function delegatedTaskReason(
       ? attribution.kind
       : undefined;
   if (!kind) return undefined;
+  if (kind === 'runtime_error' && terminal.provider === 'acp') {
+    if (!terminalScopedToLatestTurn) return undefined;
+    return { code: 'runtime_error', detail: ACP_UNKNOWN_FAILURE_GUIDANCE };
+  }
   if (kind === 'runtime_error') return { code: 'runtime_error' };
   if (kind === 'exit') {
     const exitCode = [...events]
@@ -3013,6 +3064,14 @@ async function readConnection(
     );
   }
   const connection = response.data;
+  if (target.kind === 'current' && connection.kind === 'agent') {
+    const refusal = managedEngineRefusalFor(
+      typeof connection.config.provider === 'string'
+        ? connection.config.provider
+        : connection.type,
+    );
+    if (refusal) throw refusal;
+  }
   if (connection.kind !== 'agent') {
     throw new Error(`Connection '${id}' is not an engine connection`);
   }
@@ -3106,12 +3165,35 @@ function connectionModels(connection: AgentConnectionView): ModelOption[] {
 }
 
 /**
+ * #2266: whether an explicit model can be chosen for this target. For an
+ * engine connection that is the adapter's declared launch capability (a
+ * selector applied at start or per turn), never whether its catalog listed
+ * anything: Muse applies `--model` while its catalog can be empty. A
+ * connection with no declaration (an older host) and a Station-engine Agent
+ * still answer from the models listed.
+ */
+function targetModelSelection(
+  connection: AgentConnectionView | undefined,
+  models: ModelOption[],
+): boolean {
+  // Read from another Station's answer: only the exact booleans count.
+  const launch: unknown = connection?.modelLaunch;
+  if (launch && typeof launch === 'object') {
+    const declared = launch as Record<string, unknown>;
+    return (
+      declared.overrideAtStart === true || declared.overridePerTurn === true
+    );
+  }
+  return models.length > 0;
+}
+
+/**
  * List only stable, secret-free environment selection state. Unlike target
  * discovery, this never connects an SSH profile or returns its transport and
  * verified filesystem binding.
  */
 export async function discoverDelegationEnvironments(): Promise<DelegationEnvironments> {
-  const [current, saved] = await Promise.all([
+  const [current, saved, peers] = await Promise.all([
     currentHandshake(),
     readSanitizedJson<ApiEnvelope<SshEnvironmentView[]>>(
       THIS_STATION,
@@ -3119,6 +3201,14 @@ export async function discoverDelegationEnvironments(): Promise<DelegationEnviro
       trustedRequest(),
       'Saved SSH environments are unavailable',
     ),
+    // Paired Stations are listed when this Station can read them; a refused
+    // or failed peer read hides only the peers, never the SSH list.
+    readSanitizedJson<ApiEnvelope<PeerListEntry[]>>(
+      THIS_STATION,
+      `${currentControlApiBase()}/api/environments/peers`,
+      trustedRequest(),
+      'Paired Stations are unavailable',
+    ).catch(() => undefined),
   ]);
   if (!saved.success || !Array.isArray(saved.data)) {
     throw new Error('Saved SSH environments are unavailable');
@@ -3154,7 +3244,63 @@ export async function discoverDelegationEnvironments(): Promise<DelegationEnviro
         : {}),
     });
   }
+  const pairedPeers =
+    peers?.success && Array.isArray(peers.data) ? peers.data : [];
+  for (const peer of pairedPeers) {
+    if (environments.length >= MAX_DISCOVERED_TARGETS) break;
+    const id = safeIdentifier(peer?.environmentId);
+    // A peer that is also a saved SSH profile is that SSH entry (SSH wins).
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const readiness = safePeerReadiness(peer.readiness);
+    const canOperate =
+      typeof peer.scope === 'string' &&
+      peer.scope.split(/\s+/).includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE);
+    const online = readiness ? stationReadinessIsReady(readiness) : false;
+    const ready = canOperate && (readiness ? online : true);
+    const unavailableReason = !canOperate
+      ? 'This paired Station did not grant orchestration:operate.'
+      : readiness && !online
+        ? stationReadinessReason(readiness)
+        : undefined;
+    environments.push({
+      id,
+      // Like SSH, the listing never returns the peer's transport address.
+      name: safeLabel(peer.label, 'Paired Station'),
+      kind: 'peer',
+      ready,
+      connected: online,
+      ...(unavailableReason ? { unavailableReason } : {}),
+    });
+  }
   return { environments };
+}
+
+/** A `GET /api/environments/peers` row as this tool reads it (secret-free). */
+interface PeerListEntry {
+  environmentId?: unknown;
+  label?: unknown;
+  scope?: unknown;
+  readiness?: unknown;
+}
+
+function safePeerReadiness(value: unknown): PeerStationReadiness | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const status = record.status;
+  if (
+    typeof status !== 'string' ||
+    !(STATION_READINESS_STATUSES as readonly string[]).includes(status) ||
+    typeof record.checkedAt !== 'number'
+  )
+    return undefined;
+  return {
+    status: status as PeerStationReadiness['status'],
+    checkedAt: record.checkedAt,
+    ...(record.reason === 'identity-mismatch'
+      ? { reason: 'identity-mismatch' as const }
+      : {}),
+  };
 }
 
 /**
@@ -3334,7 +3480,7 @@ export async function discoverDelegationOptions(
             approvals: connection
               ? connection.capabilities.includes('approvals')
               : true,
-            modelSelection: models.length > 0,
+            modelSelection: targetModelSelection(connection, models),
           },
         },
       ];
@@ -4002,6 +4148,26 @@ function parseTaskEventCursor(cursor: string | undefined): number {
   return sequence;
 }
 
+/**
+ * #5077: the bound for a task event cursor is the thread's highest per-thread
+ * `sequence`, not its event count: compaction can leave gaps, so a valid
+ * sequence can exceed the count. A page from a host that predates
+ * `highWaterSequence` has a gap-free log, where the count is the high water.
+ * The count is read apart from the page, so it is not compared with the
+ * high water: an append landing between the two reads would fail a sound page.
+ */
+function taskEventHighWater(
+  page: Pick<RawTaskEventPage, 'highWaterSequence'>,
+  eventCount: number,
+): number {
+  if (page.highWaterSequence === undefined) return eventCount;
+  const highWater = optionalCount(page.highWaterSequence);
+  if (highWater === undefined) {
+    throw new Error('The selected Station returned invalid task event state');
+  }
+  return highWater;
+}
+
 function taskEventCursor(sequence: number): string {
   return `${TASK_EVENT_CURSOR_PREFIX}${sequence}`;
 }
@@ -4054,10 +4220,12 @@ function optionalNumber(value: unknown): number | undefined {
 /**
  * #225: the usage fields a delegated-task event carries, keyed by the
  * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
- * compile error here instead of a silent drop. Pricing snapshots and serving
- * routes stay on the canonical receipt; this projection carries token counters.
- * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
- * that this per-event projection cannot state.
+ * compile error here instead of a silent drop. Pricing, serving routes and
+ * served-model observations stay on canonical usage records. This projection
+ * carries token counters and context occupancy. `reportedCostUsd` has a per-provider scope (per-turn
+ * versus cumulative) that this per-event projection cannot state;
+ * `reportedCost` is a cost in the engine's own unit, not a counter, and stays
+ * on the canonical event too.
  */
 type DelegatedUsageField = Exclude<
   keyof TokenUsageUpdatedEvent,
@@ -4065,7 +4233,9 @@ type DelegatedUsageField = Exclude<
   | 'method'
   | 'pricingSnapshot'
   | 'servingRoute'
+  | 'servedModelObservation'
   | 'reportedCostUsd'
+  | 'reportedCost'
 >;
 
 const DELEGATED_USAGE_FIELD_PROJECTORS: {
@@ -4089,6 +4259,10 @@ const DELEGATED_USAGE_FIELD_PROJECTORS: {
   },
   contextTokens: optionalNumber,
   contextWindowTokens: optionalNumber,
+  contextPercent: (value) => {
+    const percent = optionalNumber(value);
+    return percent !== undefined && percent <= 100 ? percent : undefined;
+  },
 };
 
 function optionalCount(value: unknown): number | undefined {
@@ -4150,6 +4324,15 @@ export function projectDelegatedTaskEvent(
 ): DelegatedTaskEvent {
   const event = record(rawEvent);
   const common = commonTaskEvent(sequence, event);
+  const acpFailure = describeAcpTurnStopFailure(event);
+  if (acpFailure)
+    return {
+      ...common,
+      kind: 'runtime',
+      severity: 'error',
+      text: acpFailure.message,
+      retriable: false,
+    };
   switch (event.method) {
     case 'content.text-delta':
       return { ...common, kind: 'message', ...visibleText(event.delta) };
@@ -4231,7 +4414,11 @@ export function projectDelegatedTaskEvent(
           : {}),
       };
     case 'runtime.error': {
-      const startupGuidance = engineStartupFailureGuidance(event.code);
+      const usageLimit = nativeUsageLimitReason(event);
+      const startupGuidance =
+        usageLimit?.detail ??
+        engineStartupFailureGuidance(event.code) ??
+        delegatedRuntimeFailureGuidance(event.code);
       if (startupGuidance)
         return {
           ...common,
@@ -4270,7 +4457,10 @@ export function projectDelegatedTaskEvent(
         ...common,
         kind: 'runtime',
         severity: 'error',
-        text: 'The delegated runtime reported an error.',
+        text:
+          event.provider === 'acp'
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : 'The delegated runtime reported an error.',
         ...(typeof event.retriable === 'boolean'
           ? { retriable: event.retriable }
           : {}),
@@ -4378,6 +4568,7 @@ interface RawTaskEventPage {
   events?: Array<{ sequence?: unknown; event?: unknown }>;
   hasMore?: unknown;
   nextSequence?: unknown;
+  highWaterSequence?: unknown;
 }
 
 function taskTargetFromDelegation(
@@ -4551,7 +4742,9 @@ export async function listDelegatedTasks(
   try {
     rawSessions =
       target.kind === 'current' && orchestrationService
-        ? await orchestrationService.listSessionReadModel(readAuthority)
+        ? await orchestrationService.listSessionReadModel(readAuthority, {
+            purpose: 'delegated-task-inventory',
+          })
         : await readSelectedStation(target, () =>
             listOrchestrationSessions(target.apiBase, target.requestOptions),
           );
@@ -4682,7 +4875,8 @@ export async function observeDelegatedTaskEvents(
   if (eventCount === undefined) {
     throw new Error('The selected Station returned invalid task event state');
   }
-  if (afterSequence > eventCount) {
+  const highWaterSequence = taskEventHighWater(page, eventCount);
+  if (afterSequence > highWaterSequence) {
     throw new Error(
       'The task event cursor is ahead of the available task history; restart without a cursor',
     );
@@ -4691,7 +4885,7 @@ export async function observeDelegatedTaskEvents(
   if (
     rawNextSequence === undefined ||
     rawNextSequence < afterSequence ||
-    rawNextSequence > eventCount ||
+    rawNextSequence > highWaterSequence ||
     !Array.isArray(page.events) ||
     page.events.length > limit ||
     typeof page.hasMore !== 'boolean'
@@ -4890,8 +5084,9 @@ export async function refreshPeerDelegationActivity(
   remote?: RemoteStationForwarder,
 ): Promise<void> {
   const readAuthority = readAuthorityForInput(input);
+  // Only the peer delegation records, not every readable Session (#5051).
   const records = (
-    await orchestrationService.listSessionReadModel(readAuthority)
+    await orchestrationService.listPeerDelegationActivity(readAuthority)
   )
     .filter(
       (session) =>
@@ -5216,13 +5411,12 @@ export async function respondToDelegatedTaskRequest(
     // hosting the task: a body naming another environment is refused before
     // any outbound request, so a request id is never decided elsewhere.
     if (selectedTarget.kind === 'peer' && orchestrationService) {
-      const hosts =
-        await orchestrationService.peerDelegationHostingEnvironmentIds(
-          input.taskId,
-          readAuthority,
-        );
-      if (!hosts.includes(selectedTarget.environmentId))
-        throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
+      const hosted = await orchestrationService.peerDelegationHostsTask(
+        input.taskId,
+        selectedTarget.environmentId,
+        readAuthority,
+      );
+      if (!hosted) throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
     }
     // Same follow-up poster as the continue path — a receiver's closed
     // portable refusal keeps its code/403 here too.
@@ -5528,7 +5722,11 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
-  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
+  assertInheritedDelegationToolPolicy(input.delegation);
+  input = snapshotTurnSubmissionFields(
+    { ...input, clientTurnId: input.clientTurnId ?? randomUUID() },
+    ['target', 'createRequestIntent', 'taskRoomAttachments'],
+  );
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
     throw new Error('Task attachments require Task room invocation admission.');
   if (
@@ -5671,6 +5869,13 @@ export async function delegateTask(
     readAuthority,
     orchestrationService,
   );
+  if (
+    input.appearanceProposal &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
+    throw new Error(
+      'Appearance proposals can be delegated only on this Station.',
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
@@ -5731,6 +5936,7 @@ export async function delegateTask(
               environment: relayEnvironment(selectedTarget),
             },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
             ...forwarded,
           },
           'The selected Station could not start the delegated task',
@@ -6263,6 +6469,8 @@ export async function delegateTask(
             input: {
               threadId: sessionId,
               provider: resolved.provider,
+              // Durable Tasks must retain the native transcript their resume cursor names.
+              persistSession: true,
               ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
               ...(resolved.workspace?.kind === 'project'
                 ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
@@ -6387,7 +6595,9 @@ export async function delegateTask(
         if (started.status !== 'accepted') {
           if (input.stagedFiles)
             throw new DelegationFileRefusal('delegation_files_start_refused');
-          const startupGuidance = engineStartupFailureGuidance(started.code);
+          const startupGuidance =
+            engineStartupFailureGuidance(started.code) ??
+            delegatedRuntimeFailureGuidance(started.code);
           if (startupGuidance && started.code)
             throw new Error(startupGuidance, {
               cause: new LocalStationRefusal(started.code, startupGuidance),
@@ -6430,8 +6640,20 @@ export async function delegateTask(
       // a second dispatch for the same claim.
       retainFiles = true;
       await markCreateRequestStarting(sessionId);
-      const attemptTurnDispatch =
-        await orchestrationService.dispatchWithReceipt(
+      const initialClientTurnId =
+        attemptClaim?.initialClientTurnId ??
+        (input.stagedFiles ? fileBinding.clientTurnId : undefined) ??
+        input.taskRoomInvocationAdmission?.clientTurnId ??
+        input.clientTurnId ??
+        randomUUID();
+      const revokeAppearance = input.delegatedAppearance
+        ? orchestrationService.grantDelegatedAppearance(sessionId, {
+            ...input.delegatedAppearance,
+            clientTurnId: initialClientTurnId,
+          })
+        : undefined;
+      const attemptTurnDispatch = await orchestrationService
+        .dispatchWithReceipt(
           {
             type: 'sendTurn',
             input: {
@@ -6448,16 +6670,7 @@ export async function delegateTask(
               ...(resolved.modelOptions
                 ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
-              clientTurnId:
-                input.taskRoomInvocationAdmission?.clientTurnId ??
-                input.clientTurnId ??
-                randomUUID(),
-              ...(input.stagedFiles
-                ? { clientTurnId: fileBinding.clientTurnId }
-                : {}),
-              ...(attemptClaim
-                ? { clientTurnId: attemptClaim.initialClientTurnId }
-                : {}),
+              clientTurnId: initialClientTurnId,
             },
           },
           dispatchContextForAuthority(
@@ -6494,7 +6707,17 @@ export async function delegateTask(
                 }
               : {}),
           },
-        );
+        )
+        .catch((error: unknown) => {
+          revokeAppearance?.();
+          throw error;
+        });
+      if (
+        revokeAppearance &&
+        attemptTurnDispatch.receipt.status !== 'accepted' &&
+        !attemptTurnDispatch.receiptStatus
+      )
+        revokeAppearance();
       input.stagedFiles?.accept(fileBinding);
       // The dispatch returning means the turn was durably accepted by the
       // adapter (the dedup-hit path returns the SAME already-accepted turn
@@ -6650,7 +6873,10 @@ export async function delegateTask(
 /**
  * #4512: the origin a delegated send records: `delegation` for a new
  * conversation (the delegated child it starts) or one whose current Session
- * is itself unattended, else `unknown`.
+ * is itself unattended, else `unknown`. A conversation id the send names but
+ * no Session holds yet is a new conversation too (#4830: classifying it from
+ * the facts of a Session that does not exist read `unknown`); one Station
+ * cannot read counts as new, so it is never mistaken for a person's chat.
  */
 function delegatedTargetOrigin(
   orchestrationService: OrchestrationService | undefined,
@@ -6658,6 +6884,14 @@ function delegatedTargetOrigin(
 ): TurnDispatchOrigin {
   if (!conversationId) return 'delegation';
   if (!orchestrationService) return 'unknown';
+  let existing: boolean;
+  try {
+    existing =
+      orchestrationService.conversationSessionIds(conversationId).length > 0;
+  } catch {
+    existing = false;
+  }
+  if (!existing) return 'delegation';
   const facts = orchestrationService.sessionDispatchFacts(
     orchestrationService.currentConversationSessionId(conversationId),
   );
@@ -6671,6 +6905,7 @@ export async function executeExecutionTargetMessage(
   remote?: RemoteStationForwarder,
   context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
+  assertInheritedDelegationToolPolicy(input.delegation);
   context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent)
     input = snapshotTurnSubmissionFields(input, [
@@ -6941,6 +7176,11 @@ export async function executeExecutionTargetMessage(
       let currentMetadata = currentDetail
         ? sessionBinding(currentDetail)
         : undefined;
+      // The provider the conversation's current session runs on, so a
+      // successor on the same connection keeps it (ruling R2).
+      let currentProvider: unknown = currentDetail
+        ? record(currentDetail.session).provider
+        : undefined;
       const reservedHandoff = currentDetail
         ? undefined
         : orchestrationService.reservedConversationHandoff(currentSessionId);
@@ -6956,6 +7196,9 @@ export async function executeExecutionTargetMessage(
             readAuthority,
           );
         currentMetadata = continued ? sessionBinding(continued) : undefined;
+        currentProvider = continued
+          ? record(continued.session).provider
+          : undefined;
       }
       const boundTarget = reservedHandoff
         ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
@@ -7020,6 +7263,13 @@ export async function executeExecutionTargetMessage(
           : typeof currentMetadata?.connectionId === 'string'
             ? { connectionId: currentMetadata.connectionId }
             : {}),
+        // A reserved handoff moves to another target; its provider is the
+        // target's, not the current session's.
+        ...(!reservedHandoff &&
+        typeof currentProvider === 'string' &&
+        currentProvider
+          ? { provider: currentProvider }
+          : {}),
       };
     },
     readPendingConversationSubmission: (
@@ -7090,6 +7340,7 @@ export async function executeExecutionTargetMessage(
         provider: EngineId;
         connectionId?: string;
         modelOverride?: string;
+        expectedInboxSessionId?: string;
       },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
@@ -7142,6 +7393,7 @@ export async function executeExecutionTargetMessage(
           ...(handoff.modelId ? { modelId: handoff.modelId } : {}),
           idempotencyKey: handoff.idempotencyKey,
           messageDigest: handoff.messageDigest,
+          stagedHandoff: handoff.stagedHandoff,
         },
       );
       return {
@@ -7457,6 +7709,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
+                : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
@@ -7492,6 +7747,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
                 : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
@@ -7555,7 +7813,10 @@ export async function executeExecutionTargetMessage(
  * foreground chat has no equivalent field or route.
  */
 export async function handoffExecutionTargetMessage(
-  input: AuthorityBearingForegroundMessageInput & { idempotencyKey: string },
+  input: AuthorityBearingForegroundMessageInput & {
+    idempotencyKey: string;
+    stagedHandoff?: StagedConversationHandoff;
+  },
   orchestrationService?: OrchestrationService,
 ): Promise<ForegroundMessageHandle> {
   if (input.target.environment.kind !== 'current') {
@@ -7566,7 +7827,10 @@ export async function handoffExecutionTargetMessage(
   return executeExecutionTargetMessage(
     {
       ...input,
-      handoffIntent: createConversationHandoffIntent(input.idempotencyKey),
+      handoffIntent: createConversationHandoffIntent(
+        input.idempotencyKey,
+        input.stagedHandoff,
+      ),
     },
     orchestrationService,
   );
@@ -7652,39 +7916,45 @@ export function resumedWorkspaceBinding(
  * which rebuilds the target from the binding, so a body that names anything
  * else must take the live path, which checks it while the sender waits.
  * Conservative: a reserved handoff, an unreadable or unbound conversation,
- * or any shape it does not recognise answers `false`.
+ * or any shape it does not recognise returns no match.
  */
-export async function followUpTargetMatchesBinding(
+export async function matchFollowUpTargetBinding(
   orchestrationService: OrchestrationService,
   conversationId: string,
   target: ExecutionTarget,
   readAuthority: SessionReadAuthority,
-): Promise<boolean> {
-  if (target.expectedEngine) return false;
+): Promise<{ expectedInboxSessionId?: string } | undefined> {
+  if (target.expectedEngine) return undefined;
   const rootDetail = await orchestrationService.readSession(
     conversationId,
     readAuthority,
     SESSION_BINDING_EVENTS,
   );
-  if (!rootDetail) return false;
+  if (!rootDetail) return undefined;
   const currentSessionId =
     orchestrationService.currentConversationSessionId(conversationId);
   if (orchestrationService.reservedConversationHandoff(currentSessionId))
-    return false;
-  const currentDetail = await orchestrationService.readSession(
-    currentSessionId,
-    readAuthority,
-    SESSION_BINDING_EVENTS,
-  );
-  if (!currentDetail) return false;
+    return undefined;
+  const currentDetail =
+    (await orchestrationService.readSession(
+      currentSessionId,
+      readAuthority,
+      SESSION_BINDING_EVENTS,
+    )) ??
+    (await orchestrationService.readPreparingContinuationPredecessor?.(
+      conversationId,
+      currentSessionId,
+      readAuthority,
+    ));
+  if (!currentDetail) return undefined;
   const metadata = sessionBinding(rootDetail);
   const currentMetadata = sessionBinding(currentDetail);
   const bound = delegationTargetBinding(currentMetadata);
-  if (!bound || !metadata) return false;
+  if (!bound || !metadata) return undefined;
   const agent = target.agent;
   // A stale-definition precondition is checked only by the live path.
   if (typeof agent !== 'string' && agent.expectedDefinitionFingerprint)
-    return false;
+    return undefined;
   const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
   const requestedExecution =
     typeof agent === 'string' ? undefined : agent.executionAgent;
@@ -7693,23 +7963,38 @@ export async function followUpTargetMatchesBinding(
       ? currentMetadata.executionAgentId
       : undefined;
   if (requestedAgent !== bound.id || requestedExecution !== boundExecution)
-    return false;
+    return undefined;
   const workspace = resumedWorkspaceBinding(
     metadata,
     record(rootDetail.session).cwd,
   ).workspace;
   const requested = target.workspace;
-  if (!requested) return workspace === undefined;
-  if (requested.kind === 'project')
-    return (
+  const matched =
+    currentDetail.session.threadId === currentSessionId
+      ? {}
+      : { expectedInboxSessionId: currentSessionId };
+  if (!requested) {
+    if (!workspace) return matched;
+    if (
+      workspace.kind === 'directory' &&
+      rootDetail.session.cwdManagedWorkspace === true &&
+      currentDetail.session.cwd === workspace.cwd
+    )
+      return { expectedInboxSessionId: currentSessionId };
+    return undefined;
+  }
+  if (
+    (requested.kind === 'project' &&
       workspace?.kind === 'project' &&
       workspace.projectSlug === requested.projectSlug &&
       requested.cwd === undefined &&
-      requested.workspaceIsolation === undefined
-    );
-  if (requested.kind === 'directory')
-    return workspace?.kind === 'directory' && workspace.cwd === requested.cwd;
-  return false;
+      requested.workspaceIsolation === undefined) ||
+    (requested.kind === 'directory' &&
+      workspace?.kind === 'directory' &&
+      workspace.cwd === requested.cwd)
+  )
+    return matched;
+  return undefined;
 }
 
 export async function continueExecutionTargetMessage(
@@ -7790,6 +8075,11 @@ export async function continueExecutionTargetMessage(
   const currentSessionId = orchestrationService.currentConversationSessionId(
     input.conversationId,
   );
+  if (
+    context?.expectedInboxSessionId !== undefined &&
+    currentSessionId !== context.expectedInboxSessionId
+  )
+    throw new Error('The conversation changed while this message was waiting.');
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,

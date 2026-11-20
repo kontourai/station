@@ -75,7 +75,6 @@ export function LayoutsSection({ slug }: { slug: string }) {
     <PageSection
       id="section-layouts"
       className="project-settings__section knowledge-section"
-      eyebrow="Workspace views"
       title="Layouts"
       description="Add focused views for the work this project needs."
       actions={

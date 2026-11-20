@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -12,12 +18,22 @@ const {
   useWorkflowTasksQuery,
   useWorkItemsQuery,
   useTasksQuery,
+  useOrchestrationSessionActivityQuery,
+  useOrchestrationSessionsQuery,
+  useTaskPullRequestFactsQuery,
+  updateTaskStatus,
+  openPullRequest,
 } = vi.hoisted(() => ({
+  useOrchestrationSessionsQuery: vi.fn(),
+  useTaskPullRequestFactsQuery: vi.fn(),
+  updateTaskStatus: vi.fn(),
+  openPullRequest: vi.fn(),
   navigate: vi.fn(),
   showToast: vi.fn(),
   useWorkflowTasksQuery: vi.fn(),
   useWorkItemsQuery: vi.fn(),
   useTasksQuery: vi.fn(),
+  useOrchestrationSessionActivityQuery: vi.fn(),
 }));
 const invalidateQueries = vi.fn();
 const setQueryData = vi.fn();
@@ -49,6 +65,11 @@ let tasks: Array<{
   createdBy: string;
   agentId?: string;
   sessionId?: string;
+  taskWorktree?: {
+    path: string;
+    branch: string;
+    kept?: { reason: 'uncommitted'; at: string; detail?: string };
+  };
   workspaceBinding?: {
     workingDirectory?: string;
     repoRoot?: string;
@@ -111,6 +132,23 @@ let providerItemClaim: {
   };
 } = { state: 'free' };
 let navigationEffect: ((pathname: string) => void) | undefined;
+/** `GET /api/orchestration/sessions/read-model` rows, by fixture. */
+let sessions: Array<Record<string, unknown>> = [];
+/** `GET /api/tasks/pull-request-facts` pull requests, by Task id. */
+let pullRequestFacts: Record<string, Array<Record<string, unknown>>> = {};
+const summary = (threadId: string, overrides: Record<string, unknown>) => ({
+  threadId,
+  provider: 'claude',
+  status: 'ready',
+  controlMode: 'station-owned',
+  answerability: { answerable: true },
+  isLoaded: true,
+  isPersisted: true,
+  eventCount: 4,
+  createdAt: '2026-05-03T00:00:00.000Z',
+  updatedAt: '2026-05-03T00:05:00.000Z',
+  ...overrides,
+});
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -128,6 +166,15 @@ vi.mock('../contexts/ToastContext', () => ({
 vi.mock('../views/project-page/ProjectTaskSharingControl', () => ({
   ProjectTaskSharingControl: () => null,
 }));
+// The board's open seams need the shell's region model; the board calls
+// them only from its actions.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => vi.fn(),
+}));
+vi.mock('../contexts/useOpenInRegion', () => ({
+  useOpenPullRequestInRegion: () => openPullRequest,
+}));
+vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 
 vi.mock('@kontourai/station-sdk', () => ({
   taskQueries: {
@@ -158,6 +205,12 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     mutateAsync: dispatchTask,
   }),
+  useUpdateTaskStatusMutation: () => ({
+    isPending: false,
+    mutateAsync: updateTaskStatus,
+  }),
+  useOrchestrationSessionsQuery,
+  useTaskPullRequestFactsQuery,
   useLaunchStartTaskStarterMutation: () => ({
     isPending: false,
     mutateAsync: launchStarterTask,
@@ -170,6 +223,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useWorkItemsQuery,
   useTaskClaimQuery: () => ({ data: taskClaim }),
   useWorkItemClaimQuery: () => ({ data: providerItemClaim }),
+  useOrchestrationSessionActivityQuery,
 }));
 
 import { ProjectTasksSection } from '../views/project-page/ProjectTasksSection';
@@ -198,11 +252,41 @@ describe('ProjectTasksSection', () => {
       data: tasks,
       error: tasksError,
       refetch: refetchTasks,
+      isSuccess: !tasksError,
+    }));
+    sessions = [];
+    pullRequestFacts = {};
+    updateTaskStatus.mockReset();
+    openPullRequest.mockReset();
+    useOrchestrationSessionsQuery.mockReset();
+    useOrchestrationSessionsQuery.mockImplementation(() => ({
+      data: sessions,
+      isError: false,
+      refetch: vi.fn(),
+    }));
+    useTaskPullRequestFactsQuery.mockReset();
+    useTaskPullRequestFactsQuery.mockImplementation(() => ({
+      data: {
+        observedAt: '2026-05-03T00:10:00.000Z',
+        tasks: Object.fromEntries(
+          tasks.map((task) => [
+            task.id,
+            {
+              taskCreatedAt: task.createdAt,
+              pullRequests: pullRequestFacts[task.id] ?? [],
+            },
+          ]),
+        ),
+      },
+      isError: false,
+      refetch: vi.fn(),
     }));
     useWorkflowTasksQuery.mockReset();
     useWorkflowTasksQuery.mockImplementation(() => ({ data: workflowTasks }));
     useWorkItemsQuery.mockReset();
     useWorkItemsQuery.mockImplementation(() => ({ data: workItemsData }));
+    useOrchestrationSessionActivityQuery.mockReset();
+    useOrchestrationSessionActivityQuery.mockReturnValue({ data: undefined });
     tasks = [
       {
         id: 'task-1',
@@ -257,16 +341,258 @@ describe('ProjectTasksSection', () => {
     expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
   });
 
-  test('opens the selected board task and refreshes its canonical records without dispatching', () => {
-    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Existing task, To do' }),
+  test("names the dispatched Session's agent-reported plan progress in the list link", () => {
+    tasks = [
+      { ...tasks[0], status: 'in_progress', sessionId: 'session-a' },
+      {
+        ...tasks[0],
+        id: 'task-2',
+        title: 'Unplanned task',
+        status: 'in_progress',
+        sessionId: 'session-b',
+      },
+    ];
+    useOrchestrationSessionActivityQuery.mockImplementation(
+      (threadId: string) =>
+        threadId === 'session-a'
+          ? {
+              data: {
+                session: { threadId, lifecycleState: 'running' },
+                events: [
+                  {
+                    sequence: 1,
+                    event: { method: 'turn.started', turnId: 'turn-1' },
+                  },
+                  {
+                    sequence: 2,
+                    event: {
+                      method: 'plan.updated',
+                      turnId: 'turn-1',
+                      entries: [
+                        { content: 'Read', status: 'completed' },
+                        { content: 'Edit', status: 'in_progress' },
+                      ],
+                    },
+                  },
+                ],
+              },
+            }
+          : { data: undefined },
     );
-    expect(dispatchTask).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
+    render(<ProjectTasksSection slug="project-alpha" />);
+    const entry = screen.getByRole('link', {
+      name: /Existing task.*Agent-reported plan: 1 of 2 steps done.*Open Task/,
+    });
+    expect(entry.textContent).toContain('Agent plan 1/2');
+    // A Session without a plan shows nothing rather than an empty bar.
+    const unplanned = screen.getByRole('link', { name: /Unplanned task/ });
+    expect(unplanned.textContent).not.toContain('Agent plan');
+    expect(unplanned.querySelector('.task-plan-progress')).toBeNull();
+  });
+
+  test('heads the section like other Project sections, with New Task beside Refresh', () => {
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Tasks' });
+    const header = heading.closest('.page-section__header') as HTMLElement;
+    expect(header).toBeTruthy();
+    fireEvent.click(within(header).getByRole('button', { name: 'New Task' }));
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(
+      within(header).getByRole('button', { name: 'Refresh Tasks' }),
+    ).toBeTruthy();
+    window.removeEventListener('station:shape-task', listener);
+  });
+
+  test('an empty board shows the shared empty title beside the list', () => {
+    tasks = [];
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+
+    expect(screen.getByText('Start a Task')).toBeTruthy();
+    // The board has no side pane: a card opens its Task.
+    expect(
+      screen.getByText('Nothing selected').closest('[hidden]'),
+    ).not.toBeNull();
+  });
+
+  test('a board card opens its Task, and Refresh re-reads the canonical records without dispatching', () => {
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    fireEvent.click(screen.getByRole('link', { name: 'Existing task' }));
     expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
+    expect(dispatchTask).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh Tasks' }));
     expect(refetchTasks).toHaveBeenCalledOnce();
+  });
+
+  test('the Task list refreshes its sources while keeping the selected row visible', async () => {
+    const refetchSessions = vi.fn();
+    const refetchProviderItems = vi.fn();
+    useOrchestrationSessionsQuery.mockReturnValue({
+      data: [],
+      refetch: refetchSessions,
+    });
+    useWorkItemsQuery.mockReturnValue({
+      data: workItemsData,
+      refetch: refetchProviderItems,
+    });
+    refetchTasks.mockRejectedValueOnce(new Error('Station busy'));
+    render(
+      <ProjectTasksSection
+        slug="project-alpha"
+        projectWorkingDirectory="/project"
+      />,
+    );
+    const row = screen.getByRole('link', { name: /^Existing task/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Task list actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Refresh tasks' }));
+    await waitFor(() => {
+      expect(refetchTasks).toHaveBeenCalledOnce();
+      expect(refetchSessions).toHaveBeenCalledOnce();
+      expect(refetchProviderItems).toHaveBeenCalledOnce();
+    });
+    expect(await screen.findByText('Couldn’t refresh')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^Existing task/ })).toBe(row);
+    expect(dispatchTask).not.toHaveBeenCalled();
+  });
+
+  test('Start on a Not started card dispatches it exactly as Dispatch does', async () => {
+    dispatchTask.mockResolvedValue({ task: { ...tasks[0] } });
+    render(
+      <ProjectTasksSection
+        slug="project-alpha"
+        presentation="board"
+        projectWorkingDirectory="/tmp/project-alpha"
+      />,
+    );
+    const idle = screen.getByRole('region', { name: /^Idle/ });
+    expect(within(idle).getByText('Not started')).toBeTruthy();
+    fireEvent.click(
+      within(idle).getByRole('button', { name: 'Start Existing task' }),
+    );
+    await waitFor(() =>
+      expect(dispatchTask).toHaveBeenCalledExactlyOnceWith({
+        taskId: 'task-1',
+        dispatch: {
+          agentId: 'agent-one',
+          skillName: undefined,
+          runtimeConfig: { cwd: '/tmp/project-alpha' },
+          sourceSurface: 'project-page',
+        },
+      }),
+    );
+  });
+
+  test('a refused Start says so in a toast and leaves the card where it was', async () => {
+    dispatchTask.mockRejectedValue(new Error('The agent is not available.'));
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start Existing task' }),
+    );
+    await waitFor(() => expect(showToast).toHaveBeenCalledOnce());
+    expect(showToast.mock.calls[0]?.[0]).toMatch(/^Couldn’t start the Task\./);
+    expect(
+      within(screen.getByRole('region', { name: /^Idle/ })).getByText(
+        'Existing task',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('Mark done on a merged card moves the Task to done', async () => {
+    tasks[0] = { ...tasks[0], status: 'in_progress', sessionId: 'run-1' };
+    sessions = [summary('run-1', { lifecycleState: 'completed' })];
+    pullRequestFacts = {
+      'task-1': [
+        {
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'app' },
+          ref: '12',
+          observedAt: '2026-05-03T00:10:00.000Z',
+          status: {
+            state: 'current',
+            pullRequestState: 'MERGED',
+            mergeability: 'unknown',
+          },
+        },
+      ],
+    };
+    updateTaskStatus.mockResolvedValue({ ...tasks[0], status: 'done' });
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    const needsYou = screen.getByRole('region', { name: /^Needs you/ });
+    expect(within(needsYou).getByText('PR merged')).toBeTruthy();
+    fireEvent.click(
+      within(needsYou).getByRole('button', { name: 'Mark done Existing task' }),
+    );
+    await waitFor(() =>
+      expect(updateTaskStatus).toHaveBeenCalledExactlyOnceWith({
+        taskId: 'task-1',
+        status: 'done',
+      }),
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['tasks', 'project-alpha'],
+    });
+  });
+
+  test('only the board reads pull request facts from the forge', () => {
+    const { unmount } = render(<ProjectTasksSection slug="project-alpha" />);
+    expect(
+      useTaskPullRequestFactsQuery.mock.calls.every(
+        ([, config]) => config?.enabled === false,
+      ),
+    ).toBe(true);
+    unmount();
+    useTaskPullRequestFactsQuery.mockClear();
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    expect(useTaskPullRequestFactsQuery).toHaveBeenCalledWith('project-alpha', {
+      enabled: true,
+    });
+  });
+
+  test('a list row wears the same derived word as its board card', () => {
+    tasks[0] = { ...tasks[0], status: 'todo', sessionId: 'run-1' };
+    sessions = [
+      summary('run-1', { lifecycleState: 'running', hasActiveTurn: true }),
+    ];
+    const { unmount } = render(<ProjectTasksSection slug="project-alpha" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Backlog · 1' }));
+    const row = screen.getByRole('link', { name: /Existing task/ });
+    // Stored "To do"; its run is moving, so it reads Running.
+    expect(row.textContent).toContain('Running');
+    expect(row.textContent).not.toContain('To do');
+    unmount();
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    const running = screen.getByRole('region', { name: /^Running/ });
+    expect(within(running).getByText('Existing task')).toBeTruthy();
+  });
+
+  test('Details shows the Task’s own worktree branch, not its creation binding, and why it was kept', () => {
+    tasks[0] = {
+      ...tasks[0],
+      workspaceBinding: {
+        workingDirectory: '/repo',
+        repoRoot: '/repo',
+        worktreePath: '/repo',
+        branch: 'main',
+      },
+      taskWorktree: {
+        path: '/repo-worktrees/task-1',
+        branch: 'station/task/task-1',
+        kept: { reason: 'uncommitted', at: '2026-05-03T00:00:00.000Z' },
+      },
+    };
+    render(<ProjectTasksSection slug="project-alpha" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
+    const row = (term: string) =>
+      screen.getByText(term, { selector: 'dt' }).nextElementSibling
+        ?.textContent;
+    expect(row('Branch')).toBe('station/task/task-1');
+    expect(row('Worktree')).toBe('/repo-worktrees/task-1');
+    expect(row('Kept')).toBe('it has uncommitted changes');
   });
 
   test('separates an indeterminate starter dispatch from correlation repair', async () => {
@@ -346,6 +672,8 @@ describe('ProjectTasksSection', () => {
     );
     window.localStorage.setItem('station-starter-work-operations-v1', '{bad');
     render(<ProjectTasksSection slug="project-alpha" />);
+    // The starter form stands in for New Task until the record proves bad.
+    expect(screen.queryByRole('button', { name: 'New Task' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Task title'), {
       target: { value: 'Starter task' },
@@ -354,10 +682,12 @@ describe('ProjectTasksSection', () => {
 
     expect(
       await screen.findByText(
-        /Nothing was started\. This device’s saved record of your first-task setup can’t be read/,
+        /This device’s record of your first-task setup can’t be read, so Station won’t start it here\. Create the task with New Task instead\./,
       ),
     ).toBeTruthy();
     expect(launchStarterTask).not.toHaveBeenCalled();
+    // The way forward the message names is actually on screen.
+    expect(screen.getByRole('button', { name: 'New Task' })).toBeTruthy();
     window.history.pushState({}, '', '/');
   });
 
@@ -380,7 +710,7 @@ describe('ProjectTasksSection', () => {
 
     expect(
       await screen.findByText(
-        /Nothing was started\. This device can’t reach its saved record of your first-task setup/,
+        /Nothing was started\. This device can’t reach its record of your first-task setup/,
       ),
     ).toBeTruthy();
     expect(launchStarterTask).not.toHaveBeenCalled();

@@ -24,6 +24,18 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+Automatic credential recovery requires a successful JSON response with
+Station's `X-Station-Envelope: 1` marker from the configured origin. Redirected
+responses, proxy fallbacks, and unmarked successes leave the existing credential
+state in place. The response remains available for the caller's content validation.
+
+
+`dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
+accepts `{ requestScope }` as its fourth argument. Pass a captured
+`requestScope` when a command follows a delayed confirmation or Undo window;
+authority checks apply through credential resolution, dispatch and reading the
+receipt. This does not make a server command reversible.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -37,8 +49,11 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
 
 - `open(target, {cols, rows, launch?, legacyTerminalId?})` asks the server for a
   new session in `target` (`{projectId, bindingKey}`). `launch` names a
-  server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
-  mode}`); no executable, argument or directory is sent. `legacyTerminalId`
+  server-resolved program (`{kind: 'shell'}`, `{kind: 'agent', connectionId,
+  mode}`, or `{kind: 'repository-sign-in', provider}`). The repository sign-in
+  profile runs a fixed GitHub or GitLab browser login in an interactive terminal
+  when the Station operator has command authority. The client supplies no executable
+  or arguments. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
@@ -52,7 +67,7 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+resize, reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
 `restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
 session's program again under the same id (a shell, an agent tab, or a package
 script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
@@ -65,7 +80,10 @@ a promise that settles once it has; the host is credited for that output only
 after every such listener settled it, oldest first, so a fast program waits
 for its slowest view instead of queueing unbounded output in front of it.
 Unsubscribing releases what a listener still owed; a reconnect starts its
-credit afresh.
+credit afresh. `resize(cols, rows, sequence)` reports, in order with output,
+the size the terminal had from that point on, as its host recorded it; it is
+retained for later subscribers like output. A host older than resize records
+sends none.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -152,7 +170,16 @@ renderer and input modules behind it are internal and may change.
 Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
 `subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
 `output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
-from before this attachment. It returns a promise that settles once the view's
+from before this attachment. Optional `resize(cols, rows, kind)` gives a
+recorded size and `replayed()` says earlier output has all arrived: the view
+parses replayed output at the size it was written for, so a screen the
+program repainted after a resize does not land on lines that had scrolled,
+then returns to its own size. An incremental reconnect uses the last recorded
+size received before disconnect, even when the program exited or failed while
+offline. A reset, replacement session or full rebuild from retained history
+discards that cache and reconstructs it from the retained size records. Output
+before the first available size record uses the view's size.
+The output listener returns a promise that settles once the view's
 emulator parsed that output; a session should not hand the view more until it
 does (the SDK store's sessions wait). A view holds at most 4 MiB it has not
 parsed: past that it resets its screen and subscribes again, replaying what the
@@ -168,8 +195,9 @@ session. A view refits whenever its box changes (a window resize, a pane
 splitter, moving between dock regions, a phone keyboard or rotation, a
 devicePixelRatio change): the grid and renderer follow at once, and the
 latest size reaches the session at most every 100 ms. The scrollbar sits in
-the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
-attachment of the same terminal) first resets its emulator to a fresh terminal,
+the inset, so scrollback appearing never takes columns from the grid. Handing
+a mounted view a different session object (including a fresh attachment of the
+same terminal) first resets its emulator to a fresh terminal,
 because the new attachment replays its terminal from the oldest retained
 output; the history is drawn once. A session `reset` does the same.
 
@@ -487,7 +515,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `STATION_AGENT_ID`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -504,6 +532,13 @@ owns the exact export list; operation documentation below and the
 retry, credential singleton, engine loop, or new Agent definition schema.
 
 ---
+
+Pass `stagedHandoff` to `handoffExecutionMessage` to submit the first message
+of a staged Agent change. Include the source Session ID, the approved
+`continue-from-history` policy and the target's `expectedEngine`. The SDK sends
+this to a separate route. A receiver without that route returns 404, and the
+SDK makes no second request. The [Session API](session-api.md#send-a-staged-agent-change)
+describes admission, context and retry behavior.
 
 ## Setup
 
@@ -533,7 +568,18 @@ Browser visibility, focus and online signals can shorten a transient backoff
 once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
-are unchanged.
+are unchanged. Leaving the page aborts the stream unless the browser is
+preserving it in the back-forward cache. When a stream or retry wait settles,
+the SDK removes its listeners from the host targets where it registered them.
+A browser stream needs a window that supports page lifecycle events. The SDK
+stops before reconnecting if that window has retired.
+A stream opening has a 30-second deadline until response headers arrive,
+including credential resolution. `timeoutMs` changes that opening deadline;
+`null` or `0` explicitly disables it. The deadline stops at headers, so it never
+limits the lifetime of a healthy response body. An abandoned opening settles
+without waiting for a transport that ignores cancellation; a late response is
+cancelled and cannot deliver frames. `restart()` also cancels the current reader
+and retains the accepted replay cursor.
 Streams reconnect after 75 seconds without body bytes by default. Station's
 common event streams use a 30-second keepalive; Task rooms and direct-chat streams
 use 15 seconds, and Shared Project rooms use a 20-second heartbeat. Other stream
@@ -553,6 +599,11 @@ using `refetchType: 'all'`. Credential-usage queries are excluded.
 The first snapshot uses cached server status as its baseline when available;
 an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
 authority have no effect. All status fields are compared.
+
+An ACP connection can report `stationApprovalRequests: true` when the host
+supports applying chat approval modes to the engine's ACP permission requests.
+This covers Antigravity and other ACP engines using the standard permission
+callback. Older hosts omit the field.
 
 `useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
 per API base and authority. SSE invalidates it promptly, while a 60-second
@@ -585,6 +636,16 @@ name. The window's server-reported `latestTool` remains available when transcrip
 caps omit its start event. An explicit `null` clears activity; only older
 responses without the field fall back to their loaded events. A missing tool
 report remains absent.
+
+`useSessionLiveContinuityQuery(threadId, apiBase?, config?)` reads what a
+live Session's engine declared it can do natively (`SessionLiveContinuity`:
+`live`, `rewind`, `fork`); a host without the read answers nothing offered.
+`useRewindSessionToTurnMutation(apiBase?, requestScope?)` and
+`rewindOrchestrationSessionToTurn({ threadId, turnId })` rewind that engine's
+context in place to before a turn and answer the typed
+`SessionRewindOutcome`; a host without the route answers `refused`
+`unsupported`. See the
+[session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
 
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
@@ -695,8 +756,11 @@ An `indeterminate` command may have applied: refresh and inspect before another
 explicit operation. Reads do not start or resume an engine.
 
 The default-off **Session goals** preview currently supports Codex inspection,
-paused-objective saves, pause and clear. Resume and Station-managed objective
-execution remain unavailable. Goal usage is engine-reported and is not a billing
+paused-objective saves, pause and clear, and Muse (`muse serve`) inspection,
+pause and clear. Resume and Station-managed objective execution remain
+unavailable. Goal accounting fields are optional: render only the figures
+present, and hide the budget input when the capability's `tokenBudget` is
+`unsupported`. Goal usage is engine-reported and is not a billing
 statement or proof that the requested outcome was achieved.
 
 Use hooks inside the host's React provider tree. Query hooks return a React
@@ -752,20 +816,114 @@ transport. They never select an ambient operator connection.
 
 Discovery reads an existing shared room, authenticated actor, capabilities,
 note, and presence. It does not create a room. `room.unprovisioned` identifies
-only the specific room-not-found response; `room.initialize.mutate()` explicitly
+only the specific room-not-found response, and `room.projectMissing` a Project
+this Station does not have (`project_room_project_not_found`, also read by
+`useProjectRoomChannels`, which keeps `unsupported` for a bare 404); `room.initialize.mutate()` explicitly
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
+The newest live window rolls within the 500-message span. Ordinary refetch
+reads that range in bounded 25-message spans and pages earlier from its
+actual start. The Room keeps recently departed rows through its retained
+history reader. A contiguous live rollover does not start a history request.
 The hook follows forward continuations when the server's byte limit splits a
-window, then loads older windows; it retains up to 20 windows. Named `changed` events
+window, then loads older windows; it retains up to 20 windows.
+`useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
+windows the room has moved past, each time the room is invalidated, so an edit,
+delete or reaction reaches them too. It reads at most
+`PROJECT_ROOM_RETAINED_REREAD_MESSAGES` (500) below the live windows; a caller
+retires kept rows older than that instead of showing them stale.
+`useProjectRoomHistorySpan` reads one span right away: give it the rows that
+just left the live windows, so a history read cancelled as the tail moved
+does not leave them stale until the next event. Every history result (each
+live window page, the retained re-read and the span read) carries `readSeq`,
+one order taken when its read started across all three; keep, per message,
+the `readSeq` that last set it, and never let a lower one replace it, so a
+slow earlier response cannot bring back text a later read replaced. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
 
+`room.react`, `room.edit` and `room.remove` set the caller's reaction and edit
+or delete the caller's own message (`reactToProjectRoomMessage`,
+`editProjectRoomMessage`, `deleteProjectRoomMessage`). Each takes a `target` of
+the room guards plus `messageId` and re-reads the room when it settles, since
+none of them moves `lastSeq`. `uploadProjectRoomAttachments` stores files for the
+next message and `fetchProjectRoomAttachment` reads one back.
+`readProjectRoomMessageActionsCapability(apiBase)` reports the
+`projectRoomMessageActions` handshake flag; offer these actions only when it is
+true, because an older host answers 404.
+
+On a host with the `projectRoomLive` flag (#4798), every room hook of a
+Project on one Station and authority shares one live connection
+(`GET /api/projects/:slug/rooms/live`), reopened once when the set of rooms
+changes. Instead of re-reading history on each change, `useProjectRoom` merges
+an `append` into the newest window and an `update` into every window or kept
+row that holds the message, each merge taking the next `readSeq`. A message
+past the next sequence is first backfilled from history (`after` the last
+sequence the stream delivered); an `update` whose activity range does not start
+where the cache is, a `resync`, or any (re)connection re-reads the room once.
+The hook takes the stream's position only after that read succeeds; while it
+has failed, the next frame re-reads the room instead of trusting the frames
+in between. A history read that started before a merge keeps the merged rows
+in the cache and in the result its caller awaits. The hook remembers its last
+500 merged rows; a read that outlives a forgotten one is read again, up to
+three times, and otherwise fails with the cache left as it was.
+The newest window always reads as far as its cached rows reach, so a window
+that merges or a re-read widened stays that wide on every later read.
+A hook that joins a connection already open starts from where the room stands
+on it, so a gap after that is still backfilled.
+Acknowledged sends, reactions, edits and deletes merge their returned message
+while the stream is connected. The hook also returns `lastSeq` (the live
+sequence), `typing` (other people), `agents` (the room's newest Agent request
+records, see `workingProjectRoomAgents`) and `notifyTyping(active)`, which
+sends at most one typing signal every three seconds and stops after four idle
+seconds, on send, and on unmount. Presence joins once and lasts while the
+stream is open. `useProjectRoomLiveIndex(scope, slug, channelIds, enabled,
+onActivity?)` reads typing and Agent activity for many channels over the same
+connection, for a sidebar, and calls `onActivity(channelId)` on each change
+and each time the connection announces the channel.
+`useProjectRoomMembers` lists the people a message may mention, with current
+names. Without the flag the hook keeps the per-room `/events` stream.
+
+On a host with that flag, the embeddable `ProjectRoom` UI shows reaction pills
+under each message (a tap toggles yours; who reacted is a tooltip, or a long
+press or **Who reacted** on touch), a quick picker of recent emoji with search,
+**Edit** and **Delete** on your own messages (↑ in an empty composer edits your
+last one; Delete asks first), and files dropped, pasted or attached in the
+composer.
+
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending. A lost acknowledgement or reload offers an
-explicit retry of that exact payload and UUID; it never automatically resends.
-Changing authority, Project, or discovered actor retires the prior draft.
+session storage before sending, per channel. Until it is confirmed, the message waits in the
+conversation; a lost acknowledgement or reload offers an explicit retry of that
+exact payload and UUID and never resends automatically. A retry of a message
+since edited or deleted is acknowledged with its current revision (its
+tombstone once deleted), which the client accepts. The retained intent
+settles once room history shows a message with its intent ID. The unsent draft
+(text, reply target and Agent recipient) is kept per channel, and an open
+thread keeps its own, in the same tab's
+session storage, keyed by the shell's reload partition rather than its
+per-reload authority epoch; `#general` keeps the key the room used before
+channels, and the channel on screen is remembered the same way, so a reload
+returns to it. A host can own the channel through the route instead
+(`routeChannel` and `onRouteChannel`), and the open thread (`thread`): replies
+whose `replyTo` chain reaches a loaded message then sit in that message's
+thread, and every send or Agent ask from the open thread replies to its root. A
+thread whose root is older than the loaded history pages back to it, up to
+`PROJECT_ROOM_HISTORY_MAX_PAGES` windows of 25 messages. `screen` gives a
+phone's full-screen bar. The full channel marks itself read through the newest
+message of a history read that succeeded, while it is on screen; a held or
+failed read, or an open thread, marks nothing. Messages, `@agent` asks and
+retained Agent requests are addressed to the channel on screen; a restored recipient must still be an available
+Agent, shown under its current catalog name. While an Agent request is
+unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
+messages still send. A new `@agent` ask never reuses a retained Agent intent,
+which only an explicit retry sends, and its acknowledgement clears the draft
+only if the draft is unchanged since that ask. A retained request that never got
+a handle can be abandoned after a confirmation; the current draft is kept and
+the original may already have run. Changing Project, discovered actor or reload partition
+retires the prior drafts and channel selection; changing authority retires every
+channel's retained send.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
@@ -843,13 +1001,59 @@ Upload accepts `ChatAttachmentInput[]` and returns `TaskRoomAttachment[]`; fetch
 returns an authenticated binary `Response`. Pass captured request scope through
 `options` as for other room operations. The server checks current Task incarnation
 and message-write authority for uploads, history-read authority for reads.
+Upload returns HTTP 409 if the batch would add unique bytes beyond the Task room
+attachment store's size budget.
 
 Pass returned descriptors as optional `attachments` on human-message append input,
 agent request input, or `taskRoomReply`. Keep these references unchanged alongside
 the original operation/proposal ID for uncertain retries. Image-only callers must
-still supply nonempty message/prompt text. Bytes may expire under retention while
-history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
+still supply nonempty message/prompt text. Existing bindings protect their bytes
+from age and size reclamation. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits, persistence and mixed-version behavior.
+
+### Shared Task agent request negotiation
+
+The client exports shared capability, request, withdrawal, and published-result
+operations. They use the Task room shared paths and do not fall back to personal
+delegation. Capability discovery is not admission. An unavailable or unknown
+capability prevents submission; existing hosts do not mount the shared routes.
+A caller captures the host authority and Task incarnation, and retains the
+original operation and intent for lookup or retry. An accepted acknowledgement
+must match that intent and the SHA-256 digest of its recursively key-sorted
+JSON encoding. Failure after dispatch is unconfirmed; it does not prove the request was not accepted. `placed` is
+ledger-proved placement or start, not model consumption or result success.
+Withdrawal sends a closed JSON command with the captured actor, Project, Task
+incarnation, operation and original input digest in the DELETE body. A future
+receiver must compare URL and body identities and compare those preconditions
+to the durable original before mutation; MP-X/B owns that enforcement. They do
+not grant authority. A matching versioned refusal inside a successful RPC data
+envelope reports `not-sent` only under the captured current authority. A generic
+HTTP error, malformed or mismatched reply, lost response, or authority drift
+remains unconfirmed. A withdrawal refusal means the withdrawal was not accepted;
+it does not establish that the original work stopped. A durable record in
+`refused` state remains an accepted record. Shared operations capture the host
+scope, currentness callback and live signal at entry. Published
+result reads capture the reference and Task scope before dispatch, require the
+sequence and both digests, and verify the returned Markdown content digest. No
+shared provider execution is enabled by this SDK surface.
+
+### Project Room coordinator
+
+`@kontourai/station-sdk/project-room-coordinator` reaches the `#general`
+coordinator's [routes](api.md#the-coordinator-in-general):
+`getProjectRoomCoordinator`, `startProjectRoomCoordinatorTasks` (some rows,
+or every proposed row when none are named), `runProjectRoomStatusSweep` and
+`setProjectRoomCoordinatorSettings`. Room calls take the room's
+`ApiRequestScope` and guards, like the other room clients. Its React hooks are
+`useProjectRoomCoordinatorCapability` (the `projectRoomCoordinator` flag,
+asked only when enabled), `useProjectRoomCoordinator` (one query per
+Project's `#general`, rechecked every five seconds while a Task waits, starts
+or works), `useStartProjectRoomCoordinatorTasks`, `useProjectRoomStatusSweep`
+and `useSetProjectRoomCoordinatorSettingsMutation`. Gate on the capability and
+the `project-room-coordinator` Feature Preview; with the preview off every
+route answers `feature_preview_disabled`. See the
+[client](../../packages/sdk/src/client/project-room-coordinator.ts) and
+[hooks](../../packages/sdk/src/query-domains/projectRoomCoordinator.ts).
 
 ### Task room agent requests
 
@@ -909,7 +1113,18 @@ omitting config still use the ambient API base; other room read/edit hooks
 retain their existing contracts. An old receiver that rejects the additive
 message field cannot silently accept it for a different Task.
 
-These personal-Station clients do not establish invited,
+While the recipient reads Chat, `watchProjectSharedTaskHistory` requests an
+event stream from the selected publication’s history endpoint. A change frame
+contains only `{}`. The client re-reads the authorized human history for text.
+Older hosts can still serve the ordinary history read and manual refresh.
+
+For a human reply from account entry, `appendProjectTaskRoomHumanMessage`
+accepts `expectedMember: { principalId, shareId }` alongside
+`expectedTaskCreatedAt`. Capture these from the signed-in account and selected
+publication. The receiver requires matching current member and publication
+authority. Retry an unconfirmed reply with the same proposal ID, time and text.
+
+These personal-Station agent clients do not establish invited,
 remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
 
 
@@ -1151,9 +1366,11 @@ Convenience hook. Returns a function that creates a session, shows Chat, and sen
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
-that Agent; a reference naming another plugin is refused. A clean Agent id from
-`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
-no Agent matches, the function warns and sends nothing.
+that Agent; a reference naming another plugin is refused. Use `agentId()`
+from `@kontourai/station-sdk/agent` for a clean Agent ID. This entry also
+exports `STATION_AGENT_ID`, the reserved ID for Station's Agent. A plugin
+using this export should account for older hosts whose shared SDK lacks it.
+When no Agent matches, the function warns and sends nothing.
 
 ```tsx
 const sendToChat = useSendToChat('my-plugin:assistant');
@@ -1234,12 +1451,11 @@ caller must review the result before presenting the request as approved.
 `useRevokeStationPersonTokenMutation` make the operator's changes. A person's
 own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
-`StationAccessError` with the HTTP `status` and the server's `code`:
-`isOperatorCredentialRequired` detects the current 401 refusal. Only the operator
-credential (host CLI) or an operator passkey session with step-up can change groups
-and manage other people’s tokens. The current refusal status for other callers
-is tracked in [#4109](https://github.com/kontourai/station/issues/4109): the SDK
-treats that 401 as a dead credential and removes it.
+`StationAccessError` with the HTTP `status` and the server's `code`.
+`isOperatorCredentialRequired` recognizes `403 operator_credential_required`.
+This refusal preserves the Device credential. Group changes and management of
+other people’s tokens require the host operator credential or an operator
+passkey session with step-up. HTTP 401 still signals authentication failure.
 `isStationAccessUnavailable` is a read refused as not for this caller (401, 403 or
 404), which a surface hides rather than shows. A mint
 answers the secret once. The mint mutation holds that answer while observed, so
@@ -1421,6 +1637,17 @@ first: `unsupported` means the host predates the routes or never serves them
 there is no memory, or you may not read it), `invalid` or `unavailable`. A decision
 request carries no reviewer: the host decides who is reviewing from the request.
 
+### Project memory client
+
+`listProjectMemory`, `getProjectMemoryNote`, `createProjectMemoryNote`,
+`updateProjectMemoryNote` and `deleteProjectMemoryNote` (from
+`@kontourai/station-sdk/client`) read and edit a Project's memory notes at
+`/api/projects/:slug/memory`, with an explicit `apiBase` and captured request
+options. The host serves them only while the `project-coordination` Feature
+Preview is on (a typed 404 otherwise) and only to the Station operator, the
+Project's owner. Note shapes and limits are in
+`@kontourai/station-contracts/project-session-context`.
+
 ### Notification Hooks
 
 #### `useToast(): SDKToast`
@@ -1447,8 +1674,8 @@ Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
 Returns immediate-toast `notify` plus server-backed `schedule` and `dismiss`
 methods. The example uses only `notify`; it does not create an inbox, push or
 scheduled notification. Server methods still require the host's transport and
-request authorization. `dismiss` currently awaits `fetch` without checking its
-HTTP status, so its resolved promise is not proof of successful deletion.
+request authorization. `schedule` and `dismiss` both reject when the server
+answers with an error status.
 
 ```ts
 type Notifications = ReturnType<typeof useNotifications>;
@@ -1755,7 +1982,7 @@ content and recorded metadata; changed content refuses continuation instead of
 splicing revisions. Missing Agent identity is optional, never a default Agent.
 The read-only inspector does not adopt, resume, fork, or send to a Session.
 
-The palette's explicit **Workspace search (this Station)** mode consumes local
+The palette's explicit **Search Tasks and messages** mode consumes local
 Task/message results and this exact inspector. Command/legacy remote search is
 preserved as a separate mode; only the selected mode dispatches search queries.
 This is a local tracer, not completion of the broader multi-source search issue.
@@ -1783,6 +2010,39 @@ Many legacy readers resolve an ambient API base; protected readers require an
 explicit captured scope. The generic wrapper does not add authority, validate a
 response, or partition an arbitrary caller-supplied key. Follow each operation's
 scope contract rather than assuming every SDK query is interchangeable.
+
+### Remote session history
+
+`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? },
+{ apiBase?, requestScope?, signal? })` reads one read-only history page of a
+session on a connected SSH environment's Station. A conversation surface
+passes its owning connection's `apiBase` and `requestScope`; without them
+the host's configured Station is used. `useRemoteSessionsQuery` lists these rows.
+A rejected inventory read carries its HTTP status as a `StationHttpError`.
+A successful inventory can have zero remote sessions and can identify individual
+unavailable environments.
+This Station relays the remote's bounded `window-v1` read over the
+environment's tunnel and peer bearer, and labels the page with its own
+`environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
+`remoteSessionHistory` handshake flag. Ask it before offering to open a
+remote row, because an older host answers the path 404. Failures reject with
+`StationHttpError` carrying the route's `code`: `environment_unavailable`,
+`authentication_required`, `not_found`, `unreachable`, `too_large` or
+`invalid_response`. Show fixed copy for a code, not the server's sentence. A caller who is not
+the Station's bound owner gets `Forbidden`, and so does any agent request. The
+page is view-only and carries no continuation.
+
+A request made with `maxResponseBytes` whose body passes it rejects with
+`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`. The
+orchestration readers and `searchConversationMessages` keep that error as the
+`cause` of their unreadable-body error.
+`getOrchestrationSessionDetailWindow` rejects with
+`SessionDetailWindowUnsupportedError` (also exported from the agent entry)
+when the host answers without a `window-v1` page, as an older host does.
+`listOrchestrationSessions(apiBase, opts, { limit })` asks for only the
+newest `limit` sessions, still oldest first; an older host ignores it and
+answers every session. A `limit` that is not an integer from 1 to 1,000
+rejects with `RangeError` before any request is sent.
 
 ### `useAgentsQuery(config?)`
 
@@ -1883,7 +2143,9 @@ Fetches app configuration.
 
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
-Fetches conversation stats. Disabled when either param is undefined.
+Fetches conversation stats. Disabled when either param is undefined. The
+response's `engineMcp`, when present, is the engine's folded MCP status, which
+a reopened conversation shows in place of the live list.
 
 ### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
 
@@ -2054,6 +2316,18 @@ saved-Environment forwarding,
 portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
 the [CLI delegate reference](cli.md#delegate).
 
+### `getConversationTurnDirectory`
+
+`getConversationTurnDirectory(apiBase, conversationId, cursor?, options?)` reads
+up to 100 prompt excerpts and outcomes per page, without transcript bodies,
+tools or file details. Later pages may supply `options.turnCountSnapshot` from
+the first page to retain that count and skip a full-history recount. The conversation rail and turn browser share its
+React Query entry, keyed by the owning Station and request authority. Selecting
+an unloaded turn uses the bounded transcript loader. A `404` returns `null` for
+the older-host fallback; other failures remain errors. This navigation read
+uses the person's existing conversation access and does not enable the richer
+CLI digest Feature Preview.
+
 ### `waitForSession`, `getSessionDigest` and `listSessionActivity`
 
 `@kontourai/station-sdk/client` has one fetcher for each
@@ -2137,10 +2411,9 @@ separate live request admission from persisted data identity.
 
 ### `useProjectConversationsQuery(projectSlug: string, limit?, config?)`
 
-Fetches recent conversations for a project. Default limit: 10. This legacy
-reader can turn a non-OK response or invalid/failed envelope into `[]`; an empty
-result does not distinguish no conversations from those failures. Transport or
-JSON-decoding failures can still reject. See `fetchProjectConversations` below.
+Wraps the legacy `fetchProjectConversations` endpoint. The query reports HTTP
+and response failures through its error state. The current Project view uses
+the scoped channel and Task room queries. See `fetchProjectConversations` below.
 
 ### `useRenameConversationMutation()`
 
@@ -2149,6 +2422,43 @@ Renames a conversation and invalidates that agent's conversation list on success
 ### `useDeleteConversationMutation()`
 
 Deletes a conversation, invalidates that agent's conversation list, and removes its cached message query on success.
+
+### Read markers
+
+Unread state is kept by the server (see
+[read marker contracts](contracts.md#read-marker-contracts)). Conversation
+inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
+rather than comparing `acknowledgedAt` or `updatedAt` yourself. `version` is
+the conversation's content version: a monotonic, opaque number that moves only
+when readable content arrives, never its `updatedAt`. Compare it only with
+versions of the same conversation. `{ version, unavailable: true }` means the
+server could not read it: show it as unknown, never as read.
+
+- `useAcknowledgeConversationMutation()` takes `{ conversationId, updatedAt,
+  readVersion? }`: `readVersion` is the content version the client rendered
+  (`readState.version`) and is what the server marks read; `updatedAt` is the
+  inventory version shown, kept as "last viewed". With `readVersion` the
+  cached row reads as read at once; if the server refuses, the row is restored
+  and the mutation rejects. Without it (older callers) the server records only
+  "last viewed" and marks nothing read, so the row stays unread. An unknown
+  row stays unknown until the server answers.
+- `acknowledgeConversation(apiBase, conversationId, updatedAt, opts?,
+  readVersion?)` is the same call without React Query.
+- `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
+  the same immediate update for an agent conversation.
+- `useReadMarkerSummaryQuery(targets, config?)` reads up to 100 agent
+  conversations, Project rooms (`{ kind: 'project-room', projectSlug,
+  roomId }`) and Task rooms (`{ kind: 'task-room', taskId }`) in one request.
+  It is disabled for an empty list.
+- `markRead(apiBase, target, version)` and
+  `fetchReadMarkerSummary(apiBase, targets)` are the same calls without React
+  Query. `readMarkerQueries` owns the cache keys.
+
+Gate the summary and mark calls on the handshake's `readMarkers` flag: an
+older host answers them 404. Open clients of the same person refresh on their
+own: the shared orchestration event stream re-reads the inventory and
+read-marker queries when that person's marker moves, coalesced with the
+inventory's own refresh.
 
 ### `useCreateProjectMutation(requestScope?)`
 
@@ -2173,11 +2483,30 @@ Creates a new project. Invalidates `['projects']` on success.
 
 ### `useUpdateProjectMutation()`
 
-Updates a project. Invalidates `['projects']` on success.
+Updates a Project. Pass the host-captured `requestScope` in the mutation
+variables to bind the update and its cache refresh to the selected Station
+and account. Calls without a scope invalidate `['projects']` on success.
 
 ### `useDeleteProjectMutation()`
 
 Deletes a project. Invalidates `['projects']` on success.
+
+### `useProjectLifecycleMutation(slug: string)`
+
+Pauses, resumes, archives or unarchives a Project
+(`POST /api/projects/:slug/lifecycle`); takes the action and resolves to its
+`ProjectLifecycleResult`. Invalidates `['projects']` and `['scheduler']`.
+
+### `useProjectDeletionPreviewQuery(slug: string, config?)`
+
+What deleting the Project removes, stops and keeps
+(`GET /api/projects/:slug/deletion-preview`), as `ProjectDeletionPreview`.
+
+### `useProjectSchedulesCapability()`
+
+`true` when the host advertises `projectSchedules`: it runs a scheduler job
+with a `projectId` as a Task in that Project. An older host would create a
+plain job, so offer Project schedules only on `true`.
 
 ### `useCreateLayoutMutation(projectSlug: string)`
 
@@ -2270,14 +2599,14 @@ returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 and the current `branch` reported by Git (which can be `HEAD` when detached),
 or an empty string when the branch read fails or the repository is not owned by
 the Project. Discovery is bounded: the walk stops at 24 repositories and skips
-heavy directories, so an over-broad folder is sampled rather than exhaustively
-enumerated, and identical concurrent asks share one scan. `location` is a
-`ReposLocation`, `{ projectSlug?, workingDir }`: the
-same shape as the git reads, except that `projectSlug` is optional because a
-folder may not be a Project yet. With a Project the server confines the folder
-to it; without one only the operator in person gets an answer. Disabled
-without a `workingDir`. A `success: false` envelope currently becomes an empty
-result, so no repositories is not proof the folder holds none.
+heavy directories, so an over-broad folder is sampled, and identical
+concurrent asks share one scan. For a Project rooted inside a repository,
+the list also includes that enclosing checkout when the same confined Git
+read used by Diff accepts it. It counts toward the 24-repository limit.
+`location` is a `ReposLocation`, `{ projectSlug?, workingDir }`. The existing
+Project read policy governs the named folder. Only the operator in person
+can discover repositories in a prospective folder. The query requires a
+`workingDir`. A `success: false` envelope currently becomes an empty result.
 
 ### `useGitCheckoutMutation(location)`
 
@@ -2407,8 +2736,32 @@ request authority remain distinct. `interruptOrchestrationTurn` and
 `resolveOrchestrationRequest` accept `requestScope`;
 `dispatchOrchestrationCommand` accepts it in its fourth options argument.
 The runtime-event-content hooks accept `apiBase` and `requestScope` in their
-input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
-and the target API base as its second argument. Explicit target reads partition
+input. `useChildWorkTranscriptTailQuery` reads a child transcript the way a
+chat reads: the latest messages first (`tail`), older ones through
+`fetchPreviousPage`, and, while `running`, only the messages past its last
+`endOffset` every two seconds; `refreshLatest` reads past that cursor now and
+`reload` starts again from the latest messages; a cursor the transcript has
+shrunk behind also starts again there. Against a Station from before page
+ranges (pages without `endOffset`), it pages forward by `nextOffset`
+(`hasLaterPage`, `fetchNextPage`) and re-reads its pages while `running`.
+`useChildWorkTranscriptQuery` pages forward from the first message.
+`useChildWorkTranscriptQuery` also accepts `requestScope` in its input
+and the target API base as its second argument. Its optional `running` input
+refreshes a visible engine transcript every two seconds through React Query.
+The caller supplies current child-work state and stops polling after settlement;
+a changed revision can request the final read. The shell refreshes the parent
+inventory when opening a child reader and derives delegate streaming state from
+the current Session's child-work facts.
+Chat opens engine children with a parent `session` and `child` selector;
+delegates use `childSession` for their own Session thread. `childTitle` labels
+the breadcrumb. These selectors choose a read-only child view and grant no
+additional authority. The pane consumes each child request once and retains
+an already-open parent Chat, including its draft, when the bound parent matches.
+A bound parent matches a child request when the request's reporting session
+belongs to that Chat by the Agents pane's rule (`threadInChat`), including an
+earlier session of its conversation; a cold-loaded Chat binds before a child
+request is read against it.
+Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
 
@@ -2473,8 +2826,9 @@ lookup keeps it held. Only `not-received` permits a protected same-ID first
 attempt. A successful save of the pending identity precedes a composer mutation;
 a failed save prevents engine invocation. Unsupported, busy, and no-active-turn outcomes remain
 explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
-command and engine-specific interruptive fallback; Station's composer offers a
-conservative safe-waiting fallback separately from native steering.
+command and engine-specific placement. The composer offers ACP's interrupting
+cancel, wait, and continuation fallback separately from native steering, and
+holds Station-owned steering for an observed boundary.
 
 
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
@@ -2487,11 +2841,14 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+`resolved`, `fork-ready`, `fresh-context-ready`, `missing-session`, or `unavailable`. Only `resolved`
 can carry a current Session identity. `fork-ready` identifies an authorized saved
 fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
-it has no provider Session or runtime execution binding until first send. Both
-successful arms carry the server-derived `canContinue` decision. A pending first
+it has no provider Session or runtime execution binding until first send.
+`fresh-context-ready` identifies an authorized empty-context reservation. It
+exposes `predecessorSessionId` and `reservedSessionId` separately from any
+execution, and its earlier messages remain readable in the runtime transcript.
+Successful arms carry the server-derived `canContinue` decision. A pending first
 start may return `canContinue: false` with `continuationPending: true`; clients
 must wait rather than fabricate a Session identity. A current server also says on
 the `resolved` arm whether the next ordinary turn starts a new Session
@@ -2644,11 +3001,13 @@ does not mean a layout is installed and ready to load.
 
 ### `fetchProjectConversations(projectSlug: string, limit?: number): Promise<any[]>`
 
-Fetches recent conversations for a project, with a default limit of 10. The
-underlying [legacy helper](../../packages/sdk/src/api-knowledge-utils.ts) uses
-`allowFailure`, returning `[]` for HTTP refusals, false or malformed envelopes,
-or missing `data`. Network and JSON-decoding errors still reject. Consumers
-must not use this helper's empty array as proof that the Project has no history.
+Reads the legacy Project conversation endpoint on the selected Station. The
+default limit is 10. A valid array response is returned unchanged. HTTP and
+response failures reject with `StationHttpError`, which keeps the observed
+status and any server-supplied code, details, or `Retry-After`. The current
+Station refuses this legacy read with `project_conversations_unavailable`
+because its file-memory records lack a trusted Project binding. Use the scoped
+Project Room and Task room query surfaces for Project conversations.
 
 ### `addProjectLayoutFromPlugin(projectSlug: string, plugin: string): Promise<any>`
 
@@ -3073,7 +3432,11 @@ pending Devices must name that Station. `createRelayInvitation` also takes the
 reviewed route, recipient setup and a `RelayInvitationLifetime`; it validates
 the returned installation binding and requested expiry before returning the
 link. Lifetimes are `5m`, `15m`, `1h`, `24h` and `never`; the UI chooses `24h`.
-Every invitation remains single-use.
+Every invitation remains single-use. Reads request `viewVersion=2` and expose only Stable/Nightly setup links.
+An older host may include legacy Beta rows. The SDK validates every row's Station
+scope first, excludes valid legacy Beta records from actionable arrays and
+reports their counts in `retiredRecords`. Malformed or foreign records still
+reject the response; mutation responses never admit Beta authority.
 
 This published SDK leaf consumes the canonical codec from
 `@kontourai/station-shared/native-relay-link`, not the private Connect package.
@@ -3234,6 +3597,14 @@ unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
 
+### Update discovery
+
+`usePluginUpdateCheckQuery()` exposes the update records and a
+`complete`, `partial`, or `unavailable` status. Hosts that omit the status
+produce `unknown` coverage. Non-OK responses surface as query errors with the
+HTTP status. The existing `usePluginUpdatesQuery()` still returns the update
+array. Use the status-aware hook when presenting whether the scan completed.
+
 ### Marketplace source hooks
 
 `useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
@@ -3241,7 +3612,7 @@ SDK request scope. Source reads and actions require `access:manage` plus the
 Station operator principal; the hooks do not grant that authority.
 `useRegistrySourceActionMutation()` accepts `{action, id?,
 source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
-`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`{location, ref?, displayName?}`. Mutations invalidate Registry queries.
 `useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
 selection ID and is disabled without an ID. These hooks use the existing
 React Query/request authority rather than a separate marketplace cache.
@@ -3302,7 +3673,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
-paths forward it; it is an opaque precondition, not caller-supplied verification.
+paths forward it as an opaque precondition. A preview dependency's
+`registryTrust` is the host's display receipt for that dependency.
+Put its pin in consent and keep the display receipt out of the decision.
 `listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
 when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
@@ -3310,7 +3683,9 @@ The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. A managed policy's signature requirement instead answers `403`
 with `managed-policy-capability-disabled` and reason
-`managed-signature-required`. See [registry trust policy](../design/registry-trust-policy.md).
+`managed-signature-required`. A plain ID whose agent catalog owner is
+ambiguous or unknown answers `agent-catalog-ambiguous` (409) or
+`agent-catalog-unavailable` (503). See [registry trust policy](../design/registry-trust-policy.md).
 
 `consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of
@@ -3390,8 +3765,8 @@ The preview carries the exact installation, retained content digest, opaque
 `recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
 and dependency installation/consent rows. A signed retained package reuses its
 original journal-bound verification under the same applied policy, without
-contacting its registry/source; ready retained children carry their own trust
-revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
+contacting its registry/source. Ready retained children carry their own trust
+revision and display receipt. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
 `usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
 recovery consent requires the fresh grant revision, including each dependency
 approval. Never derive approval merely from a cached preview or retry an old
@@ -3948,9 +4323,10 @@ publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 Stores per-tab strings in browser `sessionStorage` under
 `layout-<layoutSlug>-tab-<tabId>` and updates the page hash for the active tab.
-Use a stable, distinct layout identity. Stored state may be restored on mount
-when the hash is empty, and on tab switches. This is browser UI state, not
-durable Project state; storage failures are not caught here.
+Use a stable, distinct layout identity. On mount, an empty hash is restored
+from the active tab's saved state before child plugins render. An incoming
+hash takes precedence. A tab switch restores the selected tab's saved state.
+This browser UI state lives in session storage for the current browser session.
 
 ```tsx
 <LayoutNavigationProvider layoutSlug="my-layout" activeTabId={activeTab}>
@@ -3970,10 +4346,9 @@ type LayoutNavigationExcerpt = {
 }
 ```
 
-`clearTabState` currently removes storage for an inactive tab, but clears only
-the URL hash for the active tab. It is not a reliable way to erase that active
-tab's saved string; a later restoration can read it again. Tracked in
-[#2806](https://github.com/kontourai/station/issues/2806).
+`clearTabState` removes the specified tab's saved string. For the active tab
+it also clears the URL hash and cancels its pending restoration. Other tabs
+keep their saved state.
 
 To hand state to another tab of the same Layout, write it for that tab and then
 select the tab. The state is a URL search-params string. `setTabState` stores
@@ -4008,7 +4383,7 @@ namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
 import { getAgentDisplayName } from '@kontourai/station-sdk';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId } from '@kontourai/station-sdk/agent';
 
 const id = agentId('my-agent');
 getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'
@@ -4125,17 +4500,21 @@ interface ConversationalOptions {
 }
 ```
 
+The [ElevenLabs example](../../examples/elevenlabs-voice/README.md) uses a
+server-held API key to mint browser WebSocket authorization and closes active
+resources when its registrations retire. Its scripted protocol checks and
+live provider acceptance are tracked separately.
+
 ### `ProviderCapability`
 
 Shape used in the voice lists returned by `GET /api/system/capabilities`.
 `configured` is the server's capability observation, not a successful live
 provider probe. Station can register configured server entries as display
 stubs whose methods warn that a plugin bundle is still needed; presence in the
-registry alone does not establish a working provider. The current capability
-hook does not retire its stubs when a later Station observation omits them, so
-a retained selection can still appear supported after changing connections.
-Lifecycle ownership for these entries is tracked in
-[#2807](https://github.com/kontourai/station/issues/2807).
+registry alone does not establish a working provider. The hook disposes its
+stubs when the observation is empty or fails, or its selected Station scope
+unmounts. A plugin that has replaced a stub with its own provider keeps that
+registration.
 
 ```ts
 interface ProviderCapability {
@@ -4501,6 +4880,16 @@ list route reports that person notifications are unsupported and suggests an
 update. A mutation's 404 can also mean the notification was not found, so it
 reports both possibilities. See [person notification routes](api.md#person-notifications).
 
+### `fetchWebPushRegistration(apiBase?, options?)`
+
+Reads the selected Station's VAPID public key and its optional paired-device
+registration status. The status contains an opaque fingerprint of the
+subscription or a null fingerprint when the current device is unregistered.
+Older Stations can omit the status. Request options can carry a bound
+`requestScope` and an abort signal, including when subscribing or
+unsubscribing. The discovery read retains HTTP status and raises
+`DevicePairingRequiredError` for an explicit pairing refusal.
+
 ### `NotificationsAPI`
 
 Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,
@@ -4519,11 +4908,9 @@ await api.dismiss(notificationId);
 const notifications = await api.list({ status: ['pending'] });
 ```
 
-Known scheduling limit: a `scheduledAt` more than about 24.9 days ahead exceeds
-Node's native timer range. The current service can then retain the notification
-as pending without a live wakeup until it is rescheduled or the service starts
-again. See [#2810](https://github.com/kontourai/station/issues/2810); successful
-creation alone does not establish future delivery.
+Scheduled deliveries and expiries beyond the native timer range retain their
+persisted deadlines. The server wakes at bounded intervals, rechecks the
+current record, and arms the remaining time when needed.
 
 ---
 
@@ -4606,6 +4993,20 @@ content, while retaining the observed HTTP status (usually 200).
   differs on purpose from `useAnswerBasisQuery`, which still revokes on any
   refusal: the inventory route reserves 503 for a read it could not
   perform, so a 503 is not evidence of lost authority.
+- `useTaskPullRequestFactsQuery(projectId)` and `fetchTaskPullRequestFacts`
+  read `GET /api/tasks/pull-request-facts` for the Project Tasks board. The
+  query refreshes every two minutes and on focus, never retries a failure,
+  and keeps the last answer when a refresh fails. A host that answers a plain
+  404 (one older than this read) resolves to `null`, and the board then
+  claims nothing about pull requests; a 404 with `request_principal_changed`
+  (lost standing) is an error. Only the board enables it; the list view
+  claims nothing about pull requests. `useMergePullRequestMutation`
+  invalidates every Project's facts query, so a merge through Station moves
+  its card on the next read.
+- `createTask` and `createTaskReference` accept an optional `requestScope`
+  in their input, including when called through `useCreateTaskMutation` or
+  `useCreateTaskReferenceMutation`. Pass the same captured scope to both
+  steps when creating a Task and adding its first reference.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -4614,6 +5015,10 @@ content, while retaining the observed HTTP status (usually 200).
   `workChatConversationIds` for authorized Inbox grouping. These canonical
   Conversation IDs are a presentation projection, not a lead assignment or
   permission grant. Servers predating that projection may omit it.
+  Unscoped Task lists refresh on remount after a mutation or event invalidates
+  them, so returning to a Project shows changed Task status. Untouched cached
+  lists keep the cache-first mount policy. By default, scoped destination pickers retain
+  their fresh authorization read on every mount.
 
 ### Tracker-backed Tasks and Task memory (#4003)
 
@@ -4807,7 +5212,8 @@ option for conversations without a multi-session lineage.
 ## Workspace checkpoint restore
 
 `previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
-short-lived, owner-bound preview for the turn's settle checkpoint. It includes
+short-lived, owner-bound preview for the turn's settle checkpoint. Pass
+`'baseline'` as the fifth argument to preview the turn-start checkpoint. It includes
 the preview id, repository root, target and currently observed tree hashes,
 up to 200 changed paths with a truncation flag, and a five-minute expiry.
 `confirmCheckpointRestore` submits that
@@ -5000,6 +5406,12 @@ returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`.
 
+Skill save and registry removal mutations expose the HTTP status, code, and
+details on `StationHttpError`. When the code is `skill-not-owned`, the details
+carry the Skill package refusal reason and the separately labelled directory.
+Older hosts can send a plain failure envelope without these fields. Its failure
+still rejects the mutation, and its text remains diagnostic.
+
 Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
 builds it through the same helper (#2708); the plugin command-effect client
 returns business refusals as values instead. The account, application-session,
@@ -5022,8 +5434,12 @@ Each keeps its earlier constructor; the new form takes the helper's
 `StationHttpError`, not a `DelegationApiError`: a page is not Station's
 refusal. `getAuthorityObservation` keeps its own two sentences and reports the
 refusal's `status` and `code`; branch on `status === 401`, not on the
-sentence. Fetchers outside `client/` (the React query domains) are not yet on
-the helper.
+sentence. Of the fetchers outside `client/` (the React query domains), the
+Task graph, Task memory, work-item, operating-state and attention fetchers
+throw the helper's `StationHttpError` too, so a refusal whose body is not JSON
+(a proxy's error page, an empty body) keeps its status instead of surfacing a
+parse exception; attention snooze keeps its own plain `Error`. Not every other
+query domain is on the helper yet.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
@@ -5044,6 +5460,9 @@ job does not transfer its earlier conversation's history to the new target.
 Older runs without a recorded target require the creator and current-target
 read access, except creatorless, untargeted jobs remain readable by the local
 operator. An agent can read only its own conversation's runs.
+`readFollowUpAttachmentsCapability(apiBase)` (from `@kontourai/station-sdk/client`)
+reads `followUpAttachments`: `true` when the host holds a busy follow-up with
+its files, `false` otherwise, including an unreadable handshake.
 `readTroubleshootCapability(apiBase)` (from `@kontourai/station-sdk/client`)
 reads the host's public handshake the same way for `troubleshootPrepare`:
 `true`, `false`, or `null` when the handshake could not be read.
@@ -5497,8 +5916,8 @@ The portable client exports `getWorkspacePaneHostActions`,
 Project-bound one-shot ticket, held in memory for 60 seconds. A restart loses
 unused tickets. Execution consumes it before any provider work.
 Do not store or log tickets, and never retry execution automatically. An
-`indeterminate` result means work may have started; use existing Activity and
-conversation evidence to inspect it. An accepted result carries distinct
+`indeterminate` result means work may have started; use the inbox and
+conversation evidence in Chat to inspect it. An accepted result carries distinct
 conversation, execution-session, and provider-turn identities.
 
 For an external client, obtain the Station API credential through the deployment's
@@ -5542,7 +5961,7 @@ export async function runPackageAction(
 Render an `unavailable` reason for the user to resolve, and expose the returned
 Session/conversation identities for an `accepted` result. Treat a thrown catalog
 or preparation error as an unavailable operation; do not downgrade to an ordinary
-chat launch. For `indeterminate`, direct the user to Activity without calling
+chat launch. For `indeterminate`, direct the user to the inbox without calling
 this function again automatically. Catalog availability is a display snapshot;
 preparation and execution repeat authorization against the current installation.
 
@@ -5733,12 +6152,15 @@ await respondToRequest(requestScope.apiBase, {
 }, { requestScope });
 ```
 
-`RespondToRequestInput` also takes an optional `sessionGrantScope: 'server'`
-with `decision: 'acceptForSession'`. It widens the grant to the built-in
-Station browser server and only where the request offered that choice. Omit it
-for the per-tool grant; a Station that predates the field ignores it.
+`RespondToRequestInput` also takes an optional `sessionGrantScope` with
+`decision: 'acceptForSession'`. `'server'` widens the grant to the built-in
+Station browser server; `'rule'` narrows it to the Bash command prefixes a
+Claude engine suggested. Each applies only where the request offered that
+choice; otherwise the answer is a one-call accept. Omit it for the per-tool
+grant. A Station that predates `'server'` ignores it; one that predates
+`'rule'` refuses the command.
 The approval decision option carries the same optional `sessionGrantScope`;
-renderers must forward it separately from `acceptForSession` so the server
+renderers must forward it separately from `acceptForSession` so a scoped
 choice cannot collapse into ordinary per-tool trust.
 
 The host captures `requestScope`; do not reconstruct it from a URL or title.
@@ -5904,20 +6326,16 @@ update functions:
 `scopeKey` is present it joins the query key. The caller must derive a distinct
 key for each connection/boot it wants to keep separate; the hook does not derive
 that identity.
-`assertCurrent` is checked immediately before the request is issued and again
-after it resolves — throwing rejects the fetch, so an obsolete or superseded
-scope's completion never resolves as current data. Both fields are
-secret-free: credentials and credential-evidence objects must never enter a
-query key or these callbacks. Existing two-argument callers are unaffected.
+`assertCurrent` runs before dispatch and after the response. Return `false`
+to reject with `StationRequestAuthorityError`, or throw to reject with your
+own error. Returning `true` or nothing allows the check to proceed. The query
+keeps its per-scope key and abort signal. Both fields are secret-free.
+Existing two-argument callers are unaffected.
 
-The current Settings callers pass `context.isCurrent` directly, which returns
-a boolean. The hook ignores that return value, so `false` alone does not reject
-the query through this guard. Other scope keys, transport checks and UI
-availability checks still apply. Callers needing this pre/post refusal must
-supply a callback that throws when stale. See the
-[hook](../../packages/sdk/src/query-domains/systemRuntime.ts),
-[host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts),
-and [Settings caller](../../src-ui/src/views/settings/CoreUpdateCheck.tsx).
+The [update check](../../src-ui/src/views/settings/CoreUpdateCheck.tsx) and
+[source installer](../../src-ui/src/views/settings/SourceInstallerDisclosure.tsx)
+both pass the [host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts)
+to the [shared hook](../../packages/sdk/src/query-domains/systemRuntime.ts).
 
 ## Saved answer quotations
 
@@ -6006,6 +6424,49 @@ it changes nothing in what the read returns (see the [API reference](api.md#keep
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
 own explicit links separately from provider-derived or Task-kept references.
+
+## Pull request agent feedback
+
+`@kontourai/station-sdk/pull-request-feedback` reads a chat's pull request
+feedback (`getConversationPullRequestFeedback`), sets a pull request's
+switches (`writePullRequestFeedback`, with `move` to take it from another
+chat), lifts a pause (`sendPullRequestFeedbackAgain`), and turns every
+switch off for a pull request the chat owns (`turnOffPullRequestFeedback`,
+which the Needs-you item calls). `getProjectPullRequestFeedbackDefaults`
+and `writeProjectPullRequestFeedbackDefaults` read and set a Project's
+defaults (the write sends only the two switches, so a stored third is kept);
+`removeDerivedPullRequest` removes a pull request found on the chat's Task
+branch from the chat for good. A 409 naming
+another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
+`readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
+`pull-request-agent-feedback` Feature Preview; the routes answer 404 while the
+preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
+calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
+
+`getPullRequestFeedbackByPullRequest(apiBase, identity)` reads one pull
+request's feedback whichever chat is open, for the pull request panel; it
+refuses an answer about another pull request. An owner the reader may not
+read is `{ readable: false }`, and a 409 about such a chat reads through
+`pullRequestFeedbackOwnerOf` as `{}` (no id, no title).
+
+With the `pull-request-head-review` preview on, `reviewPullRequestHeadAgain`
+runs Station's review of the pull request's current head again and
+`sendPullRequestHeadReviewFindings` sends that review's required findings to
+the agent. `pullRequestHeadReviewRefusal(error)` reads either one's refusal
+as Station's own sentence (a busy Project, the daily limit, no reviewer, a
+pause), to show as it comes. `writePullRequestFeedback` takes an optional `reviewEachHead`;
+leaving it out keeps what the chat stored.
+
+`@kontourai/station-sdk/pull-request-watch` reads a Task's pull request watch
+(`getTaskPullRequestWatch`), sets the Task's own choice
+(`setTaskPullRequestWatch` with `on`, `off` or `project`) and sets a Project's
+setting (`setProjectPullRequestWatch`). Gate it like pull request feedback, on
+`readPullRequestFeedbackCapability`. The barrel's React hooks wrap them:
+`usePullRequestFeedbackCapability`, `useTaskPullRequestWatchQuery`,
+`useSetTaskPullRequestWatchMutation` and `useSetProjectPullRequestWatchMutation`. The
+[client](../../packages/sdk/src/client/pull-request-watch.ts) calls the
+[Task routes](../../src-server/routes/orchestration/tasks.ts) and the
+[Project route](../../src-server/routes/projects/projects.ts).
 
 ## Files in answers to input requests
 
@@ -6200,9 +6661,44 @@ sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
 `useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
 `useEngineSignInMutation` (start by method id, or cancel) and
 `useEngineCredentialMutation` (set a key value or clear it; the value is never
-read back). Responses are parsed strictly against
-`@kontourai/station-contracts/engine-sign-in`, and every caller supplies a
-captured `ApiRequestScope`.
+read back). For an engine Station signs in itself, the view carries
+`hostAuth`, and `useEngineHostAuthLoginQuery` (polls every 2 seconds while the
+sign-in runs; it carries the device code), `useEngineHostAuthLoginMutation`
+(start with a `HostAuthLoginRequest`, or cancel),
+`useEngineHostAuthSignOutMutation` and `useManagedEngineInstallMutation`
+(`{ consent: true }`) drive `/host-auth/login`, `/host-auth/sign-out` and
+`/managed-install`; the view polls while an install runs. A
+`{ identity: 'social' }` start answers with `authorizationUrl`, Kiro's page to
+open on the Station's computer, and a failed attempt may carry `failure`. The
+view lists `social` only for a browser on that computer and otherwise carries
+`socialSignIn: 'needs-browser-on-host'`. Responses are parsed
+strictly against `@kontourai/station-contracts/engine-sign-in`, and every
+caller supplies a captured `ApiRequestScope`.
+
+## Guided engine setup queries
+
+`@kontourai/station-sdk/engine-setup` exposes `useEngineInstallTerminal` and
+`useEngineStationTools` for the **Guided engine setup** preview. Both take an
+engine id and captured `ApiRequestScope`; cache keys partition host and
+credential authority. They reuse the canonical feature-preview query. The
+installer hook reads status even when the preview is off, so a reloaded client
+can find and stop a retained installation; the server refuses a new installation
+while it is off. The tool-selection query runs only while the preview is on.
+An older host's 404 reads as unsupported.
+
+The installer hook reads the reviewed command and existing terminal, starts
+with `{ command, operationId }` only after the person confirms, and stops with
+that terminal's id and operation id. Writes are never automatically retried;
+settlement re-reads status to reconcile a lost response. Polling runs only
+while a terminal starts or runs. Terminal attachment uses the server's target
+and id with `attachOnly`; it never opens a second shell.
+
+The tool-selection hook reads the canonical Agent's selection, explicitly adds
+Station Control/Knowledge/Docs, and offers a reviewed launch repair where one
+unambiguous built-in applies. It preserves unrelated authored fields and tool
+restrictions. Responses are parsed against the public shapes in
+`@kontourai/station-contracts/acp`. See the
+[setup journey](../guides/acp.md#set-up-an-engine-from-chat).
 
 ## Engine account queries
 
@@ -6214,7 +6710,8 @@ are disabled and live status polls only while a login is pending. Quota refresh 
 `@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
 optional account/credit/model, Claude spending/breakdown/limit metadata and
 response-shape audit fields and bounded hourly allowance history on both
-known and unknown quota variants. `useEngineActivityQuery` accepts an optional
+known and unknown quota variants. `useEngineActivityQuery` takes an engine id
+string and an optional
 credential profile filter: `null` selects the default profile, a string selects
 a saved profile, and an omitted filter includes all engine accounts. Older
 usage without an account observation remains excluded from profile totals. Consumers must not treat unknown quota as zero
@@ -6284,6 +6781,16 @@ The SDK root retains the same hook and fetcher exports.
 `requireRequestScope`, with the same captured-authority rules as the operator
 query. Scoped keys include Station, authority, and the explicit credential-profile
 filter; all accounts, the default profile, and a named profile remain distinct.
+`UsageRollupQuery` also takes any declared usage `provider`, and local
+`connectionId`/`modelConnectionId` filters (with `localOnly`), keyed separately.
+Gate the connection filters on the `usageConnectionFilters` capability: an
+older host ignores them and returns unfiltered totals. `projectSlug` (with
+`localOnly`) keeps one Project's Sessions, and `groupBy: 'project'` groups by
+Project; send them only while the host offers the `project-coordination`
+Feature Preview, since an older host ignores the filter. Pass a Project's
+`groupBy: 'task'` rows to `projectUsageTotals` from
+`@kontourai/station-contracts/usage-rollup` for its total and coordinator
+share.
 The Profile receipt panel requires a scope and clears its page position when
 authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
@@ -6378,6 +6885,19 @@ credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
 
+The saved peer inventory, `usePeerCredentialsQuery(config?)` /
+`fetchPeerCredentials()` from the
+[peer-credential query owner](../../packages/sdk/src/query-domains/peerCredentials.ts),
+returns secret-free `PeerCredentialSummary` rows. Each may carry an optional
+`readiness: PeerStationReadiness`: how that peer's public handshake last
+answered the controlling Station (`online`, `recovering`, `unconfirmed`,
+optionally with `reason: 'identity-mismatch'`, or `unreachable`), probed
+without its credential. The list answers from the server's stored readiness
+and never waits on a probe: a peer not yet probed omits it, and each read
+refreshes stale answers in the background, so poll the list to keep it
+current. An older host also omits it; treat an absent readiness as unknown,
+not as not ready.
+
 Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' |
 'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
 Keep the human draft visible and inspect the full run before resending; the field
@@ -6425,6 +6945,38 @@ These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
 
+
+## Custom appearance
+
+The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
+`saveCustomAppearance`, `keepCustomAppearanceProposal`,
+`dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
+`/api/me/appearance`. Shapes come from
+`@kontourai/station-contracts/custom-appearance`. Reads and proposals are open to Station-control tool requests; saving, keeping,
+dismissing and reporting are the person's own steps and answer 403 to agents. Propose, save and keep take the document's `revision`; a
+stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
+(polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
+the person's steps and updates that cache. See the
+[decision](../decisions/custom-appearance.md).
+
+Appearance studio adds client functions `getCustomAppearanceLibrary`,
+`saveCustomAppearanceLibraryTheme`, `updateCustomAppearanceLibraryTheme` and
+`removeCustomAppearanceLibraryTheme`. Each takes an explicit API base, input
+where applicable and `ClientRequestOptions`. Library hooks
+`useCustomAppearanceLibraryQuery(requestScope)` and
+`useCustomAppearanceLibraryMutation(requestScope)` use a separate library
+revision and authority-partitioned cache. Mutations use `save`, `update` or
+`remove`; they refresh that library cache without applying an appearance.
+A disabled or older host returns 404 and the caller must show that the new
+operation is unavailable. `useFeaturePreviewsQuery(apiBase, config,
+requestScope)` accepts an optional captured authority scope for protected
+cross-surface reads and partitions its cache by that authority.
+
+Portable files use the contracts helpers `createCustomAppearanceThemePack`
+and `parseCustomAppearanceThemePack`: `{format:'station-appearance',version:1,
+appearance}` with no owner or proposal metadata. Import validation never
+applies a theme. Visual settings and image bounds are documented in the
+[appearance API](api.md#custom-appearance).
 
 ## Personal Board authoring
 
@@ -6542,8 +7094,8 @@ browser fixtures do not establish native/installed/release qualification.
 `@kontourai/station-sdk/workspace-file-preview` exports
 `readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
 Pass the render-captured request scope and abort signal in `options`. The
-read-only POST returns a validated HTML page plus isolated frame origin, or a
-bounded raster preview. `thread` selects an authorized Session workspace;
+read-only POST returns a validated HTML page, plus the isolated frame origin
+for a browser on the Station host, or a bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL. A failed
 read throws `WorkspaceVisualFileError` with `status` and a `reason`
@@ -6574,6 +7126,23 @@ unavailability, never empty transcript success. The CLI and Station-control MCP
 use these same fetchers.
 
 ### Task review threads
+
+`taskCodeReviewQueryKey(scope, projectId, taskId, taskCreatedAt)`,
+`useTaskCodeReviewQuery(scope, projectId, taskId, taskCreatedAt, enabled)` and
+`useRequestTaskCodeReviewMutation(scope, projectId, taskId, taskCreatedAt)`
+are exported from the SDK root and query barrel. They call the
+[Task code-review API](api.md#independent-code-review) using the supplied
+authority scope. Keys include the API base, authority, Project ID and Task
+incarnation. A failed read hides cached protected data; 404 explains that the
+host or preview does not support this surface. The query refreshes every four
+seconds only while returned requests are running, and stops after a read error.
+Disable it when its view is hidden.
+
+The mutation submits `TaskCodeReviewRequest` with retries disabled and
+invalidates that exact query after settlement. The caller retains the original
+Project ID/creation time, request ID and commit pair across uncertain transport
+outcomes; explicit retry reuses those values. A replacement Project cannot
+inherit that saved intent. A completed request is not a passed gate.
 
 The SDK root and query barrel export `fetchTaskReview(taskId)`,
 `taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the
@@ -6703,19 +7272,37 @@ consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
 for expiry, source/Device revalidation and remaining qualification limits.
 
-### Observe-only Automation deliveries
+### Automation operator surface
 
-`listAutomationDeliveries(apiBase, { limit? }, options?)` from
-`@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
-management caller. It returns `AutomationDeliveryPage` with `deliveries` and
-`polls`, including partial coverage and source failures. Each delivery may
+`@kontourai/station-sdk/client` has one function per
+`AUTOMATION_OPERATOR_SURFACE` verb (#4513): `listAutomationDeliveries(apiBase,
+{ limit? })`, `listAutomationEpisodes`, `retryAutomationEpisode(apiBase,
+{ ruleId, episodeId })`, `listAutomationSources`, `createAutomationSource`,
+`enableAutomationSource(apiBase, id, expectedFingerprint)`,
+`disableAutomationSource`, `deleteAutomationSource`, `listAutomationRules`,
+`createAutomationRule`, `updateAutomationRule(apiBase, id, { ...rule,
+expectedFingerprint })`, `enableAutomationRule(apiBase, id,
+expectedFingerprint)`, `disableAutomationRule` and `deleteAutomationRule`.
+Each accepts `ClientRequestOptions`.
+
+`listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
+and `polls`, including partial coverage and source failures. Each delivery may
 carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
 rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
-`intent-retained`) and a bounded action snapshot. The server requires
-**GitHub automation observations** in Feature previews. A `StationHttpError`
-preserves the preview refusal's code and Settings link; a 404 from an older
-host reports the unsupported capability. No mutation or agent invocation is
-performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+`intent-retained`) and a bounded action snapshot. `listAutomationRules` and
+`listAutomationSources` return the `configurationFingerprint` the enable and
+update functions name. Rule functions take `AutomationDispatchRuleInput`
+(`dispatch-task` only); sources are disabled `github-poll` sources
+(`AutomationPollSourceInput`).
+
+Reads need a management caller; every change is refused unless the operator
+makes it in person (never an agent session). Everything except the disable and
+delete functions needs **GitHub automation observations** in Feature previews.
+A `StationHttpError` preserves the server's code: `feature_preview_disabled`
+with its Settings link, `automation_not_found` for a missing rule, source or
+episode, `operator_required`, or a retry refusal such as `not-exhausted`. Any
+other 404 (an older host) reports the unsupported capability. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Personal conversation resolution and turn directory
 
@@ -6724,12 +7311,25 @@ read or change explicit personal settlement under the `conversation-resolution`
 Feature Preview. State is separate from turn completion and dismissal. Reads
 return `null` on a 404 (unsupported host or disabled preview); mutations preserve
 a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
-for authority and cancellation.
+for authority and cancellation. `ConversationWorkState.hidden` lists hidden
+third-party Sessions by thread id and is absent from a host that cannot hide
+them; `setConversationInboxHidden` hides or unhides one for the caller.
 
 `getConversationTurnDirectory` reads paginated, indexed turn metadata from the
 existing Session digest under `session-cli-reads`; it returns `null` when that
 host route is unavailable. It fetches no transcript bodies. The UI's history
 owner loads bounded body pages only after a turn is selected.
+
+## Project Library
+
+`@kontourai/station-sdk/project-library` exports `useProjectLibraryQuery`,
+`useUploadProjectLibraryFileMutation`, `useDeleteProjectLibraryFileMutation`,
+`downloadProjectLibraryContent` and `readProjectLibraryCapability`. Query keys
+carry the Station and authority; pass the host request scope, and an
+`isCurrent` check when the connection can change. A malformed entry is
+withheld and the page reads as `partial`. Gate on `readProjectLibraryCapability`
+(the `projectLibrary` flag); with the `project-library` preview off, routes
+answer `feature_preview_disabled`.
 
 ## Reviewed Project context and learning
 

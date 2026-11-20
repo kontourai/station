@@ -1,0 +1,7 @@
+{
+  "revision": "bba211df7703cac944a969178b8f452d2bf1c340",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the Known qualification failures section against run-vitest-corpus.mjs: a failure reporter that cannot be loaded now runs the group as with the gate off and records failure-reporter-unavailable, which the section's 'anything not explicitly explained alerts' rule already covers; the phase step must conclude failure, covered by 'fails only in its test phase step'. The new walker classification changes no claim. No prose change needed.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/run-vitest-corpus.mjs"]}
+  ]
+}

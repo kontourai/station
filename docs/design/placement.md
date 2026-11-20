@@ -11,6 +11,19 @@
 > callers; this review does not renew historical bundle measurements, screenshots,
 > browser gesture measurements or physical-device results.
 
+## Current amendment: session readers belong to Chat
+
+Activity and its Quick review pane are retired. Session destinations open in
+Chat, and child transcripts push onto a navigation stack owned by that chat
+pane. Home and the inbox own the work lists. The Activity-specific examples
+and measurements in the dated slices below describe their historical revision.
+
+Legacy `/activity`, `/sessions` and `?surface=activity` URLs open the named
+session in Chat, or the inbox without a session. Saved Activity region entries
+migrate to Home in `main` and Chat in a dock; an existing Chat keeps its original
+placement. Retired quick-review tabs are removed, and a dock emptied by this
+migration closes. Other pane order and selection are retained.
+
 Status: **accepted direction with an implemented core**. The dated sections
 record the decisions and sequence of the placement work. Read later amendments
 where an earlier slice says a capability is absent. The current source has both
@@ -46,8 +59,11 @@ This source contract does not renew browser or native geometry qualification.
 ## Mobile tool navigation (2026-10-27)
 
 On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
-with a compact header: Inbox on Chat, Chat when a tool is open, and the current
-tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
+with a compact header. On the Chat page the workbench bar takes no row: the
+tool picker (glyph and caret, named for a screen reader) leads the chat's own
+mobile header, whose Inbox button already returns to the inbox, and Open
+Browser stays in the picker's list. With a tool open, the bar returns with
+Chat and the tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
 It lists Chat and the host's pane instances in the layout's declared order,
 including added panes, changed-file counts, the Browser launcher when available,
 and Add tool when the host can open its catalog. Choosing a pane uses the same
@@ -251,7 +267,7 @@ every other route. These rules make it a region rather than a special case
   `?surface=home` deep link. Home is `hiddenFromNav` and has no palette
   entry.
 - **A `main` occupant's toggle returns it to the dock.** A surface's chord
-  (⌘⇧A for Activity) and its row in the folded Regions menu are one model
+  (⌘D for Chat) and its row in the folded Regions menu are one model
   command, `toggleSurface` (#1523; the toolbar carries no placement rule of its
   own, #1420): a dock occupant's region is hidden or shown, and a surface
   occupying `main` is moved to its default dock region — visible, Home left in
@@ -866,7 +882,8 @@ background work of the conversation on screen — tool calls, delegated
 sessions, provider subagents — as a dock tab (`workspace-agents`,
 `exposure: 'catalog'`, no chord, dock regions only). It is the SAME list as
 `BackgroundTasksSheet`: `TaskRow` and its labels moved to
-`backgroundTaskRows.tsx` and both render it. The occurrence binds nothing,
+`backgroundTaskRows.tsx` and both render it. Its activity line
+(`BackgroundTaskActivity`) is also what the chat's background banner lists. The occurrence binds nothing,
 like Activity's — which conversation's work it shows is what the pane READS
 (`activeChat`), not what it IS — and it reads no region state, so
 "View transcript" reveals the delegate through `useShowSurface`. Fields the
@@ -898,6 +915,9 @@ remains for an engine whose control cell is not wired.
 **Amended 2026-10-14.** Subagents also appear as inline chat transcript
 cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
 sit after their spawning tool-call run, including every child of a workflow.
+A spawning call drawn as its card leaves that run. Claude's background shell
+commands are child work of kind `command` or `monitor` (`childWorkKindOf`),
+drawn as command cards and rows rather than as subagents.
 When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
 That position counts the narration a settled phone turn folds into its tool
@@ -942,19 +962,46 @@ and time formatting (`utils/child-work-display.ts`).
 
 **Child-work retention and result amendment (2026-11-05).** The pane and
 background sheet show retained work, not a complete lifetime inventory.
-Recent activity bounds settled tool rows and closed-chat history; counts marked
-“shown” count retained rows. Running work survives chat closure. The “All”
+The sheet's “Recent tasks only” footer marks the bound on settled tool rows
+and closed-chat history; counts marked “shown” count retained rows. Running work survives chat closure. The “All”
 child registry and completion notices are scoped to the Station connection;
 a foreign Station with the same reported child IDs cannot replace a notice.
 Missing snapshot evidence leaves an outcome unknown.
 
-Result text identifies its recorded source: returned result, provider summary,
-child message or provider error. Older text keeps unknown provenance. A later
+Expanded result text identifies its recorded source: returned result, provider
+summary, child message or provider error. The compact preview labels
+provider summaries, child messages and provider errors when their source
+is recorded. Expansion also discloses unknown provenance on older text. A later
 structured tool return from the same Station and child corrects an existing
 completion notice in place without another announcement. A transcript handle
 alone does not prove a returned result. These rules qualify the dated
 “complete list” wording above; transcript cards can still represent loaded
 spawns beyond the live registry's bounded history.
+
+**Agents pane layout and scope amendment (2026-11-16).** The scopes are
+**This chat** and **All chats**, the glossary's word for a conversation.
+All chats is a superset of every chat's own scope: besides the session read
+model's delegates and the child-work registry, it lists every chat's
+tool-call and delegated-task cards from the background-tasks store, grouped
+by chat. Every row reaches its group through one resolver; a subagent's
+reporting session follows the store's reporter-to-chat binding, so a chat
+stays one group after it closes. The current chat's group leads, a group's
+title (a heading) opens the chat by its durable id, and the group shows the
+project only as the open chat's display name, never a session row's slug.
+Collapsed groups are a per-device convenience. The store holds what this
+window has seen, so when tool calls are listed the pane notes that they are
+listed from when the window opened; finished tool calls of a closed chat
+are dropped as before. The global finished bound trims only delegates,
+because the registry already bounds engine subagents. Section headings count
+agents, commands, monitors and tools by name; a Bash call that leaves a
+background command is counted once, as that command. `TaskRow` and
+`ChildWorkRow` share one sentence-case status pill (`WorkStatusPill`) with
+one tone per status. An agent card's completed turn reads **Run finished**
+like a child-work row, and **Completed** is kept for a tool call that
+reported success. A row's
+text keeps at least 22rem; actions that do not fit beside it wrap to their
+own line below (flex wrap, no at-rule), which qualifies the 2026-10-14
+“actions beside each row” wording above.
 
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
@@ -1018,6 +1065,11 @@ resolved by `RegionPaneHost` from the SDK's metadata LISTS
 and reading no record, so the host chunk gains no layout renderer. Until the
 list resolves, and for an id the list no longer carries, the tab shows the
 prefix fallback ("Board" / "Layout").
+
+The trusted plugin pane host uses
+[`PluginWorkspacePaneSDKBoundary`](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx)
+for its Layout navigation context. Clearing its active tab removes the saved
+state and cancels pending hash restoration before a switch or remount.
 
 **Which kinds render.** The renderer (`LayoutWorkspacePane`, lazy) is
 `PersonalBoardView`'s: the one `LayoutRenderer` through the one
@@ -1115,35 +1167,17 @@ admission-aware — can complete that path from the dock. A choice: for a NON-pl
 project layout, a launcher bound to the layout's project through
 `resolveLayoutLaunchAgent(…, boundProjectSlug, projectAgentFilter)` would
 have worked, and wiring it remains a legitimate later option this record does
-not close. What was not available to copy is `LayoutView`'s own tail:
-`handleLaunchPrompt` ends `setDockState(true)` — which reveals Chat and
-selects its tab in the region holding it (`syncRegionArrangementFromDock`'s
-`openChat`) — then `setActiveChat(null)`, so nothing selects the session it
-just created (`useChatDockActiveChatSync` returns on a null `activeChat`);
-that is `LayoutView`'s own latent defect, filed as #2194. The canonical
-pattern that DOES select — `createChatSession → setActiveChat(sessionId) →
-setDockState(true)` in `useActiveChatSessionLifecycle.ts`'s `useLaunchChat`
-and `useChatDockActions.ts` — was what a wired launcher would have copied. A
-Board has no project at all, so it could not have been wired either way, and
-one rule now covers both families.
+not close. A Board has no Project context for choosing a launch Agent.
 
-**A flag, not a derivation.** Every host without a launcher is exactly a host
-passing no `onLaunchPrompt`, so `LayoutRenderer` could derive
-`canLaunch = onLaunchPrompt !== undefined` and cover every host with no prop
-and no precedence rule (#2171 review L1). It was weighed and not taken,
-because it would change what two hosts this change leaves alone render:
-`WorkspacePaneRouteView` and `ProjectLayoutRenderer`'s synthetic single-tab
-layouts pass no launcher and carry pane-DESCRIPTOR `actions`, and whether a
-descriptor's `prompt` action should ever be launchable from a route-bound
-pane is an open decision (#2195). The flag is opt-in so that decision is
-made per host, on purpose; #2195 may replace the flag with the derivation,
-and the SDK header keeps its prop either way.
-
-**What this does not reach.** `LayoutView` passes a real launcher and never
-declares `false`. `WorkspacePaneRouteView` and `ProjectLayoutRenderer`'s two
-synthetic single-tab layouts pass nothing and still render a descriptor's
-`prompt` action with a no-op launcher — the same defect, deliberately left to
-#2195 rather than fixed by side effect here.
+**Prompt launches in the route hosts (#2194, #2195).** For an authored
+Project Layout, `LayoutView` selects the new Chat before opening the dock
+and sending the prompt. Plugin Layout actions continue through the live
+contribution checks described above. Direct Workspace Pane routes and the
+Workspace Pane rendered within a Project Layout have navigation and link
+actions. Their descriptor prompts require a host launcher, so these panes
+omit those controls. `LayoutRenderer` derives header availability from the
+effective launcher. An explicit `canLaunchPrompts={false}` also disables
+launching for the header and pane, even if the host supplies a handler.
 
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
@@ -1317,7 +1351,7 @@ one arrangement, and no control at all that said whether a region was open
   renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
   through: a dock region's chooser, which lists it as "Move here from Main"
   (#2154; #2143's "Show Activity here" offer row); its chord
-  (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
+  (retired Activity chord; Chat uses ⌘D and `toggleSurface`);
   or the sidebar's Home row (`showSurface('home')` places Home, and the
   displaced surface is unplaced — its chord places it afresh in its dock,
   and its sidebar row makes it the page again). With every dock region occupied there is no pointer route in the
@@ -1926,8 +1960,10 @@ per conversation.** Below the fold nothing above changes.
   44px boxes on a pointer that cannot hover, since the side panel opens by
   width alone. A pull request review inside the pane fences its own
   changed-files diff from the head, so the head always speaks for the Diff
-  pane. File Preview's head is left for the per-file Changes rework in
-  flight to build on.
+  pane. File Preview's Changes view uses these same tools. In the File view,
+  wrapped continuations align with the code column beside the line numbers.
+  Local and provider diff comments show relative time, with the original
+  instant in a tooltip.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge
@@ -2056,7 +2092,7 @@ crowded and that nothing said what belonged in it. The rule:
 | Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
 | Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
-| One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
+| A Chat settings gear, then one overflow (⋯), in groups divided by a rule (`groupDockMoreActions`, 2026-11-15): the working chats and Open chat…; this chat's commands and panels (New Task from this, Changed files and Task context as checked toggles, History, coordinator, Background tasks, Chat inventory, Browse turns); the Copy rows; where the chat came from (a disabled note); and, where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), the region's Move to …, Add pane… and Maximize/Restore size. Open in Coding is a composer "+" action, beside Open terminal ([chat composer §3](chat-composer.md#3-target-composer)). What the This chat card carries leaves the menu while the card shows it (2026-11-16): beside the transcript, Background tasks, the Copy rows and the origin note are the card's (its Activity row, footer and From row; Chat inventory stays a row, since it opens the full reader and the card's footer link the compact view); folded behind the chip, the Copy rows and the origin note are the chip's sheet's while Background tasks keeps its row and its count on the trigger; a card that has not loaded leaves them all in the menu. A lone working chat stays behind the trigger, which carries its count. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | In a side region narrower than its 400px default, the grab and the agent avatar step aside and the spacing tightens, so the title keeps room beside the × (#4401); Move to … stays in the overflow. |
 | The "This chat" chip, only while the card is folded away. | — |
 | — | Context meter: an unboxed ring with its percentage inside, beside Send; on a phone, also the Actions sheet's Conversation stats row. |
@@ -2088,7 +2124,7 @@ pane, a region or a side panel of the Coding workbench, and it adds no
 server read beyond the pull request links Chat details already reads.
 
 - **Rows are facts the dock already holds.** Workspace (the session's
-  project and directory; opens Open in Coding under the More menu's own gate,
+  project and directory; opens Open in Coding under the composer menu's own gate,
   otherwise the project page), Branch (`gitStatus`: branch, changed-file
   count, ahead/behind; opens the Active work Changed files panel), Activity
   (the inbox row's status-ladder line for this chat from
@@ -2096,10 +2132,13 @@ server read beyond the pull request links Chat details already reads.
   pending-message list's own count, from the same rule as the list
   (`pendingMessageCount`); opens Background tasks through the dock's
   own router, so a desktop dock reveals the Agents pane), Pull requests
-  (only when links exist or the read failed; opens Chat details). The footer
+  (only when links exist or the read failed; opens Chat details), From (a
+  delegated chat's origin, a fact rather than a command). The footer also
+  carries the Copy commands (chat ID, session ID, folder path) as compact
+  44px links. Its Chat inventory link
   presses the dock's one Chat inventory host and appears only once that host
   has registered, so a host that never arrives (no authority yet, a chunk
-  that failed) leaves no footer rather than a standing "loading" label. A
+  that failed) leaves no link rather than a standing "loading" label. A
   row whose fact is absent is
   omitted rather than worded as a state. There is no Kept row: no inventory
   read runs for the active chat until the inventory opens, and adding one per

@@ -1,7 +1,0 @@
-{
-  "revision": "33c168503f397dec884f6eb239df4ef1deb221bf",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed the SessionCommandModule start path and its durable ownership guard. Attributed fresh starts now record prepared ownership only while the exact owner is absent; accepted first turns therefore do not depend on asynchronous adapter event ingestion. Existing configured metadata is retained when ownership is already durable, preserving model route and capability delivery. The focused regression failed on the original owner authorization and the opposite ordering failed before the duplicate-stamp guard; the final four focused suites passed 50 tests. The 682-test service and sibling run passed before the narrowing guard. Read, tenant, owner immutability, consent and failed-start cleanup contracts remain unchanged; hosted qualification and real-provider acceptance are still separate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/__tests__/session-start-ownership.test.ts"]}
-  ]
-}

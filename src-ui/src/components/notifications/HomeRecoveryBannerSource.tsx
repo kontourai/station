@@ -25,9 +25,8 @@ export function HomeRecoveryBannerSource() {
         tone: 'warning',
         badge: 'Recovery status',
         dismissible: false,
-        message: 'This Station’s recovery record could not be verified.',
-        detail:
-          'Check the recovered home before resuming work. This notice does not establish execution ownership.',
+        message: 'Couldn’t verify how this Station was restored.',
+        detail: 'Check recent work before you continue.',
       });
     } else if (
       recovery.kind === 'recovered-from-copy' &&
@@ -45,7 +44,7 @@ export function HomeRecoveryBannerSource() {
         dismissible: false,
         message: `Recovered from a copy saved ${new Date(recovery.snapshotCreatedAt).toLocaleString()}.`,
         detail:
-          'Work after that snapshot may be missing. Restoring this copy did not transfer execution authority.',
+          'Work after this copy was saved may be missing. Check recent work before you continue.',
       });
     }
     return () => bannerStore.clear(BANNER_IDS.homeRecovery);

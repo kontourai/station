@@ -1,3 +1,4 @@
+import { ChildChatPresentationContext } from '../components/chat-dock/ChildChatNavigationContext';
 /**
  * @vitest-environment jsdom
  */
@@ -10,7 +11,6 @@ import {
   type ChatDockMobileDockToggle,
   type ChatDockMobileExtentToggle,
   ChatDockMobileHeader,
-  type ChatDockMobileProjectSwitcher,
 } from '../components/chat-dock/ChatDockMobileHeader';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
@@ -46,6 +46,27 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
 // The sheet's project picker and connection control mount inside this bar's
 // tree; `useIsMobile`/`useNavigation` are mocked so neither needs a real
 // `matchMedia` breakpoint or router.
+const actionSheetFailure = vi.hoisted(() => ({ active: false }));
+vi.mock(
+  '../components/chat-dock/ChatDockMobileOverflowSheet',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/chat-dock/ChatDockMobileOverflowSheet')
+      >();
+    return {
+      ...actual,
+      ChatDockMobileOverflowSheet: (
+        props: React.ComponentProps<typeof actual.ChatDockMobileOverflowSheet>,
+      ) => {
+        if (actionSheetFailure.active)
+          throw new Error('Action sheet fixture render failure');
+        return <actual.ChatDockMobileOverflowSheet {...props} />;
+      },
+    };
+  },
+);
+
 const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
@@ -67,6 +88,7 @@ vi.mock('../contexts/NavigationContext', async (importOriginal) => ({
 // from reaching the network.
 beforeEach(() => {
   mobileFlag.isMobile = false;
+  actionSheetFailure.active = false;
   pathnameFlag.pathname = '/';
   vi.stubGlobal(
     'matchMedia',
@@ -87,17 +109,6 @@ beforeEach(() => {
   );
 });
 
-const PROJECTS = [
-  {
-    id: 'p-kontour',
-    slug: 'kontour-ai',
-    name: 'Kontour AI',
-    hasWorkingDirectory: false,
-    layoutCount: 0,
-    hasKnowledge: false,
-  },
-];
-
 function renderHeader(
   overrides: {
     onClear?: ReturnType<typeof vi.fn<() => void>>;
@@ -106,7 +117,6 @@ function renderHeader(
     onOpenInventory?: (trigger: HTMLElement) => void;
     onToggleInbox?: ReturnType<typeof vi.fn<() => void>>;
     sessionProjectMismatchLabel?: string | null;
-    projectSwitcher?: ChatDockMobileProjectSwitcher | null;
     dockToggle?: ChatDockMobileDockToggle | null;
     projectScope?: { name: string; onClear: () => void } | null;
     agentIdentity?: { name: string; slug: string; icon?: string } | null;
@@ -118,6 +128,7 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    panelActions?: DockMoreAction[];
     conversationStats?: {
       liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
       onOpen: () => void;
@@ -127,83 +138,84 @@ function renderHeader(
     extentToggle?: ChatDockMobileExtentToggle | null;
     hasConversation?: boolean;
     inboxActive?: boolean;
+    childTrail?: string;
+    reportedStart?: string;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
   renderWithIsolatedConnections(
-    <ChatDockMobileHeader
-      inboxActive={overrides.inboxActive}
-      hasConversation={overrides.hasConversation}
-      extentToggle={overrides.extentToggle}
-      showDrawerToggle={false}
-      showConnection={overrides.showConnection ?? true}
-      sessionTitle="New chat"
-      sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
-      projectScope={
-        overrides.projectScope === null
-          ? undefined
-          : (overrides.projectScope ?? { name: 'Kontour AI', onClear })
+    <ChildChatPresentationContext.Provider
+      value={
+        overrides.childTrail
+          ? { trail: overrides.childTrail, pane: null }
+          : null
       }
-      dockToggle={
-        overrides.dockToggle !== undefined
-          ? overrides.dockToggle
-          : {
-              state: 'open',
-              onExpand: vi.fn(),
-              onCollapse: vi.fn(),
-            }
-      }
-      projectSwitcher={
-        overrides.projectSwitcher !== undefined
-          ? overrides.projectSwitcher
-          : {
-              projectSlug: 'kontour-ai',
-              projectName: 'Kontour AI',
-              projects: PROJECTS,
-              onOpenProject: vi.fn(),
-              onSwitchProject: vi.fn(),
-            }
-      }
-      agentIdentity={
-        overrides.agentIdentity !== undefined
-          ? overrides.agentIdentity
-          : { name: 'Codex', slug: 'codex' }
-      }
-      activeCount={overrides.activeCount ?? 0}
-      unreadCount={overrides.unreadCount ?? 0}
-      inboxTriggerRef={createRef<HTMLButtonElement>()}
-      onToggleInbox={overrides.onToggleInbox ?? vi.fn()}
-      onToggleSidebar={vi.fn()}
-      onDragPointerDown={vi.fn()}
-      onDragClickCapture={vi.fn()}
-      onNewChat={overrides.onNewChat ?? vi.fn()}
-      overflow={{
-        onTurnIntoTask: overrides.onTurnIntoTask,
-        onOpenInventory: overrides.onOpenInventory,
-        onOpenConversation: vi.fn(),
-        onToggleHistory: vi.fn(),
-        onOpenChatSettings: vi.fn(),
-        onOpenProject: overrides.onOpenProject ?? null,
-        openProjectName: overrides.openProjectName ?? null,
-        onOpenProfile: vi.fn(),
-        onOpenAppSettings: vi.fn(),
-        onCollapseDock: vi.fn(),
-        onExpandDock: vi.fn(),
-        onRestoreDock: vi.fn(),
-        isDockMaximized: false,
-        regionPanes: overrides.regionPanes,
-        onSelectRegionPane: overrides.onSelectRegionPane,
-        onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
-        backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
-        copyActions: overrides.copyActions,
-        conversationStats: overrides.conversationStats && {
-          agentSlug: 'codex',
-          conversationId: 'c-1',
-          apiBase: 'http://station.test',
-          ...overrides.conversationStats,
-        },
-      }}
-    />,
+    >
+      <ChatDockMobileHeader
+        inboxActive={overrides.inboxActive}
+        hasConversation={overrides.hasConversation}
+        extentToggle={overrides.extentToggle}
+        showDrawerToggle={false}
+        showConnection={overrides.showConnection ?? true}
+        sessionTitle="New chat"
+        reportedStart={overrides.reportedStart}
+        sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
+        projectScope={
+          overrides.projectScope === null
+            ? undefined
+            : (overrides.projectScope ?? { name: 'Kontour AI', onClear })
+        }
+        dockToggle={
+          overrides.dockToggle !== undefined
+            ? overrides.dockToggle
+            : {
+                state: 'open',
+                onExpand: vi.fn(),
+                onCollapse: vi.fn(),
+              }
+        }
+        agentIdentity={
+          overrides.agentIdentity !== undefined
+            ? overrides.agentIdentity
+            : { name: 'Codex', slug: 'codex' }
+        }
+        activeCount={overrides.activeCount ?? 0}
+        unreadCount={overrides.unreadCount ?? 0}
+        inboxTriggerRef={createRef<HTMLButtonElement>()}
+        onToggleInbox={overrides.onToggleInbox ?? vi.fn()}
+        onToggleSidebar={vi.fn()}
+        onDragPointerDown={vi.fn()}
+        onDragClickCapture={vi.fn()}
+        onNewChat={overrides.onNewChat ?? vi.fn()}
+        overflow={{
+          onTurnIntoTask: overrides.onTurnIntoTask,
+          onOpenInventory: overrides.onOpenInventory,
+          onOpenConversation: vi.fn(),
+          onOpenInbox: vi.fn(),
+          onOpenChatSettings: vi.fn(),
+          onOpenProject: overrides.onOpenProject ?? null,
+          openProjectName: overrides.openProjectName ?? null,
+          onOpenProfile: vi.fn(),
+          onOpenAppSettings: vi.fn(),
+          onCollapseDock: vi.fn(),
+          onExpandDock: vi.fn(),
+          onRestoreDock: vi.fn(),
+          isDockMaximized: false,
+          regionPanes: overrides.regionPanes,
+          onSelectRegionPane: overrides.onSelectRegionPane,
+          onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
+          backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
+          copyActions: overrides.copyActions,
+          panelActions: overrides.panelActions,
+          conversationStats: overrides.conversationStats && {
+            agentSlug: 'codex',
+            conversationId: 'c-1',
+            apiBase: 'http://station.test',
+            ...overrides.conversationStats,
+          },
+        }}
+      />
+    </ChildChatPresentationContext.Provider>,
     { wrapper: NavigationProvider },
   );
   return onClear;
@@ -214,7 +226,6 @@ function renderHeader(
 beforeAll(async () => {
   await Promise.all([
     import('../components/chat-dock/ChatDockMobileOverflowSheet'),
-    import('../components/chat-dock/ChatDockProjectSwitcherSheet'),
   ]);
 });
 
@@ -224,7 +235,57 @@ async function openActions() {
   return screen.getByRole('dialog', { name: 'Chat actions' });
 }
 
+test.each([
+  [undefined, true],
+  ['Child conversation', false],
+] as const)(
+  'reports the working chat origin only on its own mobile title (%s)',
+  (childTrail, visible) => {
+    renderHeader({
+      agentIdentity: { name: 'Lifecycle Probe', slug: 'lifecycle-probe' },
+      reportedStart: 'CLI (reported) · ',
+      childTrail,
+    });
+    expect(Boolean(screen.queryByText(/CLI \(reported\)/))).toBe(visible);
+  },
+);
+
 describe('mobile conversation focus', () => {
+  test('keeps project choice out of the unresolved header', () => {
+    renderHeader({ agentIdentity: null });
+    expect(
+      screen.queryByRole('button', { name: /^Switch project/ }),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+  });
+  test.each([
+    { hasConversation: false },
+    { inboxActive: true },
+    { agentIdentity: null },
+    {},
+  ])('leaves project choice to the start composer: %j', (state) => {
+    renderHeader(state);
+    expect(
+      screen.queryByRole('button', {
+        name: /Switch project|New chats:|Choose a project/,
+      }),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(
+      screen.getByText(state.inboxActive ? 'Inbox' : 'New chat', {
+        selector: '.chat-dock__mobile-title-text',
+      }),
+    ).toBeTruthy();
+  });
+  test('puts chat actions before identity and full screen after identity', () => {
+    renderHeader({ extentToggle: { maximized: false, onToggle: vi.fn() } });
+    const actions = screen.getByRole('button', { name: 'Chat actions' });
+    const extent = screen.getByRole('button', { name: 'Full screen chat' });
+    expect(actions.closest('.chat-dock__mobile-leading')).not.toBeNull();
+    expect(extent.closest('.chat-dock__mobile-actions')).not.toBeNull();
+    fireEvent.click(extent);
+  });
+
   test('keeps conversation switching direct and leaves future-project choice out of the active chat', () => {
     const onToggleInbox = vi.fn();
     renderHeader({
@@ -274,33 +335,59 @@ describe('mobile conversation focus', () => {
     expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
   });
 
-  test.each([{ projects: PROJECTS }, { projects: [] }])(
-    'opens the canonical project creation route from the picker',
-    async ({ projects }) => {
-      renderHeader({
-        agentIdentity: null,
-        projectSwitcher: {
-          projectSlug: '',
-          projectName: 'Choose a project',
-          projects,
-          onOpenProject: vi.fn(),
-          onSwitchProject: vi.fn(),
+  test('reports and retries the failure of the actual Chat actions surface', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      actionSheetFailure.active = true;
+      renderHeader();
+      fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+      const failure = await screen.findByRole('alert');
+      expect(failure.getAttribute('data-lazy-surface')).toBe('chat-actions');
+      expect(failure.textContent).toContain('Unable to load Chat actions.');
+      actionSheetFailure.active = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(
+        await screen.findByRole('menu', { name: 'Chat actions' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  test('the sheet carries the panel toggles the composer menu no longer holds', async () => {
+    const onFiles = vi.fn();
+    renderHeader({
+      panelActions: [
+        {
+          key: 'panel-files',
+          label: 'Changed files',
+          checked: true,
+          onSelect: onFiles,
         },
-      });
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Switch project — New chats, Choose a project',
-        }),
-      );
-      fireEvent.click(
-        await screen.findByRole('button', {
-          name: 'New project',
-        }),
-      );
-      expect(window.location.pathname).toBe('/projects/new');
-      expect(screen.queryByRole('dialog', { name: 'Projects' })).toBeNull();
-    },
-  );
+        {
+          key: 'panel-context',
+          label: 'Task context',
+          checked: false,
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    await openActions();
+    const files = screen.getByRole('menuitemcheckbox', {
+      name: 'Changed files',
+    });
+    expect(files.getAttribute('aria-checked')).toBe('true');
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Task context' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+    fireEvent.click(files);
+    expect(onFiles).toHaveBeenCalledOnce();
+  });
 
   test('keeps New chat callable from the actions sheet', async () => {
     const onNewChat = vi.fn();
@@ -335,25 +422,7 @@ describe('mobile conversation focus', () => {
     );
     expect(onClear).toHaveBeenCalledOnce();
   });
-  test('opening a project preserves the active conversation binding', async () => {
-    const onOpenProject = vi.fn();
-    const onSwitchProject = vi.fn();
-    renderHeader({
-      agentIdentity: null,
-      projectSwitcher: {
-        projectSlug: 'kontour-ai',
-        projectName: 'Kontour AI',
-        projects: PROJECTS,
-        onOpenProject,
-        onSwitchProject,
-      },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
-    await screen.findByRole('dialog', { name: 'Projects' });
-    fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
-    expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
-    expect(onSwitchProject).not.toHaveBeenCalled();
-  });
+
   test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat, showConnection: false });
@@ -386,41 +455,6 @@ describe('mobile conversation focus', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand chat' }));
     expect(onExpand).toHaveBeenCalledOnce();
   });
-  test('does not invent attribution or geometry for an unbound fullscreen pane', () => {
-    renderHeader({
-      agentIdentity: null,
-      dockToggle: null,
-      projectSwitcher: null,
-    });
-    expect(
-      screen.getByText('New chat', {
-        selector: '.chat-dock__mobile-title-text',
-      }).textContent,
-    ).toBe('New chat');
-    expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
-  });
-});
-
-/** WCAG 2.5.3: each switcher's name contains the words it shows, in order. */
-describe('mobile switcher names include their visible text', () => {
-  const words = (text: string) =>
-    text
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .trim();
-  test.each([['the project switcher', /^Switch project/]])(
-    '%s',
-    (_label, name) => {
-      renderHeader({
-        agentIdentity: null,
-        sessionProjectMismatchLabel: 'This chat: Alpha',
-      });
-      const button = screen.getByRole('button', { name });
-      const visible = words(button.textContent ?? '');
-      expect(visible.length).toBeGreaterThan(0);
-      expect(words(button.getAttribute('aria-label') ?? '')).toContain(visible);
-    },
-  );
 });
 
 /** #928 C2b retires occupant switching; primary context actions remain direct. */
@@ -661,6 +695,11 @@ describe('full-screen and peek control (#4391)', () => {
       screen.getAllByRole('button', { name: 'Full screen chat' }),
     ).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Expand chat' })).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Full screen chat' })
+        .closest('.chat-dock__mobile-actions'),
+    ).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
     expect(onToggle).toHaveBeenCalledOnce();
   });
@@ -706,8 +745,21 @@ describe('first-run bar without a chat (#4404 A44)', () => {
   });
 
   test('keeps Back to chat and Chat actions once a chat exists', () => {
-    renderHeader({ hasConversation: true, inboxActive: true });
+    renderHeader({
+      hasConversation: true,
+      inboxActive: true,
+      agentIdentity: null,
+    });
+    expect(screen.getAllByText('Inbox', { exact: true })).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
   });
+});
+
+test('Inbox title takes precedence over an open child breadcrumb', () => {
+  renderHeader({ inboxActive: true, childTrail: 'Parent / Child' });
+  expect(
+    screen.getByText('Inbox', { selector: '.chat-dock__mobile-title' }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Parent / Child')).toBeNull();
 });

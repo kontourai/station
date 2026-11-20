@@ -1,0 +1,9 @@
+{
+  "revision": "de3f1be93bc5ca4eba3028745b8a0fe831b60699",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reused the reviewed #5262 Agent example fix. The guide matches the shipped manifest and references delegation as a declared tool subject to recorded caller authority, depth and inherited tool policy. All 31 examples conformance cases passed through the existing owner suite.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Rechecked the dispatch and child delegation links after the guide example correction. The declaration matches the shipped manifest and does not change the referenced caller eligibility, Project scope or recorded depth rules.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

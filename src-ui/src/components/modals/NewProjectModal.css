@@ -7,7 +7,6 @@
   justify-content: center;
   padding: 1.5rem;
   background: var(--overlay-modal);
-  backdrop-filter: blur(10px);
 }
 
 .new-project-modal__intents {
@@ -36,6 +35,12 @@
 }
 .new-project-modal__intent:has(input:checked) {
   border-color: var(--k-action);
+  background: var(--k-panel-raised);
+}
+.new-project-modal__intent-icon {
+  flex: none;
+  inline-size: var(--k-space-5);
+  block-size: var(--k-space-5);
 }
 .new-project-modal__intent:focus-within {
   outline: 2px solid var(--k-focus);
@@ -51,8 +56,9 @@
 }
 
 .new-project-modal {
-  width: min(720px, 100%);
-  max-height: min(92vh, 920px);
+  width: min(38rem, 100%);
+  max-height: 100%;
+  box-sizing: border-box;
   /* #765 F7: the panel used to scroll as one block, so on short viewports the
      footer actions (Cancel/Create) sat below the fold on first open. The
      panel is now a flex column whose BODY scrolls internally (the draft
@@ -62,24 +68,13 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1.5rem;
-  background:
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--accent-primary) 16%, transparent),
-      transparent 32%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--bg-primary) 92%, var(--surface-lift) 8%),
-      var(--bg-primary)
-    );
-  border: 1px solid
-    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
-  border-radius: 20px;
-  box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: var(--k-space-4);
+  /* The surface the editor hints were measured against; --k-bg drops their
+     contrast below AA in the gallery's axe check. */
+  background: var(--bg-primary);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+  box-shadow: var(--k-elevation-overlay);
 }
 
 .new-project-modal__header {
@@ -87,17 +82,7 @@
   flex-shrink: 0;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.new-project-modal__eyebrow {
-  margin: 0 0 0.45rem;
-  color: var(--accent-primary);
-  font-family: var(--font-mono);
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  margin-bottom: var(--k-space-3);
 }
 
 .new-project-modal__title {
@@ -121,7 +106,7 @@
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--k-space-3);
 }
 
 .new-project-modal__draft-scroll {
@@ -144,7 +129,7 @@
   padding: 0;
   border: 0;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--k-space-3);
 }
 
 /* The browse-layouts body swaps in for the form inside the same panel; the
@@ -178,11 +163,7 @@
 }
 
 .new-project-modal__panel--featured {
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--accent-primary) 9%, var(--bg-secondary)),
-    color-mix(in srgb, var(--bg-secondary) 88%, var(--surface-lift) 12%)
-  );
+  background: var(--bg-secondary);
 }
 
 .new-project-modal__panel-title {
@@ -355,9 +336,9 @@
   overflow: auto;
   padding: 1.25rem;
   border: 1px solid var(--border-primary);
-  border-radius: 18px;
+  border-radius: var(--k-radius-overlay);
   background: var(--bg-primary);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42);
+  box-shadow: var(--k-elevation-overlay);
 }
 
 .new-project-layout-browser__header {
@@ -378,7 +359,7 @@
        paint the Starter-layout card through the footer. Bind the panel to the
        overlay's definite content height; min-height:0 then lets the form's
        plain wrapper become the one bounded scrollport. */
-    height: 100%;
+    height: min(100%, 40rem);
     min-height: 0;
     overflow: hidden;
     padding: 1.1rem;

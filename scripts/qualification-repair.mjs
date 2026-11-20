@@ -4,6 +4,11 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { validateRepairPaths } from '../packages/contracts/src/qualification-repair-policy.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { github, listGithub } from './qualification-evidence.mjs';
+import {
+  describeSignal,
+  qualificationFailureSignal,
+  signalMode,
+} from './qualification-failure-signal.mjs';
 
 export { validateRepairPaths } from '../packages/contracts/src/qualification-repair-policy.mjs';
 
@@ -102,6 +107,30 @@ export function qualificationConclusion(run, jobs) {
     : run.conclusion;
 }
 
+/**
+ * Whether a canonical run executed its corpus. A scheduled run that declined
+ * to repeat a corpus already failed on its source (`skip_failed_source`)
+ * resolves successfully and skips every corpus job: it carries no new failure
+ * and no test logs, so it must not become the episode's linked run. A failed
+ * resolve also skips the corpus but is itself a failure, so it counts.
+ */
+export function corpusExecuted(jobs) {
+  const resolved = jobs.some(
+    (job) =>
+      job.name === 'qualification / resolve' && job.conclusion === 'success',
+  );
+  return (
+    !resolved ||
+    jobs.some(
+      (job) =>
+        job.name.startsWith('qualification / ') &&
+        job.name !== 'qualification / resolve' &&
+        job.name !== QUALIFICATION_GATE_JOB &&
+        job.conclusion !== 'skipped',
+    )
+  );
+}
+
 export function validateRepairRun(run, repository) {
   if (
     run.path !== '.github/workflows/main-qualification.yml' ||
@@ -116,7 +145,7 @@ export function validateRepairRun(run, repository) {
       'Repair requires a completed canonical main qualification run',
     );
 }
-function issueBody(state, run, jobs, agent) {
+function issueBody(state, run, jobs, agent, classification = []) {
   const failures = jobs
     .filter(
       (job) => job.conclusion !== 'success' && job.conclusion !== 'skipped',
@@ -138,6 +167,8 @@ function issueBody(state, run, jobs, agent) {
         `Escalate startup, build, authentication, or data-integrity regressions immediately. ` +
         `Use the manual repair workflow with retry=true only after reviewing the previous attempt.\n\n`
       : `Repeated runs update this report. Escalate startup, build, authentication, or data-integrity regressions immediately.\n\n`) +
+    (classification.length ? `${classification.join('\n')}\n\n` : '') +
+    'Only a green qualification run or a person closes this episode.\n\n' +
     `<!-- station-qualification:${JSON.stringify(state)} -->\n`
   );
 }
@@ -191,6 +222,9 @@ async function prepare() {
   );
   output('claim', 'false');
   if (['ignore', 'stale'].includes(decision.action)) return;
+  // A red run that skipped its corpus repeats an earlier failure the episode
+  // already records; leave the episode and its run link as they are.
+  if (decision.action !== 'close' && !corpusExecuted(jobs)) return;
   if (decision.action === 'close') {
     if (issue?.state === 'open')
       await github(`issues/${issue.number}`, {
@@ -199,10 +233,41 @@ async function prepare() {
       });
     return;
   }
+  // The failure signal is computed for every executed red run and written
+  // into the report. In report mode (the default) it changes no decision;
+  // only `enforce` lets a known-only run skip opening an episode.
+  const mode = signalMode(process.env.STATION_QUALIFICATION_SIGNAL);
+  const signal = capacityDeferred
+    ? null
+    : await qualificationFailureSignal(run, jobs);
+  const classification = signal ? describeSignal(signal, { mode }) : [];
+  if (signal) process.stdout.write(`${classification.join('\n')}\n`);
+  if (mode === 'enforce' && signal?.knownOnly) {
+    // Known failures only: open nothing, never close, and keep an open
+    // episode's report current without claiming another agent attempt.
+    if (issue?.state === 'open' && previous)
+      await github(`issues/${issue.number}`, {
+        method: 'PATCH',
+        body: {
+          body: issueBody(
+            {
+              ...decision.state,
+              repairState: previous.repairState,
+              attemptConsumed: previous.attemptConsumed,
+            },
+            run,
+            jobs,
+            agent,
+            classification,
+          ),
+        },
+      });
+    return;
+  }
   const body =
     (capacityDeferred
       ? 'Capacity admission deferred before corpus execution. No automated source-repair attempt is launched; source remains unqualified.\n\n'
-      : '') + issueBody(decision.state, run, jobs, agent);
+      : '') + issueBody(decision.state, run, jobs, agent, classification);
   const saved = await github(issue ? `issues/${issue.number}` : 'issues', {
     method: issue ? 'PATCH' : 'POST',
     body: { title: TITLE, body, state: 'open', labels: ['bug', 'P1'] },

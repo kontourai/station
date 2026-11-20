@@ -137,9 +137,11 @@ function parseSurfaceEntry(
 ): string | null {
   if (!isPlainRecord(value)) return null;
   if (value.kind !== 'surface' || typeof value.id !== 'string') return null;
-  if (!resolveRegionSurface(value.id, registry)?.regions.includes(id))
+  const surfaceId =
+    value.id === 'activity' ? (id === 'main' ? 'home' : 'chat') : value.id;
+  if (!resolveRegionSurface(surfaceId, registry)?.regions.includes(id))
     return null;
-  return value.id;
+  return surfaceId;
 }
 
 /**
@@ -172,7 +174,13 @@ function parseOccupant(
       const surface = parseSurfaceEntry(entry, id, registry);
       return surface === null ? [] : [surface];
     }),
-    typeof selected === 'string' ? selected : null,
+    selected === 'activity'
+      ? id === 'main'
+        ? 'home'
+        : 'chat'
+      : typeof selected === 'string'
+        ? selected
+        : null,
   );
 }
 
@@ -207,6 +215,24 @@ export function parseRegionArrangementRecord(
   if (!isPlainRecord(value)) return null;
   if (value.version !== REGION_ARRANGEMENT_RECORD_VERSION) return null;
   const storedRegions = isPlainRecord(value.regions) ? value.regions : {};
+  const storedEntries = (region: unknown): string[] => {
+    if (!isPlainRecord(region) || !isPlainRecord(region.occupant)) return [];
+    const occupant = region.occupant;
+    const entries =
+      occupant.kind === 'surface'
+        ? [occupant]
+        : Array.isArray(occupant.panes)
+          ? occupant.panes
+          : [];
+    return entries.flatMap((entry) =>
+      isPlainRecord(entry) && typeof entry.id === 'string' ? [entry.id] : [],
+    );
+  };
+  const originalChat = REGION_IDS.find(
+    (id) =>
+      resolveRegionSurface('chat', registry)?.regions.includes(id) &&
+      storedEntries(storedRegions[id]).includes('chat'),
+  );
   const seen = new Set<string>();
   const arrangement = {} as RegionArrangement;
   for (const id of REGION_IDS) {
@@ -224,6 +250,21 @@ export function parseRegionArrangementRecord(
           maximized: parseMaximized(stored.maximized),
         }
       : { ...fallback };
+    const legacyPanes = storedEntries(stored);
+    if (
+      originalChat &&
+      originalChat !== id &&
+      legacyPanes.includes('activity')
+    ) {
+      Object.assign(
+        state,
+        normalizeRegionPanes(
+          id,
+          state.panes.filter((pane) => pane !== 'chat'),
+          state.occupant,
+        ),
+      );
+    }
     if (state.panes.some((pane) => seen.has(pane))) {
       // A duplicate — a SHELL surface only, since `seen` no longer records
       // an instance-keyed id (#2159 slice A) — is dropped from the later
@@ -244,6 +285,15 @@ export function parseRegionArrangementRecord(
         ),
       );
     }
+    // Retiring a duplicate Activity tab must not leave a visible blank dock.
+    if (
+      id !== 'main' &&
+      legacyPanes.some(
+        (pane) => pane === 'activity' || pane.startsWith('activity-review:'),
+      ) &&
+      state.panes.length === 0
+    )
+      state.visible = false;
     // Only a SHELL surface is recorded as seen, so only a shell surface is
     // de-duped across regions (#2159 slice A): an instance-keyed id is left
     // out of `seen` and therefore survives in every region that names it.

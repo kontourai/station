@@ -1,0 +1,7 @@
+{
+  "revision": "9ffc9c2f9f03c50ca170fa8e808e06eb3c87c4bb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the Gallery app error states section against the branch: commit needs the pending navigation's non-redirect response (verified in Chromium: plain, service-worker, redirect, delayed-body); failed chunk request = live-document same-origin /assets/ script; captureScreens owns the loop and budget, observeGalleryRequests the listeners, the browser test wires both; transient blind spot past five screens, control-record limits, en-US-only route detection, authority/generic states undetected, measured 7 certain + 3 probable of 312 runs, no full capture since route-chunk detection, hosted transients not verified.","inputs":["docs/guides/testing.md","scripts/__tests__/gallery-asset-diagnostics.test.ts","tests/helpers/gallery-app-error-state.ts","tests/helpers/gallery-document-tracker.ts","tests/helpers/gallery-screen-attempt.ts","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -4,6 +4,7 @@ import {
   type NotificationOpenDeps,
   notificationOpenTarget,
   subscribeToNotificationOpen,
+  takenNotificationOpen,
 } from '../lib/notificationOpen';
 
 describe('notificationOpenTarget (#2608)', () => {
@@ -63,43 +64,78 @@ function fakeDeps(links: unknown[]) {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+describe('takenNotificationOpen', () => {
+  test('a host answer carries the link and the origin it read the alert from', () => {
+    expect(
+      takenNotificationOpen({
+        link: '/?chat=s-1&dock=open&station=env-a',
+        origin: 'https://a.example:3141',
+      }),
+    ).toEqual({
+      pathname: '/',
+      params: { chat: 's-1', dock: 'open' },
+      stationId: 'env-a',
+      origin: 'https://a.example:3141',
+    });
+  });
+
+  test('an older host answers the bare link', () => {
+    expect(takenNotificationOpen('/notifications')).toEqual({
+      pathname: '/notifications',
+      params: {},
+    });
+  });
+
+  test('an origin that is not http(s) is dropped; a hostile link drops all', () => {
+    expect(
+      takenNotificationOpen({ link: '/x', origin: 'javascript:alert(1)' }),
+    ).toEqual({ pathname: '/x', params: {} });
+    expect(
+      takenNotificationOpen({
+        link: 'https://evil.example/',
+        origin: 'https://a.example',
+      }),
+    ).toBeNull();
+  });
+});
+
 describe('subscribeToNotificationOpen (#2608)', () => {
   test('a click kept before subscription navigates once, then each event takes its own', async () => {
-    const navigate = vi.fn();
+    const open = vi.fn();
     const { deps, fire } = fakeDeps([
       '/?surface=activity',
       'https://evil.example/',
       '/notifications',
     ]);
-    const dispose = subscribeToNotificationOpen(
-      navigate,
-      Promise.resolve(deps),
-    );
+    const dispose = subscribeToNotificationOpen(open, Promise.resolve(deps));
     await settle();
-    expect(navigate).toHaveBeenCalledTimes(1);
-    expect(navigate).toHaveBeenLastCalledWith('/', { surface: 'activity' });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenLastCalledWith({
+      pathname: '/',
+      params: { surface: 'activity' },
+    });
     fire(); // hostile link: dropped
     await settle();
-    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledTimes(1);
     fire();
     await settle();
-    expect(navigate).toHaveBeenLastCalledWith('/notifications', {});
+    expect(open).toHaveBeenLastCalledWith({
+      pathname: '/notifications',
+      params: {},
+    });
     fire(); // nothing pending
     await settle();
-    expect(navigate).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(2);
     dispose();
   });
 
   test('disposal stops listening and navigating', async () => {
-    const navigate = vi.fn();
+    const open = vi.fn();
     const { deps, unlisten } = fakeDeps(['/notifications']);
-    const dispose = subscribeToNotificationOpen(
-      navigate,
-      Promise.resolve(deps),
-    );
+    const dispose = subscribeToNotificationOpen(open, Promise.resolve(deps));
     dispose();
     await settle();
     expect(unlisten).toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 });

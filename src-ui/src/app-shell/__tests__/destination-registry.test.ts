@@ -17,14 +17,14 @@ describe('DestinationRegistry', () => {
       APP_DESTINATION_REGISTRY.getSidebar().map(
         (destination) => destination.id,
       ),
-    ).toEqual(['activity']);
+    ).toEqual([]);
     // The developer-tools flag must not put a row back in the panel: it
     // gates Developer's SETTINGS entry now.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar(new Set([DEVELOPER_TOOLS_FLAG])).map(
         (destination) => destination.id,
       ),
-    ).toEqual(['activity']);
+    ).toEqual([]);
     expect(
       APP_DESTINATION_REGISTRY.getPalette().map(
         (destination) => destination.id,
@@ -40,7 +40,6 @@ describe('DestinationRegistry', () => {
       // results in a palette carrying 72 entries.
       'notifications',
       'plugins',
-      'activity',
       'schedule',
       'feature-previews',
       'appearance',
@@ -62,7 +61,6 @@ describe('DestinationRegistry', () => {
       'connections',
       'notifications',
       'plugins',
-      'activity',
       'schedule',
       'feature-previews',
       'developer',

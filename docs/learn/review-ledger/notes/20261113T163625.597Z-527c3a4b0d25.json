@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked: no new extension method is bound. The prompt-handoff steer row is keyed on handshake identity (agentInfo.name) with recorded evidence, as ADR 0013 and agent-extension-bindings.md require for undeclared-engine rows; per-turn usage likewise keyed on identity. No claim changed.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

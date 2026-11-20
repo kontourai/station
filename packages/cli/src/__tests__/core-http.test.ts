@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -147,6 +147,8 @@ describe('CLI core commands over HTTP', () => {
     conversationId?: string;
     clientTurnId?: string;
   }> = [];
+  const lostChatTargets: unknown[] = [];
+  const chatRequestEvents: Array<Record<string, unknown>> = [];
   const authorizationHeaders: Array<string | undefined> = [];
   // Populated per-`beforeEach` below. Lets a test assert the *client*
   // actually tore down its SSE connection (rather than the mock server
@@ -601,6 +603,7 @@ describe('CLI core commands over HTTP', () => {
           clientTurnId: body.clientTurnId,
         });
         if (body.message === 'trigger lost acceptance') {
+          lostChatTargets.push(body.target);
           res.destroy();
           return;
         }
@@ -766,18 +769,25 @@ describe('CLI core commands over HTTP', () => {
               })}\n\n`,
             );
           } else if (chatInputText.startsWith('trigger request opened')) {
-            pendingChatEventsResponse.write(
-              `data: ${JSON.stringify({
-                provider: 'codex',
-                threadId: chatThreadId,
-                createdAt: new Date().toISOString(),
-                method: 'request.opened',
-                requestId: 'req-open-1',
-                requestType: 'approval',
-                title: 'Approve the write?',
-                sessionState: 'needs_input',
-              })}\n\n`,
-            );
+            const opening = {
+              method: 'request.opened',
+              eventId: 'evt-open-1',
+              requestId: 'req-open-1',
+              requestType: 'approval',
+              title: 'Approve the write?',
+              sessionState: 'needs_input',
+            };
+            for (const event of [opening, ...chatRequestEvents]) {
+              pendingChatEventsResponse.write(
+                `data: ${JSON.stringify({
+                  provider: 'codex',
+                  threadId: chatThreadId,
+                  createdAt: '2026-04-18T00:00:00.000Z',
+                  turnId: acceptedChatTurnId,
+                  ...event,
+                })}\n\n`,
+              );
+            }
             if (chatInputText === 'trigger request opened') {
               pendingChatEventsResponse.write(
                 `data: ${JSON.stringify({
@@ -872,6 +882,46 @@ describe('CLI core commands over HTTP', () => {
       const runtimeSessionMatch = url.pathname.match(
         /^\/api\/orchestration\/sessions\/([^/]+)$/,
       );
+      const requestInspectionMatch = url.pathname.match(
+        /^\/api\/orchestration\/sessions\/([^/]+)\/requests\/([^/]+)$/,
+      );
+      if (method === 'GET' && requestInspectionMatch) {
+        const [, threadId, requestId] = requestInspectionMatch;
+        const requestEventId = url.searchParams.get('eventId');
+        const session = state.runtimeSessions.find(
+          (entry) => entry.threadId === threadId,
+        );
+        const events = state.runtimeSessionEvents[threadId] ?? [];
+        const current = events
+          .slice()
+          .reverse()
+          .find((event) => event.requestId === requestId);
+        const reference = { threadId, requestId, requestEventId };
+        if (
+          current?.method !== 'request.opened' ||
+          current.eventId !== requestEventId
+        ) {
+          sendJson(200, {
+            success: true,
+            data: { reference, state: 'changed', message: 'Request changed' },
+          });
+          return;
+        }
+        sendJson(200, {
+          success: true,
+          data: {
+            reference,
+            state: 'open',
+            provider: 'codex',
+            requestType: 'approval',
+            title: current.title,
+            openedAt: '2026-04-18T00:00:00.000Z',
+            answerability: session?.answerability,
+            canRespond: session?.answerability !== undefined,
+          },
+        });
+        return;
+      }
       if (method === 'GET' && runtimeSessionMatch) {
         const threadId = decodeURIComponent(runtimeSessionMatch[1]);
         const session = state.runtimeSessions.find(
@@ -900,6 +950,25 @@ describe('CLI core commands over HTTP', () => {
             finishReason: 'stop',
           },
         ];
+        if (
+          url.searchParams.get('view') === 'window-v1' &&
+          !state.detailOmitsSession.has(threadId)
+        ) {
+          sendJson(200, {
+            success: true,
+            data: {
+              protocolVersion: 1,
+              session,
+              events: events.map((event, index) => ({
+                sequence: index + 1,
+                event: { threadId, ...event },
+              })),
+              hasMore: false,
+              watermark: events.length,
+            },
+          });
+          return;
+        }
         if (state.detailOmitsSession.has(threadId)) {
           sendJson(200, { success: true, data: { events } });
           return;
@@ -942,6 +1011,8 @@ describe('CLI core commands over HTTP', () => {
     vi.restoreAllMocks();
     state.agents = defaultAgents();
     state.projects = [];
+    chatRequestEvents.length = 0;
+    lostChatTargets.length = 0;
     state.skills = [];
     state.conversations = [
       {
@@ -1137,21 +1208,29 @@ describe('CLI core commands over HTTP', () => {
     ]);
   });
 
-  test.each(['packages/cli/src/bin.ts', 'scripts/station-cli.ts'])(
+  test.each([
+    'packages/cli/src/bin.ts',
+    'scripts/station-cli.ts',
+    ...(process.platform === 'win32' ? [] : ['station']),
+  ])(
     '%s retains a lost acceptance handle in one JSON error and never resends',
     async (entrypoint) => {
       const home = makeTempDir('station-cli-turn-key-');
+      const invocationDirectory = realpathSync(
+        makeTempDir('station-cli-invocation-'),
+      );
+      const launcher = entrypoint === 'station';
       const result = await new Promise<{
         code: number | null;
         stdout: string;
         stderr: string;
       }>((resolveResult, reject) => {
         const child = spawn(
-          process.execPath,
+          launcher ? resolve(entrypoint) : process.execPath,
           [
-            '--import',
-            'tsx',
-            resolve(entrypoint),
+            ...(launcher
+              ? []
+              : ['--import', import.meta.resolve('tsx'), resolve(entrypoint)]),
             'chat',
             'codex',
             'trigger lost acceptance',
@@ -1159,8 +1238,10 @@ describe('CLI core commands over HTTP', () => {
             `--api-base=${apiBase}`,
           ],
           {
+            cwd: invocationDirectory,
             env: {
               ...process.env,
+              STATION_INVOKED_CWD: '',
               STATION_HOME: home,
               STATION_ROOT: home,
               STATION_INSTANCE_NAME: 'cli-stable-key-test',
@@ -1193,6 +1274,11 @@ describe('CLI core commands over HTTP', () => {
       expect(result.code).toBe(1);
       expect(result.stdout).toBe('');
       expect(chatRequests).toHaveLength(1);
+      expect(lostChatTargets).toEqual([
+        expect.objectContaining({
+          workspace: { kind: 'directory', cwd: invocationDirectory },
+        }),
+      ]);
       expect(result.stderr.trim().split('\n')).toHaveLength(1);
       expect(result.stderr).toMatch(/^\{"success":false,/);
       const failure = JSON.parse(result.stderr);
@@ -1413,7 +1499,7 @@ describe('CLI core commands over HTTP', () => {
       'Pending approval request: Approve the write? (id: req-open-1) on thread managed-approval-thread',
     );
     expect(stderrText).toContain(
-      "station approvals respond 'managed-approval-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+      'station approvals respond managed-approval-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     );
   });
 
@@ -1645,7 +1731,9 @@ describe('CLI core commands over HTTP', () => {
       'say runtime ok',
       '--effort=high',
       '--model-option=effort=low',
+      '--model-option=fastMode=false',
       '--model-option=fastMode=true',
+      '--model-option=anotherMode=false',
       `--api-base=${apiBase}`,
     ]);
 
@@ -1659,11 +1747,78 @@ describe('CLI core commands over HTTP', () => {
           environment: { kind: 'current' },
           agent: 'codex',
           workspace: { kind: 'directory', cwd: process.cwd() },
-          model: { options: { fastMode: true, effort: 'high' } },
+          model: {
+            options: { fastMode: true, anotherMode: false, effort: 'high' },
+          },
         },
       },
     });
   });
+
+  test.each([
+    ['--model-option'],
+    ['--model-option', 'fastMode=true'],
+    ['--model-option=fastMode=true', '--model-option', 'fastMode=false'],
+    ['--model-option=fastMode'],
+  ])(
+    'rejects invalid model option argv %j before opening the event stream',
+    async (...options) => {
+      const { runCli } = await import('../cli.js');
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      await expect(
+        runCli([
+          'chat',
+          'codex',
+          'Keep the prompt',
+          ...options,
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toThrow('--model-option');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(['--session', '--conversation'])(
+    '%s rejects single workspace overrides before any HTTP',
+    async (flag) => {
+      const { runCli } = await import('../cli.js');
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const workspace of ['--cwd=relative', '--project=launchpad']) {
+        await expect(
+          runCli([
+            'chat',
+            'codex',
+            'Continue',
+            `${flag}=thread`,
+            workspace,
+            `--api-base=${apiBase}`,
+          ]),
+        ).rejects.toThrow('retains its workspace binding');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    { options: ['--cwd=relative'], cwd: resolve('relative') },
+    { options: ['--cwd=~/remote-project'], cwd: '~/remote-project' },
+    { options: ['--on=env-remote', '--cwd=relative'], cwd: 'relative' },
+  ])(
+    'chat resolves directory selection from $options',
+    async ({ options, cwd }) => {
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'chat',
+        'codex',
+        'Start',
+        ...options,
+        `--api-base=${apiBase}`,
+      ]);
+      expect(orchestrationCommands[0]).toMatchObject({
+        input: { target: { workspace: { kind: 'directory', cwd } } },
+      });
+    },
+  );
 
   test('resumes a persisted runtime session through the canonical --session flag', async () => {
     const { runCli } = await import('../cli.js');
@@ -1774,7 +1929,48 @@ describe('CLI core commands over HTTP', () => {
         `--api-base=${apiBase}`,
       ]),
     ).rejects.toThrow('--conversation requires a non-empty value');
+    // `--project <slug>` parses as a bare flag plus a positional. It used to be
+    // dropped, sending "myproj hi" as the message with no project binding.
+    await expect(
+      runCli([
+        'chat',
+        'codex',
+        '--project',
+        'myproj',
+        'hi',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--project requires a non-empty value');
     expect(orchestrationCommands).toEqual([]);
+  });
+
+  test('rejects space-separated selector flags instead of acting without them', async () => {
+    const { runCli } = await import('../cli.js');
+
+    // Dropping `--turn` interrupted the CURRENT turn rather than the named one.
+    await expect(
+      runCli([
+        'sessions',
+        'interrupt',
+        'codex',
+        'runtime-thread',
+        '--turn',
+        'turn-1',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--turn requires a non-empty value');
+    expect(orchestrationCommands).not.toContainEqual(
+      expect.objectContaining({ type: 'interruptTurn' }),
+    );
+
+    // Dropping `--agent` or `--thread` listed every agent's approvals.
+    _consoleLog.mockClear();
+    for (const flag of ['--agent', '--thread']) {
+      await expect(
+        runCli(['approvals', 'list', flag, 'codex', `--api-base=${apiBase}`]),
+      ).rejects.toThrow(`${flag} requires a non-empty value`);
+    }
+    expect(_consoleLog).not.toHaveBeenCalled();
   });
 
   test('scopes shared ACP-provider sessions to their connection metadata', async () => {
@@ -1821,7 +2017,7 @@ describe('CLI core commands over HTTP', () => {
     ]);
 
     expect(stderrWrite).toHaveBeenCalledWith(
-      "Session: dogfood-thread\nResume: station chat 'custom-box' --session='dogfood-thread' <message>\n",
+      'Session: dogfood-thread\nResume: station chat custom-box --session=dogfood-thread <message>\n',
     );
   });
 
@@ -1937,7 +2133,6 @@ describe('CLI core commands over HTTP', () => {
           workspace: {
             kind: 'project',
             projectSlug: 'launchpad',
-            cwd: process.cwd(),
           },
         },
       },
@@ -2293,6 +2488,113 @@ describe('CLI core commands over HTTP', () => {
       expect.stringContaining('"requestId": "req-kiro-notes"'),
     );
   });
+
+  /**
+   * An OpenCode ACP connection as the host projects it: with the OpenCode
+   * native engine preview on its `config.provider` is `opencode`, with it
+   * off there is none. Its chats run on `opencode` (started with the
+   * preview on; a chat keeps its provider) or `acp`.
+   */
+  function openCodeConnection(previewOn: boolean) {
+    state.connections = [
+      ...state.connections,
+      {
+        id: 'opencode',
+        kind: 'agent',
+        type: 'acp',
+        name: 'OpenCode',
+        enabled: true,
+        capabilities: ['agent-runtime', 'acp', 'resume'],
+        config: {
+          engineId: 'opencode',
+          ...(previewOn ? { provider: 'opencode' } : {}),
+        },
+        status: 'ready',
+        prerequisites: [],
+      },
+    ];
+    state.agents = [
+      ...state.agents,
+      {
+        slug: 'oc-notes',
+        name: 'OpenCode Notes',
+        execution: { agentConnectionId: 'opencode' },
+        engineId: 'opencode',
+      },
+    ];
+    for (const [threadId, provider] of [
+      ['oc-native-thread', 'opencode'],
+      ['oc-acp-thread', 'acp'],
+    ] as const) {
+      state.runtimeSessions = [
+        ...state.runtimeSessions,
+        {
+          provider,
+          threadId,
+          status: 'running',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 1,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          updatedAt: '2026-04-18T00:00:00.000Z',
+          lastEventMethod: 'request.opened',
+        },
+      ];
+      state.runtimeSessionEvents[threadId] = [
+        {
+          provider,
+          threadId,
+          eventId: `evt-${threadId}`,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          method: 'request.opened',
+          requestId: `req-${threadId}`,
+          requestType: 'approval',
+          title: 'Approve OpenCode work',
+        },
+      ];
+    }
+  }
+
+  test.each([true, false])(
+    'an Agent on an OpenCode connection resolves to the provider the host projects (preview on: %s)',
+    async (previewOn) => {
+      const { resolveManagedAgentExternalEngineTarget } = await import(
+        '../commands/session-client.js'
+      );
+      openCodeConnection(previewOn);
+      expect(
+        await resolveManagedAgentExternalEngineTarget(
+          apiBase,
+          'oc-notes' as never,
+          { strict: true },
+        ),
+      ).toMatchObject({
+        kind: 'runtime',
+        connectionId: 'opencode',
+        provider: previewOn ? 'opencode' : 'acp',
+      });
+    },
+  );
+
+  test.each([true, false])(
+    "approvals list for an Agent on an OpenCode connection lists both its `opencode` and its `acp` chats' requests (preview on: %s)",
+    async (previewOn) => {
+      const { runCli } = await import('../cli.js');
+      openCodeConnection(previewOn);
+      await runCli([
+        'approvals',
+        'list',
+        '--agent=oc-notes',
+        `--api-base=${apiBase}`,
+      ]);
+      expect(_consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('"requestId": "req-oc-native-thread"'),
+      );
+      expect(_consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('"requestId": "req-oc-acp-thread"'),
+      );
+    },
+  );
 
   test('approvals resolve real Agent bindings and provider configuration without fallback maps', async () => {
     const { runCli } = await import('../cli.js');
@@ -3194,68 +3496,171 @@ describe('CLI core commands over HTTP', () => {
       'Pending approval request: Approve the write? (id: req-open-1) on thread request-opened-thread',
     );
     expect(stderrText).toContain(
-      "station approvals respond 'request-opened-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+      'station approvals respond request-opened-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     );
     expect(stderrText.match(/Pending approval request/g)?.length).toBe(1);
   });
 
-  test('request.opened yields a typed pendingRequest field (plus lifecycleState) in --json instead of being dropped (station#979 AC2, AC7)', async () => {
-    const { runCli } = await import('../cli.js');
+  test.each([
+    {
+      name: 'confirmed open after completion',
+      mode: 'wait',
+      open: ['req-open-1'],
+      pending: 'req-open-1',
+    },
+    {
+      name: 'resolved before completion',
+      mode: 'wait',
+      open: [],
+      resolved: 'req-open-1',
+    },
+    {
+      name: 'unrelated resolution',
+      mode: 'wait',
+      open: ['req-open-1'],
+      resolved: 'unrelated',
+      pending: 'req-open-1',
+    },
+    {
+      name: 'second request stays open',
+      mode: 'wait',
+      open: ['second'],
+      resolved: 'req-open-1',
+      next: true,
+      pending: 'second',
+    },
+    {
+      name: 'last observation resolves while first stays open',
+      mode: 'wait',
+      open: ['req-open-1'],
+      resolved: 'second',
+      next: true,
+      pending: 'req-open-1',
+    },
+    {
+      name: 'historical turn replay',
+      mode: 'wait',
+      open: ['second'],
+      next: true,
+      oldTurn: true,
+    },
+    {
+      name: 'unsupported detail',
+      mode: 'wait',
+      open: ['req-open-1'],
+      unsupported: true,
+    },
+    {
+      name: 'inspection sees resolution after detail',
+      mode: 'wait',
+      open: ['req-open-1'],
+      resolved: 'req-open-1',
+    },
+    {
+      name: 'exit 4 with exact current request',
+      mode: 'fail',
+      open: ['req-open-1'],
+      pending: 'req-open-1',
+    },
+    {
+      name: 'exit 4 refuses a newer request',
+      mode: 'fail',
+      open: ['second'],
+      next: true,
+      resolved: 'req-open-1',
+    },
+  ])(
+    'chat request JSON handles $name',
+    async ({ mode, open, resolved, next, oldTurn, unsupported, pending }) => {
+      const { runCli } = await import('../cli.js');
+      const exit = vi
+        .spyOn(process, 'exit')
+        .mockImplementation((() => undefined) as never);
+      const threadId = 'request-json-thread';
+      const turnId = 'turn-1';
+      const first = {
+        method: 'request.opened',
+        requestId: 'req-open-1',
+        eventId: 'evt-open-1',
+        requestType: 'approval',
+        title: 'Approve the write?',
+        turnId,
+      };
+      const second = {
+        method: 'request.opened',
+        requestId: 'second',
+        eventId: 'evt-open-2',
+        requestType: 'approval',
+        title: 'Second approval',
+        turnId: oldTurn ? 'old-turn' : turnId,
+      };
+      const resolution = {
+        method: 'request.resolved',
+        requestId: resolved,
+        turnId,
+      };
+      if (next) chatRequestEvents.push(second);
+      if (resolved) chatRequestEvents.push(resolution);
+      state.runtimeSessions.push({
+        threadId,
+        openRequestIds: open,
+        answerability: { answerable: true },
+      });
+      state.runtimeSessionEvents[threadId] = [
+        first,
+        ...(next ? [second] : []),
+        ...(resolved ? [resolution] : []),
+      ];
+      if (unsupported) state.detailOmitsSession.add(threadId);
 
-    await runCli([
-      'chat',
-      'codex',
-      'trigger request opened',
-      '--conversation=request-opened-json-thread',
-      '--json',
-      `--api-base=${apiBase}`,
-    ]);
+      await runCli([
+        'chat',
+        'codex',
+        mode === 'fail'
+          ? 'trigger request opened only'
+          : 'trigger request opened',
+        `--conversation=${threadId}`,
+        `--on-request=${mode}`,
+        '--json',
+        `--api-base=${apiBase}`,
+      ]);
 
-    const printed = _consoleLog.mock.calls
-      .map((call) => String(call[0]))
-      .find((call) => call.includes('"pendingRequest"'));
-    expect(printed).toBeDefined();
-    const payload = JSON.parse(printed as string);
-    expect(payload.pendingRequest).toEqual({
-      requestId: 'req-open-1',
-      requestType: 'approval',
-      title: 'Approve the write?',
-      respondCommand:
-        "station approvals respond 'request-opened-json-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
-    });
-    expect(payload.lifecycleState).toBe('needs_input');
-  });
-
-  test('--on-request=fail exits distinctly, leaves the session alive (no stopSession), and surfaces the requestId in --json (station#979 AC4)', async () => {
-    const { runCli } = await import('../cli.js');
-    const exit = vi
-      .spyOn(process, 'exit')
-      .mockImplementation((() => undefined) as never);
-
-    await runCli([
-      'chat',
-      'codex',
-      'trigger request opened only',
-      '--conversation=request-opened-fail-thread',
-      '--on-request=fail',
-      '--json',
-      `--api-base=${apiBase}`,
-    ]);
-
-    expect(exit).toHaveBeenCalledWith(4);
-    expect(
-      orchestrationCommands.some((command) => command.type === 'stopSession'),
-    ).toBe(false);
-
-    const printed = _consoleLog.mock.calls
-      .map((call) => String(call[0]))
-      .find((call) => call.includes('"pendingRequest"'));
-    expect(printed).toBeDefined();
-    const payload = JSON.parse(printed as string);
-    expect(payload.pendingRequest.requestId).toBe('req-open-1');
-    expect(payload.clientTurnId).toBe(chatRequests[0].clientTurnId);
-    expect(payload.clientTurnId).toEqual(expect.any(String));
-  });
+      const printed = _consoleLog.mock.calls
+        .map((call) => String(call[0]))
+        .find((call) => call.includes('"lastObservedRequest"'));
+      expect(printed).toBeDefined();
+      const payload = JSON.parse(printed as string);
+      const last = next && !oldTurn && mode === 'wait' ? second : first;
+      expect(payload.lastObservedRequest).toEqual({
+        requestId: last.requestId,
+        requestType: 'approval',
+        title: last.title,
+      });
+      expect(payload.lifecycleState).toBe('needs_input');
+      if (pending) {
+        expect(payload.pendingRequest).toEqual({
+          requestId: pending,
+          requestType: 'approval',
+          title: pending === first.requestId ? first.title : second.title,
+          respondCommand: `station approvals respond ${threadId} ${pending} <accept|acceptForSession|decline|cancel>`,
+        });
+      } else {
+        expect(payload).not.toHaveProperty('pendingRequest');
+      }
+      expect(payload.clientTurnId).toBe(chatRequests[0].clientTurnId);
+      if (mode === 'fail') {
+        expect(exit).toHaveBeenCalledWith(4);
+        expect(
+          orchestrationCommands.some(
+            (command) => command.type === 'stopSession',
+          ),
+        ).toBe(false);
+      } else {
+        expect(exit).not.toHaveBeenCalled();
+        expect(payload.finishReason).toBe('stop');
+      }
+    },
+  );
 
   test('rejects an invalid --on-request value as a usage error before any request (station#979)', async () => {
     const { runCli } = await import('../cli.js');

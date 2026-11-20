@@ -13,6 +13,7 @@
  * and the pure `mapAcpStopReasonToFinishReason`/`mapAcpDecisionToOutcome`
  * helpers. Zero dependency on `ACPProcess`/spawn.
  */
+
 import crypto from 'node:crypto';
 import type {
   ContentBlock,
@@ -20,24 +21,46 @@ import type {
   PermissionOptionKind,
   RequestPermissionOutcome,
   SessionUpdate,
-  StopReason,
 } from '@agentclientprotocol/sdk/unstable';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   ApprovalStatus,
+  TokenUsageUpdatedEvent,
   TurnCompletedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
 import { extensionNotificationBinding } from '../../../src-shared/extension-notification-bindings.js';
+import {
+  type AcpHandshakeIdentity,
+  type AcpIdentityHandshake,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
+import {
+  ACP_FETCH_TOOL_KIND,
+  markNativeWebRead,
+} from '../../services/plugins/native-web-read-marks.js';
+import { createLogger } from '../../utils/logger.js';
 import type {
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
 import { observeInboundExtensionNotification } from '../extension-notification-observe.js';
+import { settleAcpNestedSubagent } from './acp-child-work.js';
 import {
   type CursorTodo,
   cursorTodosToPlanEntries,
   foldCursorTodos,
 } from './acp-cursor-extensions.js';
+import {
+  type EngineExtensionState,
+  type EngineTurnBoundary,
+  isReplayMarkedUpdate,
+  mapEngineExtensionNotification,
+  mapEngineSessionInfo,
+  mapEngineToolCallMeta,
+  readAcpUsageCost,
+} from './acp-engine-extension-events.js';
+import { type AcpSteerState, trackAcpSteerActiveRun } from './acp-steer.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
 import {
   type ParagraphBoundaryState,
@@ -56,7 +79,9 @@ import {
  * keeps typechecking; when omitted, the corresponding switch cases are
  * no-ops.
  */
-export interface AcpMapperState {
+const defaultMapperLogger = createLogger({ name: 'acp-adapter-events' });
+
+export interface AcpMapperState extends EngineExtensionState, AcpSteerState {
   /** Paragraph breaks between the agent's messages within a turn. */
   textBoundary?: ParagraphBoundaryState;
   currentModeId?: string;
@@ -157,13 +182,26 @@ function extractTurnErrorCauseMessage(payload: unknown): string | undefined {
 }
 
 export interface AcpMapperContext {
-  provider: 'acp';
+  provider: EngineId;
   session: ProviderSession;
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;
   state?: AcpMapperState;
   /** Required session-owned bounded authority for every ACP tool update. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
+  /** Turns the engine runs on its own (`EngineTurnBoundary`). */
+  engineTurns?: EngineTurnBoundary;
+  /**
+   * Where a first-seen unbound extension tuple is reported (once per
+   * process). Defaults to this module's logger.
+   */
+  logger?: {
+    warn: (message: string, fields?: Record<string, unknown>) => void;
+  };
+}
+
+function mapperLogger(ctx: AcpMapperContext) {
+  return ctx.logger ?? defaultMapperLogger;
 }
 
 /**
@@ -209,6 +247,19 @@ export function mapAcpSessionUpdate(
 ): void {
   const createdAt = new Date().toISOString();
   const threadId = ctx.session.threadId;
+  // An update the engine marks as replayed history (`session/load`) repeats
+  // a fact Station already recorded when it happened.
+  if (isReplayMarkedUpdate(update)) return;
+
+  // Reply chunks carry no prompt ID. A draining cancelled prompt makes
+  // ownership ambiguous even while a successor is active.
+  if (
+    (update.sessionUpdate === 'agent_message_chunk' ||
+      update.sessionUpdate === 'agent_thought_chunk') &&
+    (!ctx.activeTurnId || ctx.state?.quarantinedTurnIds?.size)
+  ) {
+    return;
+  }
 
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
@@ -257,6 +308,9 @@ export function mapAcpSessionUpdate(
     }
 
     case 'tool_call': {
+      // #4828: a tool the agent labels as fetching external data marks the
+      // conversation, from its first report on (failing toward asking).
+      if (update.kind === ACP_FETCH_TOOL_KIND) markNativeWebRead([threadId]);
       ctx.toolUpdateSupervisor.acceptStarted({
         toolCallId: update.toolCallId,
         title: update.title,
@@ -270,10 +324,13 @@ export function mapAcpSessionUpdate(
         hasRawInput: Object.hasOwn(update, 'rawInput'),
         hasRawOutput: Object.hasOwn(update, 'rawOutput'),
       });
+      // A vendor kind on the call (Kiro's `agent-subtask`) is also child work.
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
       return;
     }
 
     case 'tool_call_update': {
+      if (update.kind === ACP_FETCH_TOOL_KIND) markNativeWebRead([threadId]);
       ctx.toolUpdateSupervisor.acceptUpdate({
         toolCallId: update.toolCallId,
         title: update.title,
@@ -290,6 +347,12 @@ export function mapAcpSessionUpdate(
         hasRawOutput: Object.hasOwn(update, 'rawOutput'),
         hasContent: Object.hasOwn(update, 'content'),
         hasStatus: Object.hasOwn(update, 'status'),
+      });
+      mapEngineToolCallMeta(update, { ...ctx, logger: mapperLogger(ctx) });
+      // The end of the Agent call a listed nested subagent runs in ends it.
+      settleAcpNestedSubagent(update, {
+        ...ctx,
+        logger: mapperLogger(ctx),
       });
       return;
     }
@@ -334,10 +397,13 @@ export function mapAcpSessionUpdate(
 
     case 'usage_update': {
       // ACP reports current context occupancy/window, not per-turn input or
-      // output token accounting. Preserve only that exact pair; ACP cost is
-      // deliberately excluded because arbitrary ISO currency has no pricing
-      // policy in Station yet.
-      if (!isValidContextObservation(update.used, update.size)) return;
+      // output token accounting. Preserve only that exact pair. Its `cost` is
+      // the session's cumulative cost in the agent's own unit (an ISO
+      // currency or a vendor unit): carried as `reportedCost`, scope
+      // `session`, never converted to USD.
+      const context = isValidContextObservation(update.used, update.size);
+      const reportedCost = readAcpUsageCost(update.cost);
+      if (!context && !reportedCost) return;
       ctx.publish({
         eventId: crypto.randomUUID(),
         provider: 'acp',
@@ -345,17 +411,28 @@ export function mapAcpSessionUpdate(
         createdAt,
         turnId: ctx.activeTurnId,
         method: 'token-usage.updated',
-        contextTokens: update.used,
-        contextWindowTokens: update.size,
+        ...(context
+          ? { contextTokens: update.used, contextWindowTokens: update.size }
+          : {}),
+        ...(reportedCost ? { reportedCost } : {}),
       });
       return;
     }
 
-    // 'user_message_chunk' (echo of the outbound prompt), 'plan_update'/
+    case 'session_info_update': {
+      // A run-steer engine names its running prompt here (`acp-steer.ts`).
+      trackAcpSteerActiveRun(update, ctx.state);
+      // Vendor facts ride `_meta.<namespace>.kind`; the engine-extension
+      // binding table says which kinds map to which Station event.
+      mapEngineSessionInfo(update, { ...ctx, logger: mapperLogger(ctx) });
+      return;
+    }
+
+    // 'user_message_chunk' (echo of the outbound prompt) and 'plan_update'/
     // 'plan_removed' (unstable/experimental incremental plan variants —
     // 'plan' above already carries the full-replace shape the canonical
-    // PlanUpdatedEvent models), and 'session_info_update' are not part of
-    // the Lifecycle Mapping Table's Track B scope.
+    // PlanUpdatedEvent models) are not part of the Lifecycle Mapping
+    // Table's Track B scope.
     default:
       return;
   }
@@ -394,6 +471,7 @@ export function mapAcpExtensionNotification(
     provider: ctx.provider,
     namespace,
     type,
+    logger: mapperLogger(ctx),
   });
   const binding = extensionNotificationBinding(namespace, type);
   const suppressed = ctx.state?.turnErrorNotificationsSuppressed === true;
@@ -447,6 +525,12 @@ export function mapAcpExtensionNotification(
       argumentHint: command.input?.hint,
     }));
   }
+  // Engine-extension rows (`ENGINE_EXTENSION_BINDINGS`) whose consumer is a
+  // canonical event: published beside the opaque envelope below.
+  mapEngineExtensionNotification(method, params, {
+    ...ctx,
+    logger: mapperLogger(ctx),
+  });
 
   ctx.publish({
     eventId: crypto.randomUUID(),
@@ -457,8 +541,77 @@ export function mapAcpExtensionNotification(
     method: 'extension.notification',
     namespace,
     type,
-    payload: params,
+    payload: withoutMcpServerSecrets(params),
   });
+}
+
+/** What replaces an MCP server's environment or header value in a published payload. */
+const MCP_SECRET_REDACTED = '[redacted]';
+
+function redactedValues(value: unknown): unknown {
+  // ACP's own shape is `[{name, value}]`; a vendor may send a name-to-value map.
+  if (Array.isArray(value))
+    return value.map((entry) =>
+      entry !== null && typeof entry === 'object' && !Array.isArray(entry)
+        ? { ...entry, value: MCP_SECRET_REDACTED }
+        : MCP_SECRET_REDACTED,
+    );
+  if (value !== null && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value).map((key) => [key, MCP_SECRET_REDACTED]),
+    );
+  return value === undefined ? undefined : MCP_SECRET_REDACTED;
+}
+
+/** A server URL as its scheme and host only: a token can ride in the user info, path or query. */
+function urlWithoutCredentials(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return MCP_SECRET_REDACTED;
+  }
+}
+
+/**
+ * An extension payload as it is published: every MCP server it lists keeps
+ * its name, command and transport, but not what can carry a credential: its
+ * `env` and `headers` values, its `args` (a token is often passed as one) and
+ * everything in its URL after the host. The opaque envelope is durable and reaches
+ * every surface; an engine that echoes its MCP configuration (Grok's
+ * `mcp/servers_updated` lists each server's launch shape) must not put a
+ * token there.
+ */
+function withoutMcpServerSecrets(params: Record<string, unknown>): unknown {
+  // A vendor may send no params at all; the envelope carries what came.
+  const servers = params?.mcpServers;
+  if (!Array.isArray(servers)) return params;
+  return {
+    ...params,
+    mcpServers: servers.map((server) => {
+      if (
+        server === null ||
+        typeof server !== 'object' ||
+        Array.isArray(server)
+      )
+        return server;
+      const entry = server as Record<string, unknown>;
+      return {
+        ...entry,
+        ...('env' in entry ? { env: redactedValues(entry.env) } : {}),
+        ...('headers' in entry
+          ? { headers: redactedValues(entry.headers) }
+          : {}),
+        ...(Array.isArray(entry.args)
+          ? { args: entry.args.map(() => MCP_SECRET_REDACTED) }
+          : 'args' in entry
+            ? { args: MCP_SECRET_REDACTED }
+            : {}),
+        ...('url' in entry ? { url: urlWithoutCredentials(entry.url) } : {}),
+      };
+    }),
+  };
 }
 
 function splitExtensionMethod(method: string): {
@@ -480,7 +633,7 @@ function splitExtensionMethod(method: string): {
  * vocabulary (Lifecycle Mapping Table row 13).
  */
 export function mapAcpStopReasonToFinishReason(
-  reason: StopReason,
+  reason: string | undefined,
 ): TurnCompletedEvent['finishReason'] {
   switch (reason) {
     case 'end_turn':
@@ -501,16 +654,12 @@ export function mapAcpStopReasonToFinishReason(
 const MAX_ACP_STOP_REASON_LENGTH = 64;
 
 /**
- * The `turn.completed` outcome fields for an ACP `StopReason`. #354: a reason
- * the shared finishReason vocabulary cannot express (`refusal`,
- * `max_turn_requests`, or one a newer agent invents) still folds to
- * `'other'`, but its raw value rides along as `stopReason`, so a refusal and
- * an exhausted request budget stay distinguishable from an ordinary stop.
- * Whether `max_turn_requests` should be retryable is an open product
- * decision; this only preserves the fact.
+ * ACP terminal observations before interpretation. An otherwise
+ * unrepresentable provider reason takes the shared 'other' value and
+ * carries the bounded original for the typed runtime-failure projection.
  */
 export function mapAcpStopReasonToTurnCompletion(
-  reason: StopReason,
+  reason: string | undefined,
 ): Pick<TurnCompletedEvent, 'finishReason' | 'stopReason'> {
   const finishReason = mapAcpStopReasonToFinishReason(reason);
   if (finishReason !== 'other') return { finishReason };
@@ -519,6 +668,87 @@ export function mapAcpStopReasonToTurnCompletion(
       ? reason.trim().slice(0, MAX_ACP_STOP_REASON_LENGTH)
       : '';
   return raw ? { finishReason, stopReason: raw } : { finishReason };
+}
+
+/**
+ * The token figures of one prompt answer's `usage` (ACP's unstable
+ * `PromptResponse.usage`), as `token-usage.updated` fields. That answer is
+ * the turn's: the schema calls it "Token usage for this turn", and a recorded
+ * engine's input figure falls between consecutive turns (Antigravity 1.5.8,
+ * `antigravity-1.5.8-session-frames.jsonl`), which a running total would not.
+ * The adapter publishes it only for an engine in
+ * {@link ACP_PER_TURN_PROMPT_USAGE_ENGINES}.
+ *
+ * Each figure is carried as reported, never derived: `totalTokens` stays the
+ * engine's own total (which may include cache reads), and no cost is read.
+ * A figure that is not a finite non-negative number is left out. Nothing
+ * when the answer carries no usable figure. The context pair stays with
+ * `usage_update`; these fields never touch it.
+ */
+/**
+ * Engines whose prompt answers carry per-turn `usage`. The ACP schema
+ * contradicts itself on the field's scope ("Token usage for this turn" on the
+ * answer, "across session" on `totalTokens`), and `usage-semantics.ts`
+ * declares the one `acp` provider `per-turn`, so a prompt answer's usage is
+ * published only for an engine recorded reporting per-turn figures. Keyed on
+ * what the live handshake says about itself, never on the launch command.
+ */
+const ACP_PER_TURN_PROMPT_USAGE_ENGINES: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  observed: string;
+}> = [
+  {
+    // Consecutive answers' input figures fall (10377, then 8610), and the
+    // answers of a handed-off steer are separate model calls (8191 in, then
+    // 4819 in with 12734 cache reads): no running total.
+    identity: { agentInfoName: 'Antigravity ACP Server' },
+    observed:
+      'Antigravity CLI 1.5.8 `agy acp` (antigravity-1.5.8-session-frames.jsonl)',
+  },
+];
+
+/** Whether this session's engine is recorded reporting per-turn prompt usage. */
+export function acpReportsPerTurnPromptUsage(
+  handshake: AcpIdentityHandshake | null | undefined,
+): boolean {
+  return (
+    !!handshake &&
+    ACP_PER_TURN_PROMPT_USAGE_ENGINES.some(({ identity }) =>
+      matchesAcpHandshakeIdentity(handshake, identity),
+    )
+  );
+}
+
+export function mapAcpPromptUsage(
+  usage: unknown,
+): Pick<
+  TokenUsageUpdatedEvent,
+  | 'promptTokens'
+  | 'completionTokens'
+  | 'totalTokens'
+  | 'cacheReadTokens'
+  | 'cacheWriteTokens'
+  | 'reasoningTokens'
+> | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const read = (key: string): number | undefined => {
+    const value = (usage as Record<string, unknown>)[key];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  };
+  const figures = {
+    promptTokens: read('inputTokens'),
+    completionTokens: read('outputTokens'),
+    totalTokens: read('totalTokens'),
+    cacheReadTokens: read('cachedReadTokens'),
+    cacheWriteTokens: read('cachedWriteTokens'),
+    reasoningTokens: read('thoughtTokens'),
+  };
+  const reported = Object.fromEntries(
+    Object.entries(figures).filter(([, value]) => value !== undefined),
+  ) as ReturnType<typeof mapAcpPromptUsage>;
+  return reported && Object.keys(reported).length > 0 ? reported : null;
 }
 
 /**

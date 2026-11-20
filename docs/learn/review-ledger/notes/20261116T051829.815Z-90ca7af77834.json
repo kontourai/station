@@ -1,0 +1,7 @@
+{
+  "revision": "c6775beaa2f5024da07fae8b330aa2d193febaac",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Checked the claims citing ChatMessageList, ConversationBody and ToolCallDisplay: this change adds the approval sheet catch-up hold, open-time request check and Allow all, and removes the in-flight status sentences; layout, placement, connection and MCP-UI hosting claims here are unaffected.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

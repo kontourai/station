@@ -1,0 +1,7 @@
+{
+  "revision": "e05c6e187c346f6173c64878d245b7d6259adf8f",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"GuestProjectAccessView.tsx: a successful self-demotion banner now claims 'List refreshed.' only when the access re-read actually succeeded (refreshed: accessReadSucceeded()); after demotion that re-read is normally refused (403), so the view-only section shows the cause alone. 401/403 refusals, one mutation and no retry are unchanged. This page cites the file only for Project access; it quotes no banner text (grepped refreshed/demot). No prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-ui/src/views/account/GuestProjectAccessView.tsx"]}
+  ]
+}

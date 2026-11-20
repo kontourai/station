@@ -1,0 +1,7 @@
+{
+  "revision": "3c18fb3e2f705d7f59fb113492e63ac13485a35e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the merged additive kernel-profile and Appearance browser selection edges. Both executable contracts remain selected; import-graph selection and verification gates are preserved.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

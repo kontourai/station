@@ -53,6 +53,7 @@ const schedulerHooks = vi.hoisted(() => ({
   runs: [] as Array<Record<string, unknown>>,
 }));
 
+const loadOutput = vi.hoisted(() => vi.fn());
 const runMutation = vi.hoisted(() => ({
   mutate: vi.fn(),
   isPending: false,
@@ -83,7 +84,11 @@ vi.mock('../hooks/useScheduler', () => ({
     data: schedulerHooks.runs,
     isLoading: false,
   }),
-  useFetchRunOutputRef: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useFetchRunOutputRef: () => ({
+    mutate: loadOutput,
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useSchedulerEvents: () => ({
     isRunning: () => false,
     markErrorShown: vi.fn(),
@@ -179,12 +184,115 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       isError: false,
       error: null,
     };
+    loadOutput.mockReset();
     runMutation.mutate.mockReset();
     runMutation.isPending = false;
     runMutation.variables = undefined;
     toast.showToast.mockReset();
     retryQueries.jobs.mockReset();
     retryQueries.status.mockReset();
+  });
+
+  test('keeps a healthy Run now action beside the damaged-row notice', () => {
+    schedulerHooks.jobs.data = [
+      {
+        name: 'healthy',
+        enabled: true,
+        provider: 'built-in',
+        prompt: 'fixture',
+      },
+    ];
+    schedulerHooks.status.data = {
+      providers: {
+        'built-in': {
+          running: true,
+          rowIssues: [
+            { jobId: 'damaged-id', name: 'broken', reason: 'invalid-json' },
+          ],
+        },
+      },
+    };
+    render(<ScheduleView />);
+    expect(screen.getByText('Schedules that need repair')).toBeTruthy();
+    expect(screen.getByText(/cannot be decoded/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /run.*healthy/i }));
+    expect(runMutation.mutate).toHaveBeenCalledWith(
+      'healthy',
+      expect.any(Object),
+    );
+  });
+
+  test('renders a Monday-first week and converts a forecast instant after changing display zone', () => {
+    vi.setSystemTime(new Date('2026-03-07T12:00:00.000Z'));
+    schedulerHooks.jobs.data = [
+      {
+        name: 'Week marker',
+        provider: 'built-in',
+        enabled: true,
+        prompt: 'fixture',
+        weekOccurrences: {
+          times: ['2026-03-08T00:30:00.000Z'],
+          truncated: false,
+        },
+      },
+    ];
+    try {
+      render(<ScheduleView />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Calendar' }));
+      const zone = screen.getByRole('combobox', { name: 'Display time zone' });
+      fireEvent.change(zone, { target: { value: 'UTC' } });
+      expect(
+        screen.getAllByRole('heading', { level: 3 })[0]?.textContent,
+      ).toMatch(/Mon/);
+      expect(
+        screen.getByText('Week marker').closest('ol > li')?.querySelector('h3')
+          ?.textContent,
+      ).toMatch(/Sun/);
+      fireEvent.change(zone, { target: { value: 'America/New_York' } });
+      expect(
+        screen.getByText('Week marker').closest('ol > li')?.querySelector('h3')
+          ?.textContent,
+      ).toMatch(/Sat/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('opens a scheduled execution receipt and preserves missing-result status', () => {
+    schedulerHooks.runs = [
+      {
+        runId: 'schedule:built-in:healthy:log-one',
+        providerId: 'built-in',
+        source: 'schedule',
+        sourceId: 'healthy',
+        status: 'failed',
+        startedAt: '2026-03-01T08:00:00.000Z',
+        attempt: 2,
+      },
+    ];
+    const outputRef = { kind: 'schedule', artifactId: 'exact-log-two' };
+    schedulerHooks.runs.push({
+      ...schedulerHooks.runs[0],
+      runId: 'schedule:built-in:second:log-two',
+      sourceId: 'second',
+      status: 'completed',
+      outputRef,
+    });
+    render(<ScheduleView />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Executions' }));
+    expect(screen.getByText(/Result unavailable/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View run for healthy' }),
+    );
+    expect(
+      screen.getByRole('region', { name: 'Selected run details' }),
+    ).toBeTruthy();
+    expect(screen.getByText('failed · Attempt 2')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View run for second' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Load result' }));
+    expect(loadOutput).toHaveBeenCalledExactlyOnceWith(outputRef);
   });
 
   test('retries both failed scheduler reads and returns to the job list after recovery', async () => {
@@ -442,9 +550,9 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     schedulerHooks.runs = [run];
     window.history.replaceState({}, '', `/schedule?run=${run.runId}`);
     render(<ScheduleView />);
-    expect(screen.getByText('Scheduled check receipt')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Scheduled run' })).toBeTruthy();
     expect(
-      screen.getByText('The owning job was removed; its durable run remains.'),
+      screen.getByText('The job was removed, but this run was kept.'),
     ).toBeTruthy();
     await waitFor(() =>
       expect(document.querySelector('.schedule__log--focused')).toBeTruthy(),
@@ -459,13 +567,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       '/schedule?run=schedule:built-in:station-starter-check:missing-run',
     );
     render(<ScheduleView />);
-    expect(
-      screen.getByText(/That scheduled run isn’t available/i),
-    ).toBeTruthy();
-    // The promise this message exists for: no substitution (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
-    ).toBeTruthy();
+    expect(screen.getByText('That run is no longer available.')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });
 
@@ -484,9 +586,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
     render(<ScheduleView />);
 
-    expect(
-      screen.getByText(/That scheduled run isn’t available/i),
-    ).toBeTruthy();
+    expect(screen.getByText(/That run is no longer available/i)).toBeTruthy();
     expect(screen.getByText('nightly-digest')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });

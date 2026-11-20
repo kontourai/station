@@ -175,7 +175,7 @@ export function ShareAnswerButton({
           <span className="share-answer__status" role="status">
             {minted.copied
               ? 'Share link copied. It expires in 7 days, and you can revoke it in Settings.'
-              : 'Share link created. This browser would not let Station copy it, so copy it from here — Station keeps no second copy.'}
+              : "Copy this link now. It won't be shown again."}
           </span>
           {/* Shown once and never re-fetchable: the server stores only a
               digest of the token, so this element is the only place the link

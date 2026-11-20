@@ -205,11 +205,14 @@ describe('MessageBubble answer Basis chip', () => {
 
     const chip = await screen.findByRole('button', { name: CHIP });
     // In the answer's own footer, beside (never inside) the hover-revealed
-    // action row: no menu or dialog to open first (#926 amendment).
+    // action row: no menu or dialog to open first (#926 amendment). It comes
+    // first in the DOM, so keyboard focus reaches the visible chip before
+    // the hidden row; the Chromium check below proves it is drawn last.
     expect(chip.parentElement?.classList.contains('turn-footer__bar')).toBe(
       true,
     );
     expect(chip.closest('.turn-footer__actions')).toBeNull();
+    expect(chip.previousElementSibling).toBeNull();
     expect(
       chip.nextElementSibling?.classList.contains('turn-footer__actions'),
     ).toBe(true);
@@ -468,6 +471,7 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
             '.turn-footer__actions',
           )!;
           const box = chip.getBoundingClientRect();
+          const rowBox = row.getBoundingClientRect();
           const hit = document.elementFromPoint(
             box.x + box.width / 2,
             box.y + box.height / 2,
@@ -477,6 +481,8 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
             rowVisible: row.checkVisibility({ opacityProperty: true }),
             hitIsChip: hit === chip,
             height: Math.round(box.height),
+            // Drawn at the bar's end, past the hidden row's reserved space.
+            drawnAfterRow: box.left >= rowBox.right,
           };
         });
         expect(result).toEqual({
@@ -484,6 +490,7 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
           rowVisible: false,
           hitIsChip: true,
           height: 28,
+          drawnAfterRow: true,
         });
       } finally {
         await page.close();

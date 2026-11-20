@@ -104,6 +104,47 @@ export function pairedDevicePrincipal(
   );
 }
 
+/**
+ * #2377 slice D (owner decision 2026-11-16): the principal a bare credential
+ * presented outside HTTP (the voice WebSocket's auth frame) resolves to,
+ * by the same rules the request resolver above applies to a request that
+ * carries that credential and no ingress identity or account session: the
+ * operator's own credential is the operator; a paired device resolves
+ * through {@link pairedDevicePrincipal} with its recorded locality and
+ * owner standing. An account-bound device or token resolves to nothing
+ * here (#3586: those need their account session), nor does an unknown
+ * credential. Personal Stations only: a hosted credential carries a tenant
+ * this has no request to read.
+ */
+export function credentialPrincipal(
+  credential: string,
+  security: Pick<
+    EnvironmentSecurityService,
+    | 'verifyOperatorCredential'
+    | 'identifyDevice'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
+  >,
+): PrincipalRef | undefined {
+  if (security.verifyOperatorCredential(credential))
+    return resolveStationPrincipal(
+      null,
+      'personal',
+      { verifiedOperatorCredential: true },
+      undefined,
+      { resolveOperatorDisplay: () => getCachedUser().alias },
+    );
+  const device = security.identifyDevice(credential);
+  if (!device) return undefined;
+  const binding = device.principalBinding;
+  if (binding && isAccountDeviceBinding(binding)) return undefined;
+  return pairedDevicePrincipal(
+    device,
+    security.credentialLocality(credential),
+    security.credentialHasOwnerStanding(credential),
+  );
+}
+
 export interface OrchestrationRequestPrincipalDeps {
   accountSessionOwnsPerson?(request: Request): boolean;
   environmentSecurityService: Pick<
@@ -198,8 +239,8 @@ export function createOrchestrationRequestPrincipalResolver(
     // #2377 slice B (decision 2): a station-control tool call acts for the
     // owner Station recorded for its session, at every assurance level, not
     // for the operator the internal token's home-possession used to name. A
-    // caller-less internal request (a pooled child, a bare copy of the token)
-    // acts for no one. Station's own server code, and a composition with no
+    // caller-less internal request (a bare copy of the token; the guard
+    // refuses it first since #2377 slice D) acts for no one. Station's own server code, and a composition with no
     // authority guard, keep the internal principal's resolution below.
     if (runtimePrincipal?.kind === 'internal') {
       const agent = stationControlRequestAuthority(c.req.raw);

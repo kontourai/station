@@ -1,0 +1,17 @@
+{
+  "revision": "0232b87f78ad16505d3777d747bf413a680b4df4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only the composer setup wrapper's 45% share cap was lifted so Run setup uses free row room. Checked citing pages: none state a cap; chat-composer.md's claim that an empty phone draft's room goes to Run setup now holds (verified in a Chromium browser test).","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only the composer setup wrapper's 45% share cap was lifted so Run setup uses free row room. Checked citing pages: none state a cap; chat-composer.md's claim that an empty phone draft's room goes to Run setup now holds (verified in a Chromium browser test).","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Only the composer setup wrapper's 45% share cap was lifted so Run setup uses free row room. Checked citing pages: none state a cap; chat-composer.md's claim that an empty phone draft's room goes to Run setup now holds (verified in a Chromium browser test).","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Only the composer setup wrapper's 45% share cap was lifted so Run setup uses free row room. Checked citing pages: none state a cap; chat-composer.md's claim that an empty phone draft's room goes to Run setup now holds (verified in a Chromium browser test).","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Only the composer setup wrapper's 45% share cap was lifted so Run setup uses free row room. Checked citing pages: none state a cap; chat-composer.md's claim that an empty phone draft's room goes to Run setup now holds (verified in a Chromium browser test).","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only the composer setup wrapper's 45% share cap was lifted so Run setup uses free row room. Checked citing pages: none state a cap; chat-composer.md's claim that an empty phone draft's room goes to Run setup now holds (verified in a Chromium browser test).","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

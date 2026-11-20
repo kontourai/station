@@ -1,0 +1,15 @@
+{
+  "revision": "fcec2ed33db415cc1c3ec17621b0fa70f2cf1c65",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the new Polling sentence against tracker.ts (a non-transient failure halts the task; noteInterest from a read does not restart it, an explicit write, cancel or sync does).","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the updated token sentence against vault.ts (remote-task-credential family excluded from bucketBelongsTo, so removeConnection never reaches it) and credentials.ts (read, write and remove only that bucket).","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the input delta: the threat model's remote task paragraph now names the remote-task-credential vault family. This design document cites the threat model for automation authority, not remote task tokens, so its claims stand.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the input delta: api.md's Remote task engines Polling paragraph gains one sentence. This design document cites api.md for terminal routes, which are unchanged, so its claims stand.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the input delta: api.md's Remote task engines Polling paragraph gains one sentence. This guide does not describe remote task polling, so its claims stand.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

@@ -788,6 +788,11 @@ tables say "within noise". It names a top harness or platform only when the lead
 runner-up by the 95% bound for the difference of two independent noisy cells
 (about 1,151; derived in `src/public-dashboard.ts`). It uses text nodes,
 same-origin requests, and a CSP with no third-party scripts or analytics.
+When none of the displayed weeks or latest-week dimensions clears its
+threshold, the page shows one explanation instead of empty charts. It states
+the publication window and that the current week is excluded until it closes
+on Monday, and links to private insights for exact recent reports. A missing
+public signal does not establish zero activity.
 
 ### Finalization, migration and retention
 

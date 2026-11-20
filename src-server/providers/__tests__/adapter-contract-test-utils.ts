@@ -18,6 +18,7 @@ export const ADAPTER_IMPLEMENTATIONS = {
     'providers/adapters/station-agent-adapter.ts#StationAgentAdapter',
   bedrock: 'providers/adapters/bedrock-adapter.ts#BedrockAdapter',
   ollama: 'providers/adapters/ollama-adapter.ts#OllamaAdapter',
+  opencode: 'providers/adapters/opencode-adapter.ts#OpenCodeAdapter',
 } as const;
 export type AdapterName = keyof typeof ADAPTER_IMPLEMENTATIONS;
 export const ADAPTERS = Object.keys(ADAPTER_IMPLEMENTATIONS) as AdapterName[];

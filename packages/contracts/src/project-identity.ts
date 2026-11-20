@@ -199,6 +199,7 @@
  */
 
 import { normalizeGitOrigin } from './git-remote-identity.js';
+import { isObjectRecord } from './record-guard.js';
 
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const PROJECT_BINDING_STORE_SCHEMA_VERSION = 1 as const;
@@ -691,7 +692,7 @@ export type ResourceResolutionResult =
 export function isWellFormedResolution(
   result: unknown,
 ): result is ResourceResolutionResult {
-  if (!isPlainObject(result)) return false;
+  if (!isObjectRecord(result)) return false;
   const { state, resourceId } = result;
   if (
     typeof state !== 'string' ||
@@ -971,7 +972,7 @@ export type ProjectPrimaryResourceSelection =
 export function isWellFormedProjectResolutionView(
   value: unknown,
 ): value is ProjectResolutionView {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   const { posture } = value;
   if (
     typeof posture !== 'string' ||
@@ -1037,7 +1038,7 @@ export function isWellFormedProjectResolutionView(
 export function isWellFormedPrimarySelection(
   value: unknown,
 ): value is ProjectPrimaryResourceSelection {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (value.named === true) {
     return (
       typeof value.resourceId === 'string' &&
@@ -1110,7 +1111,7 @@ export type ProjectResourceBindOutcome =
 export function isWellFormedProjectResourceBindOutcome(
   value: unknown,
 ): value is ProjectResourceBindOutcome {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   if (value.recorded !== true) return false;
 
   const hasView = value.view !== undefined;
@@ -1418,10 +1419,6 @@ function looksLikeSecretLiteral(value: string): boolean {
   return JWT_HEADER_PATTERN.test(value);
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** Non-empty and free of control characters — a name, not a blob. */
 function isPlainSingleLineString(value: string): boolean {
   if (value.length === 0) return false;
@@ -1536,7 +1533,7 @@ function validateAuthReference(
   fieldPath: string,
   errors: ManifestDiagnosticCollector,
 ): void {
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push(
       `${fieldPath}: must be an object naming exactly one auth backend`,
     );
@@ -1609,7 +1606,7 @@ function validateAuthReference(
   // backend === 'keychain'
   const keychain = value.keychain;
   if (
-    !isPlainObject(keychain) ||
+    !isObjectRecord(keychain) ||
     typeof keychain.service !== 'string' ||
     !isPlainSingleLineString(keychain.service)
   ) {
@@ -1643,7 +1640,7 @@ function validateRepoResource(
   errors: ManifestDiagnosticCollector,
 ): void {
   const fieldPath = `repos[${index}]`;
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push(`${fieldPath}: must be an object`);
     return;
   }
@@ -1772,7 +1769,7 @@ function validateRepoCollection(
 
   repos.forEach((repo, index) => {
     validateRepoResource(repo, index, errors);
-    if (!isPlainObject(repo)) return;
+    if (!isObjectRecord(repo)) return;
     const id = repo.id;
     if (typeof id === 'string' && id.length > 0) {
       if (declaredIds.has(id)) {
@@ -1798,7 +1795,7 @@ function validateRepoCollection(
   } else if (
     repos.length === 1 &&
     primaryIndexes.length === 0 &&
-    isPlainObject(repos[0]) &&
+    isObjectRecord(repos[0]) &&
     repos[0].role === 'secondary'
   ) {
     // §3.5: a single-resource manifest's sole resource IS its primary.
@@ -1821,7 +1818,7 @@ function validateKnowledgeRef(
   errors: ManifestDiagnosticCollector,
 ): void {
   const fieldPath = `knowledge[${index}]`;
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push(`${fieldPath}: must be an object`);
     return;
   }
@@ -1829,7 +1826,7 @@ function validateKnowledgeRef(
     errors.push(`${fieldPath}.namespaceId: missing`);
   }
   const root = value.root;
-  if (!isPlainObject(root)) {
+  if (!isObjectRecord(root)) {
     errors.push(`${fieldPath}.root: must be an object`);
     return;
   }
@@ -1856,7 +1853,7 @@ function validateIntegrationRef(
   errors: ManifestDiagnosticCollector,
 ): void {
   const fieldPath = `integrations[${index}]`;
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push(`${fieldPath}: must be an object`);
     return;
   }
@@ -1884,7 +1881,7 @@ export function validateProjectManifest(
 ): ProjectManifestValidationResult {
   const errors = new ManifestDiagnosticCollector();
 
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push('manifest: must be an object');
     return errors.failure();
   }
@@ -1948,7 +1945,7 @@ export function validateProjectManifest(
 
   if (value.executionRoot !== undefined) {
     const root = value.executionRoot;
-    if (!isPlainObject(root)) {
+    if (!isObjectRecord(root)) {
       errors.push('executionRoot: must be an object when present');
     } else {
       const unknownFields = Object.keys(root).filter(

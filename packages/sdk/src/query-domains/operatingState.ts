@@ -9,24 +9,21 @@
 import type { OperatingState } from '@kontourai/console-core';
 import { useMutation } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
-import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, readEnvelopeOrThrow } from '../client/http';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 export type { OperatingState };
 
-interface ApiResult<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
-
+/**
+ * Reads through the canonical envelope reader, so a refusal keeps its status
+ * and `code` and a body that is not JSON (a proxy's error page, an empty
+ * body) reports the status instead of a parse exception.
+ */
 async function readApiResult<T>(response: Response): Promise<T> {
-  const result = (await response.json()) as ApiResult<T>;
-  if (!response.ok || !result.success || result.data === undefined) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
-  }
-  return result.data;
+  const data = await readEnvelopeOrThrow<T>(response);
+  if (data === undefined)
+    throw new Error('Operating state response is missing data');
+  return data;
 }
 
 export async function fetchOperatingState(

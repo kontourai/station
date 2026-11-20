@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_AGENTS_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
@@ -26,7 +26,7 @@ import {
 import { workspacePaneHostStorageKey } from '../workspacePaneHostStorage';
 
 /**
- * The derivation for a region whose panes need no context (Chat, Activity):
+ * The derivation for a region whose panes need no context (Chat, Agents):
  * never null for those, so the tests below read it as a document. The null
  * case — a region of coding panes with no project — is asserted by name.
  */
@@ -182,11 +182,11 @@ test('a region host document is the region’s; the model-less mount keeps the l
     ),
   ).toBe('station:workspace-pane-host:v2:ambient:right');
   expect(regionPaneHostDocumentId(undefined)).toBe('chat-dock');
-  const document = createRegionPaneHostDocument('left', ['activity']);
+  const document = createRegionPaneHostDocument('left', ['workspace-agents']);
   expect(document).toMatchObject({
     id: 'left',
     scope: { kind: 'ambient' },
-    instances: [{ descriptorId: 'pane:builtin:activity' }],
+    instances: [{ descriptorId: 'pane:builtin:workspace-agents' }],
   });
   expect(() => createRegionPaneHostDocument('left', ['home'])).toThrow(
     /no built-in pane/,
@@ -249,26 +249,26 @@ test('a coding surface derives the dock project’s instance, and none without a
 test('the derived document activates the selected pane and keeps the arrangement’s tab order', () => {
   const document = createRegionPaneHostDocument(
     'right',
-    ['chat', 'activity'],
-    'activity',
+    ['chat', 'workspace-agents'],
+    'workspace-agents',
   );
   expect(document.instances.map((i) => i.descriptorId)).toEqual([
     'pane:builtin:chat',
-    'pane:builtin:activity',
+    'pane:builtin:workspace-agents',
   ]);
-  expect(document.activeInstanceId).toBe('workspace-activity');
+  expect(document.activeInstanceId).toBe('workspace-agents');
   expect(document.root).toMatchObject({
     type: 'tabs',
-    instanceIds: ['workspace-chat', 'workspace-activity'],
-    selectedInstanceId: 'workspace-activity',
+    instanceIds: ['workspace-chat', 'workspace-agents'],
+    selectedInstanceId: 'workspace-agents',
   });
   // No selection named, or one with no pane: the first pane.
   expect(
-    createRegionPaneHostDocument('right', ['chat', 'activity'])
+    createRegionPaneHostDocument('right', ['chat', 'workspace-agents'])
       .activeInstanceId,
   ).toBe('workspace-chat');
   expect(
-    createRegionPaneHostDocument('right', ['chat', 'activity'], 'home')
+    createRegionPaneHostDocument('right', ['chat', 'workspace-agents'], 'home')
       .activeInstanceId,
   ).toBe('workspace-chat');
 });
@@ -279,7 +279,7 @@ test('the derived document activates the selected pane and keeps the arrangement
  * region key written with Chat alone is rewritten to the derived two-pane
  * document before the host reads it. Deleting the write (or the call in
  * `RegionPaneHost`) makes the region show Chat alone after a reload that
- * added Activity between launches. A matching set is left untouched — its
+ * added Agents between launches. A matching set is left untouched — its
  * tab group id survives — an absent key is not written (the host starts
  * from the derived document itself), and a persisted SUPERSET is not its
  * case either: hydration prunes that on its own.
@@ -293,8 +293,8 @@ test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane l
   };
   const twoPanes = createRegionPaneHostDocument(
     'bottom',
-    ['chat', 'activity'],
-    'activity',
+    ['chat', 'workspace-agents'],
+    'workspace-agents',
   );
 
   // Absent key: nothing written.
@@ -308,21 +308,21 @@ test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane l
     id: 'bottom',
     instances: [
       { descriptorId: 'pane:builtin:chat' },
-      { descriptorId: 'pane:builtin:activity' },
+      { descriptorId: 'pane:builtin:workspace-agents' },
     ],
-    activeInstanceId: 'workspace-activity',
+    activeInstanceId: 'workspace-agents',
   });
 
   // Matching list, different selection: left alone, selection included —
   // the mounted host follows the arrangement's selection on its own.
   const chatSelected = createRegionPaneHostDocument(
     'bottom',
-    ['chat', 'activity'],
+    ['chat', 'workspace-agents'],
     'chat',
   );
   expect(reconcileRegionPaneHostDocument(adapter, chatSelected)).toBe(false);
   expect(JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).activeInstanceId).toBe(
-    'workspace-activity',
+    'workspace-agents',
   );
 
   // Chat alone derived, two panes persisted: NOT this function's case.
@@ -337,7 +337,7 @@ test('reconcileRegionPaneHostDocument rewrites a persisted document whose pane l
     JSON.parse(storage.get(BOTTOM_STORAGE_KEY)!).instances.map(
       (i: { descriptorId: string }) => i.descriptorId,
     ),
-  ).toEqual(['pane:builtin:chat', 'pane:builtin:activity']);
+  ).toEqual(['pane:builtin:chat', 'pane:builtin:workspace-agents']);
 
   // Corrupt key: nothing written, no throw.
   storage.set(BOTTOM_STORAGE_KEY, '{not json');
@@ -496,7 +496,7 @@ const impostorHomeInstance = parseWorkspacePaneInstance({
 
 /**
  * The persisted-occupant half of the admission seam (reload path). A device
- * that docked Home or Activity under a pre-C2a build still carries that
+ * that docked Home or Agents under a pre-C2a build still carries that
  * document; the host has no render branch for either any more, so restore
  * must retire the occupant and land on the Chat baseline — never a blank
  * dock, never a pane this host cannot render.
@@ -525,9 +525,9 @@ test.each([
   ],
   ['a non-canonical Home occupant', impostorHomeInstance, 'pane:builtin:home'],
   [
-    'a canonical Activity occupant',
-    WORKSPACE_ACTIVITY_PANE_INSTANCE,
-    'pane:builtin:activity',
+    'a canonical Agents occupant',
+    WORKSPACE_AGENTS_PANE_INSTANCE,
+    'pane:builtin:workspace-agents',
   ],
 ])(
   'a persisted document naming %s is retired on restore: Chat renders and the stale occupant is gone',

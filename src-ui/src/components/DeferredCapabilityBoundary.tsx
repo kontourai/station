@@ -9,6 +9,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -59,15 +60,21 @@ type DeferredCapabilityModule = Promise<{ default: ComponentType }>;
 function createCapabilityAttempt(
   load: () => DeferredCapabilityModule,
   _attempt: number,
+  connectionHealthy: () => boolean,
 ) {
   // `_attempt` is the retry identity for useMemo; React.lazy itself only needs
   // the loader. A new identity is what discards React.lazy's cached rejection.
-  return lazy(load);
+  return lazy(() =>
+    load().catch((error) => {
+      if (connectionHealthy()) return load();
+      throw error;
+    }),
+  );
 }
 
 /**
  * Loads an optional shell capability without allowing its import to blank the
- * already-mounted Station workspace. Healthy-connection failures remain loud;
+ * already-mounted Station workspace. Healthy-connection imports retry once before a persistent failure is reported;
  * failures caught before health is confirmed stay quiet and are retried with a
  * fresh React.lazy identity when the shared connection recovers.
  */
@@ -92,6 +99,8 @@ export function DeferredCapabilityBoundary({
     pollInterval: 10_000,
   });
   const connectionHealthy = status === 'connected';
+  const connectionHealthyRef = useRef(connectionHealthy);
+  connectionHealthyRef.current = connectionHealthy;
   const [failure, setFailure] = useState<'consequence' | 'defect' | null>(null);
   const [attempt, setAttempt] = useState(0);
   const bannerId = `${BANNER_IDS.deferredCapability}:${id}`;
@@ -149,7 +158,14 @@ export function DeferredCapabilityBoundary({
   }, [connectionHealthy, failure]);
 
   const LoadedCapability = useMemo(
-    () => (load ? createCapabilityAttempt(load, attempt) : null),
+    () =>
+      load
+        ? createCapabilityAttempt(
+            load,
+            attempt,
+            () => connectionHealthyRef.current,
+          )
+        : null,
     [load, attempt],
   );
   const content = LoadedCapability ? <LoadedCapability /> : children;

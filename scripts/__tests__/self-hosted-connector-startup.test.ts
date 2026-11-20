@@ -10,6 +10,7 @@ import { createServer, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { SelfHostedBrokerScopeV1 } from '@kontourai/station-contracts/self-hosted-broker';
+import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { acquireStationHomeMaintenanceLease } from '@kontourai/station-shared/station-home-lifecycle';
 import { describe, expect, test, vi } from 'vitest';
 import { createBrokerCredentialBundle } from '../../src-server/services/connections/self-hosted-broker-service.js';
@@ -387,7 +388,9 @@ describe.skipIf(process.platform === 'win32')(
           JSON.stringify({
             completion,
             withdraws: run.withdraws(),
-            stderr: diagnostic.stderr.text.slice(-2000),
+            stderr: sanitizeFreeText(diagnostic.stderr.text, 512 * 1024).slice(
+              -2000,
+            ),
           }),
         ).toBe(0);
         expect(run.withdraws()).toBe(1);
@@ -417,7 +420,21 @@ describe.skipIf(process.platform === 'win32')(
           environmentId: run.stationId,
         });
         await run.stop();
-        expect((await bounded(run.completion, 'shutdown')).status).toBe(0);
+        const completion = await bounded(run.completion, 'shutdown');
+        const diagnostic = run.output.finish();
+        expect(
+          completion.status,
+          JSON.stringify({
+            completion,
+            withdraws: run.withdraws(),
+            stdout: sanitizeFreeText(diagnostic.stdout.text, 512 * 1024).slice(
+              -4000,
+            ),
+            stderr: sanitizeFreeText(diagnostic.stderr.text, 512 * 1024).slice(
+              -4000,
+            ),
+          }),
+        ).toBe(0);
         expect(run.withdraws()).toBe(1);
         expect(run.violations).toEqual([]);
         expect(run.output.finish().truncated).toBe(false);

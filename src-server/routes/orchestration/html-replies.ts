@@ -1,4 +1,7 @@
-import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
+import type {
+  HtmlReplyPage,
+  HtmlReplyReference,
+} from '@kontourai/station-contracts/html-reply';
 import { HTML_REPLY_LIMITS } from '@kontourai/station-contracts/html-reply';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -28,7 +31,14 @@ export function createHtmlReplyRoutes(deps: {
   sessionContext(
     sessionId: string,
   ): { conversationId: string; cwd: string } | undefined;
-  frameOrigin?(): string | undefined;
+  capturePublisher?(
+    sessionId: string,
+  ):
+    | ((conversationId: string, page: HtmlReplyPage) => HtmlReplyReference)
+    | null
+    | undefined;
+  /** The frame origin, only when this request's client can reach it. */
+  frameOrigin?(c: Context): string | undefined;
   canReadSession(sessionId: string, request: Request): boolean;
   preview(
     page: { html: string; height: number },
@@ -51,6 +61,15 @@ export function createHtmlReplyRoutes(deps: {
           error: 'A live conversation-bound caller is required',
         },
         403,
+      );
+    const publish =
+      operation === 'render'
+        ? deps.capturePublisher?.(caller.sessionId)
+        : undefined;
+    if (publish === null)
+      return c.json(
+        { success: false, error: 'A visual reply needs an active turn.' },
+        409,
       );
     const body = await readBoundedRequestBody(
       c.req.raw,
@@ -82,11 +101,9 @@ export function createHtmlReplyRoutes(deps: {
         });
       return c.json({
         success: true,
-        htmlReply: deps.pages.publish(
-          caller.sessionId,
-          owner.conversationId,
-          page,
-        ),
+        htmlReply: publish
+          ? publish(owner.conversationId, page)
+          : deps.pages.publish(caller.sessionId, owner.conversationId, page),
       });
     } catch (error) {
       logger.warn('HTML reply preparation or rendering failed', { error });
@@ -119,7 +136,11 @@ export function createHtmlReplyRoutes(deps: {
     const reference: HtmlReplyReference = { version: 1, sessionId, pageId };
     const page = deps.pages.read(reference);
     return page
-      ? c.json({ success: true, data: page, frameOrigin: deps.frameOrigin?.() })
+      ? c.json({
+          success: true,
+          data: page,
+          frameOrigin: deps.frameOrigin?.(c),
+        })
       : c.json({ success: false, error: 'Page not found' }, 404);
   });
   return app;

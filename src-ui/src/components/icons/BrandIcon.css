@@ -10,10 +10,17 @@
   color: var(--text-primary);
   line-height: 1;
 }
-.brand-icon svg {
+.brand-icon svg,
+.brand-icon__mask {
   width: 72%;
   height: 72%;
   fill: currentColor;
+}
+.brand-icon__mask {
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 .brand-icon svg .brand-icon__inverse {
   fill: #fff;

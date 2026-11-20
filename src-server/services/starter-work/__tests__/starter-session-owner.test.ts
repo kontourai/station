@@ -96,6 +96,59 @@ describe('createStarterSessionOwner (#2493)', () => {
     });
   });
 
+  test('continuing anyway rides the adoptSession command, and only when asked', async () => {
+    const { dispatchWithReceipt, owner } = orchestration();
+    await owner.continue({
+      sourceSessionId: 'attached',
+      operationId: 'op-6',
+      continueWhileSourceActive: true,
+      fullAccessGrant: null,
+      owner: { ownerUserId: 'human:local:operator' },
+    });
+    await owner.continue({
+      sourceSessionId: 'attached',
+      operationId: 'op-7',
+      fullAccessGrant: null,
+      owner: { ownerUserId: 'human:local:operator' },
+    });
+    expect((dispatchWithReceipt.mock.calls[0] as unknown[])[0]).toEqual({
+      type: 'adoptSession',
+      sourceThreadId: 'attached',
+      idempotencyKey: 'op-6',
+      continueWhileSourceActive: true,
+    });
+    expect((dispatchWithReceipt.mock.calls[1] as unknown[])[0]).toEqual({
+      type: 'adoptSession',
+      sourceThreadId: 'attached',
+      idempotencyKey: 'op-7',
+    });
+  });
+
+  test('a source still running is a certain, retry-safe failure that carries its code', async () => {
+    const dispatchWithReceipt = vi.fn(async () => {
+      throw Object.assign(new Error('Still running in Claude Code'), {
+        code: 'continuation_source_active',
+      });
+    });
+    const owner = createStarterSessionOwner({
+      readSession: vi.fn(),
+      dispatchWithReceipt,
+    } as never);
+    await expect(
+      owner.continue({
+        sourceSessionId: 'attached',
+        operationId: 'op-8',
+        fullAccessGrant: null,
+        owner: { ownerUserId: 'human:local:operator' },
+      }),
+    ).resolves.toEqual({
+      state: 'failed',
+      reason: 'Still running in Claude Code',
+      retrySafe: true,
+      code: 'continuation_source_active',
+    });
+  });
+
   test('a folder Station will not continue in is not offered a retry (#3386)', async () => {
     const dispatchWithReceipt = vi.fn(async () => {
       // As the adoption owner throws it: before any receipt is recorded.

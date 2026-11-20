@@ -93,6 +93,8 @@
  * longer a way to reach that id, voluntarily or not.
  */
 
+import { isObjectRecord } from './record-guard.js';
+
 export type PrincipalKind = 'human' | 'agent' | 'service' | 'tenant';
 
 /**
@@ -446,10 +448,6 @@ export function principalIdMatchesKind(
   return isValidComponent(rest);
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /**
  * Runtime guard for a `PrincipalRef` read from storage or the wire.
  * Validates that `id` actually parses under `kind`'s grammar (a bare
@@ -463,7 +461,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * one — see "Validators describe, constructors mint" in the module docs.
  */
 export function isPrincipalRef(value: unknown): value is PrincipalRef {
-  if (!isPlainObject(value)) return false;
+  if (!isObjectRecord(value)) return false;
   const keys = Object.keys(value);
   if (
     keys.length !== 3 ||

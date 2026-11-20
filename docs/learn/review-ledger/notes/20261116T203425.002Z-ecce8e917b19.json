@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Re-read the ledger-batching and fallback text against record-native-completion: it still writes once, now gated on exactly one verified attempt; the --if-absent and per-row fallback claims hold.","inputs":["docs/guides/releasing.md","scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}

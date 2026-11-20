@@ -1,3 +1,4 @@
+import type { PullRequestLinkIdentity } from './conversation-pull-request-links.js';
 import type { NotificationAction } from './notification.js';
 import type { RequestAnswerability } from './orchestration.js';
 import type { RequestOpenedEvent } from './runtime-events.js';
@@ -71,6 +72,7 @@ export type AttentionRequestInspection =
       requestType: 'approval' | 'permission';
       provider: string;
       title: string;
+      guardianReason?: string;
       body?: string;
       openedAt: string;
       answerability: RequestAnswerability;
@@ -148,6 +150,7 @@ export type AttentionRequestType = RequestOpenedEvent['requestType'];
  */
 export interface ApprovalAttentionItem extends AttentionItemBase {
   kind: 'approval';
+  guardianReason?: string;
   requestReference?: AttentionRequestReference;
   source: { notificationId: string; notificationSource: string };
   actions: NotificationAction[];
@@ -574,6 +577,47 @@ export interface PluginLifecycleProposalAttentionItem
   openHref: string;
 }
 
+/**
+ * Pull request agent feedback stopped reaching a chat's agent and needs a
+ * person: it paused (rounds on one head, messages in a day, or the same
+ * checks failing on several pushes), or the chat's agent stopped with
+ * feedback still waiting (`docs/decisions/pull-request-agent-feedback.md`).
+ *
+ * Projected from the feedback store on every read, only for a Session the
+ * reader may read. Send again, turning feedback off, or a new head with
+ * different feedback resolves the source; acknowledging it only sets it
+ * aside until it pauses again (`updatedAt` is when this pause began, or when
+ * the oldest waiting feedback was recorded).
+ */
+export interface PullRequestFeedbackAttentionItem extends AttentionItemBase {
+  kind: 'pull-request-feedback';
+  source: {
+    /** The chat that owns the pull request's feedback. */
+    conversationId: string;
+    identity: PullRequestLinkIdentity;
+    /** The push notification for this pause, while it is active. */
+    notificationId?: string;
+  };
+  /** `fix-budget` (#5066): a watching Task's pull request used every fix attempt. */
+  reason: 'round-limit' | 'repeated-failure' | 'fix-budget' | 'agent-stopped';
+  /** round-limit: rounds on one head, or messages in 24 hours. */
+  cap?: 'head' | 'day';
+  headSha?: string;
+  /** The failing check names it paused on, when checks were failing. */
+  failing?: string[];
+  /** agent-stopped: how many items of feedback are waiting. */
+  waiting?: number;
+  pullRequestUrl?: string;
+  openHref: string;
+  /**
+   * Whether the reader could send again or turn feedback off: a person with
+   * write access to the owning chat, derived per response at the HTTP seam
+   * from the feedback routes' own writer rule. `false` means the surface
+   * shows the remedy instead of the buttons.
+   */
+  viewerMayChange: boolean;
+}
+
 export interface ToolRequestAttentionItem extends AttentionItemBase {
   kind: 'tool-request';
   source: { requestId: string };
@@ -593,7 +637,8 @@ export type AttentionItem =
   | GateExceptionAttentionItem
   | ProposedChangeAttentionItem
   | GateReviewAttentionItem
-  | DevicePairingAttentionItem;
+  | DevicePairingAttentionItem
+  | PullRequestFeedbackAttentionItem;
 
 /**
  * Kinds that are STANDING notices rather than per-event facts (#1536 D8; delta

@@ -1,7 +1,0 @@
-{
-  "revision": "286217b645a749a1668be2ea35d2e1cca2d7cfd6",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Reviewed the API CORS delta against the terminal socket and same-origin gateway references. Allowing If-Match for ordinary browser preference writes does not change terminal transport admission, tickets or binary framing; no terminal prose change is needed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
-  ]
-}

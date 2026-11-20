@@ -15,9 +15,11 @@ import type {
 } from '@kontourai/station-contracts/review-evidence';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileReviewReceiptStore } from '../review-receipt-store.js';
 
 const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(async () => {
   await Promise.all(
@@ -92,6 +94,68 @@ function reviewRequest(requestId: string): IndependentReviewRequest {
 }
 
 describe('FileReviewReceiptStore', () => {
+  it('retains Task incarnation at admission and refuses rebinding an existing request', async () => {
+    const root = makeTempDir('station-review-task-binding-');
+    const resolver = { workspace: () => root };
+    const options = { coordinationDirectory: join(root, 'coordination') };
+    const store = new FileReviewReceiptStore(resolver, options);
+    const taskBinding = {
+      projectId: 'project-1',
+      projectCreatedAt: '2026-01-01T00:00:00Z',
+      taskId: 'task-1',
+      taskCreatedAt: '2026-01-02T00:00:00Z',
+    };
+    const request = reviewRequest('task-review');
+    await store.begin({
+      request,
+      taskBinding,
+      startedAt: '2026-08-16T00:00:00.000Z',
+    });
+    // Admission alone must retain the relation, before any reviewer or receipt.
+    const restored = new FileReviewReceiptStore(resolver, options);
+    await expect(
+      restored.taskRequestIds('station', taskBinding),
+    ).resolves.toEqual({ requestIds: ['task-review'], omitted: 0 });
+    await expect(
+      restored.taskRequestIds('station', {
+        ...taskBinding,
+        taskCreatedAt: '2026-01-03T00:00:00Z',
+      }),
+    ).resolves.toEqual({ requestIds: [], omitted: 0 });
+    await expect(
+      restored.begin({
+        request,
+        taskBinding: { ...taskBinding, taskId: 'other-task' },
+        startedAt: '2026-08-16T00:00:01.000Z',
+      }),
+    ).rejects.toThrow('identity collision');
+    await expect(
+      restored.begin({ request, startedAt: '2026-08-16T00:00:01.000Z' }),
+    ).rejects.toThrow('identity collision');
+  });
+
+  it('rechecks Task authority at durable submission publication', async () => {
+    const root = makeTempDir('station-review-task-revoked-');
+    const store = new FileReviewReceiptStore(
+      { workspace: () => root },
+      { coordinationDirectory: join(root, 'coordination') },
+    );
+    const request = reviewRequest('revoked-task-review');
+    let checks = 0;
+    await expect(
+      store.begin({
+        request,
+        startedAt: '2026-08-16T00:00:00.000Z',
+        assertCurrent: () => {
+          if (++checks === 2)
+            throw new Error('Task revoked before publication');
+        },
+      }),
+    ).rejects.toThrow('Task revoked before publication');
+    await expect(
+      store.status(request.requestId, 'station'),
+    ).resolves.toBeNull();
+  });
   it('atomically joins duplicate writers and fails admission before pruning evidence', async () => {
     const root = await mkdtemp(join(tmpdir(), 'station-review-receipts-'));
     roots.push(root);
@@ -210,7 +274,7 @@ describe('FileReviewReceiptStore', () => {
     const request = reviewRequest('idempotent-request');
     await expect(
       store.begin({ request, startedAt: '2026-08-16T00:00:00.000Z' }),
-    ).resolves.toEqual({ kind: 'acquired' });
+    ).resolves.toMatchObject({ kind: 'acquired' });
     await store.invoking({
       request,
       updatedAt: '2026-08-16T00:00:00.500Z',

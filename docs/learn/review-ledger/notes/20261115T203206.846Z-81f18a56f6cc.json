@@ -1,0 +1,9 @@
+{
+  "revision": "0ed8770d39d04e08d054a73316aae3deb3227795",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"corpus.json gains docs/user/appearance.md in the same position and section (Use Station) as docs/pages/public-docs.json, so it still mirrors public-docs.json as both pages state; no other claim about corpus.json changed.","inputs":["corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"corpus.json gains docs/user/appearance.md in the same position and section (Use Station) as docs/pages/public-docs.json, so it still mirrors public-docs.json as both pages state; no other claim about corpus.json changed.","inputs":["corpus.json"]}
+  ]
+}

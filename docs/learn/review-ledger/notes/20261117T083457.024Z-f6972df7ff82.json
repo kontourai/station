@@ -1,0 +1,15 @@
+{
+  "revision": "76a447548c6b9d52707d9a2a896c9a2a337324c0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The only change to this test file adds a case resolving a model-named chat on the opencode engine through the real OpenCodeAdapter (its modelLaunch declaration). No existing case changed; the cited target-resolution, model-plan and agent-binding claims in this page still match the resolver and its tests.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The only change to this test file adds a case resolving a model-named chat on the opencode engine through the real OpenCodeAdapter (its modelLaunch declaration). No existing case changed; the cited target-resolution, model-plan and agent-binding claims in this page still match the resolver and its tests.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The only change to this test file adds a case resolving a model-named chat on the opencode engine through the real OpenCodeAdapter (its modelLaunch declaration). No existing case changed; the cited target-resolution, model-plan and agent-binding claims in this page still match the resolver and its tests.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The only change to this test file adds a case resolving a model-named chat on the opencode engine through the real OpenCodeAdapter (its modelLaunch declaration). No existing case changed; the cited target-resolution, model-plan and agent-binding claims in this page still match the resolver and its tests.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The only change to this test file adds a case resolving a model-named chat on the opencode engine through the real OpenCodeAdapter (its modelLaunch declaration). No existing case changed; the cited target-resolution, model-plan and agent-binding claims in this page still match the resolver and its tests.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]}
+  ]
+}

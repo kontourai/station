@@ -20,7 +20,10 @@ import type {
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { orchestrationStreamPresenceSubjectForSession } from '../../../services/orchestration/orchestration-stream-presence.js';
-import { wireTurnCompletionNotifications } from '../../../services/orchestration/turn-completion-notifications.js';
+import {
+  FINISHED_ALERT_CONFIRM_MS,
+  wireTurnCompletionNotifications,
+} from '../../../services/orchestration/turn-completion-notifications.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import { wireNotificationDelivery } from '../notification-delivery-wiring.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
@@ -412,6 +415,8 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
     });
     // The desktop host polls its feed, which registers the surface.
     delivery.desktopHostChannel!.read(surface, 0);
+    // The finish is written after its confirmation window; run it by hand.
+    const windows: Array<{ callback: () => void; delayMs: number }> = [];
     wireTurnCompletionNotifications(
       bus,
       {
@@ -422,6 +427,12 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
       },
       notifications,
       { warn: producerWarn },
+      {
+        setTimer: (callback, delayMs) => {
+          windows.push({ callback, delayMs });
+          return () => {};
+        },
+      },
     );
     await notifications.start();
     const turn = {
@@ -436,6 +447,12 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
     bus.emit('orchestration:event', {
       event: { ...turn, method: 'turn.completed', finishReason: 'stop' },
     });
+    await notifications.drainAsyncDispatch();
+    expect(await notifications.list()).toEqual([]);
+    expect(windows.map((window) => window.delayMs)).toEqual([
+      FINISHED_ALERT_CONFIRM_MS,
+    ]);
+    windows.splice(0).forEach((window) => window.callback());
     await notifications.drainAsyncDispatch();
     expect(producerWarn).not.toHaveBeenCalled();
     expect(await notifications.list()).toHaveLength(1);

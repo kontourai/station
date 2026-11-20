@@ -24,6 +24,14 @@ import {
   publishHistoryForCapture,
   removeHistoryForCapture,
 } from './replay/capture-tap';
+import {
+  evictTranscriptWindow,
+  readTranscriptWindow,
+  type TranscriptWindowSnapshot,
+  transcriptWindowCacheGeneration,
+  transcriptWindowCacheKey,
+  writeTranscriptWindow,
+} from './transcriptWindowCache';
 
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
@@ -54,6 +62,8 @@ interface SessionEventWindowReader {
   memoryContinuation?: OrchestrationConversationEventWindow['memoryContinuation'];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
+  /** A materialized child named by a fresh head read and the binding it read from. */
+  executionRead?: { sessionId: string; priorSessionId: string | undefined };
   /** Per-execution-Session Agent identity for historical transcript rows. */
   sessionLineage?: NonNullable<
     OrchestrationConversationEventWindow['sessionLineage']
@@ -79,6 +89,12 @@ interface SessionEventWindowReader {
    * reader is pointed at a different thread.
    */
   settled: boolean;
+  /**
+   * The rows on screen were painted from this client's recent copy of the
+   * window and a read for the current one is still in flight. `settled` is
+   * already true: there is a reading, it may just be a little old.
+   */
+  revalidating: boolean;
   catchingUp: boolean;
   error?: Error;
 }
@@ -213,7 +229,7 @@ const NO_PARTIAL_TURNS: ReadonlySet<string> = new Set();
  * reads that reach it page down contiguously from the events above. A start
  * a detached page re-added is partial unless a read already closed it.
  */
-function notePartialTurnStarts(
+export function notePartialTurnStarts(
   page: Pick<
     OrchestrationConversationEventWindow,
     'events' | 'turnStartDetached'
@@ -236,6 +252,60 @@ function notePartialTurnStarts(
 function lowest(...values: (number | undefined)[]): number | undefined {
   const defined = values.filter((value) => value !== undefined);
   return defined.length ? Math.min(...defined) : undefined;
+}
+
+/** The cacheable state of one newest-page read, as `reload` would hold it. */
+function snapshotOfNewestPage(
+  page: OrchestrationConversationEventWindow,
+): TranscriptWindowSnapshot {
+  const partial = new Set<string>();
+  notePartialTurnStarts(page, partial, new Set());
+  return {
+    events: page.events,
+    ...(page.nextCursor ? { cursor: page.nextCursor } : {}),
+    watermark: page.watermark,
+    ...(page.sessionLineage ? { sessionLineage: page.sessionLineage } : {}),
+    handoffs: page.handoffs ?? [],
+    contextBoundaries: page.contextBoundaries ?? [],
+    ...(page.memoryContinuation
+      ? { memoryContinuation: page.memoryContinuation }
+      : {}),
+    partialTurnStartEventIds: [...partial],
+  };
+}
+
+/**
+ * Read one conversation's newest window into the reopen cache, the same read
+ * a reader's first `reload` makes. For the host Station's own conversations
+ * only: the key carries no remote Station namespace.
+ */
+export async function prefetchTranscriptWindow(input: {
+  cacheKey: string;
+  apiBase: string;
+  conversationId: string;
+  requestScope?: ApiRequestScope;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  const capability = input.requestScope
+    ? true
+    : await fetchSessionEventWindowCapability(input.apiBase);
+  if (capability !== true || input.signal.aborted) return false;
+  const readGeneration = transcriptWindowCacheGeneration();
+  const page = await readConversationWindow(
+    input.conversationId,
+    input.apiBase,
+    { turnLimit: 10 },
+    {
+      signal: input.signal,
+      ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+    },
+  );
+  if (input.signal.aborted) return false;
+  return writeTranscriptWindow(
+    input.cacheKey,
+    snapshotOfNewestPage(page),
+    readGeneration,
+  );
 }
 
 /** REST-only bounded session history. Live content remains app-wide SSE state. */
@@ -269,17 +339,54 @@ export function useSessionEventWindow(
   const { namespace } = useAuthorityPersistence();
   const readingNamespace = useRef(namespace);
   readingNamespace.current = namespace;
+  // Only the 404 fallback to an older server reads this, at request time. It
+  // is not reader identity: `/open` naming the current child mid-read must not
+  // wipe and restart the window it is reading.
+  const legacySessionIdRef = useRef(legacySessionId);
+  legacySessionIdRef.current = legacySessionId;
+  // Set when the newest read failed 404 while the fallback could not apply.
+  const legacyFallbackOwedRef = useRef(false);
   const readerKey = threadId
     ? JSON.stringify([
         apiBase,
         threadId,
-        legacySessionId,
         requestScope?.authorityKey,
         station?.runtimeKey,
       ])
     : undefined;
+  const cacheKey = threadId
+    ? transcriptWindowCacheKey({
+        namespace,
+        ...(station ? { stationNamespace: station.authorityNamespace } : {}),
+        apiBase,
+        ...(requestScope?.authorityKey
+          ? { authorityKey: requestScope.authorityKey }
+          : {}),
+        conversationId: threadId,
+      })
+    : undefined;
+  const cacheKeyRef = useRef(cacheKey);
+  cacheKeyRef.current = cacheKey;
+  // The cache key and cache generation the held window was read under. The
+  // reopen copy is written only under that same key: a window read before
+  // the authority changed must never be stored as the new authority's.
+  const windowStampRef = useRef<
+    { key: string | undefined; generation: number } | undefined
+  >(undefined);
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>();
+  const [childObservation, setChildObservation] = useState<{
+    sessionId: string;
+    priorSessionId: string | undefined;
+    materialized: boolean;
+  }>();
+  // The rows can keep painting when a foreground receipt or /open changes
+  // the child. A head read started under a different child cannot undo it.
+  const currentSessionId =
+    childObservation &&
+    (childObservation.priorSessionId === legacySessionId ||
+      childObservation.sessionId === legacySessionId)
+      ? childObservation.sessionId
+      : undefined;
   const [sessionLineage, setSessionLineage] =
     useState<
       NonNullable<OrchestrationConversationEventWindow['sessionLineage']>
@@ -294,6 +401,8 @@ export function useSessionEventWindow(
     useState<OrchestrationConversationEventWindow['memoryContinuation']>();
   const [loading, setLoading] = useState(false);
   const [settled, setSettled] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
+  const revalidatingRef = useRef(false);
   const [settledRevision, setSettledRevision] = useState<number | undefined>();
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [error, setError] = useState<Error>();
@@ -305,6 +414,13 @@ export function useSessionEventWindow(
   const requestSerialRef = useRef(0);
   const reconcileRevisionRef = useRef(reconcileRevision);
   const requestControllerRef = useRef<AbortController | undefined>(undefined);
+  // Older-page reads share the request slot with `reload`, so one of them
+  // retires a `reload` that is still in flight, and a retired `reload` never
+  // settles. `unsettledReloadRef` holds that reload's serial; `reloadOwedRef`
+  // says an older-page read retired it, and whoever asked for the older pages
+  // runs it again when they are done.
+  const unsettledReloadRef = useRef<number | undefined>(undefined);
+  const reloadOwedRef = useRef(false);
   const fillRef = useRef<(cursor: string, floor: number) => Promise<void>>(
     async () => {},
   );
@@ -336,6 +452,12 @@ export function useSessionEventWindow(
     }
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    const stamp = {
+      key: cacheKeyRef.current,
+      generation: transcriptWindowCacheGeneration(),
+    };
+    unsettledReloadRef.current = requestSerial;
+    reloadOwedRef.current = false;
     const read = observation?.read(
       threadId,
       'history',
@@ -351,9 +473,15 @@ export function useSessionEventWindow(
     const controller = new AbortController();
     requestControllerRef.current = controller;
     setLoading(true);
-    setSettled(false);
+    // A cached paint is already a reading; the read replaces it in place.
+    const revalidatingCachedPaint = revalidatingRef.current;
+    if (!revalidatingCachedPaint) setSettled(false);
     setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
+    let failed = false;
+    // The fallback decision is the request's: the id it was sent with.
+    const legacyAtSend = legacySessionIdRef.current;
+    let retryWithFallback = false;
     try {
       const capability = requestScope
         ? true
@@ -366,6 +494,7 @@ export function useSessionEventWindow(
         return;
       if (capability !== true) {
         if (requestGeneration !== generation.current) return;
+        failed = true;
         read?.failed();
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
@@ -394,7 +523,7 @@ export function useSessionEventWindow(
         apiBase,
         { turnLimit: 10 },
         { signal: controller.signal, requestScope },
-        legacySessionId,
+        legacyAtSend,
       );
       if (
         requestGeneration !== generation.current ||
@@ -410,11 +539,25 @@ export function useSessionEventWindow(
           page.session?.conversationActivity,
           station,
         );
-      setCurrentSessionId(page.currentSessionId);
+      setChildObservation(
+        page.currentSessionId
+          ? {
+              sessionId: page.currentSessionId,
+              priorSessionId: legacyAtSend,
+              materialized: page.session?.threadId === page.currentSessionId,
+            }
+          : undefined,
+      );
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
       setMemoryContinuation(page.memoryContinuation);
+      // Held pages merge with the new one, so a key change since leaves a
+      // mixed window that belongs under neither key.
+      windowStampRef.current =
+        olderLoadedRef.current && windowStampRef.current?.key !== stamp.key
+          ? undefined
+          : stamp;
       const next = page.events;
       if (namespace && (!bound || station?.binding.affinity.kind === 'host')) {
         void saveOfflineReading(
@@ -487,6 +630,7 @@ export function useSessionEventWindow(
       setWatermark(page.watermark);
       watermarkRef.current = page.watermark;
       setError(undefined);
+      legacyFallbackOwedRef.current = false;
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (
@@ -494,8 +638,21 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      failed = true;
       read?.failed();
       const failure = cause instanceof Error ? cause : new Error(String(cause));
+      // A 404 the older-server fallback could not take (the reader then named
+      // a child, not the conversation) is retried if it later can.
+      const fallbackOwed =
+        typeof cause === 'object' &&
+        cause !== null &&
+        (cause as { status?: unknown }).status === 404 &&
+        legacyAtSend !== threadId;
+      // Named the conversation itself while this read was in flight: the
+      // change that would have retried it has already passed, so retry now.
+      retryWithFallback =
+        fallbackOwed && legacySessionIdRef.current === threadId;
+      legacyFallbackOwedRef.current = fallbackOwed && !retryWithFallback;
       setError(failure);
       setUpgradeRequired(false);
     } finally {
@@ -503,6 +660,25 @@ export function useSessionEventWindow(
         requestGeneration === generation.current &&
         requestSerial === requestSerialRef.current
       ) {
+        unsettledReloadRef.current = undefined;
+        revalidatingRef.current = false;
+        setRevalidating(false);
+        // A cached paint the server would not confirm is not shown as if it
+        // were current: drop it so the failure (and its Retry) shows, and
+        // forget the copy so it does not paint again.
+        if (failed && revalidatingCachedPaint) {
+          evictTranscriptWindow(stamp.key);
+          windowStampRef.current = undefined;
+          setEvents([]);
+          setSessionLineage(undefined);
+          setHandoffs([]);
+          setContextBoundaries([]);
+          setCursor(undefined);
+          setWatermark(0);
+          watermarkRef.current = 0;
+          partialRef.current = new Set();
+          setPartialTurnStartEventIds(NO_PARTIAL_TURNS);
+        }
         setLoading(false);
         // A failed or upgrade-refused read is still a reading: the caller now
         // knows something, and `error`/`upgradeRequired` say what. Only a read
@@ -512,16 +688,13 @@ export function useSessionEventWindow(
       }
     }
     if (fill) void fillRef.current(fill.cursor, fill.floor);
-  }, [
-    apiBase,
-    legacySessionId,
-    observation,
-    threadId,
-    namespace,
-    requestScope,
-    station,
-    bound,
-  ]);
+    if (
+      retryWithFallback &&
+      requestGeneration === generation.current &&
+      requestSerial === requestSerialRef.current
+    )
+      void reload();
+  }, [apiBase, observation, threadId, namespace, requestScope, station, bound]);
 
   /**
    * Read one older page at `pageCursor` and merge it. `adoptCursor` moves the
@@ -537,6 +710,10 @@ export function useSessionEventWindow(
       if (!threadId) return undefined;
       const requestGeneration = generation.current;
       const requestSerial = ++requestSerialRef.current;
+      if (unsettledReloadRef.current !== undefined) {
+        unsettledReloadRef.current = undefined;
+        reloadOwedRef.current = true;
+      }
       const read = observation?.read(
         threadId,
         'older-history',
@@ -558,7 +735,7 @@ export function useSessionEventWindow(
           apiBase,
           { cursor: pageCursor, turnLimit: 20 },
           { signal: controller.signal, requestScope },
-          legacySessionId,
+          legacySessionIdRef.current,
         );
         if (
           requestGeneration !== generation.current ||
@@ -571,10 +748,11 @@ export function useSessionEventWindow(
             page.session?.conversationActivity,
             station,
           );
-        setCurrentSessionId(page.currentSessionId);
         setSessionLineage(page.sessionLineage);
         setHandoffs(page.handoffs ?? []);
         setContextBoundaries(page.contextBoundaries ?? []);
+        if (windowStampRef.current?.key !== cacheKeyRef.current)
+          windowStampRef.current = undefined;
         read?.observed(page.watermark);
         setError(undefined);
         // A cursor pins the head it was minted at, which a later reload may
@@ -614,27 +792,31 @@ export function useSessionEventWindow(
           setLoading(false);
       }
     },
-    [
-      apiBase,
-      legacySessionId,
-      observation,
-      threadId,
-      requestScope,
-      station,
-      bound,
-    ],
+    [apiBase, observation, threadId, requestScope, station, bound],
   );
 
+  // After a requested older read: run the `reload` it retired, if any. Not
+  // after each page, where the next page would only retire it again.
+  const runOwedReload = useCallback(() => {
+    if (!reloadOwedRef.current) return;
+    reloadOwedRef.current = false;
+    void reload();
+  }, [reload]);
+
   const loadOlder = useCallback(async () => {
-    const heldGap = heldGapsRef.current.at(-1);
-    if (heldGap) {
-      await fillRef.current(heldGap.cursor, heldGap.floor);
-      return;
+    try {
+      const heldGap = heldGapsRef.current.at(-1);
+      if (heldGap) {
+        await fillRef.current(heldGap.cursor, heldGap.floor);
+        return;
+      }
+      const pageCursor = cursorRef.current;
+      if (pageCursor)
+        await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
+    } finally {
+      runOwedReload();
     }
-    const pageCursor = cursorRef.current;
-    if (pageCursor)
-      await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
-  }, [readOlder]);
+  }, [readOlder, runOwedReload]);
 
   const loadTurn = useCallback(
     async (turnId: string, signal?: AbortSignal) => {
@@ -651,26 +833,30 @@ export function useSessionEventWindow(
         );
       if (containsWholeTurn(eventsRef.current)) return true;
       let pageCursor = heldGapsRef.current.at(-1)?.cursor ?? cursorRef.current;
-      // Bound each user-requested jump. A retry continues from the retained cursor.
-      for (let pages = 0; pageCursor && pages < 64; pages += 1) {
-        if (signal?.aborted || requestGeneration !== generation.current)
-          return false;
-        const page = await readOlder(pageCursor, {
-          adoptCursor: true,
-          olderLoaded: true,
-        });
-        if (
-          !page ||
-          signal?.aborted ||
-          requestGeneration !== generation.current
-        )
-          return false;
-        if (containsWholeTurn(page.events)) return true;
-        pageCursor = page.nextCursor;
+      try {
+        // Bound each user-requested jump. A retry continues from the retained cursor.
+        for (let pages = 0; pageCursor && pages < 64; pages += 1) {
+          if (signal?.aborted || requestGeneration !== generation.current)
+            return false;
+          const page = await readOlder(pageCursor, {
+            adoptCursor: true,
+            olderLoaded: true,
+          });
+          if (
+            !page ||
+            signal?.aborted ||
+            requestGeneration !== generation.current
+          )
+            return false;
+          if (containsWholeTurn(page.events)) return true;
+          pageCursor = page.nextCursor;
+        }
+        return false;
+      } finally {
+        runOwedReload();
       }
-      return false;
     },
-    [readOlder],
+    [readOlder, runOwedReload],
   );
 
   // Page down from a reload's newest page until it runs unbroken to `floor`.
@@ -712,6 +898,8 @@ export function useSessionEventWindow(
     generation.current += 1;
     requestSerialRef.current += 1;
     requestControllerRef.current?.abort();
+    unsettledReloadRef.current = undefined;
+    reloadOwedRef.current = false;
     olderLoadedRef.current = false;
     pendingFloorRef.current = undefined;
     partialRef.current = new Set();
@@ -723,7 +911,7 @@ export function useSessionEventWindow(
       recoveryTimerRef.current = undefined;
     }
     setEvents([]);
-    setCurrentSessionId(undefined);
+    setChildObservation(undefined);
     setSessionLineage(undefined);
     setHandoffs([]);
     setContextBoundaries([]);
@@ -735,10 +923,39 @@ export function useSessionEventWindow(
     // A new thread has not been read yet, whatever the previous one reported.
     setSettled(false);
     setSettledRevision(undefined);
+    revalidatingRef.current = false;
+    setRevalidating(false);
+    windowStampRef.current = undefined;
+    legacyFallbackOwedRef.current = false;
+    // A window this client read recently paints at once, as a settled
+    // reading; the read below revalidates and replaces it in place.
+    const cached = readTranscriptWindow(cacheKeyRef.current);
+    if (threadId && cached) {
+      setEvents([...cached.events]);
+      // Never the cached child: which Session is current is the server's
+      // answer now, not the one this window last saw (`/open` may already
+      // have bound a newer child, which an adopted stale id would undo).
+      setSessionLineage(cached.sessionLineage);
+      setHandoffs([...cached.handoffs]);
+      setContextBoundaries([...cached.contextBoundaries]);
+      setCursor(cached.cursor);
+      setWatermark(cached.watermark);
+      watermarkRef.current = cached.watermark;
+      setMemoryContinuation(cached.memoryContinuation);
+      partialRef.current = new Set(cached.partialTurnStartEventIds);
+      setPartialTurnStartEventIds(new Set(cached.partialTurnStartEventIds));
+      setSettled(true);
+      setSettledRevision(reconcileRevisionRef.current);
+      revalidatingRef.current = true;
+      setRevalidating(true);
+    }
     if (threadId) void reload();
     return () => {
       generation.current += 1;
       requestControllerRef.current?.abort();
+      // A jump still unwinding must not start a read for a reader that is gone.
+      unsettledReloadRef.current = undefined;
+      reloadOwedRef.current = false;
       if (recoveryTimerRef.current !== undefined) {
         clearTimeout(recoveryTimerRef.current);
         recoveryTimerRef.current = undefined;
@@ -746,6 +963,20 @@ export function useSessionEventWindow(
       readerKeyRef.current = undefined;
     };
   }, [readerKey, reload, threadId]);
+
+  // The fallback reads only a conversation that is its own Session, so it
+  // waits for the reader to name the conversation itself (the child id was
+  // cleared); then the failed read is owed once more.
+  useEffect(() => {
+    if (
+      !threadId ||
+      legacySessionId !== threadId ||
+      !legacyFallbackOwedRef.current
+    )
+      return;
+    legacyFallbackOwedRef.current = false;
+    void reload();
+  }, [legacySessionId, threadId, reload]);
 
   const previousRevision = useRef(reconcileRevision);
   useEffect(() => {
@@ -800,6 +1031,53 @@ export function useSessionEventWindow(
     },
     [apiBase, threadId, bound, station],
   );
+  // Keep the reopen copy at what a settled, current read holds. A reader
+  // still owing a gap fill holds a window the cache could not reproduce.
+  useEffect(() => {
+    if (
+      !currentReader ||
+      !settled ||
+      loading ||
+      revalidating ||
+      error ||
+      upgradeRequired ||
+      events.length === 0 ||
+      heldGapsRef.current.length > 0
+    )
+      return;
+    const stamp = windowStampRef.current;
+    if (!stamp || stamp.key !== cacheKey) return;
+    writeTranscriptWindow(
+      cacheKey,
+      {
+        events,
+        ...(cursor ? { cursor } : {}),
+        watermark,
+        ...(sessionLineage ? { sessionLineage } : {}),
+        handoffs,
+        contextBoundaries,
+        ...(memoryContinuation ? { memoryContinuation } : {}),
+        partialTurnStartEventIds: [...partialTurnStartEventIds],
+      },
+      stamp.generation,
+    );
+  }, [
+    cacheKey,
+    currentReader,
+    settled,
+    loading,
+    revalidating,
+    error,
+    upgradeRequired,
+    events,
+    cursor,
+    watermark,
+    sessionLineage,
+    handoffs,
+    contextBoundaries,
+    memoryContinuation,
+    partialTurnStartEventIds,
+  ]);
   return {
     events: currentReader ? events : [],
     partialTurnStartEventIds: currentReader
@@ -808,6 +1086,9 @@ export function useSessionEventWindow(
     watermark: currentReader ? watermark : 0,
     memoryContinuation: currentReader ? memoryContinuation : undefined,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
+    ...(currentReader && currentSessionId && childObservation?.materialized
+      ? { executionRead: childObservation }
+      : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],
@@ -818,6 +1099,7 @@ export function useSessionEventWindow(
     upgradeRequired: currentReader && upgradeRequired,
     loading: currentReader ? loading : Boolean(threadId),
     settled: currentReader && settled,
+    revalidating: currentReader && revalidating,
     // station#2530 review 2: catching up means a NEWER revision's fetch is
     // genuinely outstanding — `settledRevision`/`settled` have not caught up
     // to this render's `reconcileRevision` yet. `error` alone is

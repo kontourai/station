@@ -49,7 +49,7 @@ describe('Station assistant setup', () => {
     );
     expect(
       await screen.findByRole('dialog', {
-        name: 'Choose what powers the Station assistant',
+        name: 'Choose what powers the Station agent',
       }),
     ).toBeTruthy();
     expect(onRepair).not.toHaveBeenCalled();

@@ -20,6 +20,7 @@ import {
   ThumbUpGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
+import { ConfirmModal } from '../modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import { Tabs, tabElementId, tabPanelElementId } from '../Tabs';
 import './InsightsDashboard.css';
@@ -103,7 +104,8 @@ export async function downloadInsightEvents(
       written: false,
       rows: 0,
       reason:
-        'No exportable rows came back. If the panel shows tool calls, they were recorded without a user id and this endpoint cannot return them (station#3130).',
+        // Tool calls recorded without a user id can't be exported (archive#3130).
+        "Nothing to export. Tool calls recorded without a user can't be exported yet.",
     };
   }
   if (
@@ -114,7 +116,7 @@ export async function downloadInsightEvents(
     return {
       written: false,
       rows: events.length,
-      reason: `Only ${events.length} of about ${expectedToolCalls} tool calls are readable through this endpoint; the rest were recorded without a user id (station#3130).`,
+      reason: `Only ${events.length} of about ${expectedToolCalls} tool calls can be exported. The rest were recorded without a user.`,
     };
   }
 
@@ -170,7 +172,7 @@ function UsageTab() {
     return (
       <Empty
         label="Insights history unavailable"
-        description="This Station has no readable monitoring history for this scan. No activity total can be confirmed."
+        description="Station can’t read monitoring history for this period, so totals are unknown."
       />
     );
 
@@ -326,7 +328,7 @@ function UsageTab() {
           )}
         </div>
         <div>
-          <div className="insights-section-label">Agent Usage</div>
+          <div className="insights-section-label">Agent usage</div>
           {agents.length === 0 ? (
             <Empty variant="compact" label="No agent usage yet" />
           ) : (
@@ -378,6 +380,22 @@ function FeedbackTab() {
   const analyzeMutation = useAnalyzeFeedbackMutation();
   const clearMutation = useClearFeedbackAnalysisMutation();
   const deleteMutation = useDeleteFeedbackRatingMutation();
+  // Both actions discard data on a single click, so they ask first. The
+  // dialog stays open, pending, until the request settles.
+  const [pendingConfirm, setPendingConfirm] = useState<
+    { kind: 'rating'; rating: MessageRating } | { kind: 'analysis' } | null
+  >(null);
+
+  function confirmPending() {
+    const confirmed = pendingConfirm;
+    if (!confirmed) return;
+    const close = () => setPendingConfirm(null);
+    if (confirmed.kind === 'rating') {
+      deleteMutation.mutate(confirmed.rating, { onSettled: close });
+    } else {
+      clearMutation.mutate(undefined, { onSettled: close });
+    }
+  }
 
   const { disliked, liked, noReason, pending } =
     summarizeFeedbackRatings(ratings);
@@ -426,7 +444,9 @@ function FeedbackTab() {
               <div key={r.id} className="feedback-card">
                 <button
                   type="button"
-                  onClick={() => deleteMutation.mutate(r)}
+                  onClick={() =>
+                    setPendingConfirm({ kind: 'rating', rating: r })
+                  }
                   title="Delete rating"
                   aria-label={`Delete rating for ${r.agentSlug} message ${r.messageIndex + 1} in ${r.conversationId}`}
                   className="feedback-delete-btn"
@@ -474,7 +494,7 @@ function FeedbackTab() {
       {/* Right: Behavior summary */}
       <div>
         <div className="feedback-behaviors-header">
-          <div className="insights-section-label">Learned Behaviors</div>
+          <div className="insights-section-label">Learned behaviors</div>
           <div className="feedback-actions">
             <button
               type="button"
@@ -484,7 +504,7 @@ function FeedbackTab() {
             >
               {analyzeMutation.isPending ? (
                 <>
-                  <TimeGlyph /> Analyzing...
+                  <TimeGlyph /> Analyzing…
                 </>
               ) : (
                 <>
@@ -494,7 +514,7 @@ function FeedbackTab() {
             </button>
             <button
               type="button"
-              onClick={() => clearMutation.mutate()}
+              onClick={() => setPendingConfirm({ kind: 'analysis' })}
               className="insights-pill"
             >
               Clear
@@ -555,6 +575,25 @@ function FeedbackTab() {
           </>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={pendingConfirm !== null}
+        variant="danger"
+        title={
+          pendingConfirm?.kind === 'analysis'
+            ? 'Clear feedback analysis'
+            : 'Delete rating'
+        }
+        message={
+          pendingConfirm?.kind === 'analysis'
+            ? 'Clear the learned behaviors and each rating’s analysis? Your ratings are kept.'
+            : `Delete your rating for ${pendingConfirm?.rating.agentSlug ?? 'this agent'}? Its reason and analysis are deleted too.`
+        }
+        confirmLabel={pendingConfirm?.kind === 'analysis' ? 'Clear' : 'Delete'}
+        pending={deleteMutation.isPending || clearMutation.isPending}
+        onConfirm={confirmPending}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </div>
   );
 }

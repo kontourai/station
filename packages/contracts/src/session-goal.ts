@@ -11,9 +11,15 @@ export type SessionGoalStatus =
 export interface SessionGoal {
   objective: string;
   status: SessionGoalStatus;
-  tokenBudget: number | null;
-  tokensUsed: number;
-  timeUsedSeconds: number;
+  /**
+   * `null`: the goal has no budget. Absent: the implementation reports no
+   * budget at all (Muse), which is not the same as none.
+   */
+  tokenBudget?: number | null;
+  /** Absent when the implementation reports no token use; never read as 0. */
+  tokensUsed?: number;
+  /** Absent when the implementation reports no elapsed time; never read as 0. */
+  timeUsedSeconds?: number;
 }
 
 export type SessionGoalCommand =
@@ -26,7 +32,8 @@ export interface SessionGoalCapability {
   implementation: 'engine' | 'station';
   operations: readonly ('read' | SessionGoalCommand['operation'])[];
   maxObjectiveChars: number;
-  tokenBudget: 'enforced-by-implementation';
+  /** `unsupported`: the implementation has no token budget for a goal. */
+  tokenBudget: 'enforced-by-implementation' | 'unsupported';
   completion: 'implementation-reported';
   saveState: 'paused';
 }
@@ -75,17 +82,19 @@ export function parseSessionGoal(value: unknown): SessionGoal | null {
       'budget-limited',
       'complete',
     ].includes(status) ||
-    (tokenBudget !== null && (!count(tokenBudget) || tokenBudget === 0)) ||
-    !count(tokensUsed) ||
-    !count(timeUsedSeconds)
+    (tokenBudget !== undefined &&
+      tokenBudget !== null &&
+      (!count(tokenBudget) || tokenBudget === 0)) ||
+    (tokensUsed !== undefined && !count(tokensUsed)) ||
+    (timeUsedSeconds !== undefined && !count(timeUsedSeconds))
   )
     return null;
   return {
     objective,
     status: status as SessionGoalStatus,
-    tokenBudget,
-    tokensUsed,
-    timeUsedSeconds,
+    ...(tokenBudget !== undefined ? { tokenBudget } : {}),
+    ...(tokensUsed !== undefined ? { tokensUsed } : {}),
+    ...(timeUsedSeconds !== undefined ? { timeUsedSeconds } : {}),
   };
 }
 
@@ -138,7 +147,8 @@ export function parseSessionGoalRead(value: unknown): SessionGoalRead | null {
     !count(capability.maxObjectiveChars) ||
     capability.maxObjectiveChars < 1 ||
     capability.maxObjectiveChars > SESSION_GOAL_OBJECTIVE_MAX_CHARS ||
-    capability.tokenBudget !== 'enforced-by-implementation' ||
+    (capability.tokenBudget !== 'enforced-by-implementation' &&
+      capability.tokenBudget !== 'unsupported') ||
     capability.completion !== 'implementation-reported' ||
     capability.saveState !== 'paused'
   )
@@ -151,7 +161,8 @@ export function parseSessionGoalRead(value: unknown): SessionGoalRead | null {
       implementation: capability.implementation as 'engine' | 'station',
       operations: [...capability.operations],
       maxObjectiveChars: capability.maxObjectiveChars,
-      tokenBudget: capability.tokenBudget,
+      tokenBudget:
+        capability.tokenBudget as SessionGoalCapability['tokenBudget'],
       completion: capability.completion,
       saveState: capability.saveState,
     },

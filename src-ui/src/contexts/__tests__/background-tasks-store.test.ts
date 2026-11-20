@@ -53,6 +53,46 @@ describe('ingestBackgroundTaskEvent — tool cards', () => {
     expect(state.entries['call-1'].title).toBe('bash');
   });
 
+  /**
+   * The expanded row says what ran: the tool's name survives a description
+   * taking the title, and its arguments survive as one bounded line. Dropping
+   * either field from the fold fails the first case; an unbounded or
+   * multi-line summary fails the second.
+   */
+  test('tool.started keeps the tool name and a one-line input summary', () => {
+    const state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', {
+        toolCallId: 'call-1',
+        toolName: 'local_bash',
+        arguments: {
+          description: 'Run tests',
+          command: 'pnpm vitest run\n  --reporter dot',
+        },
+      }),
+    );
+    expect(state.entries['call-1']).toMatchObject({
+      title: 'Run tests',
+      toolName: 'local_bash',
+      toolInput: 'pnpm vitest run --reporter dot',
+    });
+
+    const long = 'x'.repeat(500);
+    const unnamed = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', {
+        toolCallId: 'call-2',
+        toolName: 'mcp_lookup',
+        arguments: { description: 'Look up', ids: [long] },
+      }),
+    ).entries['call-2'];
+    // 240 is TOOL_INPUT_LIMIT, pinned here independently of the constant.
+    expect(unnamed.toolInput).toHaveLength(240);
+    expect(unnamed.toolInput?.startsWith('{"ids":["xxx')).toBe(true);
+    expect(unnamed.toolInput?.endsWith('…')).toBe(true);
+    expect(unnamed.toolInput).not.toContain('description');
+  });
+
   test('tool.progress refreshes detail on the running card', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),
@@ -1333,4 +1373,80 @@ test('revived tool progress shares the running-row bound with new tools', () => 
   const view = selectChatBackgroundTasks(store.getSnapshot(), 'chat-1', []);
   expect(view.running).toHaveLength(100);
   expect(view.toolHistoryLimited).toBe(true);
+});
+
+describe('reconnect snapshot — a tool still running after its turn', () => {
+  function storeWithPostTurnTool() {
+    const state = reconcileBackgroundTasksSnapshot(
+      createEmptyBackgroundTasksState(),
+      { sessions: [] },
+    );
+    // The turn ended first, then the background call started: the shape a
+    // subagent's own shell call has in the main chat.
+    const ended = ingestBackgroundTaskEvent(
+      state,
+      event('turn.completed', { turnId: 'turn-1' }),
+    );
+    return ingestBackgroundTaskEvent(
+      ended,
+      event('tool.started', {
+        toolCallId: 'bg-1',
+        toolName: 'Bash',
+        createdAt: '2026-07-29T00:01:00.000Z',
+      }),
+    );
+  }
+  function idleParent(runningChildWork?: number) {
+    return {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: 'chat-1',
+          status: 'running',
+          hasActiveTurn: false,
+          ...(runningChildWork === undefined
+            ? {}
+            : {
+                conversationActivity: {
+                  conversationId: 'conversation-1',
+                  asOfSequence: 4,
+                  runningChildWork: {
+                    count: runningChildWork,
+                    producers: [],
+                    oldestStartedAt: '2026-07-29T00:00:30.000Z',
+                  },
+                },
+              }),
+        },
+      ],
+    } as unknown as OrchestrationSnapshotPayload;
+  }
+
+  test('stays running while the conversation still reports running child work', () => {
+    const state = reconcileBackgroundTasksSnapshot(
+      storeWithPostTurnTool(),
+      idleParent(9),
+    );
+    expect(state.entries['bg-1']?.state).toBe('running');
+    // ...so its next progress line is not a revival: nothing toggled.
+    const progressed = ingestBackgroundTaskEvent(
+      state,
+      event('tool.progress', { toolCallId: 'bg-1', message: 'still going' }),
+    );
+    expect(progressed.entries['bg-1']?.state).toBe('running');
+  });
+
+  test('settles unresolved once the conversation reports no running child work', () => {
+    expect(
+      reconcileBackgroundTasksSnapshot(storeWithPostTurnTool(), idleParent(0))
+        .entries['bg-1']?.state,
+    ).toBe('unresolved');
+  });
+
+  test('settles unresolved for a server that reports no activity record', () => {
+    expect(
+      reconcileBackgroundTasksSnapshot(storeWithPostTurnTool(), idleParent())
+        .entries['bg-1']?.state,
+    ).toBe('unresolved');
+  });
 });

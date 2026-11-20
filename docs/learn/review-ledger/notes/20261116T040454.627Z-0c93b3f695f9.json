@@ -1,0 +1,7 @@
+{
+  "revision": "7fc73e60294b7bc5a764ddce0fa75d59f2082d6c",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md Gallery section rewrite changes no lane or qualification definition this context cites; links resolve.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

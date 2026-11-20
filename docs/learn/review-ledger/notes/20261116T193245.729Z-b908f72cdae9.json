@@ -1,0 +1,7 @@
+{
+  "revision": "e3d034f745c772653e012a6f76a9803400096124",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md gained a sentence on transcript page ranges; contracts AGENTS routing unaffected.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

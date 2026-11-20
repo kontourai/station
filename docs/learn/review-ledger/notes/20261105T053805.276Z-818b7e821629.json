@@ -1,7 +1,0 @@
-{
-  "revision": "3de23cd1ed4607411cecb311135664de0fed9fc4",
-
-  "notes": [
-    {"path":"docs/design/acp-chat-architecture.md","note":"#4515 fix round 1: the ACP guide gains the managed-policy launch refusal, and acp-adapter.ts passes its connection to ACPProcess. Checked this design's substrate and probe descriptions; they still hold, and the refusal is upstream of the chat path it describes.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
-  ]
-}

@@ -53,6 +53,13 @@ export const PROJECT_TASK_ROOM_LIMITS = Object.freeze({
 const ROOM_WRITE_ADMISSION_MS = 1_000;
 // Cap failed-worker startup/migration churn at one attempt per second per history.
 const WORKER_FAILURE_COOLDOWN_MS = 1_000;
+/**
+ * The worker is a whole V8 isolate, started on the first request. Once no
+ * request has been in flight for this long it is retired through the same
+ * close a failed worker gets, and the next request starts a fresh one. Every
+ * reply follows its commit, so an idle worker holds nothing durable.
+ */
+const WORKER_IDLE_RETIRE_MS = 60_000;
 
 /**
  * How long the room worker waits for SQLite's write lock before a request
@@ -242,6 +249,8 @@ interface ProjectTaskRoomHistoryTestInput extends ProjectTaskRoomHistoryInput {
   };
   /** Test-only deadline; production stays below the worker response budget. */
   roomWriteAdmissionMs?: number;
+  /** Test-only idle span before the worker is retired. */
+  idleRetireMs?: number;
 }
 
 export function createProjectTaskRoomHistory(
@@ -290,6 +299,7 @@ function createProjectTaskRoomHistoryInternal(
       input.workerSourceUrl,
       storageLimits,
       sqliteLockWaitMs(roomWriteAdmissionMs),
+      input.idleRetireMs,
     );
   const writeAdmissionRequired = roomWriteAdmissions !== undefined;
   let closed = false;
@@ -1010,12 +1020,30 @@ function createWorkerStorage(
     maxIdentities: PROJECT_TASK_ROOM_LIMITS.maxIdentities,
   },
   lockWaitMs: number = sqliteLockWaitMs(ROOM_WRITE_ADMISSION_MS),
+  idleRetireMs: number = WORKER_IDLE_RETIRE_MS,
 ): StorageAdapter {
   let current: StorageAdapter | undefined;
   let retiring: Promise<unknown> = Promise.resolve();
   let closed = false;
   let failedOnce = false;
   let retryAfter = 0;
+  let inFlight = 0;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function retireWhenIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = undefined;
+    if (closed || inFlight || !current) return;
+    // request() and close() clear this timer, so it fires only while idle.
+    idleTimer = setTimeout(() => {
+      idleTimer = undefined;
+      const generation = current;
+      if (!generation) return;
+      current = undefined;
+      retiring = generation.close().catch(() => undefined);
+    }, idleRetireMs);
+    idleTimer.unref?.();
+  }
 
   async function waitForRetirement(
     observed: Promise<unknown>,
@@ -1036,38 +1064,20 @@ function createWorkerStorage(
 
   return {
     async request(value, beforeCommit) {
-      if (closed || performance.now() < retryAfter)
-        return { kind: 'unavailable' };
-      let observed: Promise<unknown>;
-      do {
-        observed = retiring;
-        if (!(await waitForRetirement(observed)))
-          return { kind: 'unavailable' };
-      } while (observed !== retiring);
-      if (closed || performance.now() < retryAfter)
-        return { kind: 'unavailable' };
-      if (!current) {
-        try {
-          const generation = createGeneration(() => {
-            if (closed || current !== generation) return;
-            current = undefined;
-            failedOnce = true;
-            retryAfter = performance.now() + WORKER_FAILURE_COOLDOWN_MS;
-            // Release the old connection before a later request starts a worker.
-            retiring = generation.close().catch(() => undefined);
-          });
-          current = generation;
-        } catch {
-          failedOnce = true;
-          retryAfter = performance.now() + WORKER_FAILURE_COOLDOWN_MS;
-          return { kind: 'unavailable' };
-        }
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
+      inFlight += 1;
+      try {
+        return await requestOnce(value, beforeCommit);
+      } finally {
+        inFlight -= 1;
+        retireWhenIdle();
       }
-      // One attempt per caller; never replay a possibly committed operation.
-      return current.request(value, beforeCommit);
     },
     async close() {
       closed = true;
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
       const generation = current;
       current = undefined;
       if (generation) retiring = generation.close().catch(() => undefined);
@@ -1082,6 +1092,42 @@ function createWorkerStorage(
         : { kind: failedOnce ? 'unavailable' : 'closed' };
     },
   };
+
+  async function requestOnce(
+    value: unknown,
+    beforeCommit?: (
+      phase: StorageCommitPhase,
+    ) => Promise<StorageCommitDisposition>,
+  ): Promise<unknown> {
+    if (closed || performance.now() < retryAfter)
+      return { kind: 'unavailable' };
+    let observed: Promise<unknown>;
+    do {
+      observed = retiring;
+      if (!(await waitForRetirement(observed))) return { kind: 'unavailable' };
+    } while (observed !== retiring);
+    if (closed || performance.now() < retryAfter)
+      return { kind: 'unavailable' };
+    if (!current) {
+      try {
+        const generation = createGeneration(() => {
+          if (closed || current !== generation) return;
+          current = undefined;
+          failedOnce = true;
+          retryAfter = performance.now() + WORKER_FAILURE_COOLDOWN_MS;
+          // Release the old connection before a later request starts a worker.
+          retiring = generation.close().catch(() => undefined);
+        });
+        current = generation;
+      } catch {
+        failedOnce = true;
+        retryAfter = performance.now() + WORKER_FAILURE_COOLDOWN_MS;
+        return { kind: 'unavailable' };
+      }
+    }
+    // One attempt per caller; never replay a possibly committed operation.
+    return current.request(value, beforeCommit);
+  }
 
   function createGeneration(failed: () => void): StorageAdapter {
     const sourceUrl =

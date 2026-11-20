@@ -34,8 +34,29 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      # The run to classify is chosen first so its manifests can be fetched
+      # with the pinned download action; the health check then classifies
+      # only that run.
+      - name: Select the red run to classify
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/qualification-health.mjs select-run
+      - name: Download the qualification failure manifests
+        if: steps.select.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          run-id: ${{ steps.select.outputs.run_id }}
+          github-token: ${{ github.token }}
+          pattern: qualification-manifest-*
+          path: ${{ runner.temp }}/qualification-manifests
       - name: Reconcile freshness and delivery health without launching tests
         env:
           GH_TOKEN: ${{ github.token }}
           STATION_QUALIFIED_NIGHTLY: ${{ vars.STATION_QUALIFIED_NIGHTLY }}
+          QUALIFICATION_CLASSIFY_RUN: ${{ steps.select.outputs.run_id }}
+          QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifests
+          # Unset or `report`: classification text only; `enforce` decides.
+          STATION_QUALIFICATION_SIGNAL: ${{ vars.STATION_QUALIFICATION_SIGNAL }}
         run: node scripts/qualification-health.mjs

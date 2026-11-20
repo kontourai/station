@@ -132,10 +132,12 @@ docker compose up -d
 Use a comma-separated list only when the same Station is deliberately reachable
 through multiple exact origins. Do not use wildcard origins.
 
-Stable publication targets `ghcr.io/kontourai/station:latest`; preview
-publication targets `:preview`. The release pipeline also defines exact
-`vX.Y.Z`, semver-without-`v`, and immutable `sha-<40-character-SHA>` tags.
-Check the registry and release record for availability before selecting a tag;
+Stable publication promotes the recorded image digest to
+`ghcr.io/kontourai/station:latest`, `:vX.Y.Z`, `:X.Y.Z` and
+`:sha-<40-character-SHA>` aliases. An RC stages under its own immutable
+`:staging-vX.Y.Z-rc.N` name; RC publication moves no Stable alias. Pin the
+`image@sha256:...` digest from the validated release inventory when deploying.
+Check the registry and release record for availability before selecting an image;
 use the source-build path below when the selected artifact is not published. Inspect the
 runtime identity through the public same-origin endpoint:
 
@@ -153,13 +155,13 @@ the container smoke build:
 
 ```bash
 export STATION_RELEASE_SHA="$(git rev-parse HEAD)"
-export STATION_RELEASE_REF=v0.0.0-preview.1
+export STATION_RELEASE_REF=v0.0.0-rc.1
 export STATION_RELEASE_CREATED_AT="$(git show -s --format=%cI HEAD | xargs -I{} node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' '{}')"
-docker build --pull --tag station-local:preview \
+docker build --pull --tag station-local:rc \
   --build-arg "STATION_RELEASE_SHA=$STATION_RELEASE_SHA" \
   --build-arg "STATION_RELEASE_REF=$STATION_RELEASE_REF" \
   --build-arg "STATION_RELEASE_CREATED_AT=$STATION_RELEASE_CREATED_AT" .
-export STATION_IMAGE=station-local:preview
+export STATION_IMAGE=station-local:rc
 docker compose up -d
 ```
 
@@ -506,8 +508,8 @@ Whole-store authenticated integrity with key authority outside that writer is
 follow-up scope.
 
 The GitHub automation observation preview is not offered in hosted mode, and
-`/automations/deliveries` refuses hosted reads because its shared ledger has no
-tenant binding.
+every `/automations` route answers 404 there (reads and operator changes alike)
+because its configuration and shared ledger have no tenant binding.
 
 Until their storage gains a durable tenant binding, hosted mode suppresses the
 entire `/scheduler` API (including its reads, SSE, webhook, and mutations) and
@@ -583,7 +585,9 @@ fresh home. The [schema gate](../../packages/shared/src/station-home-schema.ts)
 runs in both the CLI lifecycle and server entry before application migrations.
 It refuses those directories instead of treating their contents as disposable
 bootstrap scaffolding. Copying a Project is neither a schema migration nor a
-Project membership grant.
+Project membership grant. When a registered migration runs, the gate stages
+a sibling copy and preserves the home’s POSIX directory and file permission
+bits before calling the migration.
 
 After schema admission, the Project/layout portion of
 [runStartupMigrations](../../src-server/domain/migration.ts) returns when
@@ -696,25 +700,22 @@ remain separate qualification steps.
 
 ## Private tailnet dogfood on macOS
 
-The legacy dogfood supervisor below is separate from the desktop channel
-service and ordinary `station service` commands. Its staged dependency install
-still uses `npm ci`; the current checkout uses managed pnpm and has no root npm
-lockfile. Treat current-revision promotion as unqualified until that mismatch
-is corrected and exercised. The retained rollback description is not a claim
-that this audit installed or recovered a live service.
+The dogfood supervisor manages a dedicated checkout-based instance.
+Desktop channel services and ordinary `station service` commands have their
+own installation and recovery procedures.
 
 ### Channel desktop apps: ports, homes, and targeting
 
-The macOS desktop ships as up to three coexisting channel apps — `Station.app`
-(stable), `Station Beta.app`, `Station Nightly.app`. Each channel has a
-default server port — stable `18141`, beta `28141`, nightly `38141` — carried
+The macOS desktop has two coexisting release-channel apps: `Station.app`
+(Stable) and `Station Nightly.app`. Each channel has a default server port —
+Stable `18141` and Nightly `38141` — carried
 in the app's **persisted service manifest** (`src-desktop/src/service_state.rs`
 reconciles `manifest.server_port` against local state), so the port is stable
 across restarts and self-updates in practice, but it is configuration, not a
 compile-time constant: trust the manifest/live process, not the number.
 
 Default homes are channel-qualified under `STATION_ROOT/instances/` (for
-example `stable`, `beta`, `nightly`); an explicitly configured home or persisted
+example `stable` and `nightly`); an explicitly configured home or persisted
 service manifest can choose another admitted path. The old `~/.station-nightly`
 example described one deployment, not the current universal Nightly home.
 Inspect the owning service manifest and instance status rather than guessing
@@ -824,17 +825,27 @@ commits. No passkey ceremony runs on the app origin.
 
 The repository-owned dogfood supervisor keeps one named Station instance on
 the exact `origin/main` commit whose GitHub Actions `PR: CI` **push** run completed
-successfully. Its staging code creates a detached release and currently calls
-legacy `npm ci` plus `./station build` before stopping the active release.
-That dependency command is not the repository's managed pinned-pnpm setup path;
-the current root has no npm lockfile. This supervisor's successful staging on a
-current revision needs qualification/correction before use, not a claim inferred
-from its older fixtures. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks that correction. Promotion binds the configured API, terminal, voice,
-consent and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
-Tailscale Serve HTTPS, and only then commits `active`/`previous` state. A build
-failure leaves the active process alone; a post-stop failure restarts and
+successfully. It creates a clean detached release and runs that candidate's
+`npm run dependencies:ci` before `./station build`. Missing or failed
+dependency setup leaves the active release serving and records an install
+failure. The managed installer uses the candidate's pinned pnpm and lockfile.
+Promotion binds the configured API, voice, consent and UI listeners to
+`127.0.0.1`, verifies the exact running build locally and through Tailscale
+Serve HTTPS, and then commits `active`/`previous` state. A build failure
+leaves the active process running. A post-stop failure restarts and
 health-checks the previous built release.
+
+The API identity probe can authenticate to the owned loopback listener with
+the credential from the recorded Station home after it verifies process and
+listener ownership. The credential stays on the local API request. The HTTPS
+probes read the public identity and readiness routes.
+
+A disposable macOS run exercised managed staging, promotion, and reconcile
+after a supervisor generation handoff. Its terminal Session retained the
+same shell and accepted input after restart. The run used a fixture-local
+HTTPS endpoint and a test-only CA. The live recipe's Tailnet Serve routing
+requires its own verification. See the
+[supervisor verification record](../design/process-supervisor.md#verification).
 
 This recipe is private-tailnet only. It refuses an existing conflicting HTTPS
 root handler or Funnel, never enables Funnel, never runs `tailscale serve

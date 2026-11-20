@@ -43,8 +43,48 @@ export interface RecoveryDispatchReplay {
   sourceClientTurnId?: string;
 }
 
+/**
+ * Thrown by an execution Adapter for a failure it can prove came before the
+ * provider was asked to send anything: the replay was never handed to the
+ * provider's send. Every failure after that call stays indeterminate.
+ */
+export class RecoveryNotSentError extends Error {
+  /** False when the failure came before anything stopped or restarted. */
+  readonly sessionTouched: boolean;
+  constructor(cause: unknown, options: { sessionTouched?: boolean } = {}) {
+    // Keeps the underlying message: callers and logs still see why.
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'RecoveryNotSentError';
+    this.sessionTouched = options.sessionTouched ?? true;
+  }
+}
+
+const SESSION_UNTOUCHED = Symbol('station.recovery.sessionUntouched');
+
+/**
+ * Marks an error a session restart throws before it has stopped or started
+ * anything, so recovery does not restore a session that was never disturbed.
+ * The error keeps its own class and code.
+ */
+export function markSessionUntouched<T extends object>(error: T): T {
+  Object.defineProperty(error, SESSION_UNTOUCHED, { value: true });
+  return error;
+}
+
+export function isSessionUntouched(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as Record<symbol, unknown>)[SESSION_UNTOUCHED] === true
+  );
+}
+
 type RecoveryDispatchOutcome =
-  | { kind: 'rejected' }
+  /**
+   * Definitely not sent. `sessionTouched`: the session restart had begun, so
+   * the caller must put the session back before anything else uses it.
+   */
+  | { kind: 'rejected'; sessionTouched?: true }
   | { kind: 'accepted'; turnId: string }
   | { kind: 'observed'; turnId: string }
   | { kind: 'indeterminate' };
@@ -78,8 +118,12 @@ export function createRecoveryDispatchAdapter(
         return execution.providerAcceptsResponse(intent.provider)
           ? { kind: 'accepted', turnId: result.turnId }
           : { kind: 'observed', turnId: result.turnId };
-      } catch {
-        return { kind: 'indeterminate' };
+      } catch (error) {
+        if (!(error instanceof RecoveryNotSentError))
+          return { kind: 'indeterminate' };
+        return error.sessionTouched
+          ? { kind: 'rejected', sessionTouched: true }
+          : { kind: 'rejected' };
       }
     },
     ...(execution.interrupt ? { interrupt: execution.interrupt } : {}),

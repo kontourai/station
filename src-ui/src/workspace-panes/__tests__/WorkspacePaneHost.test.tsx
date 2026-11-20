@@ -831,7 +831,8 @@ test('resizing keeps ratios live but defers storage and parent publication until
       frames.push(callback);
       return frames.length;
     });
-  vi.useFakeTimers();
+  // Only the persistence debounce is virtual; leave DOM focus fixup live.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   try {
     const separator = screen.getByRole('separator', {
       name: 'Resize workspace pane groups',
@@ -1049,12 +1050,16 @@ test('host commands use typed catalog requests, reducer operations, and declared
 
 test('pop-out retains a bounded failure and returns focus to the invoking command', async () => {
   const nativeDetails = 'native route /private/path rejected';
+  let rejectPopOut!: () => void;
   render(
     <WorkspacePaneHost
       document={flatHostDocument()}
       popOut={{
         state: 'supported',
-        request: async () => ({ status: 'failed' }),
+        request: () =>
+          new Promise((resolve) => {
+            rejectPopOut = () => resolve({ status: 'failed' });
+          }),
       }}
       renderPane={(pane) => <div>{pane.descriptorId}</div>}
     />,
@@ -1067,9 +1072,20 @@ test('pop-out retains a bounded failure and returns focus to the invoking comman
   });
   const command = screen.getByRole('menuitem', { name: 'Pop out pane' });
   command.focus();
+  expect(globalThis.document.activeElement).toBe(command);
+  fireEvent.click(command);
+  expect((command as HTMLButtonElement).disabled).toBe(true);
   await act(async () => {
-    fireEvent.click(command);
-    await Promise.resolve();
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+  });
+  // Older DOM implementations leave focus on a disabled element.
+  if (document.activeElement === command) command.blur();
+  expect(document.activeElement).toBe(document.body);
+  await act(async () => rejectPopOut());
+  // Commit the pending-state unlock before the browser's return-focus frame.
+  await act(async () => {
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => resolve()),
     );
@@ -3158,10 +3174,10 @@ test('closing and reopening an occurrence discards its required-slot crash histo
         }
       />,
     );
-    await screen.findByRole('button', { name: 'Try again' });
+    await screen.findByRole('button', { name: 'Retry' });
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('button', { name: 'Try again' });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('button', { name: 'Retry' });
     expect(signal).not.toHaveBeenCalled();
     await act(async () => {
       await actions?.close?.(one.instanceId);
@@ -3172,13 +3188,13 @@ test('closing and reopening an occurrence discards its required-slot crash histo
       outcome = actions?.open(one);
     });
     expect(outcome).toEqual({ ok: true });
-    await screen.findByRole('button', { name: 'Try again' });
+    await screen.findByRole('button', { name: 'Retry' });
     // Reusing the identity must start at one catch, not diagnose the former occurrence's third.
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('button', { name: 'Try again' });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('button', { name: 'Retry' });
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(signal).toHaveBeenCalledExactlyOnceWith({
         slot: 'home',

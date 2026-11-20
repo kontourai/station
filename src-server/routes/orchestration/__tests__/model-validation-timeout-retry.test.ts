@@ -95,7 +95,10 @@ class SlowCatalogClaudeAdapter extends GateTestAdapter {
     };
   }
 
+  readonly turnInputs: ProviderSendTurnInput[] = [];
+
   override async sendTurn(input: ProviderSendTurnInput) {
+    this.turnInputs.push(input);
     this.turns += 1;
     const turnId = `turn-${this.turns}`;
     const base = {
@@ -189,11 +192,33 @@ function fixture() {
         INTERNAL_SESSION_READ_SCOPE,
         requested,
       ),
+    claimConversationContextBoundaryColdStart: (_access, id, commandId) => {
+      service.claimConversationContextBoundaryColdStart(id, commandId);
+    },
+    consumeConversationContextBoundary: (_access, id, commandId) => {
+      service.consumeConversationContextBoundary(id, commandId);
+    },
+    releaseConversationContextBoundaryFailedClaim: (
+      _access,
+      id,
+      indeterminate,
+    ) => {
+      service.releaseConversationContextBoundaryFailedClaim(id, indeterminate);
+    },
     startSession: async (_access, input) => {
+      const marker = input.metadata?.contextBoundary;
+      const commandId =
+        marker &&
+        typeof marker === 'object' &&
+        'startCommandId' in marker &&
+        typeof marker.startCommandId === 'string'
+          ? marker.startCommandId
+          : undefined;
       const started = await service.startSessionInternal(
         { type: 'start-session', input },
         { userId: OWNER },
         {
+          ...(commandId ? { commandId } : {}),
           conversationIdentity: {
             conversationId: String(input.metadata?.conversationId),
             environmentId: String(input.metadata?.environmentId),
@@ -201,7 +226,10 @@ function fixture() {
         },
       );
       if (started.status !== 'accepted') throw new Error(started.message);
-      return undefined;
+      return {
+        commandId: started.receipt.commandId,
+        sessionId: started.session.threadId,
+      };
     },
     sendTurn: async (_access, input) => {
       const dispatched = await service.dispatchWithReceipt(
@@ -213,10 +241,10 @@ function fixture() {
       return { turnId: dispatched.result.turnId };
     },
   };
-  const send = (conversationId: string, override?: string) =>
+  const send = (conversationId: string, override?: string, message = 'hello') =>
     executeForegroundMessage(
       {
-        message: 'hello',
+        message,
         conversationId,
         clientTurnId: 'client-turn-1',
         target: {
@@ -392,15 +420,7 @@ test('another user still cannot open the reserved-tail conversation', async () =
   store.close();
 }, 30_000);
 
-/**
- * #2424 review HIGH: only a PLAIN reservation is described by its
- * predecessor. The send path refuses a handoff tail and an unstartable
- * boundary, and starts a FRESH-context child for a startable boundary, so none
- * of them may open as the predecessor's writable continuation. They keep
- * main's behaviour: the tail has no Session, so the open read finds nothing
- * (the client shows its "couldn't confirm" state, not a writable chat).
- */
-describe('non-plain reserved tails are not opened through their predecessor', () => {
+describe('reserved tail open follows the continuation policy', () => {
   async function completedConversation(conversationId: string) {
     const harness = fixture();
     harness.service.initialize();
@@ -450,7 +470,7 @@ describe('non-plain reserved tails are not opened through their predecessor', ()
       'conv-indet',
       INTERNAL_SESSION_READ_SCOPE,
       {
-        policy: 'continue-from-history',
+        policy: 'empty-next-cold-start',
         idempotencyKey: 'boundary-indet',
         expectedCurrentSessionId: 'conv-indet',
         actorId: OWNER,
@@ -475,12 +495,10 @@ describe('non-plain reserved tails are not opened through their predecessor', ()
     store.close();
   }, 30_000);
 
-  // Review MEDIUM: this tail IS startable, but as a fresh-context child, so
-  // describing it by the predecessor's transcript and Session would misstate
-  // what the next send does. It keeps main's not-found open read.
-  test('a reserved empty-next-cold-start boundary tail', async () => {
-    const { service, store } = await completedConversation('conv-cold');
-    await service.reserveConversationContextBoundary(
+  test('opens a reserved empty context and dispatches only the new prompt', async () => {
+    const { service, adapter, store, send } =
+      await completedConversation('conv-cold');
+    const boundary = await service.reserveConversationContextBoundary(
       'conv-cold',
       INTERNAL_SESSION_READ_SCOPE,
       {
@@ -490,11 +508,52 @@ describe('non-plain reserved tails are not opened through their predecessor', ()
         actorId: OWNER,
       },
     );
-    expect(store.conversationSessions('conv-cold')).toHaveLength(2);
 
-    await expect(
-      service.resolveConversationOpen('conv-cold', OWNER_AUTHORITY),
-    ).resolves.toBeNull();
+    const open = await service.resolveConversationOpen(
+      'conv-cold',
+      OWNER_AUTHORITY,
+    );
+    expect(open).toMatchObject({
+      status: 'fresh-context-ready',
+      conversation: { id: 'conv-cold' },
+      predecessorSessionId: 'conv-cold',
+      reservedSessionId: boundary.successorSessionId,
+      canContinue: true,
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+      recoveryActions: [],
+    });
+    expect(open).not.toHaveProperty('currentSessionId');
+    expect(open).not.toHaveProperty('execution');
+    expect(
+      await service.resolveConversationOpen(
+        'conv-cold',
+        sessionReadAuthorityFromRequest('someone-else', undefined, undefined),
+      ),
+    ).toBeNull();
+    expect(adapter.turnInputs.map((turn) => turn.input)).toEqual(['hello']);
+
+    const history = await service.readConversationEventWindow('conv-cold', {
+      turnLimit: 2,
+      authority: OWNER_AUTHORITY,
+    });
+    expect(history?.events.map(({ event }) => event)).toContainEqual(
+      expect.objectContaining({
+        method: 'turn.started',
+        threadId: 'conv-cold',
+        prompt: 'hello',
+      }),
+    );
+
+    const sent = await send('conv-cold', undefined, 'a new question');
+    expect(sent.sessionId).toBe(boundary.successorSessionId);
+    expect(adapter.turnInputs.map((turn) => turn.input)).toEqual([
+      'hello',
+      'a new question',
+    ]);
+    expect(adapter.turnInputs.at(-1)?.ambientContext ?? '').not.toContain(
+      'hello',
+    );
+    expect(store.conversationSessions('conv-cold')).toHaveLength(2);
     await service.shutdown();
     store.close();
   }, 30_000);

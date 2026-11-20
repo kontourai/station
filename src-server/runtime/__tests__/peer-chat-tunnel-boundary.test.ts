@@ -435,6 +435,7 @@ describe('peer tunnel through two real runtime admission boundaries', () => {
               submit: submitted,
               heldByOther: () => false,
               inFlight: () => false,
+              keyBindingChanged: () => false,
             } as never,
           },
         ),

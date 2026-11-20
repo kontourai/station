@@ -140,7 +140,7 @@ test('a delegate that starts after the pane mounted appears, with no Chat dock m
   });
 
   expect(await screen.findByText('Arrived after mount')).toBeTruthy();
-  expect(screen.getByText('Running (1)')).toBeTruthy();
+  expect(screen.getByText('Running: 1 agent')).toBeTruthy();
 });
 
 test('work that started while the pane was closed appears when it mounts over a fresh cached list', async () => {

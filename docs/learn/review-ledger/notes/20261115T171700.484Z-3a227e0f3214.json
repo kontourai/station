@@ -1,0 +1,33 @@
+{
+  "revision": "b0e05f0a189c0b7686fd21a20dbaf89935b00065",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed Operations context routing after its release vocabulary change. It still routes verification and artifacts into Operations; RC/Stable exact-source qualification does not merge runtime, governance or provider ownership. Navigation remains accurate; no runtime result renewed.","inputs":["CONTEXT-MAP.md","docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed Operations boundary against the updated qualification explanation. Source usability, full release qualification and provider receipts remain distinct; context responsibilities and links still match. No product release or deployment claim added.","inputs":["CONTEXT.md","docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed diagnostic CLI contract against CLI reference changes. Retired-channel installer/doctor examples do not alter consent, read-only collection, sandbox or redaction ownership; triage remains separately admitted and does not gain release authority.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed CLI installation and host-local operation scope against the updated CLI reference. Published CLI semver remains independent of root product0.2.0; RC archive identity and Beta retirement do not turn the npm CLI into a backend installer. No published CLI or installed receipt renewed.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed root scripts delta: release:cut and release:nightly-base:check are explicit Node entrypoints only. Managed inert pnpm installation, hook admission, lock authority and package semver policy remain unchanged. No dependency/provider qualification renewed.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed package scripts delta adding explicit cut/base guard entrypoints. Published Veritas/Oxlint requirements, ownership markers, evidence retention and component standards remain unchanged; the added release commands do not bypass hygiene or readiness.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed scripts and testing-guide delta. Added cut/base guard commands leave all six normal hook checks and hosted integration ownership intact; the testing workflow table now describes Stable TestFlight after Beta retirement. No resource budget or gate relaxed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed all release-advisory callers against current workflow modes and the two new root script entrypoints. Replaced current Beta/Preview publication wording with Stable RC/final and Stable TestFlight. Fresh exact-candidate graph scan, trusted policy, source binding and fail-closed behavior remain required; no live advisory/provider result renewed.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed root script additions against documented published Kit and graph-consumer ownership. Release cut/base checks introduce no graph dependency, import of sibling internals, generated manifest or borrowed runtime authority; current integration claims remain unchanged.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed root scripts delta and canonical receipt ownership. Cut planning/base comparison return release-specific JSON, never verification receipts; verification request keys, terminal classification, resource lanes and completion evidence remain owned by their existing modules.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed testing-guide change from Beta/Stable to Stable TestFlight in workflow inventory. Server focused-test, fixture and runtime authority guidance remains unchanged; this release-doc edit grants no server or native execution authority.","inputs":["src-server/AGENTS.md","docs/guides/testing.md","docs/guides/development.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed testing-guide workflow inventory after Beta retirement. UI state owners, responsive render widths/themes, published primitives and definition of done remain accurate and unchanged. Component screenshots remain distinct from live application/native proof.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed testing-guide workflow inventory after Beta retirement. Hermetic fixtures, exact request identity, resource classification, real actions and typecheck requirements remain unchanged. No timeout, deadline or assertion is weakened.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the documented release-cut plan/apply examples against the root npm script interface and actual helper. Commands use npm run release:cut and still require committed clean source, an immutable existing tag and ancestry; they neither create/move tags nor authorize off-main publication.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}

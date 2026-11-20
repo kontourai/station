@@ -30,10 +30,12 @@ The core owns durable product responsibilities including Projects, Tasks, Sessio
 
 ## These docs, and what they cannot do
 
-`station-docs` serves this manual and the architecture topics as static content
-compiled into Station. Its tools list topics, retrieve a topic, and search by
-case-insensitive substring. They do not read user files, make network calls, or
-require a credential at request time.
+`station-docs` serves this manual and the architecture topics as a static
+Corpus docs bundle compiled into Station. Its tools list topics, retrieve a
+topic, and run a ranked search: ask in plain words, and matching uses word
+stems and synonyms, best match first. It matches words, not meaning, so a
+question in words the docs never use can miss. The tools do not read user
+files, make network calls, or require a credential at request time.
 
 The returned version and documentation digest identify shipped content, not
 live state. These tools cannot tell you which Agents exist, what is running,
@@ -124,7 +126,10 @@ Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
 delivery channel is reported as undelivered on the ordinary saved-binding path;
 an absent request is not a failed delivery. Explicit `askBeforeUse` tool rules
-are an exception: unsupported engines refuse the saved Agent as well. An explicit conversation engine
+are an exception: unsupported engines refuse the saved Agent as well. Station's own orchestration guidance
+(Feature Preview `station-orchestration-instructions`) is separate from authored content: it is composed from the
+Station tools the Session is offered and sent on the system-prompt append (Claude with an authored prompt) or
+the first message, and it has its own receipt rather than appearing as undelivered Agent content. An explicit conversation engine
 override must preserve required profile delivery and refuses unsupported or
 undelivered content instead of starting a reduced profile. See
 [execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
@@ -202,7 +207,7 @@ be inferred from ordinary execution completion.
 
 A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.
 
-**New Task** on a Project, its Tasks layout, or Activity starts a shaping
+**New Task** on a Project, its Tasks layout, or Home starts a shaping
 chat in the normal composer, with a compact, removable **Shaping a Task** chip and the existing Project and Agent choices. Describe a rough idea or a clear one-liner. The
 Agent can ask questions or return a proposal with a title, goal, **Done when**
 checklist and suggested first step. Only **Create Task** on that card accepts
@@ -290,7 +295,10 @@ The built-in Station Agent receives visual replies through its default
 station-control attachment. For an authored Claude/Codex Agent, attach
 station-control and select `html_preview` and `html_render`; ACP must attach the
 whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
-height and console output, then publish the same HTML. Pages appear at the tool
+height and console output, then publish the same HTML. Reach for `html_preview`
+then `html_render` by default for chart or visual replies; if an Artifact tool
+refuses with an auth-token message, publish the same page with `html_render`
+instead of leaving a local file. Pages appear at the tool
 result and survive reload. Use the host theme CSS variables. App/session access
 and ordinary network loads are blocked. In the published viewer, WebRTC isolation is incomplete: nested
 srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not
@@ -378,6 +386,12 @@ Station's core owns durable product and authorization behavior as well as runtim
 A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors build on core capabilities through the public SDK and extension contracts. The default in-process host connects configuration, models, conversation lists and chat state to their core owners; host bindings do not grant extra authority. See the SDK reference for exact bindings, remaining gaps and isolated-frame limits.
 
 The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.
+
+In Plugins, a partial update check lists the updates it found and offers a
+retry. An unavailable check gives no confirmation that updates are absent.
+Install previews and recovery reviews show the registry claim and pin for
+each dependency when Station has verified them. The installed view shows the
+stored verification for the selected plugin.
 
 Station uses MCP for tool servers, ACP for supported external-engine
 connections, OpenTelemetry for configured observability, and MCP-UI for

@@ -1,0 +1,7 @@
+{
+  "revision": "1e06f3885ee72949eb3078f4c471825944d9d51c",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md gained a Claude project-instructions paragraph under Add an engine; the citing page's claims about machine relationships and setup ownership are unaffected.","inputs":["docs/guides/connections.md"]}
+  ]
+}

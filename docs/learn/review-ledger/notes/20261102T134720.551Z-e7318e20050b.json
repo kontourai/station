@@ -1,7 +1,0 @@
-{
-  "revision": "63bfc69403eba179b1235869c106715ddd385264",
-
-  "notes": [
-    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Scoped recovery delta: checked CredentialRecoveryModule.observeReadiness and the reason-transition fault regression. Global admission still waits for reconciled startup; warned reason changes supplement outage/recovery warnings. Backoff, bounded metrics and exact retained uncertainty are unchanged.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]}
-  ]
-}

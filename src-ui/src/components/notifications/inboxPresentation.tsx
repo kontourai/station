@@ -9,6 +9,7 @@ import {
   MessageGlyph,
   PhoneGlyph,
   PlugGlyph,
+  PullRequestGlyph,
   ReturnGlyph,
   SettingsGlyph,
   ShieldGlyph,
@@ -41,6 +42,8 @@ export function attentionKindMark(kind: AttentionItem['kind']): InboxMark {
       return { Glyph: PlugGlyph, tone: 'caution' };
     case 'setup-incomplete':
       return { Glyph: SettingsGlyph, tone: 'caution' };
+    case 'pull-request-feedback':
+      return { Glyph: PullRequestGlyph, tone: 'caution' };
     case 'gate-route-back':
       return { Glyph: ReturnGlyph, tone: 'caution' };
     case 'gate-exception':

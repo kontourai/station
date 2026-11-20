@@ -1,0 +1,7 @@
+{
+  "revision": "1e740a35b6ea36904078c928625587be0edad20e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated the Run setup toolbar and 3.1 engine-caption claims for #4971: the closed trigger carries '· Agent moved' at every width (label gives way, survives the narrow label collapse), accessible name ends with Agent moved and the description gives the sentence; the open panel caption wraps 'Agent now on …' instead of cutting it; the next-turn notice shows at every width. Checked against ComposerRunControl.tsx/.css, ComposerChoice.tsx/.css, ChatInputArea.tsx and chat.css.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerChoice.css","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

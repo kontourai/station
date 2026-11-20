@@ -1,0 +1,7 @@
+{
+  "revision": "b75d18d8bc3adf19b08dc192ff0116c7ed60970b",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Pages source boundary unchanged: index.html, styles.css, public-docs.json and baseline gallery screens copied to media/ remain the inputs; only the named screen list grew (light/dark, desktop/phone).","inputs":["docs/README.md","scripts/build-github-pages.mjs"]}
+  ]
+}

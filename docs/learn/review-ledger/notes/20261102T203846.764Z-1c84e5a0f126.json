@@ -1,7 +1,0 @@
-{
-  "revision": "25d7315de743ef9bfb07e8912bafa6cdd4a9ce69",
-
-  "notes": [
-    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the new Project settings invitation walkthrough against AccessSection, AccessPanelView, InviteFlow, canonical Settings navigation and the existing Notifications pairing approval owner. Setup links only navigate; current invitationOrigin and actual invitation expiry are displayed without reachability claims; guest bootstrap and independent account/Device/Project/compute authority are unchanged. Executed 45 focused checks, four-theme/width Chromium renders and both real local guest invitation/admin journeys. This is a scoped source/runtime review of the new walkthrough, not physical-human/native/provider qualification or a full re-audit of the guide.","inputs":["docs/guides/deployment-authentication.md"]}
-  ]
-}

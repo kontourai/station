@@ -13,11 +13,13 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
 
 import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
+import { connectionProbeFailureReason } from '../core/connectionFailureClassification';
 import {
   clearPendingExchange,
   loadPendingExchange,
@@ -97,7 +99,9 @@ export function ConnectionManagerModalContent({
 }: ConnectionManagerModalContentProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement[]>([]);
+  const previousFocusRef = useRef<HTMLElement[] | null>(null);
+  const previousFocusTargetRef = useRef<HTMLElement | null>(null);
+  const returnFocusFrameRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const visualViewportStyle = useResponsiveVisualViewport();
@@ -161,6 +165,10 @@ export function ConnectionManagerModalContent({
         ? 'list'
         : initialPanel,
   );
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const discoveryBackRef = useRef<HTMLButtonElement>(null);
+  const discoverTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreDiscoveryFocusRef = useRef(false);
   const pairingCodeTriggerRef = useRef<HTMLButtonElement>(null);
   const restorePairingCodeFocusRef = useRef(false);
   const [newName, setNewName] = useState('');
@@ -228,17 +236,42 @@ export function ConnectionManagerModalContent({
     return cancelCandidates;
   }, [panel, refreshCandidates, cancelCandidates]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (returnFocusFrameRef.current !== null) {
+      cancelAnimationFrame(returnFocusFrameRef.current);
+      returnFocusFrameRef.current = null;
+    }
     // The trigger and every ancestor, captured while all of them are still
     // attached — see `@kontourai/station-shared/return-focus`.
-    previousFocusRef.current = captureReturnFocus(returnFocusTarget);
+    // Effect replay starts with focus inside the dialog, so retain the opener.
+    if (
+      previousFocusRef.current === null ||
+      (returnFocusTarget &&
+        returnFocusTarget !== previousFocusTargetRef.current)
+    ) {
+      previousFocusRef.current = captureReturnFocus(returnFocusTarget);
+      previousFocusTargetRef.current = returnFocusTarget ?? null;
+    }
     const overlay = overlayRef.current;
+    const dialog = dialogRef.current;
+    if (dialog) {
+      for (const candidate of dialog.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+        if (candidate.getClientRects().length === 0) continue;
+        candidate.focus();
+        if (dialog.contains(document.activeElement)) break;
+      }
+      if (!dialog.contains(document.activeElement)) dialog.focus();
+    }
     const inertedBackground: Array<{
       element: HTMLElement;
       inert: boolean;
       ariaHidden: string | null;
     }> = [];
-    let activeBranch: HTMLElement | null = overlay;
+    let activeBranch: HTMLElement | null = dialog?.contains(
+      document.activeElement,
+    )
+      ? overlay
+      : null;
     while (activeBranch?.parentElement) {
       const parent: HTMLElement = activeBranch.parentElement;
       for (const sibling of Array.from(parent.children)) {
@@ -257,10 +290,8 @@ export function ConnectionManagerModalContent({
       if (parent === document.body) break;
     }
 
-    const focusTimer = window.setTimeout(() => {
-      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-    });
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         onCloseRef.current();
@@ -283,7 +314,6 @@ export function ConnectionManagerModalContent({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown);
       for (const { element, inert, ariaHidden } of inertedBackground) {
         element.inert = inert;
@@ -309,11 +339,22 @@ export function ConnectionManagerModalContent({
       // in Chromium only: every surviving ancestor is still `inert`, refuses
       // focus, and the walk runs out. Do not "simplify" this to
       // `applyReturnFocus`.
-      const chain = previousFocusRef.current;
-      previousFocusRef.current = [];
-      restoreReturnFocus(chain, overlay);
+      const chain = previousFocusRef.current ?? [];
+      returnFocusFrameRef.current = restoreReturnFocus(chain, overlay);
     };
   }, [returnFocusTarget]);
+
+  // Move panel focus after the dialog captures its opener.
+  useLayoutEffect(() => {
+    if (panel === 'discover') {
+      discoveryBackRef.current?.focus();
+    } else if (panel === 'list' && restoreDiscoveryFocusRef.current) {
+      restoreDiscoveryFocusRef.current = false;
+      (discoverTriggerRef.current ?? dialogRef.current)?.focus();
+    } else if (panel === 'request-access' && candidateTarget) {
+      titleRef.current?.focus();
+    }
+  }, [candidateTarget, panel]);
 
   // `checkOne` outlives this component by design: the pairing paths close the
   // manager (`onCloseRef.current()`) and only then start the health check, so
@@ -428,7 +469,7 @@ export function ConnectionManagerModalContent({
         recordEndpointFailure(
           conn.id,
           typeof result === 'object' && !result.ok
-            ? result.reason
+            ? connectionProbeFailureReason(result)
             : 'unreachable',
         );
         setHealthIfMounted((m) => ({ ...m, [conn.id]: false }));
@@ -443,7 +484,7 @@ export function ConnectionManagerModalContent({
         recordEndpointFailure(
           conn.id,
           typeof result === 'object' && !result.ok
-            ? result.reason
+            ? connectionProbeFailureReason(result)
             : 'unreachable',
         );
       }
@@ -780,12 +821,33 @@ export function ConnectionManagerModalContent({
         ref={dialogRef}
         className="station-connect-modal-panel"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby="station-connect-modal-title"
       >
         <div className="station-connect-modal-header">
+          {panel === 'discover' && (
+            <button
+              ref={discoveryBackRef}
+              type="button"
+              className="station-connect-modal-back"
+              aria-label="Back to Stations"
+              onClick={() => {
+                restoreDiscoveryFocusRef.current = true;
+                setPanel('list');
+              }}
+            >
+              <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+                <path d="M12 5l-5 5 5 5" />
+              </svg>
+            </button>
+          )}
           <div className="station-connect-modal-heading">
             <h2
+              ref={titleRef}
+              tabIndex={
+                panel === 'request-access' && candidateTarget ? -1 : undefined
+              }
               id="station-connect-modal-title"
               className="station-connect-modal-title"
             >
@@ -968,9 +1030,8 @@ export function ConnectionManagerModalContent({
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
             hasLocalStation={hasLocalStation}
-            onDiscover={() => {
-              setPanel('discover');
-            }}
+            discoverTriggerRef={discoverTriggerRef}
+            onDiscover={() => setPanel('discover')}
           />
         )}
 
@@ -1154,10 +1215,6 @@ export function ConnectionManagerModalContent({
               setRequestAccessTarget(null);
               setCandidateTarget({ url: candidate.url, name: candidate.name });
               setPanel('request-access');
-            }}
-            onBack={() => {
-              cancelCandidates();
-              setPanel('list');
             }}
           />
         )}

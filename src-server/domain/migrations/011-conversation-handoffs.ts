@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS orchestration_conversation_handoffs (
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_handoffs_conversation
   ON orchestration_conversation_handoffs(conversation_id, created_at ASC);
+CREATE TABLE IF NOT EXISTS orchestration_handoff_withdrawals (
+  conversation_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  PRIMARY KEY (conversation_id, idempotency_key)
+);
 CREATE TABLE IF NOT EXISTS orchestration_context_seed_witnesses (
   thread_id TEXT NOT NULL,
   client_turn_id TEXT NOT NULL,

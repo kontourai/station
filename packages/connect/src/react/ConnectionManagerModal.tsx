@@ -77,7 +77,7 @@ export interface ConnectionManagerModalProps {
   hasLocalStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
-  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
+  pairingClientChannel?: 'stable' | 'nightly';
   /** Native desktop keeps bearer values host-side and disables manual entry. */
   allowManualCredentials?: boolean;
   /** Host-owned request transport for native management routes. */

@@ -1,0 +1,7 @@
+{
+  "revision": "8f7a6d3b91fdfe484e7efebca0ca1c3616575697",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed the OpenCode bullet for 8f7a6d3b91: added that beside an OpenCode 2.x database Station skips opencode-next.db, the preview copy OpenCode 2.x imports read-only and leaves in place (v1-migration.bun.ts importNextDatabase); alone it is still read or fails closed. The 'appears once OpenCode has finished writing it' line now also holds for a running compaction, which waits until OpenCode finishes that row. Checked by the v2 source tests.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

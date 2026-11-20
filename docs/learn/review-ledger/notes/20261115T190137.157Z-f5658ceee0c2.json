@@ -1,0 +1,27 @@
+{
+  "revision": "ff991e6aac3cf42ea8aa1603e6065f8cb9a7f208",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"main.tsx now installs the navigation-store position reader before holding a cold notification link (a navigation before the opener mounts drops it); boot theme and accent binding described here are unchanged.","inputs":["docs/guides/theming.md","src-ui/src/index.css","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"main.tsx now installs the navigation-store position reader before holding a cold notification link (a navigation before the opener mounts drops it); no backend pattern here is affected.","inputs":["docs/patterns/backend.md","src-ui/src/index.css","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"main.tsx now installs the navigation-store position reader before holding a cold notification link (a navigation before the opener mounts drops it); frontend data, tone and styling patterns are unchanged; the opening label uses the shared skeleton's --loading-label-display switch.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock's deep-link opening state now shows a visible label and neutral header and hides the stale inbox selection and This Chat card; no API route, request or result here changes.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock's deep-link opening state now shows a visible label and neutral header and hides the stale inbox selection and This Chat card; no setting or default here changes.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"main.tsx now installs the navigation-store position reader before holding a cold notification link (a navigation before the opener mounts drops it); no environment variable is read or added.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"main.tsx now installs the navigation-store position reader before holding a cold notification link (a navigation before the opener mounts drops it); no SDK export or contract here changes.","inputs":["docs/reference/sdk.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock's deep-link opening state now shows a visible label and neutral header and hides the stale inbox selection and This Chat card; no concept this page defines changes.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock's deep-link opening state now shows a visible label and neutral header and hides the stale inbox selection and This Chat card; push-permission and first-run guidance here are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/native-recovery.md","note":"main.tsx now installs the navigation-store position reader before holding a cold notification link (a navigation before the opener mounts drops it); recovery cover, relaunch and deep-link activation are unchanged.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock's deep-link opening state now shows a visible label and neutral header and hides the stale inbox selection and This Chat card; Board editing, saving and reload notices are unaffected.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

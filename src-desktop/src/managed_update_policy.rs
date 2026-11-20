@@ -39,14 +39,19 @@
 //! desktop updates off rather than mirrored; the guide tells administrators to
 //! install the policy as the file to route desktop updates to a mirror.
 //!
-//! On Windows the server holds the policy file to its owner and ACL rule
-//! (#4524), which the shell cannot yet (#4599). Until it can, an installed
-//! policy file there turns the shell's updates off the same way, unread.
+//! On Windows the file and every ancestor are checked through their open
+//! handles: only Administrators, SYSTEM or TrustedInstaller may own them,
+//! untrusted write grants are refused according to the server's object roles,
+//! and reparse points refuse updates. An unreadable descriptor fails closed.
 //!
 //! This module depends only on `std`, `serde`, `serde_json`, `url` and (on
 //! unix) `libc`, or (on Windows) `windows-sys`, so its tests compile and run
 //! standalone (`rustc --test` or a scratch crate) without building the
 //! desktop crate.
+
+#[cfg(windows)]
+#[path = "managed_policy_windows_security.rs"]
+mod windows_security;
 
 use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
@@ -75,10 +80,6 @@ pub const WINDOWS_POLICY_SUBKEY: &str = "SOFTWARE\\Policies\\Kontour\\Station";
 
 /// The sentence the window shows when device management delivers the policy.
 pub const DEVICE_MANAGED_SENTENCE: &str = "Station's update policy comes from your organization's device management; desktop updates are managed there";
-
-/// The sentence the window shows on Windows while a policy file is installed
-/// that the shell cannot yet hold to the server's owner and ACL rule (#4599).
-pub const UNCHECKED_POLICY_FILE_SENTENCE: &str = "Station's update policy comes from your organization's policy file; desktop updates are managed there";
 
 /// Larger than any real policy; a bigger file is refused, as on the server.
 const MAX_POLICY_BYTES: u64 = 1024 * 1024;
@@ -115,9 +116,6 @@ pub enum InstalledPolicy {
     /// Device management (a configuration profile or the Policies registry
     /// key) delivers a policy, which the shell does not read.
     DeviceManaged,
-    /// Windows: a policy file is installed, and the shell does not yet check
-    /// its owner and ACL as the server does (#4599), so it does not read it.
-    UncheckedPolicyFile,
 }
 
 /// Where the updater may look, decided once at startup.
@@ -154,37 +152,21 @@ pub fn load_installed(test_override: Option<&str>) -> InstalledPolicy {
     };
     load_with_device_management(
         device_managed_policy_present(),
-        cfg!(windows),
         Path::new(system_policy_path()),
         Some(&system),
         test_override,
     )
 }
 
-/// `load_from`, unless device management delivers the policy, or (when
-/// `unchecked_file`, on Windows) a system policy file is installed: then the
-/// shell stops at that, whatever the file says, and never parses it. On
-/// Windows the server holds the file to its owner and ACL rule (#4524) and
-/// the shell cannot yet (#4599), so the shell trusts nothing in it. Anything
-/// at the path counts, and an error other than "not found" counts too.
+/// Device-management sources remain conservative: the updater does not parse them.
 fn load_with_device_management(
     device_managed: bool,
-    unchecked_file: bool,
     system: &Path,
     ownership: Option<&Ownership>,
     test_override: Option<&str>,
 ) -> InstalledPolicy {
     if device_managed {
         return InstalledPolicy::DeviceManaged;
-    }
-    if unchecked_file {
-        match std::fs::symlink_metadata(system) {
-            Ok(_) => return InstalledPolicy::UncheckedPolicyFile,
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return InstalledPolicy::UncheckedPolicyFile
-            }
-            Err(_) => {}
-        }
     }
     load_from(system, ownership, test_override)
 }
@@ -215,7 +197,9 @@ fn macos_profile_present(root: &Path) -> bool {
 /// as present: the shell fails closed when it cannot tell.
 #[cfg(windows)]
 fn windows_policy_key_present(subkey: &str) -> bool {
-    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS};
+    use windows_sys::Win32::Foundation::{
+        ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS,
+    };
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_WOW64_64KEY,
     };
@@ -321,6 +305,12 @@ fn read_source(path: &Path, ownership: Option<&Ownership>) -> Result<Option<Stri
             "the policy at {shown} changed while Station was opening it"
         ));
     }
+    #[cfg(windows)]
+    if ownership.is_some() {
+        windows_security::validate_path_chain(path, &file)
+            .map_err(|problem| format!("the policy at {shown} cannot be used: {problem}"))?;
+    }
+    #[cfg(not(windows))]
     if let Some(ownership) = ownership {
         if let Some(problem) = file_ownership_problem(path, &stats, ownership).or_else(|| {
             path.parent()
@@ -484,8 +474,7 @@ fn file_ownership_problem(
     owner_problem(path, stats, ownership, true)
 }
 
-/// Windows ownership is a server follow-up (#4524); the shell matches it.
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 fn file_ownership_problem(
     _path: &Path,
     _stats: &std::fs::Metadata,
@@ -555,7 +544,7 @@ fn directory_problem(directory: &Path, ownership: &Ownership) -> Option<String> 
     None
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 fn directory_problem(_directory: &Path, _ownership: &Ownership) -> Option<String> {
     None
 }
@@ -840,9 +829,6 @@ pub fn route(policy: &InstalledPolicy, channel: &str, endpoints: &[String]) -> U
         InstalledPolicy::DeviceManaged => {
             return UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into())
         }
-        InstalledPolicy::UncheckedPolicyFile => {
-            return UpdateRoute::Refused(UNCHECKED_POLICY_FILE_SENTENCE.into())
-        }
         InstalledPolicy::Limited(limit) => limit,
     };
     if limit.off {
@@ -964,66 +950,161 @@ mod tests {
         )
         .unwrap();
         let device_managed = macos_profile_present(&root_with_profile("device-managed-root"));
-        let policy = load_with_device_management(device_managed, false, &system, None, None);
+        let policy = load_with_device_management(device_managed, &system, None, None);
         assert_eq!(policy, InstalledPolicy::DeviceManaged);
         let route = route(&policy, "stable", &[STABLE.to_string()]);
-        assert_eq!(
-            route,
-            UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into())
-        );
+        assert_eq!(route, UpdateRoute::Refused(DEVICE_MANAGED_SENTENCE.into()));
         assert!(!download_allowed(&route, STABLE));
-        assert!(!download_allowed(&route, "https://mirror.example/station/stable-desktop/latest.json"));
+        assert!(!download_allowed(
+            &route,
+            "https://mirror.example/station/stable-desktop/latest.json"
+        ));
         // Without device management the same file is read as before.
         assert!(matches!(
-            load_with_device_management(false, false, &system, None, None),
+            load_with_device_management(false, &system, None, None),
             InstalledPolicy::Limited(_)
         ));
         // And with neither, there is no policy.
         assert_eq!(
-            load_with_device_management(false, false, &dir.join("absent.json"), None, None),
+            load_with_device_management(false, &dir.join("absent.json"), None, None),
             InstalledPolicy::Unlimited
         );
     }
 
+    #[cfg(windows)]
     #[test]
-    fn on_windows_an_installed_policy_file_turns_desktop_updates_off_unread() {
-        // A usable file that names a mirror; on Windows the shell reads none
-        // of it until it can check the file's owner and ACL (#4599).
-        let dir = scratch("unchecked-policy-file");
-        let system = dir.join("policy.json");
-        std::fs::write(
-            &system,
-            r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"feedUrl":"https://mirror.example/station"}}}"#,
-        )
-        .unwrap();
-        let policy = load_with_device_management(false, true, &system, None, None);
-        assert_eq!(policy, InstalledPolicy::UncheckedPolicyFile);
+    fn trusted_windows_policy_can_select_a_mirror_but_writable_ancestors_cannot() {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Foundation::LocalFree;
+        use windows_sys::Win32::Security::Authorization::{
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, SetNamedSecurityInfoW,
+            SE_FILE_OBJECT,
+        };
+        use windows_sys::Win32::Security::{
+            GetSecurityDescriptorDacl, GetSecurityDescriptorOwner, DACL_SECURITY_INFORMATION,
+            OWNER_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+        };
+        fn set_fixture_acl(path: &Path, sddl: &str) {
+            let input: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
+            let mut name: Vec<u16> = path
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut descriptor = std::ptr::null_mut();
+            // SAFETY: all strings are terminated and the descriptor allocation
+            // remains live until the setter returns. Only owned fixtures change.
+            unsafe {
+                assert_ne!(
+                    ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                        input.as_ptr(),
+                        1,
+                        &mut descriptor,
+                        std::ptr::null_mut()
+                    ),
+                    0
+                );
+                let mut owner = std::ptr::null_mut();
+                let mut dacl = std::ptr::null_mut();
+                let mut present = 0;
+                let mut defaulted = 0;
+                assert_ne!(
+                    GetSecurityDescriptorOwner(descriptor, &mut owner, &mut defaulted),
+                    0
+                );
+                assert_ne!(
+                    GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted),
+                    0
+                );
+                let status = SetNamedSecurityInfoW(
+                    name.as_mut_ptr(),
+                    SE_FILE_OBJECT,
+                    OWNER_SECURITY_INFORMATION
+                        | DACL_SECURITY_INFORMATION
+                        | PROTECTED_DACL_SECURITY_INFORMATION,
+                    owner,
+                    std::ptr::null_mut(),
+                    dacl,
+                    std::ptr::null_mut(),
+                );
+                LocalFree(descriptor);
+                assert_eq!(
+                    status, 0,
+                    "fixture setup requires an enabled Administrators token"
+                );
+            }
+        }
+        // A unique owned fixture at the system drive root reaches the complete
+        // production trust chain without changing any existing directory ACL.
+        struct Fixture {
+            path: PathBuf,
+            live: bool,
+        }
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                if self.live {
+                    let _ = std::fs::remove_dir_all(&self.path);
+                }
+            }
+        }
+        let system =
+            PathBuf::from(std::env::var_os("SystemRoot").expect("Windows system directory"));
+        let drive = system.ancestors().last().expect("Windows drive root");
+        let dir = drive.join(format!(
+            "station-policy-acl-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&dir).expect("claim a new Windows policy fixture");
+        let mut fixture = Fixture {
+            path: dir.clone(),
+            live: true,
+        };
+        let path = dir.join("policy.json");
+        std::fs::write(&path, r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"feedUrl":"https://mirror.example/station"}}}"#).unwrap();
+        set_fixture_acl(
+            &dir,
+            "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;BU)",
+        );
+        set_fixture_acl(&path, "O:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;FR;;;BU)");
+        let ownership = Ownership {
+            uid: 0,
+            root: PathBuf::from("/"),
+        };
+        let trusted = load_from(&path, Some(&ownership), None);
+        assert!(
+            matches!(trusted, InstalledPolicy::Limited(_)),
+            "{trusted:?}"
+        );
+        let mirrored = route(&trusted, "stable", &[STABLE.to_string()]);
+        assert!(
+            matches!(mirrored, UpdateRoute::Mirror { .. }),
+            "{mirrored:?}"
+        );
+        assert!(download_allowed(
+            &mirrored,
+            "https://mirror.example/station/stable-desktop/update.exe"
+        ));
+        set_fixture_acl(
+            &dir,
+            "O:BAD:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;FW;;;BU)",
+        );
+        let policy = load_from(&path, Some(&ownership), None);
+        std::fs::remove_dir_all(&fixture.path).expect("remove the owned policy fixture");
+        fixture.live = false;
+        let InstalledPolicy::Unusable(problem) = &policy else {
+            panic!("untrusted fixture path admitted: {policy:?}");
+        };
+        assert!(problem.contains(&dir.display().to_string()), "{problem}");
+        assert!(problem.contains("grants write rights"), "{problem}");
         let route = route(&policy, "stable", &[STABLE.to_string()]);
-        assert_eq!(
-            route,
-            UpdateRoute::Refused(UNCHECKED_POLICY_FILE_SENTENCE.into())
-        );
-        assert!(!download_allowed(&route, STABLE));
-        // Not parsed: a file that is not even JSON reads the same way.
-        std::fs::write(&system, b"not json").unwrap();
-        assert_eq!(
-            load_with_device_management(false, true, &system, None, None),
-            InstalledPolicy::UncheckedPolicyFile
-        );
-        // Without a file there, the shell reads as before (here: no policy).
-        assert_eq!(
-            load_with_device_management(false, true, &dir.join("absent.json"), None, None),
-            InstalledPolicy::Unlimited
-        );
-        // Elsewhere the same file is read as before.
-        std::fs::write(
-            &system,
-            r#"{"schemaVersion":1,"organization":"Acme","limits":{"updates":{"mode":"off"}}}"#,
-        )
-        .unwrap();
-        assert!(matches!(
-            load_with_device_management(false, false, &system, None, None),
-            InstalledPolicy::Limited(UpdatesLimit { off: true, .. })
+        assert!(matches!(route, UpdateRoute::Refused(_)));
+        assert!(!download_allowed(
+            &route,
+            "https://mirror.example/station/stable/latest.json"
         ));
     }
 

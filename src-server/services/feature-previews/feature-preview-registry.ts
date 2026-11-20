@@ -106,10 +106,22 @@ export class FeaturePreviewRegistry {
       description: 'Show member names and presence in shared Task rooms.',
     });
     this.rememberConsumer({
+      id: 'apps-library',
+      label: 'Apps library',
+      description:
+        'Browse, search and personalize your Boards in an app launcher.',
+    });
+    this.rememberConsumer({
       id: 'chat-apps',
       label: 'Chat apps',
       description:
         'Show integration capability status and Task write-back history.',
+    });
+    this.rememberConsumer({
+      id: 'inline-browser-activity',
+      label: 'Inline browser activity',
+      description:
+        'Watch an agent browser beside its tool calls in a conversation, or move the same session to a floating view or Browser pane. Recording remains an explicit action.',
     });
     // Consumed by the start composers' "Use a visual skill" entry points. The
     // inventory route and authoring contract stay unconditional: hiding the
@@ -125,6 +137,15 @@ export class FeaturePreviewRegistry {
       label: 'Content trust settings',
       description:
         'Configure how tool servers and built-in tools behave after reading untrusted content.',
+    });
+    // UI-only: Continue in Project and Setup recommendations draft in the
+    // browser and create Projects and Tasks through their ordinary routes,
+    // which keep their own access checks; no server branch reads this choice.
+    this.rememberConsumer({
+      id: 'continue-in-project',
+      label: 'Save to Project',
+      description:
+        'Save work from a chat as a Task or use it to start a Project.',
     });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),

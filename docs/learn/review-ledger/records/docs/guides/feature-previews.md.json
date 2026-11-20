@@ -36,7 +36,9 @@
 
     "src-server/routes/operations/repairs.ts",
 
-    "src-server/services/automation/repair-controller.ts"
+    "src-server/services/automation/repair-controller.ts",
+
+    "src-server/routes/system/__tests__/feature-previews.routes.test.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Added a dated 2026-11-16 version note for the exact 11.2.0 pin and subpath imports, checked against package.json, the four synchronous import sites, load-flow-agents.ts and the build deny list. Earlier dated notes are left as history.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow-agents"]}
+  ]
+}

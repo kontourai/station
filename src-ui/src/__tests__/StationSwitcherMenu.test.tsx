@@ -8,6 +8,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StationSwitcherMenu } from '../components/header/StationSwitcherMenu';
 
@@ -95,11 +96,32 @@ const laptop: SavedConnection = {
 };
 const unregister: Array<() => void> = [];
 const reachable = new Set<string>();
-const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-  const origin = new URL(String(input)).origin;
-  if (reachable.has(origin)) return new Response(null, { status: 200 });
-  throw new TypeError('Failed to fetch');
-});
+/** Origins answering something other than a readable Station handshake. */
+const answers = new Map<string, (init?: RequestInit) => Response>();
+const fetchMock = vi.fn(
+  async (input: RequestInfo | URL, init?: RequestInit) => {
+    const origin = new URL(String(input)).origin;
+    const answer = answers.get(origin);
+    if (answer) return answer(init);
+    if (reachable.has(origin))
+      return Response.json({
+        schemaVersion: 1,
+        environmentId: `env-${origin}`,
+      });
+    throw new TypeError('Failed to fetch');
+  },
+);
+/** What the Station UI proxy answers while its host is down or restarting. */
+const hostDown = () =>
+  Response.json({ ready: false, status: 'unavailable' }, { status: 503 });
+/**
+ * A UI proxy whose host is down, seen cross-origin: its 503 carries no CORS
+ * headers, so a readable request fails and only an opaque one gets through.
+ */
+const opaqueOnly = (init?: RequestInit) => {
+  if (init?.mode !== 'no-cors') throw new TypeError('Failed to fetch');
+  return new Response(null, { status: 200 });
+};
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   window.localStorage.clear();
@@ -110,6 +132,7 @@ afterEach(() => {
   for (const connection of [station, laptop, ...extras])
     forgetStationProbe(connection.url);
   reachable.clear();
+  answers.clear();
   fetchMock.mockClear();
   vi.unstubAllGlobals();
 });
@@ -139,7 +162,20 @@ function openMenu(
   {
     activeDisplayName,
     onPairPhone,
-  }: { activeDisplayName?: string; onPairPhone?: () => void } = {},
+    active = {},
+  }: {
+    activeDisplayName?: string;
+    onPairPhone?: () => void;
+    active?: Partial<
+      Pick<
+        ComponentProps<typeof StationSwitcherMenu>,
+        | 'activeStatus'
+        | 'activeStatusLabel'
+        | 'activeReason'
+        | 'activeCheckedAt'
+      >
+    >;
+  } = {},
 ) {
   const anchor = document.createElement('button');
   document.body.append(anchor);
@@ -153,6 +189,7 @@ function openMenu(
       activeConnectionId="one"
       activeStatus="connected"
       activeStatusLabel="Connected"
+      {...active}
       onSelect={select}
       onForget={forget}
       canForget={canForget}
@@ -176,15 +213,18 @@ test('marks the current Station, reports peer reachability, and exposes manageme
   expect(row('Workstation — Connected').getAttribute('aria-checked')).toBe(
     'true',
   );
-  // Until its probe answers, a peer shows only its name.
-  expect(row('Laptop')).toBeTruthy();
+  // Until its probe answers, a peer says it is being checked.
+  expect(row('Laptop — Checking…')).toBeTruthy();
   expect(
     (
-      await screen.findByRole('menuitemradio', { name: 'Laptop — Online' })
+      await screen.findByRole('menuitemradio', {
+        name: 'Laptop — Online · checked just now',
+      })
     ).getAttribute('aria-checked'),
   ).toBe('false');
-  // Healthy peers carry the status in their name and dot, not visible text.
-  expect(screen.queryByText('Online')).toBeNull();
+  // Every row says its state in visible text, with when it was learned.
+  expect(screen.getByText('Online')).toBeTruthy();
+  expect(screen.getByText('· checked just now')).toBeTruthy();
   expect(screen.getByText('Connected')).toBeTruthy();
   // The active Station is not probed: its own status is already live.
   expect(fetchMock).toHaveBeenCalledOnce();
@@ -201,9 +241,18 @@ test('waits for the registered unsaved-work decision before switching', async ()
     }),
   );
   const { select, close } = openMenu();
-  fireEvent.click(row(/^Laptop/));
+  const laptopRow = row(/^Laptop/);
+  laptopRow.focus();
+  fireEvent.click(laptopRow);
   expect(proceed).toBeTypeOf('function');
   expect(select).not.toHaveBeenCalled();
+  await act(async () => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+  });
+  expect(close).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(laptopRow);
   await act(async () => proceed?.());
   expect(select).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(close).toHaveBeenCalledOnce();
@@ -234,12 +283,8 @@ test('lists the active Station first, then by recent use, and focuses the previo
   openMenu([extras[0], laptop, station]);
   const names = screen
     .getAllByRole('menuitemradio')
-    .map((item) => item.textContent);
-  expect(names.map((name) => name?.replace(/Connected|✓/g, ''))).toEqual([
-    'Workstation',
-    'Laptop',
-    'Build box',
-  ]);
+    .map((item) => item.querySelector('.station-switcher__name')?.textContent);
+  expect(names).toEqual(['Workstation', 'Laptop', 'Build box']);
   // Below the filter threshold, focus lands on the previous Station, so the
   // switcher shortcut and Enter flip back.
   expect(document.activeElement).toBe(row(/^Laptop/));
@@ -277,6 +322,39 @@ test('removes a Station after an inline confirmation, never the active one', asy
   await act(async () => {});
   expect(forget).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(screen.queryByRole('menuitemradio', { name: /^Laptop/ })).toBeNull();
+});
+
+test('forgetting moves focus to the next row, else the previous, never the filter', async () => {
+  openMenu([station, laptop, ...extras]);
+  const names = () =>
+    screen
+      .getAllByRole('menuitemradio')
+      .map((item) => (item.getAttribute('aria-label') ?? '').split(' — ')[0]);
+  const before = names();
+  const index = before.indexOf('Media server');
+  expect(index).toBeGreaterThan(0);
+  expect(index).toBeLessThan(before.length - 1);
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Forget Media server' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Forget Media server' }),
+  );
+  await act(async () => {});
+  // jsdom cannot show the menu closing on focus loss; the real-browser
+  // Gallery screens own that. This pins where focus is sent.
+  expect(document.activeElement).toBe(
+    screen.getAllByRole('menuitemradio')[index],
+  );
+  expect(names()).not.toContain('Media server');
+  // From the last row, the previous one.
+  const last = screen.getAllByRole('menuitemradio').at(-1) as HTMLElement;
+  const previous = screen.getAllByRole('menuitemradio').at(-2);
+  const lastName = (last.getAttribute('aria-label') ?? '').split(' — ')[0];
+  fireEvent.click(screen.getByRole('menuitem', { name: `Forget ${lastName}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: `Forget ${lastName}` }));
+  await act(async () => {});
+  expect(document.activeElement).toBe(previous);
 });
 
 test('Delete on a row arms its removal, and a refused removal keeps the row', async () => {
@@ -394,13 +472,19 @@ test('a touch screen opens on the previous Station, not the filter keyboard', ()
 
 test('reuses an answer, but re-checks a Station that did not answer', async () => {
   reachable.add('https://two.example.test');
-  expect(await probeStation(laptop.url)).toBe('online');
-  expect(await probeStation(laptop.url)).toBe('online');
+  const first = await probeStation(laptop.url);
+  expect(first.reachability).toBe('online');
+  // A reused answer keeps the time it was learned.
+  expect(await probeStation(laptop.url)).toBe(first);
   expect(fetchMock).toHaveBeenCalledOnce();
-  expect(await probeStation(extras[0].url)).toBe('unreachable');
+  expect(await probeStation(extras[0].url)).toMatchObject({
+    reachability: 'unreachable',
+    failure: 'network',
+  });
   reachable.add('https://three.example.test');
-  expect(await probeStation(extras[0].url)).toBe('online');
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect((await probeStation(extras[0].url)).reachability).toBe('online');
+  // The failed probe also sent an opaque request to tell why it failed.
+  expect(fetchMock).toHaveBeenCalledTimes(4);
 });
 
 test('the forget prompt is announced for a Station whose name has spaces', () => {
@@ -583,4 +667,252 @@ test('#4519: under the managed limit "Pair phone" is disabled and the managed se
   expect(screen.queryByText(/policy manages remote access/)).toBeNull();
   fireEvent.click(enabled);
   expect(pair).toHaveBeenCalledOnce();
+});
+
+test('the active row says why its last health check failed and how long ago', () => {
+  openMenu([station, laptop], undefined, undefined, undefined, {
+    active: {
+      activeStatus: 'error',
+      activeStatusLabel: "Can't connect",
+      activeReason: 'timeout',
+      activeCheckedAt: Date.now() - 2 * 60_000,
+    },
+  });
+  expect(
+    row("Workstation — Can't connect · no answer in time · checked 2m ago"),
+  ).toBeTruthy();
+});
+
+test('a healthy active row shows when it was checked, not a stale reason', () => {
+  openMenu([station, laptop], undefined, undefined, undefined, {
+    active: { activeReason: 'timeout', activeCheckedAt: Date.now() },
+  });
+  expect(row('Workstation — Connected · checked just now')).toBeTruthy();
+});
+
+test('an unreachable peer says what failed, when it was checked, and when it last worked', async () => {
+  const lastWorked = { ...laptop, lastSuccessAt: Date.now() - 3 * 86_400_000 };
+  openMenu([station, lastWorked]);
+  expect(
+    await screen.findByRole('menuitemradio', {
+      name: 'Laptop — Unreachable · nothing answered · checked just now · last connected 3d ago',
+    }),
+  ).toBeTruthy();
+});
+
+test('a probe that runs out its deadline reads as no answer in time', async () => {
+  fetchMock.mockImplementationOnce(async () => {
+    throw new DOMException('The operation timed out.', 'TimeoutError');
+  });
+  expect(await probeStation(laptop.url)).toMatchObject({
+    reachability: 'unreachable',
+    failure: 'timeout',
+  });
+  // The failed probe was not cached, so this opening probes again.
+  fetchMock.mockImplementationOnce(async () => {
+    throw new DOMException('The operation timed out.', 'TimeoutError');
+  });
+  openMenu([station, laptop]);
+  expect(
+    await screen.findByRole('menuitemradio', {
+      name: 'Laptop — Unreachable · no answer in time · checked just now',
+    }),
+  ).toBeTruthy();
+});
+
+test('a Station this page cannot probe shows its saved failure with its age', () => {
+  // A broker route is never probed directly, so its saved result is all there is.
+  const brokered = {
+    ...laptop,
+    brokerRoute: {
+      routeId: 'route-1',
+    } as unknown as SavedConnection['brokerRoute'],
+    lastError: {
+      reason: 'server-restarted' as const,
+      at: Date.now() - 3 * 3_600_000,
+    },
+  };
+  expect(isProbeable(brokered)).toBe(false);
+  openMenu([station, brokered]);
+  expect(
+    row("Laptop — Can't connect · Station restarted · 3h ago"),
+  ).toBeTruthy();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['authentication-rate-limited', 'sign-in checks temporarily limited'],
+  ['access-scope-refused', 'current access does not cover this check'],
+  ['access-check-unavailable', 'access check could not start'],
+  ['relay-authority-unavailable', 'Station access could not be verified'],
+] as const)(
+  'explains %s and keeps Stations management available',
+  (reason, phrase) => {
+    const { manage, select, forget } = openMenu(
+      [station],
+      undefined,
+      undefined,
+      undefined,
+      {
+        active: {
+          activeStatus: 'error',
+          activeStatusLabel: "Can't connect",
+          activeReason: reason,
+        },
+      },
+    );
+
+    const current = row(`Workstation — Can't connect · ${phrase}`);
+    expect(current.getAttribute('aria-checked')).toBe('true');
+    expect(current.querySelector('[aria-label="needs pairing"]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Stations' }));
+    expect(manage).toHaveBeenCalledOnce();
+    expect(select).not.toHaveBeenCalled();
+    expect(forget).not.toHaveBeenCalled();
+  },
+);
+
+test('a refused Station says since when it has needed access', async () => {
+  const refused = {
+    ...laptop,
+    lastError: {
+      reason: 'authentication-failed' as const,
+      at: Date.now() - 5 * 60_000,
+    },
+  };
+  reachable.add('https://two.example.test');
+  openMenu([station, refused]);
+  expect(row('Laptop — Needs access · refused 5m ago')).toBeTruthy();
+  // Its handshake answering does not make it healthy: the dot keeps saying
+  // it needs access.
+  await act(async () => {
+    await probeStation(refused.url);
+  });
+  expect(
+    row(/^Laptop/).querySelector('[aria-label="needs pairing"]'),
+  ).not.toBeNull();
+});
+
+test('the ages in an open menu keep up with the clock', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+  try {
+    openMenu([station, laptop], undefined, undefined, undefined, {
+      active: { activeCheckedAt: Date.now() },
+    });
+    expect(row('Workstation — Connected · checked just now')).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60_000);
+    });
+    expect(row('Workstation — Connected · checked 3m ago')).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a Station whose host is down behind its UI proxy reads Recovering, greyed out, and is never switched to', async () => {
+  // The defect: an opaque probe counted the proxy's own 503 as Online.
+  answers.set('https://two.example.test', hostDown);
+  const { select } = openMenu();
+  const recovering = await screen.findByRole('menuitemradio', {
+    name: 'Laptop — Recovering · server down or restarting · checked just now',
+  });
+  expect(recovering.getAttribute('aria-disabled')).toBe('true');
+  expect(recovering.querySelector('[aria-label="error"]')).not.toBeNull();
+  fireEvent.click(recovering);
+  expect(select).not.toHaveBeenCalled();
+});
+
+test('an unreachable Station is greyed out but can still be forgotten', async () => {
+  const forget = vi.fn(async (_connection: SavedConnection) => {});
+  const { select } = openMenu([station, laptop], forget);
+  const down = await screen.findByRole('menuitemradio', {
+    name: /^Laptop — Unreachable/,
+  });
+  expect(down.getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(down);
+  expect(select).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Laptop' }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Laptop' }));
+  });
+  expect(forget).toHaveBeenCalledWith(laptop);
+});
+
+test('Delete on a focused greyed-out Station arms its removal', async () => {
+  openMenu([station, laptop]);
+  const down = await screen.findByRole('menuitemradio', {
+    name: /^Laptop — Unreachable/,
+  });
+  // A keyboard reaches a row only by focusing it, and a browser refuses to
+  // focus a `disabled` button, so the key would land elsewhere and arm
+  // nothing. jsdom focuses a disabled button anyway, so the attribute is
+  // what this can assert; the gallery's `station-switcher-forget` screen
+  // presses Delete in a real browser.
+  expect((down as HTMLButtonElement).disabled).toBe(false);
+  down.focus();
+  expect(document.activeElement).toBe(down);
+  fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Delete' });
+  expect(screen.getByText('Forget on this device?')).toBeTruthy();
+  expect(down.getAttribute('aria-keyshortcuts')).toBe('Delete');
+});
+
+test('a greyed-out Station that cannot be forgotten stays a disabled row', async () => {
+  openMenu([station, laptop], undefined, () => false);
+  const down = await screen.findByRole('menuitemradio', {
+    name: /^Laptop — Unreachable/,
+  });
+  // Nothing to do on it from the keyboard, so arrow keys pass over it.
+  expect((down as HTMLButtonElement).disabled).toBe(true);
+  expect(down.hasAttribute('aria-disabled')).toBe(false);
+  expect(down.hasAttribute('aria-keyshortcuts')).toBe(false);
+});
+
+test('an answer this page cannot read is not shown as Online', async () => {
+  answers.set('https://two.example.test', opaqueOnly);
+  answers.set(
+    'https://three.example.test',
+    () => new Response('<html>a captive portal</html>'),
+  );
+  openMenu([station, laptop, extras[0]]);
+  const unconfirmed = await screen.findByRole('menuitemradio', {
+    name: 'Laptop — Not confirmed · answered, but not as a Station this page can read · checked just now',
+  });
+  // Still selectable: switching verifies access itself and says what failed.
+  expect((unconfirmed as HTMLButtonElement).disabled).toBe(false);
+  expect(unconfirmed.hasAttribute('aria-disabled')).toBe(false);
+  expect(unconfirmed.querySelector('[aria-label="connected"]')).toBeNull();
+  expect(
+    await screen.findByRole('menuitemradio', {
+      name: /^Build box — Not confirmed/,
+    }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Online')).toBeNull();
+});
+
+test('the open menu checks again, so a Station that went down stops reading Online', async () => {
+  vi.useFakeTimers({
+    toFake: ['setInterval', 'clearInterval', 'Date'],
+    shouldAdvanceTime: true,
+  });
+  try {
+    reachable.add('https://two.example.test');
+    openMenu();
+    expect(
+      await screen.findByRole('menuitemradio', {
+        name: 'Laptop — Online · checked just now',
+      }),
+    ).toBeTruthy();
+    answers.set('https://two.example.test', hostDown);
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    expect(
+      await screen.findByRole('menuitemradio', {
+        name: /^Laptop — Recovering/,
+      }),
+    ).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
 });

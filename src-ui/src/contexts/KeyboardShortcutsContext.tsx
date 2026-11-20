@@ -11,6 +11,7 @@ import {
 } from 'react';
 import {
   DEVICE_SETTINGS_EVENT,
+  normalizeShortcutKey,
   readShortcutOverrides,
   readSkillShortcuts,
   type ShortcutBinding,
@@ -105,6 +106,10 @@ function isPluginShortcutId(id: string): boolean {
   return id.startsWith(PLUGIN_SHORTCUT_ID_PREFIX);
 }
 
+function skillShortcutName(id: string): string | undefined {
+  if (id.startsWith('skill.')) return id.slice('skill.'.length, -'.run'.length);
+}
+
 const RESERVED_SHORTCUT_IDS: ReadonlySet<string> = new Set(
   Object.values(KERNEL_RESERVED_SHORTCUTS).map((entry) => entry.id),
 );
@@ -122,7 +127,7 @@ export function effectiveChordSignature(
       !mac && modifier === 'cmd' ? 'ctrl' : modifier,
     ),
   );
-  return `${[...modifiers].sort().join('+')}|${binding.key.toLowerCase()}`;
+  return `${[...modifiers].sort().join('+')}|${normalizeShortcutKey(binding.key)}`;
 }
 
 /**
@@ -208,31 +213,8 @@ interface ShortcutRegistryStore {
   isMac: boolean;
   /** Notified when the registry's OBSERVABLE content changes. */
   subscribe: (listener: () => void) => () => void;
-  /** Content signature of the registry; stable while nothing observable moved. */
-  getSignature: () => string;
-}
-
-/**
- * Include registration order and identity: priority ties depend on order, and a
- * replaced handler must invalidate readers even when metadata is unchanged.
- * JSON encoding preserves boundaries that control characters could forge in a
- * delimiter-joined signature. Stable registering hooks avoid the archive#3736 loop.
- */
-function registrySignature(
-  entries: Iterable<[KeyboardShortcut, number]>,
-): string {
-  return JSON.stringify(
-    Array.from(entries, ([shortcut, token]) => [
-      shortcut.id,
-      shortcut.key,
-      [...shortcut.modifiers],
-      shortcut.description,
-      shortcut.disabled === true,
-      shortcut.priority ?? 0,
-      shortcut.when ?? null,
-      token,
-    ]),
-  );
+  /** Advances only when a registration is added, replaced, or removed. */
+  getVersion: () => number;
 }
 
 const KeyboardShortcutsContext = createContext<
@@ -274,7 +256,6 @@ const NAMED_KEY_LABELS: Readonly<Record<string, string>> = {
   backspace: 'Backspace',
   delete: 'Delete',
   space: 'Space',
-  ' ': 'Space',
   arrowup: '↑',
   arrowdown: '↓',
   arrowleft: '←',
@@ -286,7 +267,7 @@ const NAMED_KEY_LABELS: Readonly<Record<string, string>> = {
 };
 
 function formatShortcutKey(key: string): string {
-  const named = NAMED_KEY_LABELS[key.toLowerCase()];
+  const named = NAMED_KEY_LABELS[normalizeShortcutKey(key)];
   if (named) return named;
   if (key.length === 1) return key.toUpperCase();
   // F-keys and other named keys: first letter capitalised, as typed (`F5`).
@@ -416,14 +397,16 @@ export function shouldIgnoreShortcut(
   const ownerDocument = targetElement?.ownerDocument ?? document;
   if (isModalDialogOpen(ownerDocument)) return true;
   if (editingChordOwnsKey(shortcut, targetElement, ownerDocument)) return true;
-  // A chord with no Cmd/Ctrl/Alt on a printable key (`?`) is a character the
-  // user is typing whenever a text field has focus (#4407).
+  const hasCommandModifier = shortcut.modifiers.some((m) => m !== 'shift');
+  const isSpace = normalizeShortcutKey(shortcut.key) === 'space';
   if (
-    shortcut.key.length === 1 &&
-    !shortcut.modifiers.some(
-      (m) => m === 'cmd' || m === 'ctrl' || m === 'alt',
-    ) &&
-    isTextEntryTarget(targetElement)
+    !hasCommandModifier &&
+    ((isSpace &&
+      targetElement?.closest(
+        'button,input,summary,[role=button],[role=checkbox],[role=switch]',
+      )) ||
+      ((isSpace || shortcut.key.length === 1) &&
+        isTextEntryTarget(targetElement)))
   )
     return true;
   if (shortcut.key.toLowerCase() === 'escape') {
@@ -437,10 +420,7 @@ export function shouldIgnoreShortcut(
   if (isPluginShortcutId(shortcut.id)) {
     // A plugin chord without Cmd/Ctrl/Alt is a printable key: it must not
     // swallow what the user is typing into a kernel field (the composer).
-    if (
-      shortcut.modifiers.some((m) => m === 'cmd' || m === 'ctrl' || m === 'alt')
-    )
-      return false;
+    if (hasCommandModifier) return false;
     return Boolean(
       targetElement?.matches(
         'input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]',
@@ -466,10 +446,7 @@ export function KeyboardShortcutsProvider({
   const overridesRef = useRef(overrides);
   const skillOverridesRef = useRef(skillOverrides);
   const listenersRef = useRef(new Set<() => void>());
-  const signatureRef = useRef('');
-  /** One number per `register` call, so replacing a handler is observable. */
-  const registrationTokensRef = useRef(new Map<string, number>());
-  const nextTokenRef = useRef(0);
+  const versionRef = useRef(0);
 
   const subscribe = useCallback((listener: () => void) => {
     listenersRef.current.add(listener);
@@ -478,34 +455,22 @@ export function KeyboardShortcutsProvider({
     };
   }, []);
 
-  const getSignature = useCallback(() => signatureRef.current, []);
+  const getVersion = useCallback(() => versionRef.current, []);
 
-  /** Publish only a CHANGE to what a reader can observe. */
   const publish = useCallback(() => {
-    const next = registrySignature(
-      Array.from(shortcutsRef.current, ([id, shortcut]) => [
-        shortcut,
-        registrationTokensRef.current.get(id) ?? 0,
-      ]),
-    );
-    if (next === signatureRef.current) return;
-    signatureRef.current = next;
+    versionRef.current += 1;
     for (const listener of listenersRef.current) listener();
   }, []);
 
   const register = useCallback(
     (shortcut: KeyboardShortcut) => {
-      nextTokenRef.current += 1;
-      const token = nextTokenRef.current;
       shortcutsRef.current.set(shortcut.id, shortcut);
-      registrationTokensRef.current.set(shortcut.id, token);
       publish();
       return () => {
         // Only the registration that is still live may retract itself: a
         // later `register` under the same id has already replaced it.
         if (shortcutsRef.current.get(shortcut.id) !== shortcut) return;
         shortcutsRef.current.delete(shortcut.id);
-        registrationTokensRef.current.delete(shortcut.id);
         publish();
       };
     },
@@ -514,12 +479,9 @@ export function KeyboardShortcutsProvider({
 
   const resolveShortcut = useCallback(
     (shortcut: KeyboardShortcut): KeyboardShortcut => {
-      const source = shortcut.id.startsWith('skill.')
-        ? skillOverrides
-        : overrides;
-      const sourceKey = shortcut.id.startsWith('skill.')
-        ? shortcut.id.slice('skill.'.length, -'.run'.length)
-        : shortcut.id;
+      const skill = skillShortcutName(shortcut.id);
+      const source = skill === undefined ? overrides : skillOverrides;
+      const sourceKey = skill ?? shortcut.id;
       if (!Object.hasOwn(source, sourceKey)) {
         return shortcut;
       }
@@ -592,39 +554,29 @@ export function KeyboardShortcutsProvider({
   );
 
   const setBinding = useCallback(
-    (id: string, binding: ShortcutBinding | null) => {
-      if (id.startsWith('skill.')) {
-        const slug = id.slice('skill.'.length, -'.run'.length);
-        const next = { ...skillOverridesRef.current, [slug]: binding };
-        skillOverridesRef.current = next;
+    (id: string, binding: ShortcutBinding | null | undefined) => {
+      const skill = skillShortcutName(id);
+      const current = skill === undefined ? overridesRef : skillOverridesRef;
+      const next = { ...current.current };
+      const key = skill ?? id;
+      if (binding === undefined) delete next[key];
+      else next[key] = binding;
+      current.current = next;
+      if (skill === undefined) {
+        writeShortcutOverrides(next);
+        setOverrides(next);
+      } else {
         writeSkillShortcuts(next);
         setSkillOverrides(next);
-        return;
       }
-      const next = { ...overridesRef.current, [id]: binding };
-      overridesRef.current = next;
-      writeShortcutOverrides(next);
-      setOverrides(next);
     },
     [],
   );
 
-  const restoreBinding = useCallback((id: string) => {
-    if (id.startsWith('skill.')) {
-      const slug = id.slice('skill.'.length, -'.run'.length);
-      const next = { ...skillOverridesRef.current };
-      delete next[slug];
-      skillOverridesRef.current = next;
-      writeSkillShortcuts(next);
-      setSkillOverrides(next);
-      return;
-    }
-    const next = { ...overridesRef.current };
-    delete next[id];
-    overridesRef.current = next;
-    writeShortcutOverrides(next);
-    setOverrides(next);
-  }, []);
+  const restoreBinding = useCallback(
+    (id: string) => setBinding(id, undefined),
+    [setBinding],
+  );
 
   useEffect(() => {
     const sync = () => {
@@ -647,6 +599,7 @@ export function KeyboardShortcutsProvider({
     const handleKeyDown = (e: KeyboardEvent) => {
       const shortcuts = orderShortcuts(shortcutsRef.current.values());
       let reserved: Map<string, string> | null = null;
+      const eventKey = normalizeShortcutKey(e.key);
       for (const registered of shortcuts) {
         const shortcut = resolveShortcut(registered);
         if (shortcut.disabled) continue;
@@ -668,7 +621,7 @@ export function KeyboardShortcutsProvider({
         const ctrlMatch = e.ctrlKey === (hasControl || (!isMac && hasPrimary));
         const shiftMatch = hasShift === e.shiftKey;
         const altMatch = hasAlt === e.altKey;
-        const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase();
+        const keyMatch = eventKey === normalizeShortcutKey(shortcut.key);
 
         if (metaMatch && ctrlMatch && shiftMatch && altMatch && keyMatch) {
           if (shortcut.handler() === false) continue;
@@ -714,7 +667,7 @@ export function KeyboardShortcutsProvider({
       restoreBinding,
       isMac,
       subscribe,
-      getSignature,
+      getVersion,
     }),
     [
       register,
@@ -725,7 +678,7 @@ export function KeyboardShortcutsProvider({
       setBinding,
       restoreBinding,
       subscribe,
-      getSignature,
+      getVersion,
     ],
   );
 
@@ -767,17 +720,37 @@ export function useKeyboardShortcuts(): Omit<
   | 'getAllShortcuts'
   | 'getDefaultBinding'
   | 'subscribe'
-  | 'getSignature'
+  | 'getVersion'
 > {
   return useShortcutStore();
+}
+
+const NO_REGISTRY_SUBSCRIPTION = () => () => {};
+const NO_REGISTRY_VERSION = () => 0;
+
+/**
+ * `useShortcutRegistry` for always-mounted chrome that may render outside the
+ * provider (shell fixtures, an isolated header): undefined there instead of a
+ * throw. Inside the provider it subscribes exactly like `useShortcutRegistry`.
+ */
+export function useOptionalShortcutRegistry():
+  | Omit<ShortcutRegistryStore, 'subscribe' | 'getVersion'>
+  | undefined {
+  const store = useContext(KeyboardShortcutsContext);
+  useSyncExternalStore(
+    store?.subscribe ?? NO_REGISTRY_SUBSCRIPTION,
+    store?.getVersion ?? NO_REGISTRY_VERSION,
+    store?.getVersion ?? NO_REGISTRY_VERSION,
+  );
+  return store ?? undefined;
 }
 
 /** Subscribe to registry content and registration identity for displayed commands. */
 export function useShortcutRegistry(): Omit<
   ShortcutRegistryStore,
-  'subscribe' | 'getSignature'
+  'subscribe' | 'getVersion'
 > {
   const store = useShortcutStore();
-  useSyncExternalStore(store.subscribe, store.getSignature, store.getSignature);
+  useSyncExternalStore(store.subscribe, store.getVersion, store.getVersion);
   return store;
 }

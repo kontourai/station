@@ -1,0 +1,7 @@
+{
+  "revision": "bc0544e11a8263b9cd3931b1a0777bb4e37ccbce",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Rewrote the compile-cache paragraphs in Startup cost for the final design, against station-compile-cache.ts, server-compile-cache.ts (unchanged boot deletion), station-control-runtime-env.ts, the station-control/knowledge entries and index.ts. Checked: station start sets no cache for supervisor or server (measured warm supervised server larger at rest, no start gain); server gives <home>/cache/node-compile only to exact built-in station-control/knowledge via the credential gate, unless NODE_DISABLE_COMPILE_CACHE or the home is unresolvable; children delete the setting and flush after startup; cold entries held until exit; builds stamp builtAt so rebuilds start cold (observed differing bundles); prune keeps the server's own subdirectory, ages others 30 days, 256 MiB cap; no shipped cache (uid/path-keyed directory observed on Node 24.22.2). Executed focused unit/process tests and fault injections. Limits: no packaged desktop, Windows or Linux run; numbers host-specific and not stated.","inputs":["docs/guides/desktop-build.md","src-server/index.ts"]}
+  ]
+}

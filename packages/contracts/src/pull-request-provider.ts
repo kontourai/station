@@ -1,3 +1,8 @@
+import type {
+  PullRequestFeedbackObservationResult,
+  PullRequestsByHeadResult,
+} from './pull-request-feedback.js';
+
 /** Provider-neutral pull-request contract. Native ids and URLs stay opaque. */
 export type PullRequestCapability =
   | 'list'
@@ -83,15 +88,19 @@ export interface PullRequestAvailability {
  * state cannot classify by prose. `no-remote` is the ordinary local repository
  * — nothing is broken and nothing is missing that the operator asked for — and
  * the panel rendered it as a warning-triangle error card, indistinguishable
- * from a forge that refused. Absent means "no cause was reported", never
+ * from a forge that refused. `unsupported-forge` means the repository has a
+ * recognized remote whose PR integration is not implemented. Absent means "no cause was reported", never
  * "some other cause".
  */
-export type PullRequestUnavailableCause = 'no-remote';
+export type PullRequestUnavailableCause = 'no-remote' | 'unsupported-forge';
 
 export type PullRequestClientContext =
   | {
       available: true;
       provider: string;
+      providerLabel?: string;
+      /** Actual operations supplied by this host's registered forge adapter. */
+      automation?: { feedback: boolean; taskBranchDiscovery: boolean };
       host: string;
       repository: { owner: string; name: string };
       /**
@@ -131,7 +140,38 @@ export interface PullRequest {
   comments: number;
   nativeId: string;
   mergeability: 'mergeable' | 'conflicting' | 'unknown';
+  /** The forge's draft flag. Absent: the provider did not report it. */
+  draft?: boolean;
+  /**
+   * The forge's aggregate review requirement (GitHub `reviewDecision`;
+   * GitLab `not_approved`). Absent: not reported, or no review is required.
+   */
+  reviewDecision?: 'approved' | 'changes_requested' | 'review_required';
+  /**
+   * Whether the forge would merge this now, in its own words mapped to one
+   * vocabulary (GitHub `mergeStateStatus`, GitLab `detailed_merge_status`).
+   * `checks-not-passing` means some checks are failing or still pending
+   * (GitHub `UNSTABLE`); it does not say they are required. A failing
+   * required check reads `blocked`. Absent: the provider did not report it.
+   */
+  mergeReadiness?: PullRequestMergeReadiness;
+  /**
+   * Whether the forge will merge this open pull request by itself (#5064):
+   * `auto-merge` (armed, waiting on its checks), `merge-queue` (in the merge
+   * queue), or `not-queued` (neither). Absent: not observed. Only the
+   * status read observes it, and only for an open pull request.
+   */
+  landing?: PullRequestLanding;
 }
+export type PullRequestLanding = 'auto-merge' | 'merge-queue' | 'not-queued';
+export type PullRequestMergeReadiness =
+  | 'clean'
+  | 'blocked'
+  | 'checks-not-passing'
+  | 'conflicting'
+  | 'behind'
+  | 'draft'
+  | 'unknown';
 /**
  * One open pull request's source branch and whether it merges cleanly: what
  * a conflict indicator needs, and nothing a review needs (#2937). A provider
@@ -300,6 +340,40 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryIdentityContext,
     ref: string,
   ): Promise<PullRequestResult<PullRequest>>;
+  /**
+   * One read of a pull request's checks, review threads and mergeability,
+   * for agent feedback (`pull-request-feedback.ts`). Optional: a provider
+   * without it reads as `unsupported`.
+   */
+  getFeedbackObservation?(
+    context: PullRequestRepositoryIdentityContext,
+    ref: string,
+    signal?: AbortSignal,
+  ): Promise<PullRequestFeedbackObservationResult>;
+  /**
+   * The repository's open pull requests whose head branch is named
+   * `branch` (at most 5), for agent feedback's Task-branch discovery.
+   * Optional: a provider without it never discovers one.
+   */
+  findOpenPullRequestsByHead?(
+    context: PullRequestRepositoryIdentityContext,
+    branch: string,
+    signal?: AbortSignal,
+  ): Promise<PullRequestsByHeadResult>;
+  /**
+   * The same exact read, narrowed to what a status surface (the Task board)
+   * reads: state, title, branches, mergeability, draft, review decision and
+   * readiness. These are placeholders, not observations: `body` null,
+   * `commits` and `comments` 0, `author.login` '' and `reviewStatus` 'NONE'.
+   * Concurrent reads of one pull request share one forge call, and an answer
+   * may be served from a short cache that a write to the repository clears;
+   * `observedAt` is when the forge was actually read, so a cached answer
+   * says how old it is.
+   */
+  getPullRequestStatusByIdentity?(
+    context: PullRequestRepositoryIdentityContext,
+    ref: string,
+  ): Promise<PullRequestResult<PullRequest> & { observedAt?: string }>;
   openPullRequest(
     context: PullRequestRepositoryContext,
     input: PullRequestOpenInput,

@@ -4,7 +4,7 @@ import { runDir } from '@kontourai/flow';
 import {
   flowAgentsArtifactRoot as flowAgentsRoot,
   KONTOURAI_DIR,
-} from '@kontourai/flow-agents';
+} from '@kontourai/flow-agents/local-artifact-root';
 
 // `@kontourai/flow-agents` 3.x removed the legacy ephemeral workflow-session
 // alias entirely: `.flow-agents` is now exclusively the package's own durable
@@ -131,7 +131,11 @@ export function flowRunArtifactReference(
   runId: string,
   ...segments: string[]
 ): string {
-  return [STATION_ARTIFACT_ROOTS.flowRuns, runId, ...segments].join('/');
+  return [
+    STATION_ARTIFACT_ROOTS.flowRuns.split(sep).join('/'),
+    runId,
+    ...segments,
+  ].join('/');
 }
 
 export function workflowSidecarTaskReference(taskSlug: string): string {

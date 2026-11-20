@@ -1,7 +1,0 @@
-{
-  "revision": "0b93fffbca9c3aceb63bdb7e741a7c2fdbcb32fa",
-
-  "notes": [
-    {"path":"docs/guides/release-rings.md","note":"Added the Worker sender URL https://telemetry.kontourai.io/v1/lite/<source> and the one-channel-per-source consequence. Checked telemetry-publisher-service.ts (posts the daily ping to the configured endpoint unchanged), release.yml, nightly-native-stage.yml and portable-server-archives.yml (one STATION_AUTHOR_TELEMETRY_ENDPOINT variable for every ring), and lite-core.ts admitLiteObservation (refuses a channel different from the source's).","inputs":["docs/guides/release-rings.md"]}
-  ]
-}

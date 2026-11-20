@@ -192,16 +192,16 @@ function validateRoutableClaimTypes(value: unknown): string[] | null {
  */
 export function detectUnreachableGateClaims(
   definition: FlowDefinition,
-  policy: CommandEvidenceRoutingPolicy,
+  policy?: CommandEvidenceRoutingPolicy,
 ): GateReachabilityDiagnostic | null {
-  const routableClaimTypes = readRoutableClaimTypes(policy);
-  if (routableClaimTypes === null) return reachabilityNotEvaluable();
-
-  const routable = new Set(routableClaimTypes);
   const gates = definitionExpectedClaimTypesByGate(definition).filter(
     (gate) => gate.claimTypes.length > 0,
   );
   if (gates.length === 0) return null;
+
+  const routableClaimTypes = readRoutableClaimTypes(policy);
+  if (routableClaimTypes === null) return reachabilityNotEvaluable();
+  const routable = new Set(routableClaimTypes);
 
   const unreachableGates = gates
     .filter((gate) =>

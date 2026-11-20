@@ -1,0 +1,7 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"#2376 slice 2: createCodexBoundToolServer can also serve the station-control catalog at bound, with browser/device calls on the request-proof credential and the rest on a session sdk-in-process token over loopback. Checked this page's in-process station-control claims; Claude's path is unchanged.","inputs":["src-server/runtime/mcp/station-control-in-process.ts"]}
+  ]
+}

@@ -1,9 +1,0 @@
-{
-  "revision": "659fbeeef47f08d8da52cd1894e04c5e7d56bf99",
-
-  "notes": [
-    {"path":"docs/README.md","note":"Reviewed the documentation index, authority and public-site routing against the Knowledge route delta. The index still points to the canonical guides and makes no claim that private memory changes publication or document authority.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
-
-    {"path":"docs/guides/mobile-device-workspace.md","note":"Read the Device pane host, sharing, install and capture guidance. The runtime delta changes Knowledge root access and private memory, not simulator/device admission or its documented actions.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "82ab5b2dd563d538e98ab2186ccf2c185941fa22",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Viewed the frame: it shows the Task Plan tab in its read-write state (Brief heading, 'The shared plan for this Task. Changes save automatically.', Edit brief, Goal/Done when/Decisions/Blockers). Changed lines in TaskRoomEditorPane.tsx are the access-ended, uncertain-edit, load-failure, unreadable and read-only notices and the 'Retry identical batch' -> 'Retry edit' button; none appears in this frame, so the capture is unaffected by this branch.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/workspace-panes/TaskRoomEditorPane.tsx"]}
+  ]
+}

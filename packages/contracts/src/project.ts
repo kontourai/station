@@ -5,7 +5,10 @@ import type {
   ProjectChatApprovalPosture,
   ProjectChatDefaultSelection,
 } from './project-chat-defaults.js';
+import type { ProjectLifecycle } from './project-lifecycle.js';
 import type { ProjectMemberAction } from './project-membership.js';
+import type { ProjectRoomCoordinatorSettings } from './project-room-coordinator.js';
+import type { ProjectPullRequestWatchSettings } from './pull-request-watch.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
 export interface ProjectToolDefaults {
@@ -89,6 +92,44 @@ export interface ProjectRepositorySource {
   subdirectory?: string;
 }
 
+/**
+ * A Project's effort setting (#5068). Every engine that takes an effort
+ * accepts these three words.
+ */
+export const PROJECT_EFFORTS = ['low', 'medium', 'high'] as const;
+export type ProjectEffort = (typeof PROJECT_EFFORTS)[number];
+export function isProjectEffort(value: unknown): value is ProjectEffort {
+  return value === 'low' || value === 'medium' || value === 'high';
+}
+/**
+ * Engines whose effort setting takes every {@link ProjectEffort} word at
+ * session start (`PROVIDER_MODEL_OPTION_SUPPORT`). An ACP engine applies
+ * effort only when its session advertises a thought level, and refuses it
+ * otherwise, so a Project default never reaches one.
+ */
+const PROJECT_EFFORT_ENGINES: ReadonlySet<string> = new Set([
+  'claude',
+  'codex',
+  'muse',
+]);
+export function projectEffortApplies(provider: string): boolean {
+  return PROJECT_EFFORT_ENGINES.has(provider);
+}
+/** A new Project's coordinator effort: modest, because it runs on every message. */
+export const DEFAULT_PROJECT_COORDINATOR_EFFORT: ProjectEffort = 'medium';
+/**
+ * The brief and model fields `PUT /projects/:slug` accepts `null` (or, for
+ * text, an empty string) on, to drop the stored value.
+ */
+export const PROJECT_BRIEF_RECORD_FIELDS = [
+  'goal',
+  'instructions',
+  'coordinatorEffort',
+  'taskModel',
+  'taskProviderId',
+  'taskEffort',
+] as const;
+
 export interface ProjectConfig {
   personalLayouts?: 'off' | 'project-panes' | 'allowed-plugins';
   personalLayoutAllowedPlugins?: string[];
@@ -96,7 +137,45 @@ export interface ProjectConfig {
   name: string;
   slug: string;
   icon?: string;
+  /** Read-only, detected artwork; never a saved icon. */
+  derivedIcon?: string;
+  iconDisabled?: boolean;
+  /** Full canonical remote of the manifest primary git resource. */
+  repositoryDisplay?: string;
   description?: string;
+  /**
+   * The Project's goal, one line (#5062). Shown in the Project header and
+   * Overview, and part of the brief every new Session starts from. Bounded by
+   * `PROJECT_GOAL_MAX_CHARS` (`project-session-context.ts`).
+   */
+  goal?: string;
+  /**
+   * The Project brief's instructions (#5062): what every new Session in the
+   * Project starts from, on every engine. Bounded by
+   * `PROJECT_INSTRUCTIONS_MAX_CHARS`. Changes reach new Sessions only.
+   */
+  instructions?: string;
+  /**
+   * When Station copied this Project's legacy `project-rules.md` (the `rules`
+   * knowledge namespace) into `instructions`, once. Present means the copy
+   * ran, so it never runs again, and the `rules` namespace no longer injects.
+   */
+  instructionsMigratedAt?: string;
+  /**
+   * Reasoning effort for the Project's own conversations (its coordinator,
+   * #5068), applied to a new non-Task Session whose engine takes an effort
+   * and whose start chose none.
+   */
+  coordinatorEffort?: ProjectEffort;
+  /**
+   * Model for a Task this Project dispatches (#5068), when the dispatch names
+   * none and the Task's Agent runs on `taskProviderId`.
+   */
+  taskModel?: string;
+  /** The engine `taskModel` belongs to. */
+  taskProviderId?: string;
+  /** Reasoning effort for a Task this Project dispatches. */
+  taskEffort?: ProjectEffort;
   workingDirectory?: string;
   repositorySource?: ProjectRepositorySource;
   /** Default workspace mode for newly started project threads. */
@@ -130,11 +209,36 @@ export interface ProjectConfig {
   knowledgeNamespaces?: KnowledgeNamespaceConfig[];
   toolDefaults?: ProjectToolDefaults;
   /**
+   * Days without activity before the Project Overview moves an Idle Task to
+   * Resolved (#5064). `0` never does. Absent: the default,
+   * `TASK_OVERVIEW_AUTO_RESOLVE_DEFAULT_DAYS` in `task-overview`.
+   */
+  overviewAutoResolveDays?: number;
+  /**
+   * #5066: whether this Project's Tasks watch the pull requests they keep
+   * (CI and review), and how many fix attempts each gets. Absent: off. A
+   * Task's own choice overrides it. Written only through
+   * `PUT /api/projects/:slug/pull-request-watch`.
+   */
+  pullRequestWatch?: ProjectPullRequestWatchSettings;
+  /**
+   * #5063: the `#general` coordinator's limits, which Station enforces:
+   * start without asking, Tasks working at once, and pull requests only
+   * when asked. Absent: the defaults. Written only through
+   * `PUT /api/projects/:slug/room-coordinator`.
+   */
+  roomCoordinator?: ProjectRoomCoordinatorSettings;
+  /**
    * Server-owned explicit sidebar position (station#3315). Assigned by the
    * reorder operation; projects without one list after positioned ones, in
    * name order, so an unordered workspace stays deterministic.
    */
   position?: number;
+  /**
+   * #5069: paused or archived; absent is active. Written only by the
+   * lifecycle route (`project-lifecycle.ts`).
+   */
+  lifecycle?: ProjectLifecycle;
   createdAt: string;
   updatedAt: string;
 }
@@ -154,18 +258,28 @@ export interface ProjectCreationRequest {
 }
 
 export interface ProjectMetadata {
+  /** Verified repository acquisition, when this Project has one. */
+  repositorySource?: ProjectRepositorySource;
   id: string;
   slug: string;
   name: string;
   icon?: string;
+  /** Read-only, detected artwork; never a saved icon. */
+  derivedIcon?: string;
+  iconDisabled?: boolean;
+  /** Full canonical remote of the manifest primary git resource. */
+  repositoryDisplay?: string;
   description?: string;
   hasWorkingDirectory: boolean;
   workingDirectory?: string;
   layoutCount: number;
+  /** A local document metadata file exists in the current or legacy layout. */
   hasKnowledge: boolean;
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */
   position?: number;
+  /** See {@link ProjectConfig.lifecycle}. */
+  lifecycle?: ProjectLifecycle;
 }
 
 /**

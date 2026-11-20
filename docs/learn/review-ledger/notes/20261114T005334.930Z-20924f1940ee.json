@@ -1,0 +1,7 @@
+{
+  "revision": "1ca703234a93e6a39bfe1374500ce785b3ec6cb4",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Its reference to AGENTS.md (handoff rules, do not manually merge) still holds: the AGENTS.md edit only swapped copied ruleset values for the draft-then-ready instruction.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"steerTurn bullet updated: an ACP engine matched by a prompt hand-off entry (Antigravity) steers by a second prompt without cancelling; others without a native method cancel and re-prompt. Durable clientInputId semantics unchanged (a refused steer records indeterminate). Checked against acp-adapter.ts tryNativeAcpSteer and orchestration-service steer handling.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

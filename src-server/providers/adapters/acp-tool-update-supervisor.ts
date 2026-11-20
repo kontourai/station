@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
   acpToolUpdateSupervisorBytes,
   acpToolUpdateSupervisorOperations,
@@ -810,14 +811,19 @@ export class AcpToolUpdateSupervisor {
     // claim the engine made, and an unknown string is not that claim.
     if (kindChanged) call.kind = nextKind;
     if (update.hasRawInput) {
+      // Full HTML in a render call can otherwise consume the entire budget
+      // needed to retain the publication reference returned by Station.
+      const resultBytes =
+        stationControlToolName(call.name ?? call.title) === 'html_render'
+          ? 2048
+          : 0;
       const rawInput =
         update.rawInput === null
           ? ({ value: undefined, bytes: 0 } satisfies RawProjection)
           : projectRaw(
               update.rawInput,
               ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall -
-                call.rawOutputBytes -
-                call.contentBytes,
+                Math.max(call.rawOutputBytes + call.contentBytes, resultBytes),
             );
       if (
         this.replaceRetained(
@@ -984,11 +990,13 @@ export class AcpToolUpdateSupervisor {
     this.schedule();
   }
   private complete(id: string, call: CallState, status: string): void {
-    const projectedOutput = call.hasContent
-      ? call.content
-      : call.hasRawOutput
-        ? call.rawOutput
-        : undefined;
+    const fallBackToRenderResult =
+      stationControlToolName(call.name ?? call.title) === 'html_render' &&
+      !call.content?.length;
+    const projectedOutput =
+      call.hasContent && !fallBackToRenderResult
+        ? call.content
+        : (call.rawOutput ?? call.content);
     // What was not kept is stated wherever the result renders: in the output
     // for every output shape, and in the error text of a failed call.
     const omissions = summarizeImageOmissions(call.imageOmissions);

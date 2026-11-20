@@ -1,4 +1,7 @@
 import type { ElementType, ReactNode } from 'react';
+// PageSection owns its classes, so it brings their stylesheet rather than
+// relying on a parent view to have loaded it.
+import '../views/page-layout.css';
 
 interface PageSectionProps {
   id?: string;
@@ -15,6 +18,29 @@ interface PageSectionProps {
 
 function classes(...values: Array<string | false | undefined>) {
   return values.filter(Boolean).join(' ');
+}
+
+/** A settings group inside a section, with shared heading size and separation. */
+export function PageSectionGroup({
+  title,
+  description,
+  children,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="page-section-group">
+      <div className="page-section-group__heading">
+        <h3 className="page-section__title">{title}</h3>
+        {description && (
+          <p className="page-section__description">{description}</p>
+        )}
+      </div>
+      {children}
+    </section>
+  );
 }
 
 /** A domain-neutral boundary for a bounded group of page content. */

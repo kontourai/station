@@ -282,6 +282,12 @@ function regionMoveTargets(
 }
 
 /** The maximize control's name, one wording for the button and the row. */
+function regionMaximizeTip(isDockMaximized: boolean, region: string): string {
+  return isDockMaximized
+    ? `Restore the ${region} region's size`
+    : `Expand the ${region} region to the workspace`;
+}
+
 function maximizeLabel(isDockMaximized: boolean): string {
   return isDockMaximized
     ? 'Restore dock region size'
@@ -465,6 +471,36 @@ function RegionTabStrip({
   onOpenMove: (tab: RegionChromeTab, anchor: RegionMoveState['anchor']) => void;
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
+  // The strip scrolls when the bar is too narrow for every tab; it keeps the
+  // selected tab in view, so the name of the pane on screen is never the one
+  // cut off behind the bar's buttons ("Agen").
+  const stripRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || selectedSurfaceId === undefined || tabs.length === 0) return;
+    const reveal = () => {
+      const item = Array.from(
+        strip.querySelectorAll<HTMLElement>('[data-region-tab]'),
+      )
+        .find((tab) => tab.dataset.regionTab === selectedSurfaceId)
+        ?.closest('.region-tabs__item');
+      if (!item) return;
+      const bounds = strip.getBoundingClientRect();
+      const box = item.getBoundingClientRect();
+      // A tab wider than the strip (its name plus its close button, with
+      // wide font metrics) shows from its start, so its name is the part in
+      // view; otherwise the whole tab comes into view.
+      if (box.width > bounds.width || box.left < bounds.left)
+        strip.scrollLeft -= bounds.left - box.left;
+      else if (box.right > bounds.right)
+        strip.scrollLeft += box.right - bounds.right;
+    };
+    reveal();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [selectedSurfaceId, tabs]);
   const tabAt = (x: number, y: number): number => {
     const element = document.elementFromPoint(x, y);
     const target =
@@ -509,6 +545,7 @@ function RegionTabStrip({
   const endDrag = () => setDragging(null);
   return (
     <div
+      ref={stripRef}
       role="tablist"
       aria-label="Region panes"
       className="region-tabs"
@@ -894,8 +931,13 @@ export function RegionChromeBar({
             type="button"
             className="chat-dock__maximize-btn"
             onClick={() => applyDockSnap(isDockMaximized ? 'half' : 'full')}
+            // The side and bottom bars both carry this button; the tip
+            // names which region it sizes.
             title={withShortcutHint(
-              maximizeLabel(isDockMaximized),
+              regionMaximizeTip(
+                isDockMaximized,
+                regionLabel(chrome.effectiveDockSlotPlacement),
+              ),
               'dock.maximize',
               () => maximizeShortcut,
             )}

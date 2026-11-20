@@ -650,7 +650,8 @@
   padding: 7.5px 12px;
 }
 
-.split-pane__detail-skeleton {
+.split-pane__detail-skeleton,
+.split-pane__detail-empty {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -1009,6 +1010,22 @@
   min-height: 0;
   border: 0;
 }
+/* A companion as its own page on a phone (#4795): the whole screen, no
+   scrim or rounded sheet edge; the dialog's header keeps the way back. */
+.split-pane-companion__page-overlay.responsive-surface-overlay {
+  align-items: stretch;
+  padding: 0;
+  background: var(--k-bg);
+}
+.split-pane-companion__page-overlay > .split-pane-companion__page {
+  width: 100%;
+  height: var(--responsive-visual-viewport-height, 100dvh);
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-top: var(--safe-top, 0px);
+}
 
 /* A 640px main surface and 16rem supporting inspection share wide containers.
    Local takeover preserves the mounted main surface when they cannot fit. */
@@ -1065,4 +1082,35 @@
   > .split-pane__detail-inline-host
   > .split-pane__right {
   margin-left: var(--fold-split-gap, 0px);
+}
+
+.split-pane__swipe-row {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.split-pane__swipe-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--k-panel);
+  transform: translateX(var(--swipe-action-offset, 0px));
+  transition: transform var(--motion-base) var(--ease-spring);
+}
+
+.split-pane__swipe-row[data-dragging] .split-pane__swipe-content {
+  transition: none;
+}
+
+.split-pane__swipe-actions:not([hidden]) {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  width: var(--swipe-action-width);
+}
+
+.split-pane__swipe-actions > button {
+  flex: 1;
 }

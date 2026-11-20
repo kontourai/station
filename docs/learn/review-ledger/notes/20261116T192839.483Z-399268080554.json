@@ -1,0 +1,9 @@
+{
+  "revision": "cb32c4eff0ffcc72bd39ae0778df90950968e6cb",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md gained three Project hooks; the cited sections are unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md gained three Project hooks; the cited sections are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

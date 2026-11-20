@@ -1,7 +1,0 @@
-{
-  "revision": "8a40b750acd91738fec7db562a41fd89480e9681",
-
-  "notes": [
-    {"path":"docs/guides/browser-workspace.md","note":"Reviewed BrowserTabs shortcut handling against the guide: inactive tab chords are consumed while Browser is focused without creating, closing or reopening a tab; the guide limits usable tab chords to the desktop shell.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserTabs.tsx"]}
-  ]
-}

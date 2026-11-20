@@ -1,0 +1,7 @@
+{
+  "revision": "2eb3d420c4735bebdcfb35576c9fe4d2e1ae086f",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"The portability regression exercises old Agent guidance on import and export through their shared owners. It preserves the source object and supported UI fields while writing the current Agent shape.","inputs":["packages/shared/src/__tests__/portability.test.ts"]}
+  ]
+}

@@ -94,6 +94,21 @@ export function allowInitialStartupAnimation() {
   visible = true;
 }
 
+let preparingStation: string | undefined;
+
+/**
+ * What the Station being prepared is doing, by name ("Connecting to Kontour"),
+ * so a later preparing stage (`StartupScreen`) keeps saying which Station it
+ * is preparing. Display only: it is never read to decide anything.
+ */
+export function rememberPreparingStation(title: string) {
+  preparingStation = title;
+}
+
+export function preparingStationTitle(): string | undefined {
+  return preparingStation;
+}
+
 export function initialStartupIsActive() {
   return surface?.isConnected === true;
 }

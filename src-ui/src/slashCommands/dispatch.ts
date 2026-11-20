@@ -10,6 +10,7 @@ import type { BindingStatus } from '../utils/execution';
 import { findMatchingSkillCommand } from '../utils/skill-command-catalog';
 import {
   assignSkillVariableArgs,
+  expandCommandTemplate,
   parseShellWords,
   substituteSkillVariables,
 } from '../utils/skill-commands';
@@ -67,6 +68,10 @@ export async function dispatchSlashCommand(
     context.autocomplete.closeAll();
   };
   const agent = agents.find((a) => a.slug === chatState.agentSlug);
+  // An Agent on a saved ACP connection takes every slash command as engine
+  // text, whichever provider runs its chat (`acp`, or `opencode` behind its
+  // Feature Preview): the connection's type stays `acp`. Without such an
+  // Agent, step 4 decides; it forwards only for Claude and Codex.
   if (agent?.engineConnectionType === 'acp') {
     cleanup();
     return command;
@@ -96,22 +101,37 @@ export async function dispatchSlashCommand(
     return true;
   }
 
-  // 1. Check custom commands (send as message)
-  if (agent?.commands?.[cmd]) {
-    let expandedPrompt = agent.commands[cmd].prompt;
-    const params = agent.commands[cmd].params || [];
-
-    params.forEach((param: any, idx: number) => {
-      const value = args[idx] || param.default || '';
-      const escaped = param.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      expandedPrompt = expandedPrompt.replace(
-        new RegExp(`{{${escaped}}}`, 'g'),
-        value,
+  const authored = agent?.commands?.[cmd];
+  if (authored) {
+    const params = authored.params ?? [];
+    const refuse = (reason: string) => {
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content: `/${cmd} didn’t run. ${reason}`,
+      });
+      cleanup();
+      return true;
+    };
+    if (args.length > params.length) {
+      return refuse(
+        params.length === 0
+          ? 'This command takes no arguments'
+          : `Use at most ${params.length} argument${params.length === 1 ? '' : 's'}. Quote a value that contains spaces`,
       );
+    }
+
+    const values = new Map<string, string>();
+    const missing: string[] = [];
+    params.forEach((param, index) => {
+      const value = args[index] || param.default || '';
+      if (param.required && !value.trim()) missing.push(param.name);
+      if (!values.has(param.name)) values.set(param.name, value);
     });
+    if (missing.length)
+      return refuse(`Enter a value for ${missing.join(', ')}`);
 
     cleanup();
-    return expandedPrompt;
+    return expandCommandTemplate(authored.prompt, values);
   }
 
   // 2. Check command skills

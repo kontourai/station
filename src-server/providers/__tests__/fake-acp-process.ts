@@ -46,6 +46,11 @@ export class FakeAcpProcess {
     params: Record<string, unknown>;
   }> = [];
   extMethodError?: unknown;
+  /** Answers an extension request; without it every request answers `{}`. */
+  extMethodHandler?: (
+    method: string,
+    params: Record<string, unknown>,
+  ) => unknown | Promise<unknown>;
   destroyed = false;
   destroyCalls = 0;
   cancelCalls = 0;
@@ -60,9 +65,23 @@ export class FakeAcpProcess {
 
   constructor(readonly opts: ACPProcessOptions) {}
 
+  /**
+   * `ACPProcess.spawnedEnvHas`: the host environment, the connection's
+   * launch environment and its credential environment, layered as the real
+   * spawn does (managed pins are covered by the real-process test).
+   */
+  spawnedEnvHas(name: string): boolean {
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      ...this.opts.launchEnv,
+      ...this.opts.credentialEnv?.(),
+    };
+    return typeof env[name] === 'string' && env[name]!.length > 0;
+  }
+
   async start() {
     if (this.startError) throw this.startError;
-    this.client = this.opts.createClient();
+    this.client = this.opts.createClient({ launchReplacedByPolicy: false });
     return this.initResult;
   }
 
@@ -134,11 +153,19 @@ export class FakeAcpProcess {
    * no-retry proof `newSessionError` gives `session/new`. */
   loadSessionError?: unknown;
 
+  /**
+   * What `session/load` and `session/resume` answer with (`ACPProcess`
+   * returns `{}` for an engine that answers with nothing).
+   */
+  reattachResult: Record<string, unknown> = {};
+  /** The `session/load` answer alone, when a test needs it to differ. */
+  loadSessionResult?: Record<string, unknown>;
+
   async loadSession(
     sessionId: string,
     cwd: string,
     mcpServers?: unknown[],
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     this.loadSessionCalls += 1;
     this.loadSessionArgs = { sessionId, cwd, mcpServers };
     if (this.loadSessionError) throw this.loadSessionError;
@@ -147,6 +174,7 @@ export class FakeAcpProcess {
     // notifications before it answers `session/load`.
     this.loadSessionReplay?.(this.client);
     await this.loadSessionPromise;
+    return structuredClone(this.loadSessionResult ?? this.reattachResult);
   }
   loadSessionReplay?: (client: ACPClientCallbacks) => void;
 
@@ -158,15 +186,19 @@ export class FakeAcpProcess {
   resumeSessionCalls = 0;
   resumeSessionError?: unknown;
 
+  /** The `session/resume` answer alone, when a test needs it to differ. */
+  resumeSessionResult?: Record<string, unknown>;
+
   async resumeSession(
     sessionId: string,
     cwd: string,
     mcpServers?: unknown[],
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     this.resumeSessionCalls += 1;
     this.resumeSessionArgs = { sessionId, cwd, mcpServers };
     if (this.resumeSessionError) throw this.resumeSessionError;
     this.sessionId = sessionId;
+    return structuredClone(this.resumeSessionResult ?? this.reattachResult);
   }
 
   readonly setConfigOptionCalls: Array<{ configId: string; value: string }> =
@@ -219,7 +251,7 @@ export class FakeAcpProcess {
   ): Promise<unknown> {
     this.extMethodCalls.push({ method, params });
     if (this.extMethodError) throw this.extMethodError;
-    return {};
+    return this.extMethodHandler ? this.extMethodHandler(method, params) : {};
   }
 
   async destroy(): Promise<void> {

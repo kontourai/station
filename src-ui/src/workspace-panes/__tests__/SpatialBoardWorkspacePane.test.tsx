@@ -407,7 +407,7 @@ describe('SpatialBoardWorkspacePane', () => {
       'Project',
       'Approval request',
       'Scheduled outcome',
-      'Receipt',
+      'Review result',
       'Gate or run',
       'Artifact',
       'Agent',

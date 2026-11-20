@@ -124,10 +124,6 @@
 
     "tests/helpers/live-station-task.ts",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
-
     "src-ui/src/components/PickerCreateAction.tsx",
 
     "src-ui/src/components/PickerCreateAction.css",
@@ -190,8 +186,6 @@
 
     "packages/contracts/src/project.ts",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
-
     "src-ui/src/components/home/HomeStartComposer.tsx",
 
     "src-ui/src/components/chat-start/StartComposer.tsx",
@@ -201,8 +195,6 @@
     "src-server/services/orchestration/attached-session-follow-service.ts",
 
     "src-server/services/orchestration/attached-session-repository.ts",
-
-    "src-ui/src/views/activity/activity-list-model.ts",
 
     "src-server/providers/sessions/claude-transcript-session-source.ts",
 
@@ -227,14 +219,6 @@
     "src-server/routes/orchestration/tasks.ts",
 
     "src-ui/src/contexts/active-chats-state.ts",
-
-    "src-ui/src/views/SessionsView.tsx",
-
-    "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx",
-
-    "src-ui/src/views/activity/openActivityReview.ts",
-
-    "tests/activity-related-review.spec.ts",
 
     "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
 
@@ -292,8 +276,6 @@
 
     "src-ui/src/utils/inbox-dismissal-store.ts",
 
-    "src-ui/src/hooks/useInboxSwipe.ts",
-
     "src-ui/src/contexts/active-chats-store.ts",
 
     "src-ui/src/__tests__/inbox-dismissal.test.tsx",
@@ -314,10 +296,6 @@
 
     "src-ui/src/utils/sessionDisplay.ts",
 
-    "src-ui/src/views/SessionsView.css",
-
-    "src-ui/src/views/activity/__tests__/ActivityList.test.tsx",
-
     "src-ui/src/views/home/home-view-model.ts",
 
     "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx",
@@ -328,7 +306,43 @@
 
     "src-ui/src/components/chat-dock/useInboxPanelController.ts",
 
-    "src-ui/src/utils/stationFailure.ts"
+    "src-ui/src/utils/stationFailure.ts",
+
+    "src-ui/src/components/inbox-row/inbox-row-actions.ts",
+
+    "src-ui/src/components/drafts/DiscardDraftButton.tsx",
+
+    "src-ui/src/utils/activity-snooze-store.ts",
+
+    "src-ui/src/utils/taskPlanProgress.ts",
+
+    "src-ui/src/components/TaskPlanProgress.tsx",
+
+    "src-ui/src/components/room/RoomComposer.tsx",
+
+    "src-ui/src/components/room/RoomConversation.tsx",
+
+    "src-ui/src/components/conversation/ConversationReader.tsx",
+
+    "src-ui/src/components/chat-dock/ChildChatNavigation.tsx",
+
+    "src-ui/src/components/chat-dock/ChildChatNavigationContext.ts",
+
+    "src-ui/src/components/conversation/SessionReaderBinding.tsx",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+
+    "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+
+    "src-ui/src/__tests__/child-transcript-navigation.test.tsx",
+
+    "src-ui/src/__tests__/activity-retirement.test.ts",
+
+    "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx",
+
+    "tests/child-transcript-chat.spec.ts",
+
+    "src-ui/src/hooks/useSwipeActions.ts"
   ],
 
   "checks": [

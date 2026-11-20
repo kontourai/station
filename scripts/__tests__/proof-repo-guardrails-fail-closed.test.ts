@@ -168,6 +168,48 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
     expect(output).not.toMatch(/(?:node:fs|at readFileSync|uncaught)/i);
   });
 
+  test.each([
+    [
+      'src-ui/src/hooks/useToolApproval.ts',
+      'return useApprovalAnswering(apiBase);',
+      'return undefined;',
+      'useToolApproval must delegate to the shared approval owner.',
+    ],
+    ...['submitToolApproval', 'respondToRequest'].map((helper) => [
+      'src-ui/src/components/conversation/useApprovalAnswering.ts',
+      helper,
+      `retired${helper}`,
+      `useApprovalAnswering must use shared SDK helper ${helper}.`,
+    ]),
+    ...[
+      ['useToolApproval', 'src-ui/src/hooks/useToolApproval.ts'],
+      [
+        'useApprovalAnswering',
+        'src-ui/src/components/conversation/useApprovalAnswering.ts',
+      ],
+    ].map(([name, path]) => [
+      path,
+      `export function ${name}(apiBase: string) {`,
+      `export function ${name}(apiBase: string) {\n  void fetch('/api/approval');`,
+      `${name} must not issue raw fetch() calls.`,
+    ]),
+  ])(
+    'approval ownership rejects a broken boundary: %s / %s',
+    (path, before, after, finding) => {
+      const { status, output } = runProofCopy(undefined, {
+        path,
+        mutate: (source) => {
+          expect(source).toContain(before);
+          return source.replaceAll(before, after);
+        },
+      });
+      expect(output).toContain(finding);
+      expect(output).not.toContain('Missing required guardrail source');
+      expect(output).toContain('Repo guardrail proof failed');
+      expect(status).toBe(1);
+    },
+  );
+
   test('the scheduler dialog DTO owner must retain its contract import', () => {
     const { status, output } = runProofCopy(undefined, undefined, (source) => {
       const requiredImport =
@@ -197,6 +239,18 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
       'onClick={() => void refetch()}',
       "onClick={() => void fetch('/api/monitoring/events')}",
     ],
+    [
+      'ProjectSettingsView',
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'onClick={() => void modelConnectionsQuery.refetch()}',
+      "onClick={() => void fetch('/api/model-connections')}",
+    ],
+    [
+      'PluginManagementView',
+      'src-ui/src/views/PluginManagementView.tsx',
+      'onClick={() => void updateCheck.refetch()}',
+      "onClick={() => void globalThis.fetch ('/api/plugins')}",
+    ],
   ])(
     '%s distinguishes raw fetch from SDK query refetch',
     (name, path, retry, rawFetch) => {
@@ -218,6 +272,55 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
       expect(status).toBe(1);
     },
   );
+
+  test('Push must call its imported registration owner', () => {
+    const { status, output } = runProofCopy(undefined, {
+      path: 'src-ui/src/hooks/usePushNotifications.ts',
+      mutate: (source) => {
+        const call =
+          'await confirmBrowserPushRegistration(owner, subscription)';
+        expect(source).toContain(call);
+        return source.replace(
+          call,
+          'await retiredRegistration(owner, subscription)',
+        );
+      },
+    });
+    expect(output).toContain(
+      'usePushNotifications must call confirmBrowserPushRegistration from ./web-push-browser-registration.',
+    );
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(status).toBe(1);
+  });
+
+  test('a same-named helper cannot replace the SDK Web Push binding', () => {
+    const { status, output } = runProofCopy(undefined, {
+      path: 'src-ui/src/hooks/web-push-browser-registration.ts',
+      mutate: (source) => {
+        const sdk = "from '@kontourai/station-sdk';";
+        expect(source).toContain(sdk);
+        return source.replace(sdk, "from './unowned-push-api';");
+      },
+    });
+    expect(output).toContain(
+      'Web Push browser registration must call fetchWebPushRegistration from @kontourai/station-sdk.',
+    );
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(status).toBe(1);
+  });
+
+  test('the Web Push registration owner refuses direct network calls', () => {
+    const { status, output } = runProofCopy(undefined, {
+      path: 'src-ui/src/hooks/web-push-browser-registration.ts',
+      mutate: (source) =>
+        `${source}\nvoid window.fetch('/api/system/push-subscribe');\n`,
+    });
+    expect(output).toContain(
+      'Web Push browser registration must not issue raw fetch() calls.',
+    );
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(status).toBe(1);
+  });
 
   test('a retired required source is a named finding, not an uncaught ENOENT', () => {
     const { status, output } = runProofCopy((source) =>

@@ -1,7 +1,0 @@
-{
-  "revision": "0305b942e465fc2d636148dff5bdb2add55a657e",
-
-  "notes": [
-    {"path":"docs/patterns/backend.md","note":"PlatformProfileContext now exports its existing single platform resolution (resolvedPlatformTarget) for the fold source to reuse; behaviour of the profile itself is unchanged and this document makes no claim about how the target is resolved.","inputs":["docs/patterns/backend.md","src-ui/src/platform/PlatformProfileContext.tsx"]}
-  ]
-}

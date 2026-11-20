@@ -1,0 +1,7 @@
+{
+  "revision": "721507c8d06d859579642d51ef1e3792acb9d1d5",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Test-only: Agent feedback is gated by the preview mock and its save hint asserted; knowledge section behaviour unchanged.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

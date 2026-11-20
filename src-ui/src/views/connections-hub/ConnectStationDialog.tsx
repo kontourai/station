@@ -29,6 +29,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { checkHostCompatibility } from '../../lib/compatibilityLoader';
 import type { OpenConnectionsModalDetail } from '../../lib/connectionModalEvents';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import { formatDateTime } from '../../utils/relativeTime';
 import { StationUiError } from '../../utils/StationUiError';
 import { describeStationFailure } from '../../utils/stationFailure';
 import './ConnectStationDialog.css';
@@ -654,10 +655,7 @@ export function ConnectStationDialog({
                   </p>
                 ) : null}
                 {observed && !peerAuthorityRefused ? (
-                  <p>
-                    Approval expires:{' '}
-                    {new Date(observed.expiresAt).toLocaleString()}
-                  </p>
+                  <p>Approval expires: {formatDateTime(observed.expiresAt)}</p>
                 ) : null}
                 {peerNeedsRetry && !peerAuthorityRefused ? (
                   <p>

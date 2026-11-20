@@ -1,7 +1,0 @@
-{
-  "revision": "0700966e1fcc1e578f0b7f7ab1ff9c9272aae940",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"After merging main: the Device guide was trimmed to the task and its detailed agent-input and session rules moved word for word to reference/browser-and-devices.md; this document's three affected links already point there, and its replay claims are unchanged.","inputs":["docs/design/verified-action-replay.md","docs/guides/mobile-device-workspace.md"]}
-  ]
-}

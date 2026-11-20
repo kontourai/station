@@ -1,0 +1,21 @@
+{
+  "revision": "ef76f5c07b255bbf885de6c10b48a7f95b514255",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta adds read-time attachedSourceActivity to read-only attached summaries only (optional now clock input); citing pages' summary-builder claims remain accurate and the field is documented in session-api.md.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

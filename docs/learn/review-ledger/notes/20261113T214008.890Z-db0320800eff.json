@@ -1,0 +1,7 @@
+{
+  "revision": "d7dfb82cbe7b1aaa7ac7e5b1c5528e6998125130",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Fix round 2 (Muse): changes are the steer post-reply guard and the sandbox report retention in muse-serve-session.ts plus their tests; re-read the Muse serve/stdio usage rows and the workflow-subagent usage row: no usage, cost or context emission changed, so the prose stays accurate.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts","src-server/providers/adapters/muse-serve-session.ts"]}
+  ]
+}

@@ -13,7 +13,18 @@ const manifest = JSON.parse(readFileSync('.github/labels.json', 'utf8'));
 
 describe('label manifest', () => {
   test('pins all live labels plus the lifecycle and stage additions', () => {
-    expect(manifest.labels).toHaveLength(32);
+    expect(manifest.labels).toHaveLength(38);
+    // Live since 2026-10-22; undeclared, they failed the scheduled backlog
+    // policy in its label check before the policy itself ran.
+    expect(EXPECTED_LABEL_NAMES).toEqual(
+      expect.arrayContaining([
+        'agent-context-increase',
+        'multiplayer',
+        'multiplayer:extension',
+        'multiplayer:follow-up',
+        'multiplayer:pilot',
+      ]),
+    );
     expect(validateLabelManifest(manifest)).toEqual([]);
     expect(
       manifest.labels.map(({ name }: { name: string }) => name).sort(),
@@ -78,7 +89,7 @@ describe('label manifest', () => {
       { ...manifest.labels[0], color: 'ffffff' },
       { name: 'unexpected', color: '000000', description: 'keep me' },
     ]);
-    expect(plan.create).toHaveLength(31);
+    expect(plan.create).toHaveLength(37);
     expect(plan.update).toEqual([manifest.labels[0]]);
     expect(plan.unexpected).toEqual(['unexpected']);
   });

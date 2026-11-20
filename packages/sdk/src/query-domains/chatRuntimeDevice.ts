@@ -65,29 +65,68 @@ async function throwIfDevicePairingRequired(response: Response): Promise<void> {
   }
 }
 
-export async function fetchVapidPublicKey(apiBase?: string): Promise<string> {
+type WebPushRequestOptions = Pick<
+  ClientRequestOptions,
+  'requestScope' | 'signal'
+>;
+
+type WebPushRegistration =
+  | { status: 'paired'; fingerprint: string | null }
+  | { status: 'pairing-required' };
+
+export async function fetchWebPushRegistration(
+  apiBase?: string,
+  options?: WebPushRequestOptions,
+): Promise<{ publicKey: string; registration?: WebPushRegistration }> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/system/vapid-public-key`,
+    options,
   );
   if (!response.ok) {
-    throw new Error('Server does not support push notifications');
+    if (response.status === 403) await throwIfDevicePairingRequired(response);
+    throw new StationHttpError(
+      response.status,
+      'Could not read Web Push registration',
+    );
   }
-  const result = (await response.json()) as { publicKey?: string };
-  if (!result.publicKey) {
+  const result = (await response.json()) as {
+    publicKey?: string;
+    registration?: WebPushRegistration;
+  };
+  if (typeof result.publicKey !== 'string' || !result.publicKey)
     throw new Error('Missing VAPID public key');
-  }
-  return result.publicKey;
+  const registration = result.registration;
+  if (
+    registration !== undefined &&
+    (!registration ||
+      (registration.status !== 'pairing-required' &&
+        (registration.status !== 'paired' ||
+          (registration.fingerprint !== null &&
+            (typeof registration.fingerprint !== 'string' ||
+              !/^[0-9a-f]{64}$/.test(registration.fingerprint))))))
+  )
+    throw new Error('Malformed Web Push registration response');
+  return result as { publicKey: string; registration?: WebPushRegistration };
+}
+
+export async function fetchVapidPublicKey(
+  apiBase?: string,
+  options?: WebPushRequestOptions,
+): Promise<string> {
+  return (await fetchWebPushRegistration(apiBase, options)).publicKey;
 }
 
 export async function subscribePushNotifications(
   subscription: PushSubscriptionJSON,
   apiBase?: string,
+  options?: WebPushRequestOptions,
 ): Promise<void> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/system/push-subscribe`,
     {
+      ...options,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subscription),
@@ -104,11 +143,13 @@ export async function subscribePushNotifications(
 export async function unsubscribePushNotifications(
   endpoint: string,
   apiBase?: string,
+  options?: WebPushRequestOptions,
 ): Promise<void> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/system/push-unsubscribe`,
     {
+      ...options,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint }),
@@ -230,5 +271,9 @@ export async function createVoiceSession(apiBase?: string): Promise<{
   return (await response.json()) as { sessionId?: string };
 }
 
-import { authenticatedFetch } from '../client/http';
+import {
+  authenticatedFetch,
+  type ClientRequestOptions,
+  StationHttpError,
+} from '../client/http';
 import { unlessDeadline } from '../client/request-deadline';

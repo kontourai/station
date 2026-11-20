@@ -7,6 +7,7 @@ import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
 } from '../../providers/adapter-shape.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
@@ -19,8 +20,10 @@ import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import {
   createRecoveryDispatchAdapter,
+  isSessionUntouched,
   type RecoveryDispatchAdapter,
   type RecoveryDispatchReplay,
+  RecoveryNotSentError,
 } from './recovery-dispatch-adapter.js';
 
 interface CredentialProfileRecoveryDeps {
@@ -192,15 +195,25 @@ export class CredentialProfileRecovery {
     sourceTurnId?: string;
     sourceClientTurnId?: string;
   }): Promise<{ turnId: string }> {
-    // A recorded automatic policy takes precedence over the source actor.
-    // Older turns fall back to their recorded dispatch origin.
-    const { adapter, armedInternalStopTurnId } =
-      await this.deps.restartProviderSession({
+    // The pre-send boundary: until `adapter.sendTurn` is called below, no
+    // failure can have reached the provider's send, so each throws
+    // `RecoveryNotSentError`. A restart that fails (for example a signed-out
+    // account) is one of them.
+    let restarted: Awaited<ReturnType<typeof this.deps.restartProviderSession>>;
+    try {
+      restarted = await this.deps.restartProviderSession({
         ...input,
         resourceAdmissionIntent:
           input.resourceAdmissionIntent ??
           engineStartIntentForTurnOrigin(input.dispatchOrigin ?? 'unknown'),
       });
+    } catch (error) {
+      throw new RecoveryNotSentError(error, {
+        sessionTouched: !isSessionUntouched(error),
+      });
+    }
+    const { adapter, armedInternalStopTurnId } = restarted;
+    let sendInvoked = false;
     // archive#3525 fix round FIX 1: the restart above only means the
     // provider process is back up, not that this turn actually redispatches
     // — if sendTurn itself now fails, nothing is retrying, and the armed
@@ -239,27 +252,30 @@ export class CredentialProfileRecovery {
         input.modelOptions,
       );
       await this.deps.assertRetainedWorkspaceAuthorized(input.threadId);
-      result = await adapter.sendTurn({
-        threadId: input.threadId,
-        input: composeAmbientTurnText(input.ambientContext, input.input),
-        displayInput: input.input,
-        ...(input.attachments ? { attachments: input.attachments } : {}),
-        ...(input.ambientContext
-          ? { ambientContext: input.ambientContext }
-          : {}),
-        ...(input.modelId ? { modelId: input.modelId } : {}),
-        ...(modelOptions ? { modelOptions } : {}),
-        confinement: this.deps.replayConfinement(input.threadId),
-        recoveryCorrelationId: input.recoveryCorrelationId,
-        signal: input.signal,
-      });
+      sendInvoked = true;
+      result = await runEngineOutsideStationServerScope(() =>
+        adapter.sendTurn({
+          threadId: input.threadId,
+          input: composeAmbientTurnText(input.ambientContext, input.input),
+          displayInput: input.input,
+          ...(input.attachments ? { attachments: input.attachments } : {}),
+          ...(input.ambientContext
+            ? { ambientContext: input.ambientContext }
+            : {}),
+          ...(input.modelId ? { modelId: input.modelId } : {}),
+          ...(modelOptions ? { modelOptions } : {}),
+          confinement: this.deps.replayConfinement(input.threadId),
+          recoveryCorrelationId: input.recoveryCorrelationId,
+          signal: input.signal,
+        }),
+      );
     } catch (error) {
       this.deps.reportRedispatchFailed(
         input.threadId,
         armedInternalStopTurnId,
         adapter.provider,
       );
-      throw error;
+      throw sendInvoked ? error : new RecoveryNotSentError(error);
     }
     this.deps.onTurnDispatched({
       provider: adapter.provider,

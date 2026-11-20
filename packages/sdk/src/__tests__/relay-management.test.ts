@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { StationHttpError } from '../client/http';
 import { readProjectInvitationToken } from '../client/project-access';
 import {
+  approveRelaySetup,
   createRelayInvitation,
   getRelayManagement,
   getRelayManagementCapabilities,
@@ -229,7 +230,7 @@ test.each(['malformed', 'wrong-station'] as const)(
   'setup discovery refuses a %s successful link',
   async (mode) => {
     const setupLinks = Object.fromEntries(
-      (['stable', 'beta', 'nightly'] as const).map((channel) => [
+      (['stable', 'nightly'] as const).map((channel) => [
         channel,
         encodeNativeRelayLink(
           {
@@ -268,5 +269,195 @@ test.each(['malformed', 'wrong-station'] as const)(
     await expect(
       getRelayManagement('https://station.example'),
     ).rejects.toThrow();
+  },
+);
+
+test.each([false, true])(
+  'management v2 decodes retained-channel links from a host with legacy wire field: %s',
+  async (legacy) => {
+    const route = invitationRoute;
+    const link = (channel: 'stable' | 'nightly') =>
+      encodeNativeRelayLink(
+        {
+          version: 'station-native-relay-link/v1',
+          kind: 'route-intent',
+          ...route,
+        },
+        { channel },
+      );
+    const stable = link('stable');
+    http.get.mockResolvedValueOnce(
+      Response.json({
+        data: {
+          route,
+          confirmationCode: '0123456789ABCDEF',
+          keyId: 'K'.repeat(43),
+          setupLinks: {
+            stable,
+            nightly: link('nightly'),
+            ...(legacy
+              ? {
+                  beta: stable.replace(
+                    /^station-relay-stable:/,
+                    'station-relay-beta:',
+                  ),
+                }
+              : {}),
+          },
+          approvals: [],
+          pendingDevices: [],
+        },
+      }),
+    );
+    const view = await getRelayManagement('https://station.example');
+    expect(view.setupLinks).toEqual({ stable, nightly: link('nightly') });
+    expect(view.setupLinks).not.toHaveProperty('beta');
+    expect(http.get.mock.calls[0]?.[0]).toBe(
+      'https://station.example/api/relay-management?viewVersion=2',
+    );
+  },
+);
+
+test.each([
+  'local-approval',
+  'foreign-approval',
+  'local-pending',
+  'mixed',
+  'foreign-pending',
+  'malformed-beta',
+  'mutation-beta',
+])(
+  'legacy retired records stay read-only and Station scoped: %s',
+  async (mode) => {
+    const foreign = mode.startsWith('foreign');
+    const route = invitationRoute;
+    const link = (channel: 'stable' | 'nightly') =>
+      encodeNativeRelayLink(
+        {
+          version: 'station-native-relay-link/v1',
+          kind: 'route-intent',
+          ...route,
+        },
+        { channel },
+      );
+    const surface = {
+      kind: 'station-native',
+      appIdentifier:
+        mode === 'malformed-beta'
+          ? 'io.kontourai.station'
+          : 'io.kontourai.station.beta',
+      channel: 'beta',
+      clientInstanceId: '11111111-1111-4111-8111-111111111111',
+      keyThumbprint: 'K'.repeat(43),
+    };
+    const approval = {
+      approvalId: '22222222-2222-4222-8222-222222222222',
+      revision: 1,
+      scope: {
+        stationId: foreign
+          ? '33333333-3333-4333-8333-333333333333'
+          : route.stationId,
+        enrollmentId: route.enrollmentId,
+        routingGeneration: 1,
+      },
+      surface,
+    };
+    const stable = link('stable');
+    const pending = {
+      enrollmentId: 'E'.repeat(43),
+      requestId: approval.approvalId,
+      candidate: {
+        version: 'station-native-device-binding-candidate/v1',
+        stationId: approval.scope.stationId,
+        deviceId: approval.approvalId,
+        bindingId: approval.approvalId,
+        surface,
+        deviceProofJwk: {
+          kty: 'EC',
+          crv: 'P-256',
+          x: 'X'.repeat(43),
+          y: 'Y'.repeat(43),
+        },
+        deviceProofKeyThumbprint: 'P'.repeat(43),
+      },
+      account: {
+        issuer: 'https://account.example',
+        subject: 'operator',
+        displayName: 'Operator',
+      },
+      requestedScope: 'orchestration:read',
+      expiresAt: 1900000000000,
+    };
+    if (mode === 'mutation-beta') {
+      http.mutate.mockResolvedValueOnce(Response.json({ data: approval }));
+      await expect(
+        approveRelaySetup('https://station.example', {}),
+      ).rejects.toThrow();
+      return;
+    }
+    const isPending = mode.endsWith('pending');
+    const activeApproval = {
+      ...approval,
+      approvalId: '44444444-4444-4444-8444-444444444444',
+      surface: {
+        ...surface,
+        channel: 'stable',
+        appIdentifier: 'io.kontourai.station',
+      },
+    };
+    const activePending = {
+      ...pending,
+      candidate: {
+        ...pending.candidate,
+        surface: {
+          ...surface,
+          channel: 'nightly',
+          appIdentifier: 'io.kontourai.station.nightly',
+        },
+      },
+    };
+    http.get.mockResolvedValueOnce(
+      Response.json({
+        data: {
+          route,
+          confirmationCode: '0123456789ABCDEF',
+          keyId: 'K'.repeat(43),
+          setupLinks: {
+            stable,
+            nightly: link('nightly'),
+            beta: stable.replace(
+              /^station-relay-stable:/,
+              'station-relay-beta:',
+            ),
+          },
+          approvals:
+            mode === 'mixed'
+              ? [activeApproval, approval]
+              : isPending
+                ? []
+                : [approval],
+          pendingDevices:
+            mode === 'mixed'
+              ? [pending, activePending]
+              : isPending
+                ? [pending]
+                : [],
+        },
+      }),
+    );
+    const result = getRelayManagement('https://station.example');
+    if (foreign) await expect(result).rejects.toThrow('another Station');
+    else if (mode === 'malformed-beta')
+      await expect(result).rejects.toThrow('Retired surface identity');
+    else {
+      await expect(result).resolves.toMatchObject({
+        approvals: mode === 'mixed' ? [activeApproval] : [],
+        pendingDevices: mode === 'mixed' ? [activePending] : [],
+        retiredRecords: {
+          approvals: isPending ? 0 : 1,
+          pendingDevices: isPending || mode === 'mixed' ? 1 : 0,
+        },
+      });
+    }
   },
 );

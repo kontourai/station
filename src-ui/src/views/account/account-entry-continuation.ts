@@ -1,4 +1,26 @@
 export const INVITATION_STATE_KEY = 'station-pending-project-invitation';
+export interface SharedWorkDestination {
+  projectId: string;
+  shareId?: string;
+}
+
+function boundedId(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256
+    ? value
+    : undefined;
+}
+
+export function rememberSharedWork(destination?: SharedWorkDestination) {
+  const fragment = new URLSearchParams();
+  if (destination) fragment.set('project', destination.projectId);
+  if (destination?.shareId) fragment.set('share', destination.shareId);
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `/account${fragment.size ? `#${fragment}` : ''}`,
+  );
+}
+
 export function readAccountEntryContinuation() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   const query = new URLSearchParams(window.location.search);
@@ -11,12 +33,17 @@ export function readAccountEntryContinuation() {
   }
   const provided = fragment.get('invitation');
   let invitation: string | undefined;
+  let shareId = boundedId(fragment.get('share'));
   if (provided && /^[A-Za-z0-9_-]{43}$/.test(provided)) {
     invitation = provided;
     try {
       sessionStorage.setItem(
         INVITATION_STATE_KEY,
-        JSON.stringify({ token: provided, until: Date.now() + 3600_000 }),
+        JSON.stringify({
+          token: provided,
+          shareId,
+          until: Date.now() + 3600_000,
+        }),
       );
     } catch {
       /* The open page still carries this in memory. */
@@ -42,9 +69,10 @@ export function readAccountEntryContinuation() {
         /^[A-Za-z0-9_-]{43}$/.test(stored.token) &&
         typeof stored.until === 'number' &&
         stored.until > Date.now()
-      )
+      ) {
         invitation = stored.token;
-      else sessionStorage.removeItem(INVITATION_STATE_KEY);
+        shareId = boundedId('shareId' in stored ? stored.shareId : undefined);
+      } else sessionStorage.removeItem(INVITATION_STATE_KEY);
     } catch {
       /* Local continuation state is not authority. */
     }
@@ -63,7 +91,13 @@ export function readAccountEntryContinuation() {
       '',
       window.location.pathname + (query.toString() ? `?${query}` : ''),
     );
+  const projectId =
+    !invitation && provided === null && window.location.pathname === '/account'
+      ? boundedId(fragment.get('project'))
+      : undefined;
   return {
+    ...(invitation && shareId ? { invitationShareId: shareId } : {}),
+    ...(projectId ? { destination: { projectId, shareId } } : {}),
     invitation,
     resetToken,
     ...(authenticationError ? { authenticationError: true } : {}),

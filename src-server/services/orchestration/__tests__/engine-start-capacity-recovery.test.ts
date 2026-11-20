@@ -221,9 +221,12 @@ async function harness(
     });
 
   const summary = async (threadId: string) =>
-    (await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)).find(
-      (session) => session.threadId === threadId,
-    );
+    (
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
+        threadIds: [threadId],
+      })
+    ).find((session) => session.threadId === threadId);
 
   /** A session restored at boot with no engine: the parked/interrupted case. */
   const restoreDormant = async (
@@ -649,7 +652,10 @@ describe('a credential-profile restart (#4568)', () => {
       const lease = await h.holdStartLease();
       await expect(
         restart(h, new AbortController().signal, origin),
-      ).rejects.toBeInstanceOf(ConcurrentEngineStartCapacityError);
+      ).rejects.toMatchObject({
+        cause: expect.any(ConcurrentEngineStartCapacityError),
+        sessionTouched: false,
+      });
       expect(h.startsFor('live')).toBe(1);
       expect((await h.summary('live'))?.engineStartWait).toBeUndefined();
       await lease.release();

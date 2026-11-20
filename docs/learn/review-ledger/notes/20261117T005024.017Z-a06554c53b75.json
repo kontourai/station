@@ -1,0 +1,7 @@
+{
+  "revision": "e94e61016756929bf46b9fbf65d5a93254bc7144",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked remembered-Agent, default-chain and setup-card sentences against useStartSelection, firstStartableAgentSlug, ChatSetupHelper and the StartComposerParity tests; rewrote the three affected paragraphs.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/ChatSetupHelper.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts","src-ui/src/hooks/useStartSelection.ts"]}
+  ]
+}

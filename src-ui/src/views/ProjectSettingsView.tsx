@@ -1,15 +1,16 @@
+import { PROJECT_ROOM_COORDINATOR_PREVIEW_ID } from '@kontourai/station-contracts/project-room-coordinator';
+import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   resolveWorkspaceIsolationMode,
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import {
-  useDeleteProjectMutation,
   useModelConnectionsQuery,
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AccountIdentityConflict,
   isAccountIdentityConflict,
@@ -17,12 +18,12 @@ import {
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
+import { ArrowLeftGlyph } from '../components/icons/Glyph';
 import {
   displayableProjectIcon,
   ProjectIcon,
 } from '../components/icons/ProjectIcon';
 import { ModelSelector } from '../components/ModelSelector';
-import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { normalizeWorkingDirectory } from '../components/modals/project-form-utils';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
@@ -46,15 +47,27 @@ import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { useProjectOverviewPreview } from './project-page/projectOverviewPreview';
 import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
+import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
+import { MemorySection } from './project-settings/MemorySection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
+import { OverviewNotificationsSection } from './project-settings/OverviewNotificationsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
+import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
+import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
+import { ProjectPullRequestSettings } from './project-settings/ProjectPullRequestSettings';
+import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
+import { RoomCoordinatorSection } from './project-settings/RoomCoordinatorSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -68,17 +81,41 @@ import './ProjectSettingsView.css';
 const PROJECT_SETTINGS_SECTIONS = [
   ['workspace', 'Workspace'],
   ['basic-info', 'Basic info'],
+  ['brief', 'Brief'],
+  ['memory', 'Memory'],
   ['model', 'Model'],
+  ['models', 'Models and effort'],
+  ['usage', 'Usage'],
   ['new-chat', 'New chats'],
-  ['thread-execution', 'Thread execution'],
+  ['overview', 'Overview and notifications'],
+  ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
+  ['pull-requests', 'Pull requests'],
+  ['coordinator', 'Coordinator'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
+  ['schedules', 'Schedules'],
   ['danger', 'Danger zone'],
 ] as const;
+
+/** Sections only the `project-coordination` preview shows. */
+const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
+  'brief',
+  'memory',
+  'models',
+  'usage',
+]);
+
+const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
+  overview: 'Changes in this section save automatically.',
+  'pull-requests': 'Changes in this section save automatically.',
+  brief: 'Saved changes reach new Sessions, not ones already running.',
+  models: 'Saved changes reach new Sessions, not ones already running.',
+  usage: 'Usage on this Station only.',
+};
 
 /** How each stored workspace mode reads in this picker. */
 const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
@@ -172,15 +209,26 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const showSurface = useShowSurface();
 
   const [form, setForm] = useState<ProjectForm | null>(null);
+  // #5069/#5070: Pause/Archive and Project schedules are Feature Previews.
+  const previewFlags = useSurfaceVisibilityFlags();
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const projectOverviewOn = useProjectOverviewPreview();
+  const projectCoordination = useProjectCoordinationPreview();
+  const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
+    ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
+  );
+  const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
+  const roomCoordinator = previewFlags.has(PROJECT_ROOM_COORDINATOR_PREVIEW_ID);
+  // Keep preview section links navigable while their flags load.
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
-      { scrollOnNavigate: false },
+      {
+        scrollOnNavigate: false,
+        sectionAliases: { 'agent-feedback': 'pull-requests' },
+      },
     );
 
   const {
@@ -247,6 +295,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
+  const backButton = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const restoreFocusAfterSave = useRef(false);
   const { data: chatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(slug);
   const chatDefaults = chatDefaultsAnswer ?? undefined;
 
@@ -259,12 +310,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     { enabled: iconPickerOpen },
   );
 
-  const deleteMutation = useDeleteProjectMutation();
-
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
   const { DiscardModal } = useUnsavedGuard(isDirty);
-  useCloseShortcut(() => navigate(`/projects/${slug}`));
+  const goBack = () => navigate(`/projects/${slug}`);
+  useCloseShortcut(goBack);
+
+  useLayoutEffect(() => {
+    if (isDirty || saveMutation.isPending || !restoreFocusAfterSave.current)
+      return;
+    restoreFocusAfterSave.current = false;
+    if (document.activeElement === document.body)
+      backButton.current?.focus({ preventScroll: true });
+  }, [isDirty, saveMutation.isPending]);
 
   if (
     isLoadError &&
@@ -341,12 +399,16 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   }
 
   async function saveProject() {
-    if (!form) return;
+    if (!form || !isDirty || saveMutation.isPending) return;
+    restoreFocusAfterSave.current =
+      saveButton.current?.matches(':focus-visible') ?? false;
     setSaveError(null);
     try {
       const saved = await saveMutation.mutateAsync({
         slug,
-        ...buildProjectSavePayload(form, workingDirectory, savedForm),
+        ...buildProjectSavePayload(form, workingDirectory, savedForm, {
+          projectCoordination,
+        }),
       });
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
@@ -360,24 +422,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     }
   }
 
-  async function deleteProject() {
-    setDeleteError(null);
-    try {
-      await deleteMutation.mutateAsync(slug);
-      // The project this view was about is gone, so there is no "back" to
-      // return to: land on Home BY NAME — the Home surface, placed in `main`
-      // (the model navigates to `/`) — not on whatever occupies `main` (#1523).
-      showSurface('home');
-    } catch (deleteFailure) {
-      setDeleteError(userFacingErrorMessage(deleteFailure));
-    }
-  }
-
   return (
     <div
-      className={`page page--full${activeSection === 'resources' ? ' project-settings--sources' : ''}`}
+      className={`page page--full${activeSection === 'resources' || activeSection === 'memory' ? ' project-settings--bounded-list' : ''}`}
     >
-      {/* Header */}
       <DetailHeader
         title={form.name}
         badge={
@@ -385,42 +433,60 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             ? { label: 'unsaved', variant: 'warning' as const }
             : undefined
         }
+        navigation={
+          <Button
+            ref={backButton}
+            variant="ghost"
+            aria-label="Back to project"
+            title="Back to project"
+            onClick={goBack}
+          >
+            <ArrowLeftGlyph />
+          </Button>
+        }
       >
-        <Button onClick={() => navigate(`/projects/${slug}`)}>← Back</Button>
-        <Button
-          variant="primary"
-          disabled={
-            saveMutation.isPending || !form.name.trim() || !!iconProblem
-          }
-          onClick={() => void saveProject()}
-        >
-          {saveMutation.isPending ? 'Saving…' : 'Save'}
-        </Button>
+        {(isDirty || saveMutation.isPending) && (
+          <Button
+            ref={saveButton}
+            variant="primary"
+            pending={saveMutation.isPending}
+            pendingLabel="Saving…"
+            disabled={!form.name.trim() || !!iconProblem}
+            onClick={() => void saveProject()}
+          >
+            Save
+          </Button>
+        )}
       </DetailHeader>
 
       <div className="section-nav-rail project-settings__layout">
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
-            key: id,
-            label,
-            href: hrefForSection(id),
-          }))}
+          items={settingsSections
+            .filter(
+              ([id]) =>
+                (id !== 'overview' || projectOverviewOn) &&
+                (id !== 'coordinator' || roomCoordinator),
+            )
+            .map(([id, label]) => ({
+              key: id,
+              label,
+              href: hrefForSection(id),
+            }))}
           activeKey={activeSection}
           onNavigate={navigateToSection}
         />
 
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
-          <p className="project-settings__save-hint">
-            {['layouts', 'resources', 'access', 'knowledge'].includes(
-              activeSection,
-            )
-              ? 'Actions in this section apply when confirmed.'
-              : 'Save to apply changes to project defaults.'}
-          </p>
-          {activeSection !== 'basic-info' &&
+          {SECTION_SAVE_HINTS[activeSection] && (
+            <p className="project-settings__save-hint">
+              {SECTION_SAVE_HINTS[activeSection]}
+            </p>
+          )}
+          {isDirty &&
+            activeSection !== 'basic-info' &&
             (!form.name.trim() || iconProblem) && (
               <ErrorState
                 variant="compact"
@@ -460,13 +526,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-workspace"
               className="project-settings__section project-settings__section--hero"
-              eyebrow="Project home"
               title="Workspace"
               description="The folder used for work in this project."
               actions={
                 <div className="project-settings__identity-preview">
                   <ProjectIcon
-                    project={{ name: form.name, icon: form.icon }}
+                    project={{
+                      name: form.name,
+                      icon: form.icon || undefined,
+                      derivedIcon: project?.derivedIcon,
+                      iconDisabled: form.iconDisabled,
+                    }}
                     size={46}
                     fallback="initials"
                   />
@@ -524,7 +594,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-basic-info"
               className="project-settings__section"
-              eyebrow="Project identity"
               title="Basic info"
             >
               <div className="project-settings__identity-grid">
@@ -541,7 +610,12 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                       onClick={() => setIconPickerOpen((open) => !open)}
                     >
                       <ProjectIcon
-                        project={{ name: form.name, icon: form.icon }}
+                        project={{
+                          name: form.name,
+                          icon: form.icon || undefined,
+                          derivedIcon: project?.derivedIcon,
+                          iconDisabled: form.iconDisabled,
+                        }}
                         size={40}
                         fallback="initials"
                       />
@@ -561,12 +635,35 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                       one.
                     </p>
                   )}
+                  {project?.derivedIcon && !form.iconDisabled && !form.icon && (
+                    <p className="project-settings__icon-notice">
+                      Detected icon · Choose No icon to hide it.
+                    </p>
+                  )}
                   {iconPickerOpen && (
                     <ProjectIconPicker
                       idPrefix="project-settings-icon"
+                      iconDisabled={legacyIcon || form.iconDisabled}
                       name={form.name}
                       value={legacyIcon ? '' : (form.icon ?? '')}
-                      onChange={(icon) => setField('icon', icon)}
+                      onUseDetected={() =>
+                        setForm((current) =>
+                          current
+                            ? { ...current, icon: '', iconDisabled: false }
+                            : current,
+                        )
+                      }
+                      onChange={(icon, disabled) => {
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                icon,
+                                iconDisabled: disabled ?? false,
+                              }
+                            : current,
+                        );
+                      }}
                       candidates={iconCandidates.data ?? []}
                       fetching={iconCandidates.isFetching}
                     />
@@ -588,6 +685,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             </PageSection>
           </div>
 
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'brief'}
+              >
+                <BriefSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'memory'}
+              >
+                {activeSection === 'memory' && <MemorySection slug={slug} />}
+              </div>
+            </>
+          )}
+
           {/* Default AI Model */}
           <div
             className="project-settings__panel"
@@ -596,7 +710,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-model"
               className="project-settings__section"
-              eyebrow="Conversation default"
               title="AI model"
               description="Choose a connection and model, or follow the Station default."
             >
@@ -674,7 +787,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     models={selectedConnectionModels}
                     disabled={!form.defaultProviderId || unavailableConnection}
                     onChange={(modelId) => setField('defaultModel', modelId)}
-                    placeholder="System default"
+                    placeholder="Station default"
                   />
                 }
               />
@@ -697,6 +810,25 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             </PageSection>
           </div>
 
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'models'}
+              >
+                <ProjectModelsSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'usage'}
+              >
+                {activeSection === 'usage' && (
+                  <ProjectUsageSection slug={slug} />
+                )}
+              </div>
+            </>
+          )}
+
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'new-chat'}
@@ -718,9 +850,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-thread-execution"
               className="project-settings__section"
-              eyebrow="New thread default"
-              title="Thread execution"
-              description="A thread's own selection takes precedence."
+              title="Chat workspace"
+              description="Where new chats in this Project run. A chat's own choice takes precedence."
             >
               <EnvironmentPicker
                 id="project-default-environment"
@@ -774,10 +905,50 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
           <div
             className="project-settings__panel"
+            hidden={activeSection !== 'overview'}
+          >
+            {projectOverviewOn && (
+              <OverviewNotificationsSection
+                slug={slug}
+                projectId={project?.id}
+                autoResolveDays={project?.overviewAutoResolveDays}
+              />
+            )}
+          </div>
+
+          <div
+            className="project-settings__panel"
             hidden={activeSection !== 'layouts'}
           >
             <LayoutsSection slug={slug} />
           </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'pull-requests'}
+          >
+            <ProjectPullRequestSettings
+              project={project}
+              slug={slug}
+              active={activeSection === 'pull-requests'}
+              feedbackAvailable={agentFeedback}
+              onSaved={refetchProject}
+              onSources={() => navigateToSection('resources')}
+            />
+          </div>
+
+          {roomCoordinator && (
+            <div
+              className="project-settings__panel"
+              hidden={activeSection !== 'coordinator'}
+            >
+              <RoomCoordinatorSection
+                slug={slug}
+                settings={project?.roomCoordinator}
+                onSaved={refetchProject}
+              />
+            </div>
+          )}
 
           <div
             className="project-settings__panel"
@@ -806,47 +977,37 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <KnowledgeSection slug={slug} />
           </div>
 
-          {/* Danger Zone */}
+          {/* #5070: the Project's own schedules (`project-schedules` preview) */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'schedules'}
+          >
+            {project && previewFlags.has('project-schedules') && (
+              <ProjectSchedulesSection
+                projectId={project.id}
+                projectName={form.name}
+                held={project.lifecycle !== undefined}
+              />
+            )}
+          </div>
+
+          {/* #5069: Pause, Archive, Delete */}
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'danger'}
           >
-            <PageSection
-              id="section-danger"
-              className="project-settings__section"
-              eyebrow="Destructive action"
-              title="Danger zone"
-              description="Deleting this project cannot be undone."
-              tone="danger"
-            >
-              <Button
-                variant="danger-outline"
-                onClick={() => {
-                  setDeleteError(null);
-                  setDeleteOpen(true);
-                }}
-              >
-                Delete Project
-              </Button>
-            </PageSection>
+            <ProjectLifecycleSection
+              slug={slug}
+              name={form.name}
+              lifecycle={project?.lifecycle}
+              pauseArchiveEnabled={previewFlags.has('project-pause-archive')}
+              // The Project is gone, so there is no "back": land on Home BY
+              // NAME, placed in `main`, not on whatever occupies it (#1523).
+              onDeleted={() => showSurface('home')}
+            />
           </div>
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={deleteOpen}
-        title="Delete Project"
-        message={`Delete "${form.name}"? Project settings and layouts will be deleted. Tasks and chats stay in history, but they will no longer have a live Project workspace. This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        pending={deleteMutation.isPending}
-        error={deleteError}
-        onConfirm={() => void deleteProject()}
-        onCancel={() => {
-          setDeleteOpen(false);
-          setDeleteError(null);
-        }}
-      />
 
       <DiscardModal />
     </div>

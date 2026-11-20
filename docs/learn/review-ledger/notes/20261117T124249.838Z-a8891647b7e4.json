@@ -1,0 +1,7 @@
+{
+  "revision": "7b2533eebd54fd2642b2847bf656f05bb2421ddc",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated docs bundle after merging #5129 and recording how head review sits with a Task's watch; station-docs.md's claims about the bundle are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

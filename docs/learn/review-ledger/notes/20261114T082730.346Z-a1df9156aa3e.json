@@ -1,0 +1,27 @@
+{
+  "revision": "1dcc8ec9135d89855baffd8cb06f281d2188a669",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta is docs/guides/testing.md CI-automation prose (refused-cancel warnings in the retirement paths, CI health 5xx read retries and stuck-work reporting); nothing this page states changed. No prose change.","inputs":["docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Checked the Nightly sweep section: the hygiene and hygiene-issue jobs are unchanged apart from package-manager-cache: false on their setup-node; tracking-issue.mjs gained postableReport, which the hygiene upsert does not use, so the single-issue pattern described still holds. No prose change.","inputs":["docs/guides/code-hygiene.md",".github/workflows/docs-freshness-sweep.yml","scripts/lib/tracking-issue.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Delta is docs/guides/testing.md CI-automation prose (refused-cancel warnings in the retirement paths, CI health 5xx read retries and stuck-work reporting); nothing this page states changed. No prose change.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Checked the freshness sweep paragraph: the sweep still keeps one tracking issue on main and never fails a required check; its writer now also refuses a report for another revision or over 60,000 characters and breaks @ mentions (docs-freshness-sweep.mjs upsertFreshnessIssue). No prose change.","inputs":["docs/guides/documentation-review-ledger.md",".github/workflows/docs-freshness-sweep.yml","scripts/docs-freshness-sweep.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reworded the landing paragraph: the arm job holds the concurrency group keyed by head branch, other PRs never queue behind it (pinned by the two-PR replay case in merge-queue-dequeue.test.ts), the skipped-event claim depends on undocumented GitHub behaviour not yet confirmed by a hosted run, and a dequeue run and a label arm run for one PR can run at once; matches the landing-automation.yml comment.","inputs":["docs/guides/releasing.md",".github/workflows/landing-automation.yml","scripts/__tests__/merge-queue-dequeue.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Updated: 409 refusals in the retirement paths warn and continue (pr-ci-supersession.mjs requestOrWarn, tests for merged and merge-group paths); CI health retries 5xx reads up to three attempts, never the --record write (retryServerErrors), and reports work unfinished over six hours, or a job-less run that old, as stuck in its own warning without failing (STUCK_AFTER_HOURS, CLI tests). Checked against the scripts and tests named.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs","scripts/__tests__/ci-health.test.ts","scripts/ci-health.mjs"]},
+
+    {"path":"docs/reference/backlog-disposition-policy.md","note":"Added the Backlog policy findings tracking issue: written by the dependency-free backlog-issue job, counts plus first 50 entries per list, issue numbers in code spans, posted only for its own revision under the size bound with mentions broken, closed when nothing is reported (backlog-priority-policy.mjs buildBacklogReport/upsertBacklogIssue, workflow and tests).","inputs":["docs/reference/backlog-disposition-policy.md",".github/workflows/backlog-priority-policy.yml","scripts/__tests__/backlog-priority-policy.test.ts","scripts/backlog-priority-policy.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Delta is docs/guides/testing.md CI-automation prose (refused-cancel warnings in the retirement paths, CI health 5xx read retries and stuck-work reporting); nothing this page states changed. No prose change.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Delta is docs/guides/testing.md CI-automation prose (refused-cancel warnings in the retirement paths, CI health 5xx read retries and stuck-work reporting); nothing this page states changed. No prose change.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Delta is docs/guides/testing.md CI-automation prose (refused-cancel warnings in the retirement paths, CI health 5xx read retries and stuck-work reporting); nothing this page states changed. No prose change.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Delta is docs/guides/testing.md CI-automation prose (refused-cancel warnings in the retirement paths, CI health 5xx read retries and stuck-work reporting); nothing this page states changed. No prose change.","inputs":["tests/AGENTS.md"]}
+  ]
+}

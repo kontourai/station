@@ -29,6 +29,11 @@ import {
   type ProjectResolutionView,
   type ProjectResourceBindOutcome,
 } from '@kontourai/station-contracts/project-identity';
+import type {
+  ProjectDeletionPreview,
+  ProjectLifecycleAction,
+  ProjectLifecycleResult,
+} from '@kontourai/station-contracts/project-lifecycle';
 import { PROJECT_MEMBER_ACTIONS } from '@kontourai/station-contracts/project-membership';
 import type {
   WorkspaceFileChanges,
@@ -679,6 +684,39 @@ export async function deleteProject(
     opts,
   );
   return unwrapOrThrow(response);
+}
+
+/**
+ * `POST /api/projects/:slug/lifecycle` (#5069): Pause, Resume, Archive or
+ * Unarchive. Pause and Archive answer once the Project's turns stopped or
+ * the bounded wait ended.
+ */
+export async function setProjectLifecycle(
+  apiBase: string,
+  slug: string,
+  action: ProjectLifecycleAction,
+  opts?: ClientRequestOptions,
+): Promise<ProjectLifecycleResult> {
+  const response = await mutateJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/lifecycle`,
+    'POST',
+    opts,
+    { action },
+  );
+  return unwrapOrThrow<ProjectLifecycleResult>(response);
+}
+
+/** `GET /api/projects/:slug/deletion-preview` (#5069): what Delete removes and keeps. */
+export async function getProjectDeletionPreview(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectDeletionPreview> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/deletion-preview`,
+    opts,
+  );
+  return unwrapOrThrow<ProjectDeletionPreview>(response);
 }
 
 /** `POST /api/projects/:slug/layouts` — create a project layout. */

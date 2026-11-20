@@ -1,7 +1,0 @@
-{
-  "revision": "2c87ba3b1e0cd7d1ed71fa028cd9b30607e6bc5f",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"Added the Phone app toolbar section; read it against chat.css (fixed min(28vw,120px) name slot, notice mark overlaid on the dot) and toolbar-reachability (wordmark whole at 440 for Station, wrapped away elsewhere; logo stays). 44px target claims unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

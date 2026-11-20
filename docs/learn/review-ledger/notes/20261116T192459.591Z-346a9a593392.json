@@ -1,0 +1,25 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Adds the useChildWorkTranscriptTailQuery export beside useChildWorkTranscriptQuery; no other export changed. SDK reference documents the hook.","inputs":["packages/sdk/src/index.ts"]}
+  ]
+}

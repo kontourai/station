@@ -1,0 +1,7 @@
+{
+  "revision": "b9fd2b89153b463e4ea198b06e96785aded4db86",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Delta review for the qualification manifest isolation fix. Added the paragraph under Known qualification failures and checked it against the committed sources: run-full-regression-phases.mjs (takeManifestDirectory in main, withoutManifestLocations in runPhaseProcess, a fresh mkdtemp group directory per corpus phase through STATION_QUALIFICATION_GROUP_MANIFEST_DIR, readPhaseGroups accepting only planned groups, writeJobManifest fallback), run-vitest-corpus.mjs (takes the group variable in main, strips both locations from the Vitest environment, passes --outputFile.stationFailures), vitest-failure-reporter.mjs (target read in onInit), run-e2e-suite.mjs (takes the location before main), and vitest.setup.ts (deletes both variables). The existing vitest.setup.ts claims at the GITHUB_* scrub and liveness-factor passages still hold. The rest of the guide was not re-read.","inputs":["docs/guides/testing.md","scripts/run-vitest-corpus.mjs","vitest.setup.ts"]}
+  ]
+}

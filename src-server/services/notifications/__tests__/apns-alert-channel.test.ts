@@ -310,6 +310,42 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
     }
   });
 
+  test('a tap can open the session: the sealed alert names it, with or without content', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    try {
+      const h = await harness();
+      const record = approval({
+        metadata: { sessionId: 'thread-7', projectSlug: 'alpha' },
+      });
+      await h.emit(record, 1);
+      h.wiring.preferences.patch({
+        perSurface: {
+          [`device:${h.deviceId}`]: { minUrgency: 'info', hideContent: true },
+        },
+      });
+      await h.emit({ ...record, id: 'n-hidden' }, 2);
+      expect(h.appleCalls).toHaveLength(2);
+      const opened = h.appleCalls.map((call) => {
+        const payload = JSON.parse(call.body ?? '{}');
+        return open(
+          payload.station.sealed,
+          h.registration.payloadKey,
+          `${NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX}${h.registration.registrationId}`,
+        );
+      });
+      for (const fields of opened)
+        expect(fields).toMatchObject({
+          session_id: 'thread-7',
+          project_slug: 'alpha',
+        });
+      // Only inside the seal: Apple never reads the session.
+      for (const call of h.appleCalls)
+        expect(call.body).not.toContain('thread-7');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('hideContent: generic fixed text, and the sealed payload carries neither title nor body', async () => {
     vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
     try {
@@ -697,6 +733,27 @@ describe('ApnsAlertChannel through the delivery router and the real gateway', ()
 });
 
 describe('composeApnsAlertPlaintext', () => {
+  test('the session reference is never cut, however long the text', () => {
+    const session = {
+      session_id: `t${'x'.repeat(127)}`,
+      project_slug: `p${'y'.repeat(127)}`,
+    };
+    const plaintext = composeApnsAlertPlaintext({
+      stationId: 'station-1',
+      notification: {
+        id: 'n-1',
+        title: 'T'.repeat(5000),
+        body: 'B'.repeat(5000),
+      },
+      urgency: 'attention',
+      hideContent: false,
+      now: 1,
+      session,
+    });
+    expect(JSON.parse(plaintext)).toMatchObject(session);
+    expect(Buffer.byteLength(plaintext, 'utf8')).toBeLessThanOrEqual(2_000);
+  });
+
   test('#3382: the sealed title and body are in display form', () => {
     const RLO = String.fromCodePoint(0x202e);
     const plaintext = composeApnsAlertPlaintext({

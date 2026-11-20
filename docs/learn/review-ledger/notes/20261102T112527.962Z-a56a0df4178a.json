@@ -1,7 +1,0 @@
-{
-  "revision": "b731d4459aa64b3416d01545ae94a044f44c78f6",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Emulator section: added that a view copies the output it posts to its worker (views sharing one store session each keep theirs; checked controller.attachSession) and that a view with no box never resizes the shared PTY (checked measureGrid/relayout/start). Re-read the SDK store and Coding cutover paragraphs against TerminalPanel and the store: unchanged and accurate.","inputs":["docs/design/terminal.md"]}
-  ]
-}

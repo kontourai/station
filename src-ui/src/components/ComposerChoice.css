@@ -26,10 +26,6 @@
   flex-shrink: 0;
 }
 
-.composer-choices > .composer-choice:has(.chat-input__engine-moved--short) {
-  min-width: 144px;
-}
-
 @supports (animation-timeline: scroll()) {
   .composer-choices {
     animation: chat-markdown-table-edge var(--ease-linear) both;
@@ -80,4 +76,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Matches the Run setup trigger's corner badge (ComposerRunControl.css). */
+.composer-choice__safety {
+  flex: none;
+  color: var(--k-caution);
 }

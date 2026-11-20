@@ -1,6 +1,10 @@
 /**
  * #2452: replays a REAL `muse serve` capture (Muse Code 1.3.0-R3401.1, the
- * `fixtures/muse-serve-1.3.0-*.jsonl` files, scrubbed) against the actual
+ * `fixtures/muse-serve-1.3.0-*.jsonl` files, Muse Code 1.4.18, the
+ * `fixtures/muse-serve-1.4.18-*.jsonl` files, and Muse Code 1.4.20, the
+ * `fixtures/muse-serve-1.4.20-*.jsonl` files; all scrubbed: synthetic ids,
+ * `/workspace/probe` paths, zeroed build and work hashes, and the host's own
+ * reminder-agent items and session name left out) against the actual
  * `MuseAdapter`, with the host process replaced by a stream double.
  *
  * The capture is the probe's own stdio transcript: every frame the host wrote
@@ -10,7 +14,8 @@
  * method, then answers with the captured reply under the adapter's own id.
  * Requests only the probe sent (its own diagnostics, and the
  * `session/setApprovalMode` the adapter replaces by passing the mode on
- * `session/start`) are skipped with their replies.
+ * `session/start`) are skipped with their replies, as are the probe's own
+ * replies to the host's server requests: the adapter writes its own.
  *
  * One transform, and only one: the three probes that selected the approval
  * mode AFTER `session/start` recorded that start's reply as `allowAll`. The
@@ -24,11 +29,38 @@ import { readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import type { MuseServeProcessLike } from '../adapters/muse-serve-rpc.js';
 
-export type MuseServeCaptureName =
-  | 'workflow-child-approve'
-  | 'workflow-child-deny'
-  | 'workflow-child-stop'
-  | 'approval-unanswered-workflow-cancel';
+const MUSE_SERVE_CAPTURE_VERSIONS = {
+  'workflow-child-approve': '1.3.0',
+  'workflow-child-deny': '1.3.0',
+  'workflow-child-stop': '1.3.0',
+  'approval-unanswered-workflow-cancel': '1.3.0',
+  // A steer joining a running turn and changing its final answer.
+  steer: '1.4.18',
+  // A `request_user_input` question: request + requested, answer, settled.
+  'user-input': '1.4.18',
+  // A one-child workflow (its `subagent` item carries the child's result)
+  // and a `subagent/sendMessage` the child delivered into its reply.
+  'workflow-child-steer': '1.4.18',
+  // Two background shell tasks: one that finished on its own, one stopped
+  // with `task/stop`; `task/list` lists each while it runs; then an idle
+  // `session/compact` refused `compaction_unavailable`.
+  'background-task-stop': '1.4.18',
+  // A second `muse serve` process re-attaching the first one's idle session
+  // with `session/resume`, then `session/resume` of an unknown id refused
+  // `sessionNotFound`; `goal/resume` waking a goal turn; `session/fork`;
+  // `goal/clear` (`goalChanged` null) and `goal/clear`/`goal/pause` refused
+  // `missing_goal`.
+  'resume-goal-fork': '1.4.18',
+  // One turn, then `goal/set` on the idle session (a goal turn starts at
+  // once) and `goal/pause` (`goalChanged` paused, before the ack).
+  'goal-set-pause': '1.4.18',
+  // One turn on a priced provider: `session/tokenUsage` carries
+  // `cumulative.cost {usd, partial: false}` and `session/contextUsage` its
+  // window, used tokens and pressure.
+  'cost-context': '1.4.20',
+} as const;
+
+export type MuseServeCaptureName = keyof typeof MUSE_SERVE_CAPTURE_VERSIONS;
 
 export interface MuseServeCaptureFrame {
   t: number;
@@ -40,7 +72,10 @@ export function loadMuseServeCapture(
   name: MuseServeCaptureName,
 ): MuseServeCaptureFrame[] {
   return readFileSync(
-    new URL(`./fixtures/muse-serve-1.3.0-${name}.jsonl`, import.meta.url),
+    new URL(
+      `./fixtures/muse-serve-${MUSE_SERVE_CAPTURE_VERSIONS[name]}-${name}.jsonl`,
+      import.meta.url,
+    ),
     'utf8',
   )
     .split('\n')
@@ -56,6 +91,15 @@ const DRIVEN_METHODS = new Set([
   'turn/interrupt',
   'approval/decide',
   'subagent/stop',
+  'turn/steer',
+  'userInput/answer',
+  'userInput/cancel',
+  'subagent/sendMessage',
+  'task/stop',
+  'session/compact',
+  'session/resume',
+  'goal/pause',
+  'goal/clear',
 ]);
 
 export interface SentFrame {
@@ -172,6 +216,8 @@ export interface ReplayOptions {
   ) => Promise<unknown> | undefined;
   /** Stop before this capture index (exclusive). */
   stopAt?: number;
+  /** Driven methods this replay skips, as if only the probe had sent them. */
+  notDriven?: ReadonlySet<string>;
 }
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -197,7 +243,7 @@ export async function replayMuseServeCapture(
     const method = typeof msg.method === 'string' ? msg.method : undefined;
     if (dir === 'c2s') {
       if (!method || msg.id === undefined) continue;
-      if (!DRIVEN_METHODS.has(method)) {
+      if (!DRIVEN_METHODS.has(method) || options.notDriven?.has(method)) {
         skipped.add(msg.id);
         continue;
       }

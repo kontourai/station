@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Checked its fast-checks and code-health claims against run-ci-fast.mjs, verification-policy-gate.mjs and fast-checks-shards.mjs: the new diff-whitespace static and the 100-file shard proxy do not contradict its description of the aggregate, receipts or code-health gate; no prose change.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/__tests__/run-ci-fast.test.ts","scripts/lib/fast-checks-shards.mjs","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}

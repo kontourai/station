@@ -12,12 +12,6 @@ export const STATION_CHANNEL_PORTS_DATA = {
     consentPort: 18144,
     instanceDirectory: 'stable',
   },
-  beta: {
-    uiPort: 28000,
-    serverPort: 28141,
-    consentPort: 28144,
-    instanceDirectory: 'beta',
-  },
   nightly: {
     uiPort: 38000,
     serverPort: 38141,
@@ -31,11 +25,6 @@ export const STATION_RELEASE_RINGS_DATA = {
     runtimeChannel: 'stable',
     prerelease: false,
     launcher: 'station',
-  },
-  preview: {
-    runtimeChannel: 'beta',
-    prerelease: true,
-    launcher: 'station-beta',
   },
   nightly: {
     runtimeChannel: 'nightly',

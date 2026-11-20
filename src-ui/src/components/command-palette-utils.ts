@@ -207,3 +207,73 @@ export function groupRanked(ranked: ScoredCommand[]): PaletteGroup[] {
   }
   return order.map((label) => ({ label, commands: byGroup.get(label) ?? [] }));
 }
+
+/**
+ * Ids offered under Suggestions when the query is empty (#4694), in display
+ * order. Each is shown only when the live index holds it and it can run, so
+ * a command that is unregistered in this view, or unavailable here, is
+ * skipped rather than advertised.
+ */
+export const EMPTY_QUERY_SUGGESTION_IDS: readonly string[] = [
+  'command:dock.newChat',
+  'command:app.newLayout',
+  'action:new-board',
+  'command:app.shortcuts',
+];
+
+/** Recent rows shown on an empty query, newest first. */
+export const EMPTY_QUERY_RECENT_LIMIT = 5;
+
+/** The group that holds registry destinations; listed as Places. */
+const PLACES_SOURCE_GROUP = 'Navigation';
+
+/**
+ * The guided empty-query list (#4694): Suggestions, then Recent (this
+ * device's command history, newest first), then Places, followed by every
+ * remaining command under its usual group so the full index stays
+ * browsable. A row appears once, in its first section. Sections with no
+ * rows are omitted. Rows keep their own `group`, which is the kind tag a
+ * row without a shortcut shows.
+ */
+export function emptyQueryGroups(
+  commands: readonly PaletteCommand[],
+  frecency: readonly CommandFrecencyEntry[],
+  suggestionIds: readonly string[] = EMPTY_QUERY_SUGGESTION_IDS,
+): PaletteGroup[] {
+  const byId = new Map(commands.map((command) => [command.id, command]));
+  const shown = new Set<string>();
+  const take = (command: PaletteCommand | undefined): ScoredCommand[] => {
+    if (!command || shown.has(command.id)) return [];
+    shown.add(command.id);
+    return [{ ...command, score: 0 }];
+  };
+
+  const suggestions = suggestionIds.flatMap((id) => {
+    const command = byId.get(id);
+    return command && !command.disabled ? take(command) : [];
+  });
+  const recent = [...frecency]
+    .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+    .map((entry) => byId.get(entry.commandId))
+    .filter(
+      (command): command is PaletteCommand =>
+        !!command && !shown.has(command.id) && isFrecencyEligible(command),
+    )
+    .slice(0, EMPTY_QUERY_RECENT_LIMIT)
+    .flatMap(take);
+  const places = commands
+    .filter((command) => command.group === PLACES_SOURCE_GROUP)
+    .flatMap(take);
+  const rest = groupRanked(
+    commands
+      .filter((command) => !shown.has(command.id))
+      .map((command) => ({ ...command, score: 0 })),
+  );
+
+  return [
+    { label: 'Suggestions', commands: suggestions },
+    { label: 'Recent', commands: recent },
+    { label: 'Places', commands: places },
+    ...rest,
+  ].filter((group) => group.commands.length > 0);
+}

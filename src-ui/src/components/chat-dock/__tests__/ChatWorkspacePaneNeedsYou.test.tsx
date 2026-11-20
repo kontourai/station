@@ -61,18 +61,9 @@ vi.mock('../../../hooks/useDockShellChrome', async (importOriginal) => {
   };
 });
 vi.mock('../ChatDockMobileHeader', () => ({
-  ChatDockMobileHeader: ({
-    activeCount,
-    projectSwitcher,
-  }: {
-    activeCount: number;
-    projectSwitcher?: { projectName: string };
-  }) => (
+  ChatDockMobileHeader: ({ activeCount }: { activeCount: number }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
-      <div data-testid="mobile-dock-project-name">
-        {projectSwitcher?.projectName}
-      </div>
     </>
   ),
 }));

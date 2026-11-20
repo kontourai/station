@@ -1,0 +1,7 @@
+{
+  "revision": "e3f3d880eaa77a53fe91942099dc2f15924aea5f",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Searched for shard, slot, statics, concurrency and FIFO claims after the PR shard-slot change; the document names fast-checks-statics and planned shards but states no PR concurrency-group count or routing, so the five-group shard mapping leaves its claims accurate.","inputs":[".veritas/README.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

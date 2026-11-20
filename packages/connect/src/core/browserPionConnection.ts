@@ -2,6 +2,7 @@ import type {
   DeviceConnectionTrustRecord,
   StationConnectionProofBinding,
 } from '@kontourai/station-contracts/connection-proof';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import {
   connectionDescriptionDigest,
   copyStationConnectionTrust,
@@ -78,12 +79,6 @@ export interface BrowserPionConnectionSnapshot {
   readonly applicationOrigin: string;
 }
 
-function base64url(bytes: Uint8Array) {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
 function fingerprints(sdp: string) {
   const values = [...sdp.matchAll(/^a=fingerprint:sha-256 (.+)$/gm)].map(
     (match) => match[1]!.trim(),
@@ -140,7 +135,7 @@ function copyConnectionIdentity(value: unknown): BrowserPionConnectionIdentity {
     const decoded = Uint8Array.from(atob(base64), (character) =>
       character.charCodeAt(0),
     );
-    if (decoded.byteLength !== 32 || base64url(decoded) !== nonce)
+    if (decoded.byteLength !== 32 || encodeBase64Url(decoded) !== nonce)
       throw new Error();
     return Object.freeze({ clientId, nonce });
   } catch {
@@ -348,7 +343,9 @@ export function createBrowserPionConnection(input: {
             const connectionId = globalThis.crypto?.randomUUID?.();
             if (!connectionId)
               throw new Error('browser_relay_secure_context_required');
-            const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
+            const nonce = encodeBase64Url(
+              crypto.getRandomValues(new Uint8Array(32)),
+            );
             connectionIdentity = Object.freeze({
               clientId: connectionId,
               nonce,

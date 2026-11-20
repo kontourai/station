@@ -9,6 +9,8 @@ evidence:
     ref: https://github.com/kontourai/station/pull/3779
   - kind: issue
     ref: https://github.com/kontourai/station/issues/3530
+  - kind: issue
+    ref: https://github.com/kontourai/station/issues/2376
   - kind: doc
     ref: docs/guides/browser-workspace.md
 ---
@@ -22,7 +24,9 @@ This record holds two things with different status:
   (#3779).
 - **Preview:** Codex dynamic tools use its Session's Station-owned app-server
   stream. The `codex-bound-browser-device-tools` Feature Preview is off by
-  default. ACP passthrough remains `caller-not-bound`.
+  default. With it on, the stream also carries Station Control
+  ([below](#station-control-on-the-codex-bound-channel)). ACP passthrough
+  remains `caller-not-bound`.
 
 It builds on frozen
 [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
@@ -113,7 +117,8 @@ later re-enable requires a fresh Session. An
 effect already dispatched cannot be undone by cancellation.
 
 Codex 0.164.0 exposes dynamic registration on `thread/start`, but its
-`thread/resume` schema has no registration update. On resume Station rebuilds
+`thread/resume` schema has no registration update. Codex 0.167.0's schema is the
+same, and `thread/fork` takes none either. On resume Station rebuilds
 the current catalog as an allowlist and refuses persisted names outside it.
 Tools added since the thread started become available on a new thread. A
 persisted name is never authority by itself. Earlier Windows probes of Codex
@@ -124,6 +129,78 @@ The same-user copied-header test protects this narrow invocation boundary; it
 does not claim isolation from arbitrary code that can compromise the Station
 process or its operator. ACP remains unavailable until both the provider-facing
 connection and the Station-owned child identity can be independently proved.
+
+### Station Control on the Codex bound channel
+
+Owner decision (#2376, 2026-11-16): with the preview on, a new Codex thread
+receives the whole Station Control catalog as `dynamicTools`, listed at `bound`.
+Station mints no header token for that Session and gives Codex no
+`station-control` MCP entry. Codex has no other route where the credential never
+leaves Station; an environment-variable bearer or a stdio shim would hold no
+better custody than the header. The cost is the full catalog on every thread,
+113,759 bytes of `dynamicTools` with the browser tools, and no progressive
+disclosure on this channel.
+
+- **Listing.** The same registrations and filters as Claude's in-process
+  server: listed at `bound`, narrowed to the Agent's
+  `(allowedTools ?? toolNames ?? []) − disabledTools` selection, and to the
+  network-restricted allowlist when Station restricts the Session's network.
+  The adapter holds every call to that selection again.
+- **Credentials.** Browser and device calls keep the request-proof
+  credential above. Every other call runs as Claude's in-process server does,
+  with the Session's `sdk-in-process` Station Control token, which travels only
+  in loopback requests Station sends to itself. The authority guard sees a
+  `bound` caller either way.
+- **Approval.** Every call goes through Station's external pre-tool policy, as a
+  Claude in-process call does, instead of Codex's own MCP approval prompt. The
+  argument limit is set per tool: the HTTP route's 1 MiB for catalog tools (an
+  `html_render` page can be 256 KiB), and 40,000 bytes for browser and device
+  tools in every Session, since their whole input is recorded in the approval
+  event. An MCP-app result's structured content is returned to the model as
+  JSON text beside its summary.
+- **Resume.** Codex 0.167.0 persists a thread's `dynamicTools` from
+  `thread/start` and restores them on `thread/resume` and `thread/fork`.
+  Station records `boundCatalog` on the resume cursor of a thread that started
+  with the catalog, and only while the resumed native thread is the same one.
+  Only such a thread resumes without the header token; its calls are still
+  held to the current catalog. Any other resume (a thread started with the
+  preview off, or before this change) and a coordinator-derived Station
+  Control entry keep the header-token server at `delegated-custody`, with
+  browser and device tools on the bound channel as before.
+- **Continuations that still hold the catalog.** A marked thread resumed with
+  the preview off, or after its Station Control became coordinator-derived,
+  gets the header-token server; Codex still shows the model its persisted
+  catalog copies, and Station refuses each with a message naming the
+  station-control MCP tool of the same name. Station does not keep serving
+  them: turning the preview off withdraws the bound channel's authority, and
+  coordinator-derived authority never rides it. The thread keeps its marker,
+  so a later resume with the preview on uses the catalog again. A resumed
+  adopted lineage (a fork of a thread Station holds no cursor for) gets the
+  header-token server and, with the preview on, the bound catalog too, so
+  persisted copies from a catalog source thread keep working. The model may
+  then see both copies of a tool; both run as this Session's caller, the bound
+  ones at `bound`. Their credentials use separate keys (`station-control`
+  for the header, `codex-control` for the bound catalog), so minting or
+  closing one channel does not revoke the other; Session shutdown revokes
+  both. Station cannot tell whether such a source carried the
+  catalog: Codex's fork and resume responses do not list a thread's
+  `dynamicTools`. An adoption's first start carries no Agent tool servers,
+  so during that first Session any catalog copies inherited from the source
+  are refused; only its later resumes serve them. Saved browser and device
+  copies have no MCP twin, so they are refused without the pointer.
+- **Station Knowledge** stays on its header-token server.
+- **Instructions.** The orchestration text for such a Session is composed at
+  `bound`, so it names the tools the Session is offered (for example
+  `list_delegation_targets`).
+
+Evidence: on 2026-11-16, Codex CLI 0.167.0 on macOS ran `codex app-server`
+against a local mock Responses endpoint (no network model, no account). A
+thread started with the 162-tool catalog offered all 162 to the model. After the
+app-server process exited, a new one resumed the thread with no `dynamicTools`
+and offered all 162 again; a fork offered all 162. A model `function_call` on
+the resumed and forked threads reached the client as `item/tool/call`. Adapter
+and runtime tests cover the request builder, the resume fallback and a `bound`
+caller at the authority guard. No real-model Session has used the catalog yet.
 
 ## Remaining slices and acceptance
 

@@ -6,6 +6,7 @@
  */
 import { describe, expect, test, vi } from 'vitest';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import {
   type StationControlCaller,
   stationControlCallerPrincipal,
@@ -48,6 +49,19 @@ const CALLERS: Record<string, StationControlCaller> = {
     }),
   },
   'slug-lookup': bound(OPERATOR, { projectIdSource: 'slug-lookup' }),
+  // #4828: callers whose conversations only the page-read tests touch.
+  'page-reader': bound(OPERATOR, {
+    sessionId: 'agent-page-reader',
+    conversationId: 'conversation-page-reader',
+  }),
+  'status-reader': bound(OPERATOR, {
+    sessionId: 'agent-status-reader',
+    conversationId: 'conversation-status-reader',
+  }),
+  'unbound-reader': bound(OPERATOR, {
+    sessionId: 'agent-unbound-reader',
+    assurance: 'bearer-exposed',
+  }),
   'no-project': {
     sessionId: 'agent-no-project',
     assurance: 'bound',
@@ -346,3 +360,38 @@ test.each([
     );
   },
 );
+
+describe('browser-agent routes: a page read marks the conversation (#4828)', () => {
+  const marked = (...ids: string[]) =>
+    sharedUntrustedContentLedger.conversationHasRead(...ids);
+
+  test("an authorized snapshot marks the caller's session and conversation", async () => {
+    const h = harness();
+    expect(await marked('agent-page-reader')).toBe(false);
+    const response = await h.call('snapshot', 'page-reader', {
+      browserSessionId: 'bs_x',
+    });
+    expect(await response.json()).toMatchObject({ ok: true });
+    expect(await marked('agent-page-reader')).toBe(true);
+    expect(await marked('conversation-page-reader')).toBe(true);
+  });
+
+  test('a status read, which returns no page content, does not mark it', async () => {
+    const h = harness();
+    await h.call('status', 'status-reader', {});
+    expect(h.automation.status).toHaveBeenCalled();
+    expect(
+      await marked('agent-status-reader', 'conversation-status-reader'),
+    ).toBe(false);
+  });
+
+  test('a refused caller reads nothing and is not marked', async () => {
+    const h = harness();
+    const response = await h.call('snapshot', 'unbound-reader', {
+      browserSessionId: 'bs_x',
+    });
+    expect(await response.json()).toMatchObject({ ok: false });
+    expect(h.automation.snapshot).not.toHaveBeenCalled();
+    expect(await marked('agent-unbound-reader')).toBe(false);
+  });
+});

@@ -70,11 +70,14 @@ export function fakeClaudeSpawn() {
     args: readonly string[],
     options: unknown,
   ): never => {
-    // #2494: a confined launch is the fake command wrapped in sandbox-exec.
+    // #2494: a confined launch is the fake command wrapped in sandbox-exec,
+    // or (#4770) in bubblewrap, after its `--` separator.
     const wrapped =
-      command === '/usr/bin/sandbox-exec' &&
-      args[0] === '-p' &&
-      args[2] === FAKE_CLAUDE_COMMAND;
+      (command === '/usr/bin/sandbox-exec' &&
+        args[0] === '-p' &&
+        args[2] === FAKE_CLAUDE_COMMAND) ||
+      (command === '/usr/bin/bwrap' &&
+        args[args.indexOf('--') + 1] === FAKE_CLAUDE_COMMAND);
     if (command !== FAKE_CLAUDE_COMMAND && !wrapped)
       throw new Error(`a test tried to spawn a real process: ${command}`);
     return new FakeClaudeChild(

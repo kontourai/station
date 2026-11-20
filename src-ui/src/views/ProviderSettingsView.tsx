@@ -1,3 +1,4 @@
+import './ProviderSettingsView.css';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import {
   ConnectionModelSelectionError,
@@ -12,6 +13,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { DetailHeader } from '../components/DetailHeader';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { resourceRow } from '../components/resource-hub/resource-row';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { CONNECTIONS_MODELS_PANE_ID } from '../components/split-pane-metrics';
 import { Empty } from '../components/state';
@@ -23,10 +25,13 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { NavigationView } from '../types';
 import { connectionEngineId } from '../utils/execution';
 import { describeStationFailure } from '../utils/stationFailure';
+import {
+  deriveConnectionHealth,
+  modelHealthInput,
+} from './connections-hub/connection-health';
 import { ProviderConnectionForm } from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
 import { ProviderTypePicker } from './provider-settings/ProviderTypePicker';
-import { resolveProviderPresentation } from './provider-settings/providerCatalog';
 import type { ProviderConnection } from './provider-settings/types';
 import {
   capabilitiesForType,
@@ -434,47 +439,16 @@ export function ProviderSettingsView({
 
   // 6-OPS-27: the list rail used to carry no readiness at all — a green dot
   // meaning `enabled` — while the hub card for the same connection asserted
-  // "Ready". One derivation now feeds both.
+  // "Ready". One derivation now feeds the row badge, the hub card and the
+  // section rail.
   const items = filtered.map((p) => {
     const described = describeProvider(p);
-    const presentation = resolveProviderPresentation({
-      id: p.id,
-      kind: 'model',
-      type: p.type,
-      name: p.name,
-      enabled: p.enabled,
-      status: p.status,
-      prerequisites: p.prerequisites,
-      ...(p.readinessEvidence
-        ? { readinessEvidence: p.readinessEvidence }
-        : {}),
-      setup: null,
-      href: '',
-    });
-    return {
+    return resourceRow({
       id: p.id,
       name: described.name,
-      subtitle: `${presentation.readiness} · ${described.subtitle}`,
-      icon: (
-        <span
-          style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background:
-              presentation.tone === 'ready'
-                ? 'var(--success-text, #22c55e)'
-                : presentation.tone === 'error'
-                  ? 'var(--error-text)'
-                  : presentation.tone === 'warn'
-                    ? 'var(--warning-text)'
-                    : 'var(--text-muted)',
-            display: 'inline-block',
-            flexShrink: 0,
-          }}
-        />
-      ),
-    };
+      status: deriveConnectionHealth(modelHealthInput(p)),
+      facts: [described.subtitle],
+    });
   });
 
   const detectedActions = [
@@ -558,7 +532,7 @@ export function ProviderSettingsView({
       // these two props would be dead text.
       listEmptyTitle="No model connections yet"
       emptyContent={
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="split-pane__detail-empty">
           {/*
             This panel's own "nothing to select"
             label duplicated whichever fact the list pane had already
@@ -579,8 +553,8 @@ export function ProviderSettingsView({
           {llmEmbeddingProviders.length > 0 && items.length > 0 && (
             <Empty
               variant="compact"
-              label="Select a model connection"
-              description="Choose a model connection to review its status and setup."
+              label="Nothing selected"
+              description="Select a model connection to review its status and setup."
             />
           )}
           {detectedActions.length > 0 && (

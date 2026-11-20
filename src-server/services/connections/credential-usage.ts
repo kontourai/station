@@ -43,6 +43,7 @@ import { promisify } from 'node:util';
 import type {
   EngineAccountUsage as CredentialUsage,
   EngineAccountUsageWindow as CredentialUsageWindow,
+  EngineAccountEngine,
 } from '@kontourai/station-contracts/engine-accounts';
 import { managedEngineRefusalFor } from '../../security/managed-engine-limits.js';
 import { projectUsageMetadata } from './credential-usage-metadata.js';
@@ -630,10 +631,20 @@ function normalizeCodex(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
 
 /** Dispatch by the engine a credential belongs to. */
 export async function readCredentialUsage(
-  engine: 'claude' | 'codex',
+  engine: EngineAccountEngine,
   configDir: string,
   deps: UsageFetchDeps = defaultUsageFetchDeps(),
 ): Promise<CredentialUsage> {
+  // #1942: Muse's per-account allowance (`muse usage --json`) is not read
+  // here yet. The one account it was observed on reports no allowance
+  // (`"allowance": null, "reason": "no_allowance"`), so no window of the
+  // real shape exists to map from; a session's allowance is still read
+  // through `muse serve` (`usage/read`).
+  if (engine === 'muse')
+    return unknown(
+      deps,
+      'Muse Code account limits are not read per credential profile yet.',
+    );
   return engine === 'claude'
     ? readClaudeUsage(configDir, deps)
     : readCodexUsage(configDir, deps);

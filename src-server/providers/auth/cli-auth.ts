@@ -276,6 +276,18 @@ export async function augmentedSpawnEnv(
   });
 }
 
+// #4774: `augmentedSpawnEnv` without its two derived keys, for a read that
+// needs only the inherited variables (the confinement preflight's credential
+// check) and must not act: the PATH augmentation may spawn a login shell, and
+// the Station TMPDIR is created on the spot. Scrubbed the same way, so every
+// key but PATH and TMPDIR (left as inherited) matches what that helper
+// returns.
+export function inheritedSpawnEnv(
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return scrubBootInternalSecrets({ ...baseEnv });
+}
+
 /**
  * Answers the absolute-path case only, so both twins can share one answer
  * without either of them paying for PATH resolution it does not need.
@@ -391,6 +403,13 @@ export async function runCliCommand(
     timeoutMs?: number;
     maxBuffer?: number;
     killSignal?: NodeJS.Signals;
+    /** The folder to run in, for a CLI whose answer depends on it. */
+    cwd?: string;
+    /**
+     * Inherited variables the child must not see at all (an overlay can only
+     * mask one with an empty value), e.g. an ambient key a profile run drops.
+     */
+    omitEnv?: readonly string[];
   },
 ): Promise<CliCommandResult | null> {
   try {
@@ -401,7 +420,8 @@ export async function runCliCommand(
           ...envOverlay,
           TMPDIR: augmented.TMPDIR,
         })
-      : augmented;
+      : { ...augmented };
+    for (const key of bounds?.omitEnv ?? []) delete env[key];
     const invocation = cliInvocation(command, args);
     const { stdout, stderr } = await execFile(
       invocation.command,
@@ -414,6 +434,7 @@ export async function runCliCommand(
         timeout: bounds?.timeoutMs ?? CLI_PROBE_TIMEOUT_MS,
         ...(bounds?.maxBuffer ? { maxBuffer: bounds.maxBuffer } : {}),
         ...(bounds?.killSignal ? { killSignal: bounds.killSignal } : {}),
+        ...(bounds?.cwd ? { cwd: bounds.cwd } : {}),
         windowsHide: true,
         signal,
         env,
@@ -536,17 +557,39 @@ export async function buildCliRuntimePrerequisites(input: {
    * sign-in is unverified, and is optional so it never gates a chat.
    */
   unverifiedAuthDescription?: string;
+  /**
+   * `managed`: Station installs and runs this engine's runtime, so it is not
+   * a CLI the person installs. Absent: a command-line program.
+   */
+  runtime?: 'managed';
+  /**
+   * `station`: Station keeps this engine's sign-in (its host-auth vault), so
+   * the row names Station's sign-in, not the program's own login.
+   */
+  signIn?: 'station';
   signal?: AbortSignal;
 }): Promise<Prerequisite[]> {
   throwIfAborted(input.signal);
   const binary = (input.findBinary ?? findCliBinary)(input.command);
   const installStatus = binary ? 'installed' : 'missing';
+  const program =
+    input.runtime === 'managed'
+      ? `${input.displayName} runtime`
+      : `${input.displayName} CLI`;
+  const signedInDescription =
+    input.signIn === 'station'
+      ? `Station holds a sign-in for ${input.displayName}.`
+      : `${input.displayName} CLI credentials are present on this Station.`;
+  const signedOutDescription =
+    input.signIn === 'station'
+      ? `Sign in to ${input.displayName} from its sign-in panel in Connections.`
+      : `${input.displayName} CLI is not authenticated.`;
 
   const prerequisites: Prerequisite[] = [
     {
       id: `${input.command}-cli`,
-      name: `${input.displayName} CLI`,
-      description: `Required to launch the ${input.displayName} runtime.`,
+      name: program,
+      description: `Required to launch the ${input.displayName} engine.`,
       status: installStatus,
       category: 'required',
       installGuide: {
@@ -559,7 +602,7 @@ export async function buildCliRuntimePrerequisites(input: {
     prerequisites.push({
       id: `${input.command}-auth`,
       name: `${input.displayName} login`,
-      description: `${input.displayName} CLI must be installed before authentication can be verified.`,
+      description: `${program} must be installed before authentication can be verified.`,
       status: 'missing',
       category: 'required',
       installGuide: {
@@ -591,7 +634,7 @@ export async function buildCliRuntimePrerequisites(input: {
     prerequisites.push({
       id: `${input.command}-auth`,
       name: `${input.displayName} login`,
-      description: `${input.displayName} CLI readiness could not be verified safely.`,
+      description: `${program} readiness could not be verified safely.`,
       status: 'error',
       category: 'required',
       installGuide: {
@@ -607,7 +650,7 @@ export async function buildCliRuntimePrerequisites(input: {
     // observation only when this probe produced no information.
     prerequisites[0] = {
       ...prerequisites[0],
-      description: `${input.displayName} CLI is installed but failed to run cleanly.`,
+      description: `${program} is installed but failed to run cleanly.`,
       status: 'error',
     };
     return prerequisites;
@@ -638,10 +681,10 @@ export async function buildCliRuntimePrerequisites(input: {
     name: `${input.displayName} login`,
     description:
       authState === 'authenticated'
-        ? `${input.displayName} CLI credentials are present on this Station.`
+        ? signedInDescription
         : authState === 'unauthenticated'
-          ? `${input.displayName} CLI is not authenticated.`
-          : `${input.displayName} CLI authentication could not be verified safely.`,
+          ? signedOutDescription
+          : `${program} authentication could not be verified safely.`,
     status:
       authState === 'authenticated'
         ? 'installed'

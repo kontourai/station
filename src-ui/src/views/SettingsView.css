@@ -1252,20 +1252,6 @@
   flex-basis: 100%;
 }
 
-.settings__section .page-row {
-  padding-block: var(--k-space-4);
-  gap: var(--k-space-4);
-}
-.settings__section .page-row__label {
-  font-size: var(--k-text-md);
-  font-weight: 500;
-}
-.settings__section .page-row__description {
-  margin-top: var(--k-space-1);
-  font-size: var(--k-text-sm);
-  line-height: var(--k-leading-normal);
-  color: var(--k-text-muted);
-}
 .settings__section-icon {
   display: none;
 }
@@ -1308,12 +1294,6 @@
   max-width: 100%;
 }
 
-.settings__section .page-row:first-child {
-  padding-top: 0;
-}
-.settings__section .page-row:last-child {
-  padding-bottom: 0;
-}
 .settings__section .page-row__control {
   min-width: 0;
   max-width: 100%;
@@ -1505,6 +1485,26 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-2);
+}
+/* Engine workloads Station couldn't stop; unit names wrap at phone width. */
+.workload-cleanup__list {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workload-cleanup__item {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.workload-cleanup__unit {
+  overflow-wrap: anywhere;
+}
+/* A telemetry receiver's refusal reason may hold an unbroken token. */
+.telemetry-delivery__detail {
+  overflow-wrap: anywhere;
 }
 
 /* #4305: Project sharing with local accounts. */

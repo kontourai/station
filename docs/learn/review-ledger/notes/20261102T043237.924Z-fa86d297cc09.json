@@ -1,7 +1,0 @@
-{
-  "revision": "55a020c92e104d29ae86803064c1df788b549f7e",
-
-  "notes": [
-    {"path":"docs/guides/plugins.md","note":"Reviewed the renderer test follow-up: anchored accessible names replace unsupported exact options while keeping the Browser-region assertion. Plugin admission and layout behavior are unchanged.","inputs":["docs/guides/plugins.md","src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx"]}
-  ]
-}

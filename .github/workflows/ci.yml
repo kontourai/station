@@ -1,5 +1,5 @@
 name: "PR: CI"
-run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}
+run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || github.event_name == 'pull_request_target' && github.event.action == 'auto_merge_enabled' && 'PR armed' || 'Source verification' }}
 on:
   push:
     branches: [main]
@@ -7,7 +7,11 @@ on:
   # with a self-hosted job before these conditions are evaluated.
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, edited]
+    # `auto_merge_enabled` (run-name `PR armed`) runs the heavy checks only
+    # when vars.STATION_PR_HEAVY_CHECKS is `when-armed`; otherwise every job
+    # skips and the source policy ignores the run
+    # (scripts/pr-heavy-checks-decision.mjs).
+    types: [opened, synchronize, reopened, edited, auto_merge_enabled]
   # Merge queue evaluates the synthesized latest-main candidate rather than
   # asking each contributor to chase a moving main branch locally.
   merge_group:
@@ -22,14 +26,30 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Non-PR jobs use this full-diff result. Hosted so a GitHub-hosted
-    # outage cannot skip the rest of this workflow the way station#1931
-    # did when this classifier ran on a billing-blocked hosted image.
-    if: ${{ github.event_name != 'pull_request_target' }}
+    # Push and dispatch jobs use this full-diff result. Hosted so a
+    # GitHub-hosted outage cannot skip the rest of this workflow the way
+    # station#1931 did when this classifier ran on a billing-blocked hosted
+    # image. Skipped on merge groups as on pull requests: every consumer
+    # already admits merge_group by event, so its outputs were unread there
+    # and its runner hop only delayed every later job.
+    if: ${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}
+    # `actions: read` is for merge-group-verdict's run and job listings, which
+    # work undeclared only while the repository is public. This job never
+    # runs on pull_request_target (its `if` above), so no candidate code holds
+    # it; the actionlint gate allows the grant only with that exact `if`.
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
-      heavy: ${{ steps.classify.outputs.heavy }}
+      # The merge queue fast-forwards main to the exact candidate it tested,
+      # so a queue landing's push would repeat that verdict on the same SHA.
+      # `heavy` drops to false only when merge-group-verdict proves that
+      # exact SHA and base already passed fast-checks and Merge-queue
+      # regression; direct pushes, batches and any lookup failure keep the
+      # classifier's answer.
+      heavy: ${{ steps.merge-group-verdict.outputs.verified == 'true' && 'false' || steps.classify.outputs.heavy }}
       container: ${{ steps.classify.outputs.container }}
       classification: ${{ steps.classify.outputs.classification }}
     steps:
@@ -46,9 +66,24 @@ jobs:
       - id: classify
         name: Classify the complete before..sha diff
         env:
-          BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}
-          AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
+
+      # Push-only and fail-open: the step never fails the job, and anything
+      # short of a proven merge-queue verdict leaves verified unset or false
+      # (scripts/ci-merge-group-verdict.mjs). It reads Actions run data with
+      # the job's read-only token (`actions: read` above); a failed or refused
+      # lookup keeps the full lane and raises a warning annotation.
+      - id: merge-group-verdict
+        name: Reuse the merge queue verdict for this exact SHA
+        if: ${{ github.event_name == 'push' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-merge-group-verdict.mjs
 
   # Defer a same-repository pull request with a confirmed merge conflict
   # before it spends the plan, shards and statics: it cannot merge, so that
@@ -61,14 +96,21 @@ jobs:
   # the newest attempt, so that supersedes the deferred verdict.
   pr-admission:
     name: PR source admission
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
+      # The heavy-check decision reads the head's Source verification policy
+      # status when the pull request is armed (commits/{sha}/status), which
+      # GitHub lists under "Commit statuses" read.
+      statuses: read
     outputs:
       admitted: ${{ steps.admit.outputs.admitted }}
+      # Only an explicit `false` defers the heavy checks; an empty output (this
+      # job skipped, failed or not started) runs them.
+      heavy: ${{ steps.heavy.outputs.heavy }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,6 +125,87 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/pr-source-admission.mjs
+      # Trusted base code, no candidate checkout. Prints its reason; any
+      # failure decides heavy.
+      - id: heavy
+        name: Decide whether the heavy checks run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATION_PR_HEAVY_CHECKS: ${{ vars.STATION_PR_HEAVY_CHECKS }}
+        run: node scripts/pr-heavy-checks-decision.mjs
+
+  # #4748: the pinned actionlint archive used to be fetched from GitHub's
+  # release CDN by every consumer, and a 504 there failed merge-queue shards
+  # before they executed anything. This job fetches and checksums it once. It
+  # checks out nothing, reads no secret and runs no candidate code: it only
+  # downloads the fixed 1.7.12 Linux archive, verifies its digest and uploads
+  # that exact archive under a run- and attempt-scoped name. Its artifact id is
+  # the only handoff. Each consumer (fast-checks-shard, fast-checks-statics,
+  # fork-smoke) downloads that id into a fresh path and re-verifies the digest
+  # before it runs `tar`. Its admission is the union of the statics and
+  # fork-smoke guards, so it runs exactly when one of its consumers can run.
+  # actionlint-gate.mjs pins this job by digest: any edit needs a reviewed new
+  # digest there.
+  actionlint-artifact:
+    name: Pinned actionlint artifact
+    needs: [classify, pr-admission]
+    if: ${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository)) }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    # Four download attempts of at most 60 seconds plus 45 seconds of backoff
+    # fit the five-minute step bound; the job fence adds upload and setup.
+    timeout-minutes: 8
+    outputs:
+      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
+    steps:
+      - name: Download and verify pinned actionlint
+        timeout-minutes: 5
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ACTIONLINT_URL: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+        run: |
+          set -euo pipefail
+          download="$RUNNER_TEMP/actionlint-download"
+          mkdir "$download"
+          archive="$download/$ACTIONLINT_ARCHIVE"
+          attempt=1
+          until curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 --output "$archive" "$ACTIONLINT_URL"; do
+            if [ "$attempt" -ge 4 ]; then
+              echo "pinned actionlint download failed after $attempt attempts" >&2
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep $((attempt * 5))
+          done
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+
+      - name: Upload verified actionlint archive
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pinned-actionlint-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/actionlint-download/actionlint_1.7.12_linux_amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+
+      # An empty `artifact-ids` input makes the pinned download action fall
+      # back to downloading every artifact of the run, so the id is exposed
+      # only once it is a positive integer. Nothing else is written to the
+      # job output file.
+      - name: Validate uploaded artifact id
+        id: artifact
+        env:
+          UPLOADED_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$UPLOADED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "uploaded artifact id is not a positive integer: '$UPLOADED_ARTIFACT_ID'" >&2
+            exit 1
+          fi
+          echo "artifact-id=$UPLOADED_ARTIFACT_ID" >> "$GITHUB_OUTPUT"
 
   # #2709: `fast-checks` is the required check. The affected-test selection
   # outgrew one runner's fifteen-minute budget, so it is computed once here,
@@ -96,12 +219,12 @@ jobs:
     needs: [classify, pr-admission]
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
       # Head sha in the identity for the same reason as fast-checks (#1445).
-      group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
+      group: ci-fast-plan-${{ github.event_name }}${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-24.04
     # The legacy path below runs the whole ci:fast lane here, so the fence
@@ -248,7 +371,7 @@ jobs:
 
   fast-checks-shard:
     name: fast-checks shard ${{ matrix.shard }}
-    needs: fast-checks-plan
+    needs: [pr-admission, fast-checks-plan, actionlint-artifact]
     # The status function is load-bearing (#2709 re-land). Without one,
     # GitHub prefixes success(), which is false when ANY ancestor did not
     # succeed -- and `classify` is skipped on every pull_request_target, so
@@ -258,21 +381,43 @@ jobs:
     # can only do under that job's admission guard) AND planned. A legacy
     # candidate (transitional) or an explicitly empty plan skips the shards;
     # the aggregator independently verifies an empty plan before accepting it. ci-fast-checks-job-graph.test.ts evaluates this
-    # under GitHub's job-status semantics for every event.
-    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}
+    # under GitHub's job-status semantics for every event. The pinned actionlint
+    # artifact must also have succeeded (#4748): a shard never falls back to
+    # fetching the archive itself.
+    # Deferred only on an explicit `heavy=false` (STATION_PR_HEAVY_CHECKS).
+    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}
     permissions:
       contents: read
     concurrency:
-      # Three bounded PR shard groups retain every planned matrix leg.
-      # Keep the two existing names so old and new runs share their slots;
-      # route odd-numbered shards of PRs ending in 0, 1 or 2 to the third.
+      # Five bounded PR shard groups retain every planned matrix leg. The
+      # group is (last PR digit mod 5 + shard - 1) mod 5, so one PR's shards
+      # never share a group and shard 1, which every plan has, spreads over
+      # all five. Measured 2026-11-12/14, three groups left PR shards waiting
+      # a median 44 minutes for a group, the busiest occupied 93% of the time.
+      #   last digit | shard 1 | shard 2 | shard 3 | shard 4
+      #   0 or 5     | even    | odd     | third   | fourth
+      #   1 or 6     | odd     | third   | fourth  | fifth
+      #   2 or 7     | third   | fourth  | fifth   | even
+      #   3 or 8     | fourth  | fifth   | even    | odd
+      #   4 or 9     | fifth   | even    | odd     | third
+      # The odd/even/third names are kept, now as plain labels, so runs
+      # created under the previous mapping share those slots while both run.
+      # Shard 4 is each row's last arm; the planner never emits more than 4.
+      # The release-bot PR (same three-part identity as the build-ios.yml
+      # heavy-lane guard) is re-pushed on every main push; its shard and
+      # statics jobs share one slot of their own and never enter these five.
       # Required integration and diagnostics use separate source identities.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}',
-        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
-        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
-        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) !=
-        (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}',
+        ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' ||
+        github.event_name == 'pull_request_target' && (
+        (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '5')) && (matrix.shard == 1 && 'ci-pr-shards-even' || matrix.shard == 2 && 'ci-pr-shards-odd' || matrix.shard == 3 && 'ci-pr-shards-third' || 'ci-pr-shards-fourth') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '6')) && (matrix.shard == 1 && 'ci-pr-shards-odd' || matrix.shard == 2 && 'ci-pr-shards-third' || matrix.shard == 3 && 'ci-pr-shards-fourth' || 'ci-pr-shards-fifth') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '2') || endsWith(format('{0}', github.event.pull_request.number), '7')) && (matrix.shard == 1 && 'ci-pr-shards-third' || matrix.shard == 2 && 'ci-pr-shards-fourth' || matrix.shard == 3 && 'ci-pr-shards-fifth' || 'ci-pr-shards-even') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '8')) && (matrix.shard == 1 && 'ci-pr-shards-fourth' || matrix.shard == 2 && 'ci-pr-shards-fifth' || matrix.shard == 3 && 'ci-pr-shards-even' || 'ci-pr-shards-odd') ||
+        (endsWith(format('{0}', github.event.pull_request.number), '4') || endsWith(format('{0}', github.event.pull_request.number), '9')) && (matrix.shard == 1 && 'ci-pr-shards-fifth' || matrix.shard == 2 && 'ci-pr-shards-even' || matrix.shard == 3 && 'ci-pr-shards-odd' || 'ci-pr-shards-third')
+        ) || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}',
         matrix.shard, github.event_name, github.event.pull_request.number || github.ref,
         github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}
       queue: max
@@ -329,29 +474,47 @@ jobs:
 
       # The lane's static invariants put actionlint on PATH before its tests
       # ran; a selected test that shells out to it sees the same binary here.
+      # The archive comes from the trusted actionlint-artifact job by exact
+      # artifact id and is re-verified before it is extracted (#4748).
+      - name: Download pinned actionlint artifact
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.actionlint-artifact.outputs.artifact-id }}
+          path: ${{ runner.temp }}/actionlint-artifact
+          merge-multiple: true
+
       - name: Install pinned actionlint
         if: ${{ steps.slice.outputs.empty == 'false' }}
-        timeout-minutes: 5
+        timeout-minutes: 3
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+          if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+            exit 1
+          fi
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 15
 
-      # Same provisioning as full-regression: the selection can include
-      # tests that exec zsh (ops/nightly/macos-build-only-cleanup.test.mjs),
-      # and ubuntu-22.04 ships without it.
+      # Use the exact slice's Linux fixture inventory. Older candidate
+      # slicers omit requires-zsh and keep the previous preflight.
+      # Transient apt mirror or DNS failures (`Temporary failure resolving
+      # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
+      # and 30 seconds of backoff inside the five-minute step bound. The last
+      # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
-        if: ${{ steps.slice.outputs.empty == 'false' }}
+        if: ${{ steps.slice.outputs.empty == 'false' && steps.slice.outputs.requires-zsh != 'false' }}
         timeout-minutes: 5
         env:
           BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
@@ -365,7 +528,17 @@ jobs:
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
             sha256sum "$bootstrap"
-            sudo bash "$bootstrap" zsh
+            attempt=1
+            until sudo bash "$bootstrap" zsh; do
+              status=$?
+              if [[ "$attempt" -ge 3 ]]; then
+                echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+                exit "$status"
+              fi
+              echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
           fi
           command -v zsh
           test -x /bin/zsh
@@ -433,22 +606,34 @@ jobs:
 
   fast-checks-statics:
     name: fast-checks statics
-    needs: [classify, pr-admission]
+    needs: [classify, pr-admission, actionlint-artifact]
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    # The pinned actionlint artifact must have succeeded (#4748); statics never
+    # falls back to fetching the archive itself.
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
-      # Two repository-wide PR statics slots, with no pending replacement.
+      # Three repository-wide PR statics slots, with no pending replacement,
+      # keyed by the PR number's last digit so every run of one PR shares one:
+      #   last digit | 0, 2, 4, 6 | 1, 3, 5 | 7, 8, 9
+      #   slot       | even       | odd     | third
+      # Measured 2026-11-15, two slots left one PR waiting 70 minutes for
+      # statics while shard slots and runners were free. The odd/even names
+      # are kept, now as plain labels, so runs created under the parity
+      # mapping share those slots while both run; only digits 7, 8 and 9 moved.
       # Obsolete heads are cancelled by the trusted supersession workflow.
-      # Metadata-only edits never enter this source-job group.
+      # Metadata-only edits never enter this source-job group. The release-bot
+      # PR uses its one ci-pr-release-bot slot, shared with its shards.
       group: >-
-        ${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}',
-        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
-        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
-        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) &&
-        'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name,
+        ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' ||
+        github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}',
+        (endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '8') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'third' ||
+        (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5')) && 'odd' ||
+        'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name,
         github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha,
         github.event.pull_request.base.sha) }}
       queue: max
@@ -480,17 +665,29 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      - name: Download pinned actionlint artifact
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.actionlint-artifact.outputs.artifact-id }}
+          path: ${{ runner.temp }}/actionlint-artifact
+          merge-multiple: true
+
       - name: Install pinned actionlint
-        timeout-minutes: 5
+        timeout-minutes: 3
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+          if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+            exit 1
+          fi
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
@@ -554,11 +751,14 @@ jobs:
         run: npm run performance:workspace:smoke
 
       # Keep critical browser journeys inside the existing required check.
+      # Heavy: skipped only on an explicit pr-admission `heavy=false`
+      # (STATION_PR_HEAVY_CHECKS=when-armed, unarmed pull request).
       # The separate manual diagnostic below depends on full-regression and
       # cannot supply pre-merge evidence when that manual job is skipped.
       # Its clean instance startup runs build:ui, including the candidate bundle
       # budget, before serving that same fresh build. Do not build it twice.
       - name: Verify critical browser journeys before merge
+        if: ${{ needs.pr-admission.outputs.heavy != 'false' }}
         env:
           STATION_UI_BUNDLE_BUDGET: enforce
           VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE: '0'
@@ -595,7 +795,7 @@ jobs:
 
   fast-checks:
     name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}
-    needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
+    needs: [classify, pr-admission, fast-checks-plan, fast-checks-shard, fast-checks-statics]
     # Source execution aggregate; the trusted source-policy reconciler owns
     # admission independently of metadata-only check-suite replacement.
     # `always()` without `!cancelled()`, deliberately: a
@@ -604,7 +804,7 @@ jobs:
     # Running on cancellation instead fails it on the cancelled parts. The
     # event clause matches the part jobs', so pushes that are not heavy and
     # fork pull requests (fork-smoke) skip it exactly as before (#2709).
-    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -614,7 +814,7 @@ jobs:
       # request (#1445): without it, runs for one PR at different heads share
       # a group and `cancel-in-progress` resolves the collision by arrival
       # order, which is not commit recency.
-      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
+      group: ci-fast-${{ github.event_name }}${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -638,7 +838,7 @@ jobs:
           LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
           case "$LEGACY" in
             false)
-              echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or (.["fast-checks-plan"].outputs.empty == "true" and .["fast-checks-shard"].result == "skipped"))' > /dev/null
+              echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or ((.["fast-checks-plan"].outputs.empty == "true" or .["pr-admission"].outputs.heavy == "false") and .["fast-checks-shard"].result == "skipped"))' > /dev/null
               ;;
             true)
               echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
@@ -670,7 +870,7 @@ jobs:
           path: ${{ runner.temp }}/fast-checks-plan
 
       - name: Download fast-checks shard receipts
-        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.fast-checks-plan.outputs.empty != 'true' }}
+        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: fast-checks-receipt-*-${{ github.run_id }}-*
@@ -680,7 +880,7 @@ jobs:
       # a shard that ran anything but its own slice fails the check.
       - name: Verify fast-checks shard receipts
         id: verify
-        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' }}
+        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.pr-admission.outputs.heavy != 'false' }}
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
@@ -692,19 +892,38 @@ jobs:
         if: ${{ steps.verify.outputs.provisional == 'true' }}
         run: echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"
 
+      # The source policy reads these two step names and conclusions from the
+      # jobs API: a head whose newest run deferred the heavy checks is
+      # reported pending, never verified (scripts/source-verification-policy.mjs).
+      # The deferral marker also runs after a failure, so a failed cheap-only
+      # run cannot take a verified head's success away.
+      - name: Record heavy checks deferred until armed
+        if: ${{ always() && needs.pr-admission.outputs.heavy == 'false' }}
+        run: echo "heavy checks deferred (STATION_PR_HEAVY_CHECKS=when-armed); they run once the pull request is armed"
+
+      - name: Record heavy checks ran
+        if: ${{ needs.pr-admission.outputs.heavy != 'false' }}
+        run: echo "heavy checks ran on this head"
+
+  # Merge groups publish in-run too: the post-run workflow_run reconcile
+  # waited for a runner after the whole run and was often the last required
+  # context. That reconcile stays the recovery publisher; both read the same
+  # completed job results, and the callee reads policy from the queue base.
+  # A cancelled queue run (the queue rebuilt) is never merged, so it spends
+  # no runner here; the reconcile still records its verdict.
   source-policy:
     name: Publish source admission
     needs: [fast-checks, fork-smoke]
-    if: ${{ always() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    if: ${{ always() && (github.event_name == 'merge_group' && !cancelled() || github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed')) }}
     permissions: { contents: read, actions: read, statuses: write }
     uses: ./.github/workflows/source-verification-policy.yml
     with:
-      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      source_sha: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
 
   delivery-plan:
     name: Plan affected delivery checks
-    needs: [fast-checks, fork-smoke, source-policy, repo-scans, ui-bundle-delta, pr-title]
-    if: ${{ always() && !cancelled() && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    needs: [pr-admission, fast-checks, fork-smoke, source-policy, repo-scans, ui-bundle-delta, pr-title]
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions: { contents: read, pull-requests: read }
@@ -750,7 +969,7 @@ jobs:
     # This check run is diagnostic. The required context is a mutable commit
     # status so a corrected title can replace failure on the same source head.
     name: PR title status publisher
-    if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'auto_merge_enabled' || github.event_name == 'merge_group' }}
     permissions:
       contents: read
       pull-requests: read
@@ -827,7 +1046,9 @@ jobs:
     # minutes. Not a required check. The script scopes itself first (a PR
     # that touches no UI build input ends in seconds) and exits zero once
     # started, naming the reason in a notice when it cannot measure.
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    # Heavy: under STATION_PR_HEAVY_CHECKS=when-armed it waits for arming.
+    needs: pr-admission
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
@@ -861,9 +1082,12 @@ jobs:
 
   fork-smoke:
     name: Fork pull-request smoke
+    needs: actionlint-artifact
     # This is intentionally exact: untrusted fork code is admitted only to an
-    # ephemeral hosted runner, never to the persistent self-hosted fleet.
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
+    # ephemeral hosted runner, never to the persistent self-hosted fleet. The
+    # trusted actionlint-artifact job (no checkout, no candidate code) must
+    # have succeeded (#4748); fork-smoke never fetches the archive itself.
+    if: ${{ always() && !cancelled() && needs.actionlint-artifact.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
     runs-on: ubuntu-24.04
@@ -888,16 +1112,29 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      # No step timeouts here: the job fence has no slack for bounded steps
+      # (ci-workflow-contract.test.ts), exactly as before this artifact handoff.
+      - name: Download pinned actionlint artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.actionlint-artifact.outputs.artifact-id }}
+          path: ${{ runner.temp }}/actionlint-artifact
+          merge-multiple: true
+
       - name: Install pinned actionlint
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
-          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint-artifact/$ACTIONLINT_ARCHIVE"
+          if [ ! -f "$archive" ] || [ -L "$archive" ]; then
+            echo "pinned actionlint archive is missing from the downloaded artifact" >&2
+            exit 1
+          fi
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 
       - run: npm run dependencies:ci
@@ -1009,9 +1246,14 @@ jobs:
     # used to surface first in the merge queue's full corpus (#2553). They run
     # here on every same-repository pull request, beside fast-checks rather
     # than inside it, so they neither spend its twelve-minute budget nor wait
-    # on it. Not a required check (yet): a red here is feedback, and the
-    # merge-queue regression still runs the same suites.
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    # on it. Not a required check (yet) and not part of the source-verification
+    # verdict: a red here is feedback that does not block landing. The merge
+    # queue runs only a bounded selection, not these suites, so a violation
+    # that lands is caught next by post-landing full qualification.
+    # Cheap under STATION_PR_HEAVY_CHECKS: every push runs it (about 4 runner-
+    # minutes), because nothing before landing would run it otherwise, and an
+    # arming run skips it since the head's push run already scanned.
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:

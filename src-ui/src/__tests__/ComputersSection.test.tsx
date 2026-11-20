@@ -92,6 +92,14 @@ vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
   useIntegrationsQuery: () => ({ data: [] }),
   useGlobalKnowledgeStatusQuery: () => ({ data: undefined }),
+  // The rail applies managed policy to engines, which reads the ACP lists.
+  useACPConnectionsQuery: () => ({ data: [] }),
+  useACPConnectionRegistryQuery: () => ({ data: [] }),
+  useACPConnectionProbeStatusesQuery: () => ({ data: [] }),
+  useACPPublicRegistrySourceQuery: () => ({ data: undefined }),
+  useUnregisteredACPConnectionsQuery: () => ({ data: [] }),
+  recheckACPConnectionRegistry: vi.fn(),
+  refreshACPPublicRegistrySource: vi.fn(),
   useSshEnvironmentsQuery: () => ({
     data: sshState.data,
     isLoading: sshState.isLoading,

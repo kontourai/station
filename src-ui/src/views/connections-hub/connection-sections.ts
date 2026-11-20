@@ -3,7 +3,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'models',
     title: 'Models',
-    subtitle: "API and local model services for agents using Station's engine.",
+    subtitle: "Model APIs that Station's engine uses",
     path: '/connections/models',
     legacyPaths: ['/connections/providers'],
     addLabel: 'Add model connection',
@@ -11,7 +11,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'engines',
     title: 'Engines',
-    subtitle: 'AI apps and other engines that run your agents.',
+    subtitle: 'Claude Code, Codex and other engines that run agents',
     path: '/connections/engines',
     legacyPaths: [
       '/connections/acp',
@@ -23,7 +23,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'tools',
     title: 'Tools',
-    subtitle: 'Connect tool servers and choose which agents use them.',
+    subtitle: 'Connect tool servers and choose which agents use them',
     path: '/connections/tools',
     legacyPaths: [],
     addLabel: 'Add tool server',
@@ -31,7 +31,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'knowledge',
     title: 'Knowledge',
-    subtitle: 'The knowledge store and its attached namespaces.',
+    subtitle: 'What agents can look up',
     path: '/connections/knowledge',
     legacyPaths: [],
     addLabel: 'Add knowledge source',
@@ -39,7 +39,7 @@ export const CONNECTION_SECTIONS = [
   {
     id: 'computers',
     title: 'Computers',
-    subtitle: 'Devices and computers Station can reach or run work on.',
+    subtitle: 'Devices and computers Station can reach or run work on',
     path: '/connections/computers',
     legacyPaths: ['/connections/environments'],
     addLabel: 'Add computer',
@@ -58,3 +58,18 @@ export function canonicalConnectionPath(path: string): string | null {
   }
   return null;
 }
+
+/**
+ * The engine detail's route tabs (`/connections/engines/<id>/<tab>`). Any
+ * other segment there is not found. The detail page does not render tabs
+ * yet; the route accepts them so links can be written against it.
+ */
+export const ENGINE_DETAIL_TABS = [
+  'overview',
+  'usage',
+  'models',
+  'accounts',
+  'settings',
+] as const;
+
+export type EngineDetailTab = (typeof ENGINE_DETAIL_TABS)[number];

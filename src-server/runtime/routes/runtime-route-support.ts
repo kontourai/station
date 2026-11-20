@@ -28,6 +28,7 @@ import { composeGitHubAutomationObservation } from '../../services/automation/gi
 import { IsolatedRepairController } from '../../services/automation/repair-controller.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -50,7 +51,13 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import type { CoordinatorWakeDelivery } from '../../services/orchestration/coordinator-session.js';
+import {
+  createFileFinishedAlertEpisodeStore,
+  FinishedAlertEpisodes,
+} from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
@@ -65,7 +72,11 @@ import {
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
 import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
-import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
+import type {
+  ScheduledProjectHold,
+  ScheduledProjectRunner,
+  ScheduledTurnAdapter,
+} from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -77,6 +88,7 @@ import {
   TaskFollowUpWake,
   type TaskFollowUpWakePorts,
 } from '../../services/work-item-providers/task-follow-up-wake.js';
+import { stationSetupRequirementProbeOutcomes } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -85,11 +97,17 @@ import { createAutomationActionsRuntime } from '../automation-actions-runtime.js
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import { canUseTaskSource } from '../context-efficiency-runtime.js';
 import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import { openNativeStationControlRequestRun } from '../mcp/station-control-native-tools.js';
+import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
 import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
 import { wireNotificationDelivery } from './notification-delivery-wiring.js';
+import type { PullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -100,6 +118,28 @@ const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
  * the runtime's private invocation context rather than accepting caller
  * supplied unattended authority.
  */
+/**
+ * #2377 slice D: a personal Station has one person, its operator: not
+ * hosted, and no other people's accounts (local accounts or deployment
+ * authentication). Only there is an ownerless job the operator's.
+ */
+export function isPersonalStation(
+  context: Pick<
+    ConfigureRuntimeRoutesContext,
+    'localAccounts' | 'deploymentAuthentication'
+  >,
+): boolean {
+  return (
+    !isHostedTenantExecutionRequired() &&
+    !context.localAccounts &&
+    !context.deploymentAuthentication
+  );
+}
+
+/** What a run of a job with no recorded owner tells the model (#2377 slice D). */
+export const JOB_OWNER_NEEDED_MODEL_NOTE =
+  'Station tools are unavailable for this run: this scheduled job has no recorded owner. Do not call Station tools.';
+
 export function createScheduledTurnAdapter(
   activeAgents: ReadonlyMap<
     string,
@@ -112,7 +152,7 @@ export function createScheduledTurnAdapter(
   >,
 ): ScheduledTurnAdapter {
   return {
-    invoke: async ({ agentSlug, prompt, principal, signal }) => {
+    invoke: async ({ agentSlug, prompt, principal, signal, receipt }) => {
       if (signal.aborted) {
         return {
           kind: 'definitely-not-invoked' as const,
@@ -127,11 +167,24 @@ export function createScheduledTurnAdapter(
           error: `Agent '${resolvedSlug}' not found`,
         };
       }
+      // #2377 slice D: a run acts for the job's recorded owner, through its
+      // own in-process station-control caller. A job with no owner (one
+      // created before owners were recorded, on a shared or hosted Station)
+      // gets no caller, and the model is told it has no Station tools.
+      const owner = receipt.job.createdBy;
+      const run = owner
+        ? openNativeStationControlRequestRun({ principalId: owner.userId })
+        : undefined;
+      const generate = () =>
+        agent.generateText(
+          owner ? prompt : `${JOB_OWNER_NEEDED_MODEL_NOTE}\n\n${prompt}`,
+          { signal },
+        );
       try {
         const result = await runWithUnattendedPrincipal(
           { kind: 'scheduled-job', jobId: principal.jobId },
           principal.runId,
-          () => agent.generateText(prompt, { signal }),
+          () => (run ? run.run(generate) : generate()),
         );
         return { kind: 'completed' as const, output: result.text ?? '' };
       } catch (error) {
@@ -146,6 +199,8 @@ export function createScheduledTurnAdapter(
           error:
             error instanceof Error ? error.message : 'Scheduler agent failed',
         };
+      } finally {
+        await run?.close();
       }
     },
   };
@@ -254,8 +309,8 @@ export function createRuntimeSystemRouteDeps(
     // the SAME call `enriched-agents.ts` uses to decide whether to manufacture
     // a selectable agent, so chat readiness and agent availability cannot
     // disagree (station#1194).
-    listEngineConnectionStates: () =>
-      context.connectionService.listEngineConnectionStates(),
+    listEngineConnectionStates: (signal?: AbortSignal) =>
+      context.connectionService.listEngineConnectionStates(signal),
     listUnconnectedACPRegistryEntries: () =>
       listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
@@ -353,41 +408,99 @@ const BUILTIN_STATION_AGENT_SLUG = 'station';
  * Agent the person authored on Station's own engine still projects, because
  * they did ask for it.
  */
+type StationSetupRequirement = {
+  agentSlug: string;
+  agentName: string;
+  reason: string;
+};
+
+/**
+ * One owner's setup-requirement probe. It answers exactly as
+ * {@link readStationSetupRequirement}, and additionally remembers the last
+ * failure it reported (#4995): `/api/attention` polls this every few seconds,
+ * so a probe that cannot answer for the same reason on every poll used to
+ * write the same warning ~240 times a morning. It now warns once per change
+ * of failure identity (the error message) and logs once when reads recover.
+ * The state lives in this closure, owned by whoever composed the probe — the
+ * runtime support services — never in module scope.
+ */
+export function createStationSetupRequirementProbe(
+  context: ConfigureRuntimeRoutesContext,
+): () => Promise<StationSetupRequirement | null> {
+  let reportedFailure: string | undefined;
+  return async () => {
+    let requirement: StationSetupRequirement | null;
+    try {
+      requirement = await deriveStationSetupRequirement(context);
+    } catch (error) {
+      const failure = errorMessage(error);
+      stationSetupRequirementProbeOutcomes.add(1, { outcome: 'failed' });
+      if (failure !== reportedFailure) {
+        reportedFailure = failure;
+        // A read that could not answer is not a claim that setup is
+        // incomplete.
+        context.logger.warn('Station setup requirement probe failed', {
+          error: failure,
+        });
+      }
+      return null;
+    }
+    stationSetupRequirementProbeOutcomes.add(1, {
+      outcome: requirement ? 'blocked' : 'ready',
+    });
+    if (reportedFailure !== undefined) {
+      context.logger.info('Station setup requirement probe recovered', {
+        previousError: reportedFailure,
+      });
+      reportedFailure = undefined;
+    }
+    return requirement;
+  };
+}
+
+/**
+ * A single, stateless probe read. Long-lived callers compose
+ * {@link createStationSetupRequirementProbe} instead so a repeating failure is
+ * reported once.
+ */
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
-): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
-  try {
-    const agents = await context.agentService.listAgents();
-    // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
-    // this slug, and its first-observed timestamp is keyed by it, so a subject
-    // that varied with store order would re-mint the row. And taking
-    // `agents[0]` unconditionally silenced the notice whenever the agent that
-    // happened to sort first was external-engine bound, even with a blocked
-    // Station-engine agent right behind it. The first Station-engine
-    // candidate by slug, never the optional built-in Agent (#4388).
-    const candidates = [...agents]
-      .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
-      .sort((left, right) => left.slug.localeCompare(right.slug));
-    const readAvailability = createStationEngineAvailabilityReader(context);
-    for (const metadata of candidates) {
-      const spec = await context.agentService.getAgent(metadata.slug);
-      if (isExternalEngineBoundAgent(spec)) continue;
-      const reason = readAvailability(spec);
-      if (!reason) return null;
-      return {
-        agentSlug: metadata.slug,
-        agentName: metadata.name ?? spec.name ?? metadata.slug,
-        reason,
-      };
-    }
-    return null;
-  } catch (error) {
-    // A read that could not answer is not a claim that setup is incomplete.
-    context.logger.warn('Station setup requirement probe failed', {
-      error: errorMessage(error),
-    });
-    return null;
+): Promise<StationSetupRequirement | null> {
+  return createStationSetupRequirementProbe(context)();
+}
+
+async function deriveStationSetupRequirement(
+  context: ConfigureRuntimeRoutesContext,
+): Promise<StationSetupRequirement | null> {
+  const agents = await context.agentService.listAgents();
+  // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
+  // this slug, and its first-observed timestamp is keyed by it, so a subject
+  // that varied with store order would re-mint the row. And taking
+  // `agents[0]` unconditionally silenced the notice whenever the agent that
+  // happened to sort first was external-engine bound, even with a blocked
+  // Station-engine agent right behind it. The first Station-engine
+  // candidate by slug, never the optional built-in Agent (#4388).
+  const candidates = [...agents]
+    .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+  const readAvailability = createStationEngineAvailabilityReader(context);
+  for (const metadata of candidates) {
+    // #4995: the listing includes registry-default Agents (`claude`,
+    // `muse`, …) that never have an `agent.json`. Each is an engine
+    // connection, so it is external-engine bound and would be skipped below
+    // anyway; reading its absent file instead failed the whole probe. Skipping
+    // an absent spec keeps the order — and so the chosen subject — unchanged.
+    const spec = await context.agentService.findAgent(metadata.slug);
+    if (!spec || isExternalEngineBoundAgent(spec)) continue;
+    const reason = readAvailability(spec);
+    if (!reason) return null;
+    return {
+      agentSlug: metadata.slug,
+      agentName: metadata.name ?? spec.name ?? metadata.slug,
+      reason,
+    };
   }
+  return null;
 }
 
 /**
@@ -420,8 +533,25 @@ export function configureRuntimeSupportServices(
   options: {
     webPushEnabled?: boolean;
     threadInbox?: () =>
-      | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
+      | Pick<ThreadInboxDelivery, 'submit' | 'entry' | 'hasWaitingFollowUp'>
       | undefined;
+    /**
+     * The coordinator wake, once composed (absent on a hosted Station). A
+     * restart that finds a finish already written hands its record here
+     * instead of re-emitting NOTIFICATION_DELIVERED (see
+     * `onReplayedDelivery` in turn-completion-notifications.ts).
+     */
+    coordinatorWakes?: () =>
+      | Pick<CoordinatorWakeDelivery, 'observeNotification'>
+      | undefined;
+    /**
+     * Pull request agent feedback: its tick, shutdown, #4508 overlap, its
+     * Needs-you items, and the notification service its notices go to.
+     */
+    pullRequestFeedback?: Pick<
+      PullRequestFeedbackRuntime,
+      'tick' | 'close' | 'owns' | 'attentionSources' | 'bindNotifier'
+    >;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
      * projection. Injected rather than constructed here because the
@@ -437,10 +567,19 @@ export function configureRuntimeSupportServices(
     focus?: FocusSource;
     inAppLiveness?: InAppLiveness;
     /**
+     * #5072: the `project-overview` Feature Preview, which turns on
+     * per-Project notification settings. Absent: off.
+     */
+    projectOverviewPreview?: FeaturePreviewSelector;
+    /**
      * Runs automations that target a conversation, through its inbox.
      * Absent (hosted, or no inbox): such a job fails without invoking.
      */
     conversationRuns?: ScheduledConversationRunner;
+    /** #5070: runs a Project job as a Task. Absent: no Project jobs. */
+    projectRuns?: ScheduledProjectRunner;
+    /** #5069: which Projects hold their schedules. */
+    projectHold?: ScheduledProjectHold;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -462,9 +601,26 @@ export function configureRuntimeSupportServices(
         }),
     },
   );
+  // Composed before this service exists; its notices go here from now on.
+  options.pullRequestFeedback?.bindNotifier(notificationService);
+  // #5072: the local Project a session recorded at its start, the same
+  // record station-control callers resolve, so a Project's notification
+  // level reaches its turn and approval notifications.
+  const resolveSessionRecord = createStationControlCallerRecordResolver(
+    stationControlCallerRecordSources({
+      orchestrationService: context.orchestrationService,
+      getProject: (slug) => context.storageAdapter.getProject(slug),
+      coordinatorEnabled: () => false,
+    }),
+  );
+  const resolveSessionProjectId = (threadId: string) =>
+    resolveSessionRecord(threadId)?.localProjectId;
+  const resolveChatTitle = (threadId: string) =>
+    notificationChatTitle(context.orchestrationEventStore, threadId);
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
+    resolveSessionProjectId,
   });
   notificationService.addProvider(approvalInboxProvider);
   // An inbound pairing request used to surface only inside the Connections
@@ -488,6 +644,16 @@ export function configureRuntimeSupportServices(
     getNotificationProviders(),
     context.logger,
   );
+  // Why a session's "finished" alert (and its phone card's Done) must wait:
+  // the service's facts plus a follow-up waiting in the conversation's inbox,
+  // which the service does not own (finished-alert-hold.ts).
+  const readFinishedAlertHold = (threadId: string): string[] => {
+    const reasons: string[] =
+      context.orchestrationService.readFinishedAlertHold(threadId);
+    if (options.threadInbox?.()?.hasWaitingFollowUp(threadId))
+      reasons.push('queued-follow-up');
+    return reasons;
+  };
   wireApprovalInboxNotifications(
     context.eventBus,
     approvalInboxProvider,
@@ -499,11 +665,26 @@ export function configureRuntimeSupportServices(
   // Whether it interrupts a surface (Web Push, native alert, desktop feed)
   // is the delivery router's focus/liveness decision below, not a check on
   // whether the owner holds any open `/events` stream.
+  // One record of each thread's completion episode: the listener below
+  // writes it, the phone card reads it, so both send one "finished" per
+  // episode, after confirmation (finished-alert-episodes.ts).
+  const finishedAlertEpisodes = new FinishedAlertEpisodes();
   wireTurnCompletionNotifications(
     context.eventBus,
     context.orchestrationService,
     notificationService,
     context.logger,
+    {
+      resolveProjectId: resolveSessionProjectId,
+      resolveChatTitle,
+      readFinishedAlertHold,
+      onReplayedDelivery: (notification) =>
+        options.coordinatorWakes?.()?.observeNotification(notification),
+      episodes: finishedAlertEpisodes,
+      episodeStore: createFileFinishedAlertEpisodeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+    },
   );
   // station#3525 fix round FIX 1: the corrective half — see that function's
   // own docblock. Must be wired alongside `wireTurnCompletionNotifications`
@@ -515,6 +696,7 @@ export function configureRuntimeSupportServices(
     context.orchestrationService,
     notificationService,
     context.logger,
+    { resolveProjectId: resolveSessionProjectId, resolveChatTitle },
   );
   notificationService.dispatch('service-start', () =>
     notificationService.start(),
@@ -576,6 +758,8 @@ export function configureRuntimeSupportServices(
       // The question wake's own re-check, with execute authority.
       mayReadTask: (task, owner) =>
         canUseTaskSource(context, task, owner, true),
+      forgeFeedbackOwned: (itemRef, kind) =>
+        options.pullRequestFeedback?.owns(itemRef, kind) === true,
       get submit(): TaskFollowUpWakePorts['submit'] {
         const inbox = options.threadInbox?.();
         return inbox ? (input) => inbox.submit(input) : undefined;
@@ -657,9 +841,16 @@ export function configureRuntimeSupportServices(
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
+      // #2377 slice D: only a personal Station's older ownerless jobs are
+      // the operator's; a shared or hosted Station never guesses an owner.
+      ...(isPersonalStation(context)
+        ? { personalJobOwner: { userId: LOCAL_OPERATOR_PRINCIPAL_ID } }
+        : {}),
       ...(options.conversationRuns
         ? { conversationRuns: options.conversationRuns }
         : {}),
+      ...(options.projectRuns ? { projectRuns: options.projectRuns } : {}),
+      ...(options.projectHold ? { projectHold: options.projectHold } : {}),
       integrationSecretResolver,
       automationPoller: {
         async poll(input) {
@@ -667,12 +858,14 @@ export function configureRuntimeSupportServices(
           // flight and deadline, so slow GitHub reads cannot hold up the
           // observation, actions and repairs below.
           taskFollowUpPoller?.tick(input);
+          options.pullRequestFeedback?.tick(input);
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
           if (!input.signal.aborted) await isolatedRepairs?.tick();
         },
         async close() {
           await taskFollowUpPoller?.close();
+          await options.pullRequestFeedback?.close();
           taskFollowUps?.close();
           await isolatedRepairs?.close();
           automationActions?.close();
@@ -870,6 +1063,11 @@ export function configureRuntimeSupportServices(
       : {}),
     ...(options.focus ? { focus: options.focus } : {}),
     ...(options.inAppLiveness ? { inAppLiveness: options.inAppLiveness } : {}),
+    projectNotificationSettings: () =>
+      options.projectOverviewPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
   });
 
   const agentActivityPublisher = wireAgentActivityPublisher({
@@ -897,8 +1095,14 @@ export function configureRuntimeSupportServices(
         ),
       deviceHasOwnerStanding: (deviceId) =>
         context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
-      listSessionReadModel: (authority) =>
-        context.orchestrationService.listSessionReadModel(authority),
+      finishedAlertHeld: (threadId) =>
+        finishedAlertEpisodes.isPending(threadId),
+      finishedAlertRelease: (threadId) =>
+        finishedAlertEpisodes.releaseFor(threadId),
+      isDelegatedChildSession: (threadId) =>
+        context.orchestrationService.isDelegatedChildSession(threadId),
+      listSessionReadModel: (authority, options) =>
+        context.orchestrationService.listSessionReadModel(authority, options),
       listProjectionEvents: (threadIds) => {
         const byThread = new Map<string, CanonicalRuntimeEvent[]>();
         const persisted =
@@ -920,6 +1124,10 @@ export function configureRuntimeSupportServices(
         ),
     }),
   });
+
+  // A held finish that settles, or a finish released after its window,
+  // changes the card without a lifecycle event of its own.
+  finishedAlertEpisodes.subscribe(() => agentActivityPublisher.requestFlush());
 
   const attentionProjection = new AttentionProjectionService(
     notificationService,
@@ -949,7 +1157,7 @@ export function configureRuntimeSupportServices(
     // row says "Needs: No enabled LLM provider connection is configured" is
     // reading a fact nobody projected, not a quiet Station; the two reading
     // different app configs (review H2) is that same disagreement inverted.
-    memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
+    memoizeStationSetupRequirement(createStationSetupRequirementProbe(context)),
     // #2064 (D4): the inbox widens to carry every item meaning "a human must
     // decide". Both sources are the SAME ones `/review-queue` reads, so the
     // bell's count and the Review page cannot disagree about what is pending.
@@ -973,10 +1181,12 @@ export function configureRuntimeSupportServices(
           'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
       }),
     },
+    { pullRequestFeedback: options.pullRequestFeedback },
   );
   return {
     schedulerService,
     automationLedger,
+    automationStore,
     automationPreview: automationObservation.preview,
     automationActions,
     isolatedRepairs,

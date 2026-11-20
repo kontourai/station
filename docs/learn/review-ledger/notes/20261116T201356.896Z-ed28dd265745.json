@@ -1,0 +1,25 @@
+{
+  "revision": "95af3dc0ad4bd1402c928c6ec1d33dc30d0c6549",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked each page's claims about the Codex adapter against the change: it only reorders the bound-channel refusals (a withdrawn station-control name gets its pointer before the size check; browser and device copies are refused without one). None of these pages describe that path; their claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

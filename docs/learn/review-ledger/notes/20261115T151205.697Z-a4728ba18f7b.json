@@ -1,0 +1,7 @@
+{
+  "revision": "426f889e19bb28e34b80ca24f545e8d79ea431ba",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Station switcher paragraph rewritten for the readable-handshake probe: checked Online/Recovering/Not confirmed/Unreachable, 15s re-check, greyed-out rows and Forget availability against src-ui/src/lib/stationSwitcher.ts (readStationProbe, describeStationRow) and src-ui/src/components/header/StationSwitcherMenu.tsx (notReady, probe interval), with StationSwitcherMenu.test.tsx passing. Remaining sections unchanged.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "323b8494eb4bbdd2354a6605b0760e7fef92f740",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the Session API change through the existing managed-chat order and route boundary. The retained steer target is checked by orchestration before provider dispatch, using the existing mode and caller authority.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

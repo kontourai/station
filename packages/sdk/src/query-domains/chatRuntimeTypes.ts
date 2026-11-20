@@ -138,7 +138,7 @@ export type OrchestrationCommandInput =
       requestId: string;
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
-      sessionGrantScope?: 'server';
+      sessionGrantScope?: 'server' | 'rule';
       viewedContentDigest?: string;
     }
   | {

@@ -1,0 +1,7 @@
+{
+  "revision": "6194e5b1b4f2df3e72ccb78b36788d867e78cc5c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the Guidance Skills read-only and navigation discussion against the real removal caller. A generic refusal shows Station’s safe toast while preserving the selected Skill, filter, overview, and focused retry trigger. The fixture updates that assertion and keeps the typed ownership notice coverage at its existing owner.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.navigation.test.tsx"]}
+  ]
+}

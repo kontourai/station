@@ -1,0 +1,7 @@
+{
+  "revision": "451e87aab66021fe8f4f502a82f07cefba68a3a6",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added that parseProjectRoomAttachments refuses a repeated attachment id, matching project-room.ts and the route test (400 instead of the former 503); the rest of the Project Room contracts section was re-read against project-room.ts and project-room-browser.ts and stays accurate.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

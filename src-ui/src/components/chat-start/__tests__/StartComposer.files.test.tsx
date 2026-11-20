@@ -4,27 +4,40 @@
  * image (the clipboard's file items) joins the start's files instead of the
  * text, and each file can be removed before Start.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { PreviewProvider } from '../../../contexts/PreviewContext';
 import { StartComposer, type StartComposerFiles } from '../StartComposer';
 
 afterEach(cleanup);
 
-function renderComposer(files?: StartComposerFiles) {
+function renderComposer(
+  files?: StartComposerFiles,
+  wrap: (node: ReactNode) => ReactNode = (node) => node,
+) {
   render(
-    <StartComposer
-      prompt="look"
-      onPromptChange={() => undefined}
-      agent={{ status: 'ready', needsSetup: false }}
-      onOpenAgents={() => undefined}
-      project={{ status: 'ready', label: 'No project', isGlobal: true }}
-      onOpenProject={() => undefined}
-      canStart
-      pending={false}
-      onStart={() => undefined}
-      files={files}
-    />,
+    wrap(
+      <StartComposer
+        prompt="look"
+        onPromptChange={() => undefined}
+        agent={{ status: 'ready', needsSetup: false }}
+        onOpenAgents={() => undefined}
+        project={{ status: 'ready', label: 'No project', isGlobal: true }}
+        onOpenProject={() => undefined}
+        canStart
+        pending={false}
+        onStart={() => undefined}
+        files={files}
+      />,
+    ),
   );
   return screen.getByRole('textbox', { name: 'What would you like done?' });
 }
@@ -79,6 +92,41 @@ describe('StartComposer files', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove b.txt' }));
     expect(onRemove).toHaveBeenCalledWith(1);
     expect(screen.getByRole('button', { name: 'Attach files' })).toBeTruthy();
+  });
+
+  test('an image’s thumbnail opens the same previewer as a sent image', async () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const createObjectURL = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:start-shot');
+    const revokeObjectURL = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => undefined);
+    try {
+      renderComposer(
+        {
+          list: [new File(['x'], 'shot.png', { type: 'image/png' })],
+          onAdd: vi.fn(),
+          onRemove: vi.fn(),
+        },
+        (node) => <PreviewProvider>{node}</PreviewProvider>,
+      );
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Preview shot.png' }),
+      );
+      const dialog = await screen.findByRole('dialog', { name: 'Preview' });
+      expect(within(dialog).getByText('shot.png')).toBeTruthy();
+    } finally {
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   test('without a files owner there is no paperclip and paste is the field’s', () => {
@@ -210,4 +258,33 @@ describe('StartComposer file drops', () => {
     expect(screen.queryByRole('img')).toBeNull();
     expect(revoke).toHaveBeenCalledWith('blob:screenshot');
   });
+});
+
+test('a touch browser with clipboard image support has Attach but no paste button', () => {
+  const priorClipboard = Object.getOwnPropertyDescriptor(
+    navigator,
+    'clipboard',
+  );
+  const priorMedia = window.matchMedia;
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { read: vi.fn() },
+  });
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  try {
+    renderComposer({ list: [], onAdd: vi.fn(), onRemove: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Attach files' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Paste image' })).toBeNull();
+  } finally {
+    cleanup();
+    window.matchMedia = priorMedia;
+    if (priorClipboard)
+      Object.defineProperty(navigator, 'clipboard', priorClipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
 });

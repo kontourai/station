@@ -9,6 +9,7 @@ import {
   type MCPToolUILayoutComponentRef,
   parseMcpToolRef,
 } from './layout.js';
+import { isObjectRecord } from './record-guard.js';
 
 /**
  * Station#1369 Wave 1 — the versioned Workspace Pane descriptor/instance
@@ -331,7 +332,7 @@ export function cloneWorkspacePaneInitialArguments(
   value: unknown,
 ): Record<string, unknown> | null {
   const snapshot = snapshotWorkspacePaneValue(value);
-  if (!isPlainObject(snapshot)) return null;
+  if (!isObjectRecord(snapshot)) return null;
   const proto = Object.getPrototypeOf(snapshot);
   if (proto !== Object.prototype && proto !== null) return null;
   const cloned = cloneJsonCompatible(snapshot, 0, new Set());
@@ -349,7 +350,7 @@ export function cloneWorkspacePaneInitialArguments(
 function parseWorkspacePaneRendererRef(
   value: unknown,
 ): WorkspacePaneRendererRef | null {
-  if (!isPlainObject(value)) return null;
+  if (!isObjectRecord(value)) return null;
   const kind = value.kind;
 
   if (kind === 'builtin-component' || kind === 'plugin-component') {
@@ -408,7 +409,7 @@ function parseWorkspacePaneRendererRef(
   }
 
   if (kind === 'standard-data') {
-    if (!isPlainObject(value.view)) return null;
+    if (!isObjectRecord(value.view)) return null;
     const view = value.view;
     const incarnation = view.incarnation;
     if (
@@ -657,10 +658,6 @@ export interface WorkspacePaneInstance {
   boundContext?: WorkspacePaneBoundContext;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function hasOwnDataField(
   record: Record<string, unknown>,
   key: string,
@@ -669,7 +666,7 @@ function hasOwnDataField(
 }
 
 function parsePlacement(value: unknown): WorkspacePanePlacement | null {
-  if (!isPlainObject(value)) return null;
+  if (!isObjectRecord(value)) return null;
   // `region` was the pre-audit single-placement spelling. Keep it as a
   // lossless read-compat input while serializing only the capability set.
   const rawRegions =
@@ -713,7 +710,7 @@ export function parseWorkspacePaneContextRequirement(
 ): WorkspacePaneContextRequirement | null | undefined {
   if (value === undefined) return undefined;
   const snapshot = snapshotWorkspacePaneValue(value);
-  if (!isPlainObject(snapshot)) return null;
+  if (!isObjectRecord(snapshot)) return null;
   const requirementInput = snapshot;
 
   const requirement: WorkspacePaneContextRequirement = {};
@@ -764,7 +761,7 @@ function parseWorkspacePaneModes(
   const ids = new Set<string>();
   const modes: WorkspacePaneMode[] = [];
   for (const candidate of value) {
-    if (!isPlainObject(candidate) || !isNonEmptyTrimmedString(candidate.id)) {
+    if (!isObjectRecord(candidate) || !isNonEmptyTrimmedString(candidate.id)) {
       return null;
     }
     if (ids.has(candidate.id)) return null;
@@ -803,7 +800,7 @@ export function parseWorkspacePaneBoundContext(
 ): WorkspacePaneBoundContext | null | undefined {
   if (value === undefined) return undefined;
   const snapshot = snapshotWorkspacePaneValue(value);
-  if (!isPlainObject(snapshot)) return null;
+  if (!isObjectRecord(snapshot)) return null;
   const boundContextInput = snapshot;
   const boundContext: WorkspacePaneBoundContext = {};
   const keys = [
@@ -872,12 +869,12 @@ export function withWorkspacePaneInstanceLayoutBinding(
 function parseLayoutCatalogContribution(
   value: unknown,
 ): LayoutCatalogContribution | null {
-  if (!isPlainObject(value)) return null;
+  if (!isObjectRecord(value)) return null;
   if (
     !isNonEmptyTrimmedString(value.id) ||
     !isNonEmptyTrimmedString(value.version) ||
-    !isPlainObject(value.sourceIdentity) ||
-    !isPlainObject(value.provenance)
+    !isObjectRecord(value.sourceIdentity) ||
+    !isObjectRecord(value.provenance)
   ) {
     return null;
   }
@@ -970,7 +967,7 @@ function parseActions(
   const actions: WorkspacePaneAction[] = [];
   for (const entry of value) {
     if (
-      !isPlainObject(entry) ||
+      !isObjectRecord(entry) ||
       !isNonEmptyTrimmedString(entry.label) ||
       typeof entry.data !== 'string' ||
       !['prompt', 'inline-prompt', 'external', 'internal'].includes(
@@ -1005,7 +1002,7 @@ function parseProvenance(
   value: unknown,
   renderer: WorkspacePaneRendererRef,
 ): WorkspacePaneProvenance | null {
-  if (!isPlainObject(value)) return null;
+  if (!isObjectRecord(value)) return null;
   const origin = value.origin;
   if (
     typeof origin !== 'string' ||
@@ -1073,7 +1070,7 @@ function parseProvenance(
 }
 
 function parseLifecycle(value: unknown): WorkspacePaneLifecycle | null {
-  if (!isPlainObject(value)) return null;
+  if (!isObjectRecord(value)) return null;
   const stage = value.stage;
   if (
     typeof stage !== 'string' ||
@@ -1127,7 +1124,7 @@ function parseAlternativeRenderer(
   value: unknown,
 ): WorkspacePaneAlternativeRenderer | null | undefined {
   if (value === undefined) return undefined;
-  if (!isPlainObject(value)) return null;
+  if (!isObjectRecord(value)) return null;
   const renderer = parseWorkspacePaneRendererRef(value.renderer);
   if (!renderer) return null;
 
@@ -1169,7 +1166,7 @@ export function parseWorkspacePaneDescriptor(
   input: unknown,
 ): WorkspacePaneDescriptor | null {
   const snapshot = snapshotWorkspacePaneValue(input);
-  if (!isPlainObject(snapshot)) return null;
+  if (!isObjectRecord(snapshot)) return null;
   const descriptorInput = snapshot;
   // Reject the removed descriptor key explicitly instead of silently omitting
   // its renderer from the normalized projection.
@@ -1272,7 +1269,7 @@ export function parseWorkspacePaneInstance(
   input: unknown,
 ): WorkspacePaneInstance | null {
   const snapshot = snapshotWorkspacePaneValue(input);
-  if (!isPlainObject(snapshot)) return null;
+  if (!isObjectRecord(snapshot)) return null;
   const instanceInput = snapshot;
   if (instanceInput.version !== WORKSPACE_PANE_CONTRACT_VERSION) return null;
   if (

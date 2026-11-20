@@ -9,7 +9,9 @@
 
   "limits": "Guidance, proposals and dated outcomes are not newly executed implementation or release evidence. Current code and delivery policy take precedence over historical examples.",
 
-  "sources": [],
+  "sources": [
+    "scripts/public-docs-hygiene.mjs"
+  ],
 
   "checks": []
 }

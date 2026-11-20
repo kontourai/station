@@ -1,7 +1,0 @@
-{
-  "revision": "043ab6b201fe989658a467ba3be20929d0452588",
-
-  "notes": [
-    {"path":"docs/user/concepts.md","note":"Change under review (#4480 follow-ups on fix/start-owner-gate-followups-20261103): the interim start owner is bound only for a fresh start whose session.started has not settled and only when the stamp matches the dispatching principal (attachStarted now receives the dispatcher, startedBy); it is cleared when that session.started settles (appended, declined or abandoned), when an owner-bearing session.configured is appended, on failed-start cleanup and on teardown; the command gate prefers the durable owner. Searched this document for owner-establishment, command-gate, start-hook and session.started ownership claims: none describe them, so the prose citing the changed orchestration sources remains accurate.","inputs":["docs/user/concepts.md","src-server/services/orchestration/session-command-module.ts"]}
-  ]
-}

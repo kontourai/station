@@ -1,7 +1,0 @@
-{
-  "revision": "faccb23c09dcf93b192f352a646bb3c20c39c3ab",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"At this context revision reviewed only the later SkillsView.navigation.test.tsx fixture display-label change Outside Guidance to Outside Skills against Use a skill (search/read/source labels, chat/import/edit and unsaved-work claims) and prior 49f635 review. No assertion, route identifier, mutation, timing or production behavior changed; the label has no exact-text expectation. Existing prose remains accurate, so no token edit is justified. This note covers the mapped later test bytes only; it does not upgrade the retained 15-test actual-SDK/mocked-read/focused-jsdom evidence to this label revision or establish new browser, provider, narrow-delete, native-phone, fresh postnavigation GET or natural pending-keeper proof. Production Skills and SplitPane hashes remain unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.navigation.test.tsx"]}
-  ]
-}

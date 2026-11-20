@@ -6,14 +6,15 @@ const ago = (mins: number) =>
   new Date(now.getTime() - mins * 60_000).toISOString();
 
 describe('formatNotificationTime', () => {
-  test('is relative within a day', () => {
-    expect(formatNotificationTime(ago(0), now)).toBe('Just now');
-    expect(formatNotificationTime(ago(14), now)).toBe('14m ago');
-    expect(formatNotificationTime(ago(6 * 60), now)).toBe('6h ago');
+  test('is relative within a week, in the one compact format', () => {
+    expect(formatNotificationTime(ago(0), now)).toBe('now');
+    expect(formatNotificationTime(ago(14), now)).toBe('14m');
+    expect(formatNotificationTime(ago(6 * 60), now)).toBe('6h');
+    expect(formatNotificationTime(ago(2 * 1440), now)).toBe('2d');
   });
 
   test('older rows show a short date with no clock time or seconds', () => {
-    const label = formatNotificationTime(ago(2 * 1440), now);
+    const label = formatNotificationTime(ago(8 * 1440), now);
     expect(label).not.toMatch(/\d:\d\d/);
     expect(label).not.toMatch(/2026/);
     expect(

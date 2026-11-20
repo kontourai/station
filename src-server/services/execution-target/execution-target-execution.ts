@@ -20,10 +20,12 @@ import type {
   ResolvedWorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  type ConversationHandoffEffectStatus,
   type ConversationInboxEntry,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
   type SetApprovalModeResult,
+  type StagedConversationHandoff,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
@@ -33,6 +35,7 @@ import type {
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import {
+  isAcpFamilyEngine,
   readProviderDurabilityProfile,
   SESSION_VISIBILITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -43,6 +46,7 @@ import type {
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { assertProviderChatAttachments } from '../../providers/sessions/chat-attachments.js';
 import {
   type FullAccessGrant,
   FullAccessNotGrantedError,
@@ -54,11 +58,17 @@ import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
 import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import { markCreateRequestStarting } from '../orchestration/create-request-claims.js';
+import {
+  assertInheritedDelegationToolBinding,
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../orchestration/delegation-tool-policy.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
 import {
   foregroundTurnSubmissionDigest,
+  type StagedTurnSubmission,
   snapshotTurnSubmissionFields,
   snapshotTurnSubmissionValue,
 } from '../orchestration/turn-submission-digest.js';
@@ -114,6 +124,7 @@ async function provisionProjectWorktree(
 export interface ForegroundMessageContext {
   submissionDigest?: string;
   inboxPlacement?: true;
+  expectedInboxSessionId?: string;
   /** #4512: forwarded to `sendTurn` and stamped on `turn.started`. */
   dispatchOrigin?: TurnDispatchOrigin;
 }
@@ -124,8 +135,16 @@ export interface ForegroundMessageInput {
   target: ExecutionTarget;
   message: string;
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
+  /**
+   * #4827: set by server code only, at an entry point that proved a person
+   * typed `message` into one of Station's clients (`personTypedRequest`).
+   * Forwarded to `sendTurn` and stamped on `turn.started` as
+   * `authoredBy: 'person'`; absent everywhere else.
+   */
+  personAuthored?: true;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
   resolveAttachments?: (
     binding: {
@@ -264,13 +283,18 @@ function createConversationHandoffLaunchCapability(
 const conversationHandoffIntentBrand = Symbol('conversationHandoffIntent');
 type ConversationHandoffIntent = Readonly<{
   idempotencyKey: string;
+  stagedHandoff?: StagedConversationHandoff;
   [conversationHandoffIntentBrand]: true;
 }>;
 export function createConversationHandoffIntent(
   idempotencyKey: string,
+  stagedHandoff?: StagedConversationHandoff,
 ): ConversationHandoffIntent {
   return Object.freeze({
     idempotencyKey,
+    ...(stagedHandoff
+      ? { stagedHandoff: Object.freeze({ ...stagedHandoff }) }
+      : {}),
     [conversationHandoffIntentBrand]: true as const,
   });
 }
@@ -379,6 +403,38 @@ export interface ExecutionSessionBinding {
   admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;
   worktree?: WorktreeSessionMetadata;
+  /** The provider the conversation's current session runs on. */
+  provider?: EngineId;
+}
+
+/**
+ * Ruling R2: a conversation keeps the provider it started with. A saved ACP
+ * connection can be run by more than one ACP-family engine (`acp`, and
+ * `opencode` behind its Feature Preview), and which one a new chat gets
+ * follows the preview. A follow-up, and any successor session it starts,
+ * stays on the provider the conversation's current session runs on, so
+ * turning the preview on or off never moves an existing chat (and no stored
+ * record is rewritten). Another connection, or a provider outside the ACP
+ * family, is a real change of engine and resolves as before.
+ */
+function keepConversationProvider<
+  T extends {
+    provider: EngineId;
+    engine: ResolvedExecutionEngine;
+  },
+>(resolved: T, binding: ExecutionSessionBinding | null | undefined): T {
+  const stored = binding?.provider;
+  if (
+    !stored ||
+    stored === resolved.provider ||
+    resolved.engine.kind !== 'connection' ||
+    !binding?.connectionId ||
+    binding.connectionId !== String(resolved.engine.connectionId) ||
+    !isAcpFamilyEngine(stored) ||
+    !isAcpFamilyEngine(resolved.provider)
+  )
+    return resolved;
+  return { ...resolved, provider: stored };
 }
 
 export class ContinuationWorkspaceError extends Error {
@@ -436,6 +492,7 @@ export interface ExecutionTargetExecutionDependencies
        * admission even when it carries a person's recorded origin.
        */
       resourceAdmissionIntent?: 'queued_background';
+      personAuthored?: true;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -545,6 +602,7 @@ export interface ExecutionTargetExecutionDependencies
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ) => Promise<{
     sessionId: string;
@@ -610,6 +668,7 @@ export interface ExecutionTargetExecutionDependencies
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      stagedHandoff?: StagedConversationHandoff;
     },
   ) => Promise<{
     marker: {
@@ -638,6 +697,7 @@ export interface ExecutionTargetExecutionDependencies
     },
   ) => Promise<{
     providerTurnId?: string;
+    status?: ConversationHandoffEffectStatus;
     marker?: { sessionId: string };
   } | null>;
   /** Private captured caller guard at the existing provisioning effect. */
@@ -703,6 +763,7 @@ export async function executeForegroundMessage(
     input = snapshotTurnSubmissionFields(input, [
       'target',
       'attachments',
+      'stagedSubmission',
       'expectedInputRequest',
       'skillExperience',
       'mcpPromptOrigin',
@@ -716,7 +777,18 @@ export async function executeForegroundMessage(
     throw new Error('Execution message must not be empty');
   }
 
-  const resolved = await resolveExecutionTarget(input.target, deps);
+  assertInheritedDelegationToolPolicy(input.delegation);
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
+  let resolved = await resolveExecutionTarget(
+    input.target,
+    deps,
+    input.handoffIntent?.stagedHandoff
+      ? { stagedAgentChange: true }
+      : undefined,
+  );
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
       'MCP prompt origin cannot be safely carried to another Station.',
@@ -740,6 +812,13 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  if (
+    context?.expectedInboxSessionId &&
+    (!binding || !deps.resolveConversationSession)
+  )
+    throw new Error('The conversation changed while this message was waiting.');
+  if (!input.handoffIntent?.stagedHandoff)
+    resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
     ? undefined
     : await deps.readInitialConversationContext(resolved.access, {
@@ -755,6 +834,9 @@ export async function executeForegroundMessage(
   const handoffPayloadDigest = requestedHandoff
     ? canonicalHandoffEffectDigest({
         message,
+        ...(input.handoffIntent!.stagedHandoff
+          ? { stagedHandoff: input.handoffIntent!.stagedHandoff }
+          : {}),
         attachments: input.attachments ?? [],
         ambientContext: input.ambientContext ?? '',
         provider: resolved.provider,
@@ -834,11 +916,14 @@ export async function executeForegroundMessage(
       threadId: sessionId,
       clientTurnId: effectiveClientTurnId ?? '',
     };
-    attachments = input.resolveAttachments
-      ? inspectOnly
-        ? input.resolveAttachments(binding, { inspectOnly: true })
-        : input.resolveAttachments(binding)
-      : input.attachments;
+    attachments =
+      inspectOnly && input.stagedSubmission
+        ? undefined
+        : input.resolveAttachments
+          ? inspectOnly
+            ? input.resolveAttachments(binding, { inspectOnly: true })
+            : input.resolveAttachments(binding)
+          : input.attachments;
     if (effectiveClientTurnId && attachments)
       attachments = snapshotTurnSubmissionValue(attachments);
     submissionDigest =
@@ -863,6 +948,11 @@ export async function executeForegroundMessage(
       inputDigest: submissionDigest,
     });
   }
+  if (input.handoffIntent?.stagedHandoff && !priorHandoff?.marker) {
+    const adapter = deps.getProviderAdapter(resolved.provider);
+    if (!adapter) throw new Error('The selected engine is unavailable.');
+    assertProviderChatAttachments(adapter.metadata, input.attachments ?? []);
+  }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
@@ -877,6 +967,9 @@ export async function executeForegroundMessage(
         ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
         idempotencyKey: input.handoffIntent!.idempotencyKey,
         messageDigest: handoffPayloadDigest!,
+        ...(input.handoffIntent!.stagedHandoff
+          ? { stagedHandoff: input.handoffIntent!.stagedHandoff }
+          : {}),
       })
     : undefined;
   if (requestedHandoff && !preparedHandoff) {
@@ -948,6 +1041,14 @@ export async function executeForegroundMessage(
         inputDigest: submissionDigest,
       },
     );
+    if (
+      input.handoffIntent?.stagedHandoff &&
+      existingEffect?.status === 'indeterminate'
+    ) {
+      throw new ForegroundMessageTurnIdentityUnavailableError(
+        'The earlier Agent change may have started. Check its status before sending again.',
+      );
+    }
     if (existingEffect?.providerTurnId) {
       return {
         conversationId,
@@ -1002,9 +1103,12 @@ export async function executeForegroundMessage(
           input.userId,
         );
     if (queued) {
-      captureSubmission(queued.entry.sessionId ?? conversationId);
+      captureSubmission(
+        queued.entry.sessionId ?? conversationId,
+        Boolean(input.stagedSubmission),
+      );
       if (
-        queued.inputDigest !== undefined &&
+        (input.stagedSubmission || queued.inputDigest !== undefined) &&
         queued.inputDigest !== submissionDigest
       )
         throw new ClientTurnInputConflictError();
@@ -1024,6 +1128,11 @@ export async function executeForegroundMessage(
       'sessionId' in inspection &&
       typeof inspection.sessionId === 'string'
     ) {
+      if (input.stagedSubmission && inspection.outcome !== 'started')
+        input.resolveAttachments(
+          { threadId: inspection.sessionId, clientTurnId },
+          { inspectOnly: true },
+        );
       captureSubmission(inspection.sessionId, true);
       decision = conversationKeyDecision(
         deps.inspectConversationTurnKey?.(
@@ -1057,11 +1166,11 @@ export async function executeForegroundMessage(
             : decision;
     }
     if (decision.kind === 'started') {
-      // Staged attachments are bound to the turn that took them, as for a
-      // send that went through, so the route accepts (rather than strands)
-      // the references this retry carries.
-      if (submissionDigest === undefined) captureSubmission(decision.sessionId);
-      else if (inspectedAttachments)
+      // A witnessed replay compares the original ordered references in the
+      // durable claim. The route must not hydrate or accept files again.
+      if (submissionDigest === undefined)
+        captureSubmission(decision.sessionId, Boolean(input.stagedSubmission));
+      else if (inspectedAttachments && !input.stagedSubmission)
         input.resolveAttachments?.({
           threadId: decision.sessionId,
           clientTurnId,
@@ -1137,6 +1246,7 @@ export async function executeForegroundMessage(
           conversationId,
           {
             provider: resolved.provider,
+            expectedInboxSessionId: context?.expectedInboxSessionId,
             ...(resolved.engine.kind === 'connection'
               ? { connectionId: resolved.engine.connectionId }
               : {}),
@@ -1153,6 +1263,14 @@ export async function executeForegroundMessage(
           }
         : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  if (binding && !continuation?.startRequired) {
+    const retained = deps.readSessionStartMetadata?.(
+      resolved.access,
+      sessionId,
+    )?.delegation;
+    assertInheritedDelegationToolPolicy(retained);
+    assertInheritedDelegationToolBinding(input.delegation, retained);
+  }
   const transcriptSeed =
     readProviderDurabilityProfile(
       deps.getProviderAdapter(resolved.provider)?.metadata,
@@ -1586,7 +1704,11 @@ export async function executeForegroundMessage(
         });
     }
   }
-  if (submissionDigest === undefined) captureSubmission(sessionId);
+  if (
+    submissionDigest === undefined ||
+    (inspectedAttachments && input.stagedSubmission)
+  )
+    captureSubmission(sessionId);
   else if (inspectedAttachments && effectiveClientTurnId)
     input.resolveAttachments?.({
       threadId: sessionId,
@@ -1633,6 +1755,7 @@ export async function executeForegroundMessage(
     input.clientOrigin ||
       input.principal ||
       input.mcpPromptOrigin ||
+      input.personAuthored ||
       submissionDigest ||
       context?.inboxPlacement ||
       context?.dispatchOrigin ||
@@ -1654,6 +1777,7 @@ export async function executeForegroundMessage(
           ...(input.mcpPromptOrigin
             ? { mcpPromptOrigin: input.mcpPromptOrigin }
             : {}),
+          ...(input.personAuthored ? { personAuthored: true as const } : {}),
         }
       : undefined,
   );

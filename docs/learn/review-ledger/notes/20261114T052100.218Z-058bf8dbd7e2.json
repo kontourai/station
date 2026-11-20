@@ -1,0 +1,9 @@
+{
+  "revision": "186a00c40db0de3ccf3e0a920d951d634cfb128f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Project list now names the Git repository (folder when none); create/update responses carry the same repositoryDisplay as reads.","inputs":["docs/user/getting-started.md","src-server/services/projects/project-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Project identity/repository claims unchanged: create and update responses now carry the read-side repositoryDisplay label; no checkout paths or credentials added.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-service.ts"]}
+  ]
+}

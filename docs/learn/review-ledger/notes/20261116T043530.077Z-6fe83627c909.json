@@ -1,0 +1,61 @@
+{
+  "revision": "6357a36115c52248b38762a080e2cb15ff06b053",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Cross-station reads now say the list's 2-second deadline (REMOTE_SESSION_FETCH_TIMEOUT_MS) usually expires before an older remote fills the 8 MiB cap, and record the accepted worst case of 16 concurrent remotes (MAX_CONCURRENT_REMOTE_ENVIRONMENTS) x 8 MiB per read with no server-side single-flight. Checked against remote-session-reader.ts.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"listOrchestrationSessions' limit now documents the client-side RangeError for a non-integer or out-of-range value, checked against client/orchestration.ts and its test.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/orchestration.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Only change: the delegated-activity refresh comment moved back above its call in the read-model handler; behavior unchanged. Citing pages' claims hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"listOrchestrationSessions rejects an invalid limit with RangeError before sending; sdk.md documents it.","inputs":["packages/sdk/src/client/orchestration.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Only the Cross-station reads list-cap sentences changed; citing pages' references remain accurate.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

@@ -152,6 +152,25 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ).rejects.toThrow('conversation is unavailable');
   });
 
+  it('a lookup its caller paused is not one of the three failures that park the message', async () => {
+    const queue = await killedMidSend();
+    const paused = vi.fn(async () => {
+      throw new queue.OutboundLookupPausedError();
+    });
+    for (let attempt = 0; attempt < 4; attempt++)
+      expect(await queue.outboundDispatch.reconcile(paused)).toEqual({
+        received: 0,
+        lookupFailed: 0,
+      });
+    expect(paused).toHaveBeenCalledTimes(4);
+    const [row] = await queue.outboundDispatch.snapshot();
+    expect(row).toMatchObject({ status: 'invoking', awaitingLookup: true });
+    expect(row?.deliveryLookupFailures).toBeUndefined();
+    // Still the lookup's to settle once it can be asked.
+    await queue.outboundDispatch.reconcile(lookupAnswering('started'));
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
   it('manual delivery refresh never releases an automatic resend of an unanswered request', async () => {
     const queue = await killedMidSend();
     await queue.outboundDispatch.check(
@@ -1294,6 +1313,25 @@ describe('the queue and its retired list are written together', () => {
     expect(fake.puts).toEqual([]);
   });
 
+  it('an updater that returns the record it was given puts nothing', async () => {
+    const { updateRecordAndRetired } = await import('../lib/outboundQueue');
+    const fake = fakeObjectStore({
+      [QUEUE_KEY]: { turns: ['row'] },
+      'station-outbound-retired-v1': ['old'],
+    });
+    const done = updateRecordAndRetired(
+      fake.objectStore,
+      (record, retired) => ({
+        record,
+        retired,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fake.commit();
+    await done;
+    expect(fake.puts).toEqual([]);
+  });
+
   it('a retired list that cannot be stored aborts the transaction, so the record is not kept alone', async () => {
     const { updateRecordAndRetired } = await import('../lib/outboundQueue');
     const fake = fakeObjectStore(
@@ -1340,6 +1378,44 @@ describe('the queue and its retired list are written together', () => {
     await expect(
       queue.outboundDispatch.beginLive({ ...intent, clientTurnId: 'atomic-1' }),
     ).rejects.toMatchObject({ reason: 'accepted' });
+  });
+
+  it('reading the outbox writes nothing when the read changed nothing', async () => {
+    stubLocks();
+    vi.resetModules();
+    const queue = await import('../lib/outboundQueue');
+    let record: unknown;
+    let retired: unknown;
+    let recordWrites = 0;
+    const separateWrite = async () => {
+      throw new Error('a separate write was made');
+    };
+    queue._setOutboundQueueStorage(
+      {
+        getItem: async (key) => (key === QUEUE_KEY ? record : retired),
+        setItem: separateWrite,
+        updateItem: separateWrite,
+        // As the production transaction does: a record handed back untouched
+        // is not put again.
+        updateWithRetired: async (updater) => {
+          const next = updater(record, retired);
+          if (next.record !== record) recordWrites += 1;
+          record = next.record;
+          retired = next.retired;
+        },
+      },
+      { get: async () => retired, set: separateWrite },
+    );
+    await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'read-only-1',
+    });
+    expect(recordWrites).toBe(1);
+    const stored = record;
+    expect(await queue.outboundDispatch.open()).toHaveLength(1);
+    expect(await queue.outboundDispatch.snapshot()).toHaveLength(1);
+    expect(recordWrites).toBe(1);
+    expect(record).toBe(stored);
   });
 
   it('the production IndexedDB storage writes a delivery and its retired key in one transaction', async () => {

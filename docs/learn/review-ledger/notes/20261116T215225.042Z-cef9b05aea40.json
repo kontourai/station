@@ -1,0 +1,7 @@
+{
+  "revision": "a3d607ef900e0a67b357cb132ba4f0b6752c864f",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Merged main's openDesktopBackgroundTasks (#5076) into the branch's Agents pane journeys, and the reload case reuses the pane the region restored. Coverage matrix row unchanged.","inputs":["tests/agents-pane.spec.ts"]}
+  ]
+}

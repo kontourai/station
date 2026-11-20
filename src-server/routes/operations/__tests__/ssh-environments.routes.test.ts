@@ -7,6 +7,13 @@ import {
 import { SshProbeAdmission } from '../../../services/ssh/ssh-probe-admission.js';
 import { createSshEnvironmentRoutes } from '../ssh-environments.js';
 
+/** The bound, current owner on a personal Station: the one admitted caller. */
+const OWNER_READS = {
+  hosted: false,
+  current: () => true,
+  owner: () => true,
+};
+
 function service() {
   const view = {
     profile: {
@@ -206,7 +213,14 @@ describe('SSH environment routes', () => {
       unavailable: [],
       authenticationRequired: [],
     }));
-    const app = createSshEnvironmentRoutes(mock as any, listRemoteSessions);
+    const app = createSshEnvironmentRoutes(
+      mock as any,
+      listRemoteSessions,
+      undefined,
+      undefined,
+      undefined,
+      OWNER_READS,
+    );
     const response = await app.request('/sessions');
     expect(response.status).toBe(200);
     const body = await json(response);
@@ -233,7 +247,14 @@ describe('SSH environment routes', () => {
     const listRemoteSessions = vi.fn(async () => {
       throw new Error('boom');
     });
-    const app = createSshEnvironmentRoutes(mock as any, listRemoteSessions);
+    const app = createSshEnvironmentRoutes(
+      mock as any,
+      listRemoteSessions,
+      undefined,
+      undefined,
+      undefined,
+      OWNER_READS,
+    );
     const response = await app.request('/sessions');
     expect(response.status).toBe(503);
     expect((await json(response)).success).toBe(false);
@@ -459,5 +480,323 @@ describe('SSH probe admission', () => {
     });
     expect(rejected.status).toBe(400);
     expect(admission.inFlight).toBe(0);
+  });
+});
+
+describe('remote session history (read-only, over a connected environment)', () => {
+  const ENV_ID = '22222222-2222-4222-8222-222222222222';
+  const THREAD = 'external:claude:0123456789abcdef0123456789abcdef';
+
+  function remoteService(phase: 'connected' | 'idle' = 'connected') {
+    const view = {
+      profile: { id: ENV_ID, name: 'Home media', environmentId: 'peer-env' },
+      state:
+        phase === 'connected'
+          ? { phase, localUrl: 'http://127.0.0.1:45999' }
+          : { phase },
+    };
+    return {
+      list: vi.fn(() => [view]),
+      connect: vi.fn(async () => view),
+    };
+  }
+
+  const peerCredentials = {
+    get: vi.fn((environmentId: string) =>
+      environmentId === 'peer-env'
+        ? ({ credential: 'peer-bearer-for-test' } as any)
+        : null,
+    ),
+  };
+
+  function window(threadId = THREAD, extra: Record<string, unknown> = {}) {
+    return {
+      protocolVersion: 1 as const,
+      session: {
+        threadId,
+        provider: 'claude',
+        controlMode: 'read-only-attached',
+      } as any,
+      events: [
+        {
+          sequence: 7,
+          event: { eventId: 'evt-1', type: 'message.user', threadId } as any,
+        },
+      ],
+      hasMore: true,
+      nextCursor: 'cursor-1',
+      watermark: 7,
+      ...extra,
+    };
+  }
+
+  test('relays one bounded page from the connected environment with its peer bearer, labeled by this Station', async () => {
+    const svc = remoteService();
+    const fetchHistory = vi.fn(async () =>
+      window(THREAD, { environmentName: 'spoofed', remoteOnly: 'drop-me' }),
+    );
+    const app = createSshEnvironmentRoutes(
+      svc as any,
+      undefined,
+      peerCredentials,
+      undefined,
+      fetchHistory,
+      OWNER_READS,
+    );
+    const client = new AbortController();
+    const response = await app.request(
+      new Request(
+        `http://station.test/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history?turnLimit=5&cursor=c0`,
+        { signal: client.signal },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    expect(fetchHistory).toHaveBeenCalledWith(
+      'http://127.0.0.1:45999',
+      THREAD,
+      { cursor: 'c0', turnLimit: 5 },
+      {
+        headers: { Authorization: 'Bearer peer-bearer-for-test' },
+        signal: expect.any(AbortSignal),
+      },
+    );
+    // The caller's own signal: a client that goes away cancels the remote read.
+    const forwarded = (
+      fetchHistory.mock.calls[0] as unknown as [
+        string,
+        string,
+        unknown,
+        { signal: AbortSignal },
+      ]
+    )[3].signal;
+    expect(forwarded.aborted).toBe(false);
+    client.abort();
+    expect(forwarded.aborted).toBe(true);
+    expect(svc.connect).not.toHaveBeenCalled();
+    expect(body.data.environmentId).toBe(ENV_ID);
+    expect(body.data.environmentName).toBe('Home media');
+    expect(body.data.window.events).toHaveLength(1);
+    expect(body.data.window.nextCursor).toBe('cursor-1');
+    expect(body.data.window.session.threadId).toBe(THREAD);
+    // Only the page's own fields cross; the remote cannot add others.
+    expect(body.data.window).not.toHaveProperty('remoteOnly');
+    expect(body.data.window).not.toHaveProperty('environmentName');
+    expect(JSON.stringify(body)).not.toContain('peer-bearer-for-test');
+  });
+
+  test('never dials: an environment that is not connected is unavailable and nothing is fetched', async () => {
+    const svc = remoteService('idle');
+    const fetchHistory = vi.fn();
+    const app = createSshEnvironmentRoutes(
+      svc as any,
+      undefined,
+      peerCredentials,
+      undefined,
+      fetchHistory as any,
+      OWNER_READS,
+    );
+    const response = await app.request(
+      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
+    );
+    expect(response.status).toBe(409);
+    expect((await json(response)).code).toBe('environment_unavailable');
+    expect(fetchHistory).not.toHaveBeenCalled();
+    expect(svc.connect).not.toHaveBeenCalled();
+  });
+
+  test('a missing peer credential is a repairable state, never an unauthenticated read', async () => {
+    const svc = remoteService();
+    const fetchHistory = vi.fn();
+    const app = createSshEnvironmentRoutes(
+      svc as any,
+      undefined,
+      { get: () => null } as any,
+      undefined,
+      fetchHistory as any,
+      OWNER_READS,
+    );
+    const response = await app.request(
+      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
+    );
+    expect(response.status).toBe(409);
+    expect((await json(response)).code).toBe('authentication_required');
+    expect(fetchHistory).not.toHaveBeenCalled();
+  });
+
+  test("the remote's 401 is reported as authentication_required, not as this Station's own 401", async () => {
+    const { StationHttpError } = await import('@kontourai/station-sdk/client');
+    const app = createSshEnvironmentRoutes(
+      remoteService() as any,
+      undefined,
+      peerCredentials,
+      undefined,
+      async () => {
+        throw new StationHttpError(401, 'Unauthorized');
+      },
+      OWNER_READS,
+    );
+    const response = await app.request(
+      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
+    );
+    expect(response.status).toBe(409);
+    expect((await json(response)).code).toBe('authentication_required');
+  });
+
+  test('refuses a page naming another session, or one past the event bound, instead of relaying it', async () => {
+    const { MAX_REMOTE_SESSION_HISTORY_EVENTS } = await import(
+      '../../../services/ssh/remote-session-reader.js'
+    );
+    const other = createSshEnvironmentRoutes(
+      remoteService() as any,
+      undefined,
+      peerCredentials,
+      undefined,
+      async () => window('external:claude:ffffffffffffffffffffffffffffffff'),
+      OWNER_READS,
+    );
+    const otherResponse = await other.request(
+      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
+    );
+    expect(otherResponse.status).toBe(502);
+    expect((await json(otherResponse)).code).toBe('invalid_response');
+
+    const oversized = window();
+    oversized.events = Array.from(
+      { length: MAX_REMOTE_SESSION_HISTORY_EVENTS + 1 },
+      (_, index) => ({
+        sequence: index,
+        event: { eventId: `evt-${index}` } as any,
+      }),
+    );
+    const big = createSshEnvironmentRoutes(
+      remoteService() as any,
+      undefined,
+      peerCredentials,
+      undefined,
+      async () => oversized,
+      OWNER_READS,
+    );
+    const bigResponse = await big.request(
+      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
+    );
+    expect(bigResponse.status).toBe(502);
+    expect((await json(bigResponse)).code).toBe('invalid_response');
+  });
+
+  test.each([
+    ['turnLimit above the remote bound', '?turnLimit=21'],
+    ['a non-numeric turnLimit', '?turnLimit=ten'],
+    ['an oversized cursor', `?cursor=${'c'.repeat(513)}`],
+  ])('rejects %s before any remote read', async (_label, query) => {
+    const fetchHistory = vi.fn();
+    const app = createSshEnvironmentRoutes(
+      remoteService() as any,
+      undefined,
+      peerCredentials,
+      undefined,
+      fetchHistory as any,
+      OWNER_READS,
+    );
+    const response = await app.request(
+      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history${query}`,
+    );
+    expect(response.status).toBe(400);
+    expect(fetchHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("remote reads are the bound owner's alone (security review H1)", () => {
+  const ENV_ID = '22222222-2222-4222-8222-222222222222';
+  const THREAD = 'external:claude:0123456789abcdef0123456789abcdef';
+  const HISTORY = `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`;
+
+  function connected() {
+    return {
+      list: vi.fn(() => [
+        {
+          profile: {
+            id: ENV_ID,
+            name: 'Home media',
+            environmentId: 'peer-env',
+          },
+          state: { phase: 'connected', localUrl: 'http://127.0.0.1:45999' },
+        },
+      ]),
+    };
+  }
+  const peers = { get: () => ({ credential: 'peer-bearer-for-test' }) as any };
+
+  function routes(remoteReads: unknown) {
+    const fetchHistory = vi.fn(async () => ({
+      protocolVersion: 1 as const,
+      session: { threadId: THREAD } as any,
+      events: [],
+      hasMore: false,
+      watermark: 0,
+    }));
+    const listRemoteSessions = vi.fn(async () => ({
+      environments: [],
+      unavailable: [],
+      authenticationRequired: [],
+    }));
+    const app = createSshEnvironmentRoutes(
+      connected() as any,
+      listRemoteSessions,
+      peers,
+      undefined,
+      fetchHistory,
+      remoteReads as any,
+    );
+    return { app, fetchHistory, listRemoteSessions };
+  }
+
+  test.each([
+    [
+      'a paired device bound to someone else',
+      { hosted: false, current: () => true, owner: () => false },
+      {},
+    ],
+    [
+      'a principal that is no longer current',
+      { hosted: false, current: () => false, owner: () => true },
+      {},
+    ],
+    [
+      'an agent-originated request, even from the owner',
+      OWNER_READS,
+      { 'x-station-control-origin': 'agent-tool' },
+    ],
+    ['a Station that composed no read authority', undefined, {}],
+  ])(
+    'refuses %s on both remote reads, reaching no remote',
+    async (_label, reads, headers) => {
+      const { app, fetchHistory, listRemoteSessions } = routes(reads);
+      const history = await app.request(HISTORY, { headers });
+      expect(history.status).toBe(403);
+      const list = await app.request('/sessions', { headers });
+      expect(list.status).toBe(403);
+      expect(fetchHistory).not.toHaveBeenCalled();
+      expect(listRemoteSessions).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a hosted Station serves no remote reads: no tenant binds the Station-wide peer bearer', async () => {
+    const { app, fetchHistory, listRemoteSessions } = routes({
+      ...OWNER_READS,
+      hosted: true,
+    });
+    expect((await app.request(HISTORY)).status).toBe(404);
+    expect((await app.request('/sessions')).status).toBe(404);
+    expect(fetchHistory).not.toHaveBeenCalled();
+    expect(listRemoteSessions).not.toHaveBeenCalled();
+  });
+
+  test('the bound, current owner reads both', async () => {
+    const { app, fetchHistory, listRemoteSessions } = routes(OWNER_READS);
+    expect((await app.request(HISTORY)).status).toBe(200);
+    expect((await app.request('/sessions')).status).toBe(200);
+    expect(fetchHistory).toHaveBeenCalledTimes(1);
+    expect(listRemoteSessions).toHaveBeenCalledTimes(1);
   });
 });

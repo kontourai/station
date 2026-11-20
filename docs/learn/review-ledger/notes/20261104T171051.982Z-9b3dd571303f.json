@@ -1,9 +1,0 @@
-{
-  "revision": "c0608121ee96ba71da95a84fb3ad398d3a0a33cf",
-
-  "notes": [
-    {"path":"docs/guides/documentation-review-ledger.md","note":"Delta review at c0608121ee96: review-history.mjs groups value-binding digests by immutable source blob within one replay. The existing four-entry parser cache and all freshness modes, HEAD citation lists, missing-value handling, note replay, dirty-input checks and coverage baseline remain unchanged. Reviewed the reader and freshness caller; original and grouped replay produced identical complete compiled state on the same parsed ledger and committed-note set. Local profile/timing is diagnostic, not a hosted qualification or latency guarantee. No prose changes needed.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/review-history.mjs"]},
-
-    {"path":"docs/learn/README.md","note":"Delta review at c0608121ee96: review-history.mjs groups value-binding digests by immutable source blob within one replay. The existing four-entry parser cache and all freshness modes, HEAD citation lists, missing-value handling, note replay, dirty-input checks and coverage baseline remain unchanged. Reviewed the reader and freshness caller; original and grouped replay produced identical complete compiled state on the same parsed ledger and committed-note set. Local profile/timing is diagnostic, not a hosted qualification or latency guarantee. No prose changes needed.","inputs":["docs/learn/README.md","scripts/lib/review-history.mjs"]}
-  ]
-}

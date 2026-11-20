@@ -17,7 +17,10 @@ export const STATION_SERVER_EXTERNALS = [
   // installed package. Bundling moves that lookup to Station's output and
   // bypasses Flow's package-local dependency tree.
   '@kontourai/flow',
-  // @kontourai/flow-agents' public entry re-exports loadJson/writeJson from
+  // @kontourai/flow-agents stays external so the boot-import check
+  // (server-static-imports.mjs) sees its specifiers. The server imports only
+  // its subpaths, never the root; the root also must not be inlined, because
+  // it re-exports loadJson/writeJson from
   // its cli/workflow-sidecar.js module, which runs its CLI main() guarded
   // by an import.meta.url === process.argv[1] real-path check. When this
   // module is inlined by esbuild's bundler, import.meta.url for the merged

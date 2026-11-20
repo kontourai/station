@@ -1,0 +1,29 @@
+{
+  "revision": "44a3079c1059012a36482bcc6812b7e4909b2a6d",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. Its Task brief definition (received with the first turn) still holds; re-delivery after a fresh engine session is an addition, not a change of meaning.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. Its first-turn composition receipt and Task brief claims are unaffected.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The cited module map changed one sentence: first-turn context (budget, chat-images line, prompt, Station instructions, Task brief) is delivered again after an acp.session-started-fresh warning. This document makes no claim about first-turn composition, so its claims stand.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

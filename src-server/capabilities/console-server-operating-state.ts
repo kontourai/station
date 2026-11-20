@@ -66,6 +66,22 @@ type BuildCurrentOperatingStateFn = (
 
 let cached: BuildCurrentOperatingStateFn | null = null;
 
+type TranslateWorkflowProcessProjectionEnvelopeFn =
+  typeof import('@kontourai/console-server')['translateWorkflowProcessProjectionEnvelope'];
+
+/**
+ * `@kontourai/console-server`'s declared
+ * `translateWorkflowProcessProjectionEnvelope`, required on first use like
+ * `loadBuildCurrentOperatingState` so the package is not imported when the
+ * server boots (scripts/lib/server-static-imports.mjs). A failed require
+ * throws to the caller, as a failed call would.
+ */
+export function loadTranslateWorkflowProcessProjectionEnvelope(): TranslateWorkflowProcessProjectionEnvelopeFn {
+  return (
+    require('@kontourai/console-server') as typeof import('@kontourai/console-server')
+  ).translateWorkflowProcessProjectionEnvelope;
+}
+
 /**
  * Loads (once, memoized) and returns `@kontourai/console-server`'s real
  * `buildCurrentOperatingState` function. Throws if the installed package

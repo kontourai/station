@@ -115,7 +115,6 @@ export function BrowserScreenshot({
       ) : null}
       <IconButton
         aria-label="Dismiss screenshot"
-        title="Dismiss screenshot"
         className="browser-pane__control"
         onClick={onDismiss}
       >

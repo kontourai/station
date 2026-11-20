@@ -1,0 +1,7 @@
+{
+  "revision": "4c14ad6997d3f3ba0d9504b657785456bf3735ae",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked the Agents pane amendment after row actions moved from a container query to flex wrap (ChildWorkRow.css, BackgroundTasksSheet.css): the paragraph now states the 22rem text minimum and wrap; verified by tests/agents-pane.spec.ts at 380px (wrapped) and 600px (beside).","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/BackgroundTasksSheet.css","src-ui/src/workspace-panes/agents/ChildWorkRow.css"]}
+  ]
+}

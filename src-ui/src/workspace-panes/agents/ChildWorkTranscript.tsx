@@ -1,20 +1,29 @@
-import type { ChildWorkTranscriptEntry } from '@kontourai/station-contracts/child-work';
+import {
+  agentId,
+  parseEngineId,
+} from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   StationHttpError,
-  useChildWorkTranscriptQuery,
+  useChildWorkTranscriptTailQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Button } from '../../components/Button';
-import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
+import { ChatMessageList } from '../../components/chat/ChatMessageList';
+import { TranscriptToolRecordLive } from '../../components/chat/useObservedRunningToolCalls';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
-import { SkeletonBlock } from '../../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
+import type { ChatSession } from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
+import { childTranscriptMessages } from './childTranscriptMessages';
 import './ChildWorkTranscript.css';
 
 /**
  * #3163: an engine subagent's own transcript, read-only. The server resolves
  * it from the reporting session's persisted facts; this view names only the
- * session and the child. Pages load on request, never by polling.
+ * session and the child. It opens on the latest messages; older ones load
+ * above as the reader scrolls up, as in the main chat. A running child reads
+ * only what follows its last message; settlement stops that.
  */
 
 /** A reporting child's transcript re-reads at most this often. */
@@ -28,89 +37,17 @@ function failureText(error: unknown): string {
   return describeStationFailure(error).body;
 }
 
-function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
-  const cut = entry.truncated ? (
-    <span className="child-work-transcript__cut"> (cut)</span>
-  ) : null;
-  switch (entry.kind) {
-    case 'text':
-      return (
-        <li className="child-work-transcript__entry" data-role={entry.role}>
-          <span className="child-work-transcript__label">
-            {entry.role === 'user' ? 'Prompt' : 'Subagent'}
-          </span>
-          {entry.role === 'assistant' ? (
-            // #4266: a subagent writes Markdown, as the card's summary of
-            // the same reply renders it. Any engine's child, the same way.
-            <div className="child-work-transcript__markdown">
-              <LazyMarkdown>{entry.text}</LazyMarkdown>
-              {cut}
-            </div>
-          ) : (
-            <p className="child-work-transcript__text">
-              {entry.text}
-              {cut}
-            </p>
-          )}
-        </li>
-      );
-    case 'tool-call':
-      return (
-        <li className="child-work-transcript__entry" data-kind="tool-call">
-          <span className="child-work-transcript__label">
-            Tool · {entry.name}
-          </span>
-          {entry.input && (
-            <code className="child-work-transcript__code">
-              {entry.input}
-              {cut}
-            </code>
-          )}
-        </li>
-      );
-    case 'tool-result':
-      return (
-        <li className="child-work-transcript__entry" data-kind="tool-result">
-          <span className="child-work-transcript__label">
-            {entry.isError ? 'Tool error' : 'Tool result'}
-          </span>
-          {entry.text ? (
-            <code className="child-work-transcript__code">
-              {entry.text}
-              {cut}
-            </code>
-          ) : (
-            <p className="child-work-transcript__text">No text output.</p>
-          )}
-        </li>
-      );
-    case 'omitted':
-      return (
-        <li className="child-work-transcript__entry" data-kind="omitted">
-          <p className="child-work-transcript__note">
-            {entry.count} more {entry.count === 1 ? 'block' : 'blocks'} in this
-            message not shown.
-          </p>
-        </li>
-      );
-    case 'too-large':
-      return (
-        <li className="child-work-transcript__entry" data-kind="too-large">
-          <p className="child-work-transcript__note">
-            An entry too large to show was left out.
-          </p>
-        </li>
-      );
-  }
-}
-
 export function ChildWorkTranscript({
   id,
   threadId,
   childId,
   running,
   revision,
+  title = 'Subagent',
+  engineId,
 }: {
+  title?: string;
+  engineId?: string;
   id: string;
   threadId: string;
   childId: string;
@@ -124,11 +61,11 @@ export function ChildWorkTranscript({
   revision: string;
 }) {
   const target = useOptionalConversationConnection();
-  const transcript = useChildWorkTranscriptQuery(
-    { threadId, childId, requestScope: target?.requestScope },
+  const transcript = useChildWorkTranscriptTailQuery(
+    { threadId, childId, running, requestScope: target?.requestScope },
     target?.apiBase,
   );
-  const { refetch } = transcript;
+  const { refreshLatest, reload } = transcript;
   const seenRevision = useRef(revision);
   const pendingRefresh = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -142,16 +79,54 @@ export function ChildWorkTranscript({
     if (pendingRefresh.current !== null) return;
     pendingRefresh.current = setTimeout(() => {
       pendingRefresh.current = null;
-      void refetch();
+      refreshLatest();
     }, TRANSCRIPT_REFRESH_THROTTLE_MS);
-  }, [revision, refetch]);
+  }, [revision, refreshLatest]);
   useEffect(
     () => () => {
       if (pendingRefresh.current !== null) clearTimeout(pendingRefresh.current);
     },
     [],
   );
-  const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
+  const pages = transcript.data?.pages;
+  const entries = useMemo(
+    () => pages?.flatMap((page) => page.entries) ?? [],
+    [pages],
+  );
+  const messages = useMemo(() => childTranscriptMessages(entries), [entries]);
+  const {
+    hasPreviousPage,
+    isFetchingPreviousPage,
+    isFetching,
+    fetchPreviousPage,
+    hasLaterPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = transcript;
+  const engine = parseEngineId(engineId);
+  const session: ChatSession = {
+    id: JSON.stringify([
+      'child-record',
+      target?.station?.runtimeKey ?? target?.apiBase,
+      threadId,
+      childId,
+    ]),
+    agentSlug: agentId(engineId ?? 'record'),
+    // Each reply is the engine's, as in the main chat; the breadcrumb
+    // already names this subagent, so its rows do not repeat the title.
+    agentName: (engine && engineDisplayLabel(engine)) || title,
+    title,
+    source: 'manual',
+    messages,
+    input: '',
+    attachments: [],
+    queuedMessages: [],
+    inputHistory: [],
+    status: 'idle',
+    error: null,
+    createdAt: 0,
+    updatedAt: 0,
+  };
   return (
     <section
       id={id}
@@ -161,49 +136,69 @@ export function ChildWorkTranscript({
       {transcript.isPending && (
         <SkeletonBlock count={3} label="Loading transcript" />
       )}
-      {transcript.isError && entries.length === 0 && (
-        <p className="child-work-transcript__note" role="alert">
-          {failureText(transcript.error)}
-        </p>
+      {transcript.isError && (
+        <ErrorState
+          variant="compact"
+          title={
+            entries.length > 0
+              ? 'Could not load earlier messages'
+              : 'Could not read the transcript'
+          }
+          description={failureText(transcript.error)}
+          action={
+            <Button
+              onClick={() =>
+                entries.length > 0 ? void fetchPreviousPage() : reload()
+              }
+            >
+              Retry
+            </Button>
+          }
+        />
       )}
       {transcript.isSuccess && entries.length === 0 && (
-        <p className="child-work-transcript__note">The transcript is empty.</p>
+        <Empty label="No messages in this transcript yet." />
       )}
-      {entries.length > 0 && (
-        <ol className="child-work-transcript__entries">
-          {entries.map((entry, index) => (
-            <EntryLine
-              // Entries never reorder: a page only appends.
-              key={index}
-              entry={entry}
-            />
-          ))}
-        </ol>
-      )}
-      {transcript.hasNextPage && (
+      {/* A settled child's calls are a record: none may read as running
+          from the parent chat's live tool record. */}
+      <TranscriptToolRecordLive.Provider value={running}>
+        <ChatMessageList
+          activeSession={session}
+          emptyState={null}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails
+          suppressStreamingRow
+          hasOlderMessages={hasPreviousPage}
+          historyLoading={isFetchingPreviousPage}
+          onLoadOlder={async () => {
+            // A read already in flight would be cancelled by a new one.
+            if (isFetching) return;
+            await fetchPreviousPage({ cancelRefetch: false });
+          }}
+        />
+      </TranscriptToolRecordLive.Provider>
+      {/* Only from a Station that pages forward from the first message:
+          its later messages are read on request, as that Station did. */}
+      {hasLaterPage && (
         <Button
           size="sm"
           className="tap-target"
-          pending={transcript.isFetchingNextPage}
-          onClick={() => void transcript.fetchNextPage()}
+          pending={isFetchingNextPage}
+          onClick={() => {
+            if (!isFetching) void fetchNextPage({ cancelRefetch: false });
+          }}
         >
-          Load more
+          Show later messages
         </Button>
       )}
-      {running && !transcript.isPending && (
-        <Button
-          size="sm"
-          className="tap-target"
-          pending={transcript.isRefetching}
-          onClick={() => void refetch()}
-        >
-          Refresh
-        </Button>
-      )}
-      {transcript.isFetchNextPageError && (
-        <p className="child-work-transcript__note" role="alert">
-          {failureText(transcript.error)}
-        </p>
+      {transcript.latestError && (
+        <ErrorState
+          variant="compact"
+          title="Could not read the latest messages"
+          description={failureText(transcript.latestError)}
+          action={<Button onClick={() => refreshLatest()}>Retry</Button>}
+        />
       )}
     </section>
   );

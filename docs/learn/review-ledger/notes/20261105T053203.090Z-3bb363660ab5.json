@@ -1,7 +1,0 @@
-{
-  "revision": "3de23cd1ed4607411cecb311135664de0fed9fc4",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"#4515 fix round 1: acp-adapter.ts now passes its connection config to ACPProcess (connection: config) so ACPProcess.start() can refuse an ACP engine the managed policy does not allow, or a public-registry agent under acpRegistryAgents: false, before spawning; nothing else in the adapter changed. Checked this doc's ACP adapter and session claims; none contradicts the refusal.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "cd06d8688075cda9ad9c84c619796936206ff948",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the independent wire expectations against the existing project_held producer and its provider-failure mapping: a paused/archived Project is a conflict and retryable=false until a person resumes/unarchives it. This test-only row repairs the omitted expected diagnostic; production API and contract mappings are unchanged. The pre-edit completeness assertion failed and all115 contract checks pass after adding the row. No source, hosted, installed or release qualification follows from this focused result.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "7979651e525af26ffe92dbe849a72b37eeed3d10",
-
-  "notes": [
-    {"path":"deployment/telemetry/README.md","note":"Replaced the stale week/dimension-filter sentence: the public dashboard follows every cursor page and shows only values above the 95% noise bound (public-dashboard.ts aboveNoise), reporting the rest as within noise. Publication semantics in this section are unchanged (lite-core.ts publishedWeekCells, public-domain.ts).","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md"]}
-  ]
-}

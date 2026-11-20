@@ -1,0 +1,7 @@
+{
+  "revision": "7741f351e5c6e604023fbbde424617c8eedd4d68",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Cites connections.md; only the Station switching-screen paragraph changed there, and this guide makes no claim about the switching or connecting screen.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

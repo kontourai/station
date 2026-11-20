@@ -1303,11 +1303,7 @@ export class VoltAgentFramework {
             spec.guardrails.maxTokens ??
             config.appConfig.defaultMaxOutputTokens,
         }),
-        // maxSteps controls VoltAgent's agentic loop limit (VoltAgent's own
-        // default is a stingy 10). Priority: agent guardrails > agent spec >
-        // app config > high default (no artificial limit).
         maxSteps: resolveMaxSteps({
-          guardrailsMaxSteps: spec.guardrails?.maxSteps,
           specMaxSteps: spec.maxSteps,
           defaultMaxTurns: config.appConfig.defaultMaxTurns,
         }),

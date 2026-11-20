@@ -66,6 +66,89 @@ describe('generated Pages relative-link gate', () => {
     ]);
   });
 
+  it('requires a fragment on another page to name an element there', async () => {
+    // #4801: the docs header kept linking to the home page's removed
+    // #platform section; the home file existed, so the link passed.
+    const root = await fixtureRoot();
+    await writeFile(
+      path.join(root, 'dist-pages', 'index.html'),
+      '<section id="how"></section><section id="self-host"></section>',
+    );
+    await mkdir(path.join(root, 'dist-pages', 'docs', 'user'), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, 'dist-pages', 'docs', 'index.html'),
+      '<h2 id="guides">Guides</h2>',
+    );
+    await writeFile(
+      path.join(root, 'dist-pages', 'docs', 'user', 'start.html'),
+      [
+        '<a href="../../index.html#how">How it works</a>',
+        '<a href="../../index.html#platform">Platform</a>',
+        '<a href="../index.html#guides">Guides</a>',
+        '<a href="../#guides">Guides by directory</a>',
+        '<a href="../#gone">Gone</a>',
+        '<a href="#local-only">Same page</a>',
+      ].join(''),
+    );
+
+    await expect(
+      findBrokenGeneratedPageLinks({
+        files: ['dist-pages/docs/user/start.html'],
+        root,
+      }),
+    ).resolves.toEqual([
+      {
+        file: 'dist-pages/docs/user/start.html',
+        href: '../../index.html#platform',
+        reason: 'missing fragment target',
+      },
+      {
+        file: 'dist-pages/docs/user/start.html',
+        href: '../#gone',
+        reason: 'missing fragment target',
+      },
+    ]);
+  });
+
+  it('checks home fragments from the docs index one level down', async () => {
+    // The docs index builds its header with '../index.html#…' (one level),
+    // unlike nested guides (two levels): cover that boundary too.
+    const root = await fixtureRoot();
+    await writeFile(
+      path.join(root, 'dist-pages', 'index.html'),
+      '<section id="how"></section>',
+    );
+    await writeFile(
+      path.join(root, 'dist-pages', 'docs', 'index.html'),
+      [
+        '<a href="../index.html#how">How it works</a>',
+        '<a href="./../index.html#how">How it works again</a>',
+        '<a href="../index.html#platform">Platform</a>',
+        '<a href="./../index.html#platform">Platform again</a>',
+      ].join(''),
+    );
+
+    await expect(
+      findBrokenGeneratedPageLinks({
+        files: ['dist-pages/docs/index.html'],
+        root,
+      }),
+    ).resolves.toEqual([
+      {
+        file: 'dist-pages/docs/index.html',
+        href: '../index.html#platform',
+        reason: 'missing fragment target',
+      },
+      {
+        file: 'dist-pages/docs/index.html',
+        href: './../index.html#platform',
+        reason: 'missing fragment target',
+      },
+    ]);
+  });
+
   it('discovers every generated HTML file recursively', async () => {
     const root = await fixtureRoot();
     await mkdir(path.join(root, 'dist-pages', 'docs', 'user'), {

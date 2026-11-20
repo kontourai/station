@@ -28,6 +28,7 @@
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { sleep } from '../../../utils/sleep.js';
 
 export interface HubHelper {
   pid: number;
@@ -143,8 +144,7 @@ export const killOwnedHubHelper: KillHubHelper = async (helper, toolRoot) => {
     if (command !== undefined && runsFromManagedInstall(command, toolRoot)) {
       signal(helper.pid, 'SIGTERM');
       const deadline = Date.now() + 2_000;
-      while (alive(helper.pid) && Date.now() < deadline)
-        await new Promise((resolve) => setTimeout(resolve, 50));
+      while (alive(helper.pid) && Date.now() < deadline) await sleep(50);
       if (alive(helper.pid)) signal(helper.pid, 'SIGKILL');
     } else if (command !== undefined) {
       // Not ours (pid reuse): keep the process, forget the stale record.

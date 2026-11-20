@@ -1,0 +1,7 @@
+{
+  "revision": "e0502b34cf5c64b289e724e99f1b7535286896bf",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Checked the qualification rule (workflow path, branch, events, conclusions) against qualification-repair.mjs; unchanged. A skipped-corpus run no longer updates the episode, which this design does not describe; no prose change needed.","inputs":["docs/design/automations.md","scripts/qualification-repair.mjs"]}
+  ]
+}

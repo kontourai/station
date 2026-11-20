@@ -10,6 +10,7 @@
  * cannot answer for it.
  */
 import { spawnSync } from 'node:child_process';
+import { isObjectRecord } from './object-record.js';
 
 /** The configuration profile payload type and preference domain. */
 export const MACOS_POLICY_DOMAIN = 'io.kontourai.station';
@@ -35,12 +36,8 @@ const PROFILE_METADATA_KEYS: ReadonlySet<string> = new Set([
   '_manualProfile',
 ]);
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function withoutProfileMetadata(value: unknown): unknown {
-  if (!isPlainObject(value)) return value;
+  if (!isObjectRecord(value)) return value;
   return Object.fromEntries(
     Object.entries(value).filter(([key]) => !PROFILE_METADATA_KEYS.has(key)),
   );
@@ -56,7 +53,7 @@ function withoutProfileMetadata(value: unknown): unknown {
  */
 export function managedPreferencesDocument(preferences: unknown): unknown {
   const stripped = withoutProfileMetadata(preferences);
-  if (!isPlainObject(stripped)) return stripped;
+  if (!isObjectRecord(stripped)) return stripped;
   const keys = Object.keys(stripped);
   const forced = stripped.Forced;
   if (
@@ -64,9 +61,9 @@ export function managedPreferencesDocument(preferences: unknown): unknown {
     keys[0] === 'Forced' &&
     Array.isArray(forced) &&
     forced.length === 1 &&
-    isPlainObject(forced[0]) &&
+    isObjectRecord(forced[0]) &&
     Object.keys(forced[0]).length === 1 &&
-    isPlainObject(forced[0].mcx_preference_settings)
+    isObjectRecord(forced[0].mcx_preference_settings)
   )
     return withoutProfileMetadata(forced[0].mcx_preference_settings);
   return stripped;

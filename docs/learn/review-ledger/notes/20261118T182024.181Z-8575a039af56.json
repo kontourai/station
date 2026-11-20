@@ -1,0 +1,7 @@
+{
+  "revision": "e452e43f037e22e3d38e10fa7042f53a997f7d9d",
+
+  "notes": [
+    {"path":"examples/meeting-transcription/README.md","note":"Supplied the normal SDK context for the older-host fixture. Removing the compatibility check caused that case to fail because the update status was absent. Restoration passed both built-bundle tests.","inputs":["src-ui/src/__tests__/meeting-transcription-bundle.test.tsx"]}
+  ]
+}

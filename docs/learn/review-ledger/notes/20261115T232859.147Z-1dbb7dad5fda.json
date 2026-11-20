@@ -1,0 +1,7 @@
+{
+  "revision": "f47702eaf9fb671c7b3e9555f5ddeb45c1b28067",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Checked the capacity paragraph against ci.yml: nine PR computation slots (five shard, three statics, one release bot), the worst-case total of 24, the per-slot statics rate and the busiest-slot arithmetic for a 4/3/3 digit split, and the rollback order with the three places the mapping is written.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

@@ -20,7 +20,7 @@ run and source and asks the owner to separate findings from scan errors and
 coordinate one compatible repair. The next complete successful scan closes the
 tracker. The schedule is nominal, not a detection deadline.
 
-Preview (Beta) and Stable publication require a fresh blocking scan of the
+Stable RC/final publication requires a fresh blocking scan of the
 exact candidate graph. [The release gate](../../scripts/release-advisory-gate.mjs)
 runs from a trusted default-branch policy checkout, not a tag's evaluator or
 exception file. A supplied policy snapshot must be an ancestor of the freshly
@@ -39,7 +39,7 @@ checked against the candidate tree using the trusted remediation record.
 
 The shared [release workflow](../../.github/workflows/release-advisory.yml)
 gates tagged staging before GHCR/Play/store effects, protected native/portable
-publication (including pointer repair), manual npm publication and Beta/Stable
+publication (including pointer repair), manual npm publication and Stable
 TestFlight upload, including the internal cohort entrypoint. Nightly TestFlight
 skips the advisory job and retains its existing source, artifact and provider
 gates. Operational failures retain a separate `NOT_VERIFIED` receipt with
@@ -87,49 +87,65 @@ the legacy Zod 3 dependency paths tracked in
 bound unconstrained input. The advisory floor still evaluates the complete
 candidate graph under its existing policy.
 
-## RSA signature verification backport (2026-10)
+Zod 3.25.76 itself is blocked by
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) (high).
+No 3.x release is patched; the first patched version is 4.6.6. Four packages
+keep it installed: `@gitlab/gitlab-ai-provider` 3.6.1 (which `@voltagent/core`
+requires at `^3.1.1`; the provider's latest release still declares Zod 3),
+`@voltagent/a2a-server` 2.0.3 (its latest release), `autoevals` 0.0.131
+(pinned by `@voltagent/scorers` 2.1.0; newer `autoevals` releases accept Zod 4)
+and `zod-from-json-schema` 0.0.5, which `@voltagent/core` installs under the
+alias `zod-from-json-schema-v3` beside the Zod 4 line of the same package.
+Removing Zod 3 therefore needs upstream VoltAgent and GitLab provider
+releases. The owner approved one exact exception for `root` / `zod` / that
+advisory on 2026-11-14, through **2026-12-13**, tracked by #4210. It accepts
+the risk; it does not claim the path is unreachable or fixed. The alternative,
+forcing Zod 4 on these consumers, changes their runtime contract and needs its
+own compatibility review. Remove the exception when the upstream releases drop
+Zod 3.
 
-Station applies a [managed node-forge 1.4.0 patch](../../patches/node-forge-1.4.0.patch)
-for [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv).
-It backports the nested DigestAlgorithm element-count check from
-[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), commit
-`ceba34402e329f0365134f23fe19898756527d65`, to `lib/rsa.js` and both shipped
-browser bundles. The threat is an attacker without the private key forging an
-RSA PKCS#1 v1.5 signature, particularly with a low public exponent. The parser
-now requires the algorithm OID plus only its optional NULL parameter, retaining
-the existing outer DigestInfo and padding checks.
-The pnpm patch recreates the two bundles with equivalent `\x01` string escapes
-for their published literal control bytes, keeping the patch visible to text
-scanners without changing those string values.
+## RSA signature verification (2026-10 backport, 2026-11 release)
+
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) lets an
+attacker without the private key forge an RSA PKCS#1 v1.5 signature,
+particularly with a low public exponent, because the verifier tolerated extra
+nested DigestAlgorithm elements. From 2026-10 Station carried a managed
+node-forge 1.4.0 patch backporting the element-count check from
+[upstream PR #1152](https://github.com/digitalbazaar/forge/pull/1152), bound to
+the installed bytes by a `remediations` record in the
+[advisory ledger](../../scripts/dependency-advisory-exceptions.json).
+
+The workspace override now selects the official node-forge 1.4.3 release, and
+the patch, its `patchedDependencies` entry, its secret-scan allowlist and the
+`remediations` record are removed. Release 1.4.1 contains upstream commit
+`2bce9d477a2f` ("Require canonical DigestInfo in RSA PKCS#1 v1.5 verify"),
+which re-encodes the DigestInfo and requires a byte-identical canonical DER
+value with or without the NULL parameter, also rejecting the nested-element
+form. Upstream's own repository advisory,
+[GHSA-2g46-22mc-6gwp](https://github.com/digitalbazaar/forge/security/advisories/GHSA-2g46-22mc-6gwp),
+records the same CVE-2026-85393 and lists 1.4.1 as patched. The global
+GHSA-86w9-cpqp-85rv record still lists no patched version (`<= 1.4.0`), so the
+replacement rests on the upstream record, the commit and the controls below,
+not on the global database. 1.4.3 is the smallest release that also clears the
+other Forge advisories the registry reports against 1.4.0 (PEM, ASN.1 and
+TLS-record denial of service, PKCS#12 MAC forgery, X.509 chain checks, and
+AES-GCM tag length, among others).
 
 The [installed-library controls](../../scripts/__tests__/node-forge-rsa-backport.test.ts)
-exercise the package entrypoint and both browser globals. A retained signature
-constructed using only an exponent-3 public key passes pristine 1.4.0 and fails
-the patched verifier; Node crypto independently rejects it. Valid SHA-256
-signatures with exponents 3 and 65537, wrong-message rejection, and the
-supported omitted-NULL form remain covered. These are dependency API checks,
-not a reproduced Station endpoint exploit or full browser/native qualification.
+are unchanged and exercise the package entrypoint and both browser globals. The
+retained signature constructed using only an exponent-3 public key fails the
+1.4.3 verifier and pristine 1.4.0 accepts it; Node crypto independently rejects
+it. Valid SHA-256 signatures with exponents 3 and 65537, wrong-message
+rejection, and the omitted-NULL form remain covered. These are dependency API
+checks, not a reproduced Station endpoint exploit or full browser/native
+qualification. The PKCS#12 path that SAP connectivity reaches through
+`jks-js` still converts a keystore to PEM and refuses a wrong password.
 
-The registry still reports version 1.4.0 as **high**. A separate `remediations`
-record in the [advisory ledger](../../scripts/dependency-advisory-exceptions.json)
-replaces this advisory's temporary risk exception. The policy prints `PATCHED`
-only after checking the exact advisory/version, Node 24, workspace registration,
-patch SHA-256, locked graph edges, and the installed main, RSA implementation,
-and both bundles for every accounted copy. Missing or changed bytes,
-unaccounted copies, and changed entrypoint contracts block the finding. This
-checks the installed tree at decision time; it does not defend against a
-same-user writer changing code afterward. Other advisories retain their own
-dispositions and deadlines.
-
-The remediation has no risk-acceptance expiry: it requires current installed
-proof on every decision. An absent advisory makes its record unused and fails
-the gate, requiring cleanup rather than silently retaining an allowance.
-[Issue #3122](https://github.com/kontourai/station/issues/3122) tracks replacement
-with an independently verified official release. Recheck after every Forge,
-VoltAgent, SAP/JKS, patch, or provider-boundary change. Optional provider
-packaging is tracked by [issue #3745](https://github.com/kontourai/station/issues/3745);
-this patch preserves SAP functionality and makes
-no universal nonreachability claim.
+The patch-binding verifier keeps its node-forge fixture tests but has no live
+record. [Issue #3122](https://github.com/kontourai/station/issues/3122) tracked
+this replacement. Optional provider packaging is tracked by
+[issue #3745](https://github.com/kontourai/station/issues/3745); the upgrade
+makes no universal nonreachability claim.
 
 ## Proxy, copy, and numeric formatter advisories (2026-10)
 
@@ -243,8 +259,10 @@ closed. The guard is a check of the current installed tree, not continuous
 protection against a same-user writer changing files after verification.
 
 The formatter identity has since been removed from the verifier (#2722). The
-residual that used it is gone, so the verifier admits only the node-forge
-remediation above. A residual that carries a `patchBinding` is now refused as an
+residual that used it is gone. The verifier's only admitted identity is the
+node-forge remediation, and since node-forge moved to the official release
+above no `remediations` record uses it: the verifier is dormant but still
+tested. A residual that carries a `patchBinding` is now refused as an
 unknown field, and the installed-tree controls (drift, unaccounted copies and
 caller-directory, file, symlink and case-equivalent shadows) run against the
 node-forge fixture in `scripts/__tests__/dependency-patch-binding.test.ts`.
@@ -362,6 +380,32 @@ existing export-error handling and OpenTelemetry timeout semantics. A timeout ca
 settle the flush attempt while its exporter remains active, so stream completion
 is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
+
+The 2.11.0 patch also loads VoltAgent's OTLP log and trace exporters and its
+JSON serializers when they are first needed: the exporters once VoltAgent's default
+observability finds a VoltOps client, the serializers on the first export of VoltAgent's
+serverless observability, which Station does not use. Before, importing the
+module loaded them. VoltAgent's tree holds several copies of the OTLP
+transformer, each costing megabytes of heap, and Station's default
+local-only observability never exports to VoltOps. The CJS and ESM regression in
+`src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts`
+records that importing VoltAgent loads none of them. The VoltOps control cases in
+`src-server/runtime/bootstrap/__tests__/voltagent-managed-telemetry.test.ts`
+still send traces and logs to a local recorder through the deferred exporters;
+no test runs the deferred serializers. An exporter package that cannot load now
+fails inside VoltAgent's existing processor setup, which drops VoltOps export
+quietly, as it already did for an exporter that could not be constructed.
+
+The process keeper audits Core 2.11.0 with the locked AI 6.0.330. Requalification
+on Node 24 and macOS verified the installed CJS/ESM entries against the official
+archive and reviewed the stream-source changes since AI 6.0.322. The newer
+array-output parser and telemetry redaction do not alter the normal text
+finish callback chain. All eight format/strategy cases passed with the
+held-processor, callback, EOF-ordering, and child/resource-settlement assertions
+intact. These cases do not qualify every structured-output or telemetry path. A
+dependency change that trips its version guard requires that source review and
+full matrix before advancing the audited pair; retain the watchdogs and assertions.
+
 The lifecycle allowlist still owns the stronger
 exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
@@ -425,12 +469,21 @@ may leave them in the operating system's temporary directory, outside upload
 roots. CI and scheduled scans retain the bounded diagnostics even after failure.
 This instrumentation does not change scan scopes, concurrency, retries,
 deadlines, or the advisory floor. Missing diagnostic storage is reported without
-changing the audit outcome. The current root manifest selects the pnpm branch
-in [`collectAudits`](../../scripts/dependency-advisory-policy.mjs), whose
-[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) uses bounded owned-process
-capture and a 240-second deadline. It does not call the npm phase-diagnostics
-adapter. Do not expect structured npm phase files from the normal pnpm audit
-or interpret their absence as a completed phase.
+changing the audit outcome.
+
+The current root manifest selects the pnpm branch in
+[`collectAudits`](../../scripts/dependency-advisory-policy.mjs).
+[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) retains separate started
+and terminal receipts per workspace attempt in the same diagnostics directory.
+It records the wrapper's observed toolchain, launch, process, cleanup, output,
+and decode times, plus the child status or signal when observed. The terminal
+receipt lists operational failure phases, including deadline expiry.
+A decoded exit-one response can carry advisories for policy evaluation.
+Policy evaluation separately validates the decoded schema and advisory rules.
+Registry phases inside pnpm remain unknown to the wrapper. The JSON receipts
+contain bounded metadata only. Owned-process
+capture, the 240-second attempt deadline and the two-attempt operational
+retry cap retain their existing values.
 
 ## Local CodeQL SARIF policy
 
@@ -445,7 +498,16 @@ semantic enforcement. Its 30-minute job limit is deliberate headroom over a
 10m55 successful security-extended analysis, not an unbounded retry window. It
 runs on a disposable GitHub-hosted runner and deliberately uses
 `upload: never`: this repository does **not** claim that GitHub ingests or
-displays the result.
+displays the result. The analysis runs once per landing, on the merge-group
+candidate; on pull-request events its required context reports skipped while
+dependency review still runs. A merge group runs its candidate's own workflow
+files, so a pull request whose merge-base diff touches `.github/` also gets
+the base-defined analysis on the pull request, before it can be queued. A
+small `gate-change` job decides that with Git plumbing only (no candidate
+file is checked out or run), and any classification failure runs the
+analysis. A daily schedule (`11 9 * * *` UTC) and manual
+dispatch analyse `main` and warm its TRAP cache; a red scheduled run opens
+**Main pipeline red: PR: Security analysis** through `main-health.yml`.
 
 When a CodeQL SARIF file is available locally, validate its evidence before
 using it in a review:
@@ -460,8 +522,9 @@ valid rule references, result messages, and severity resolved from the result
 or its referenced rule. Structural evidence failures and unbaselined error-level
 results block. Exact error entries in `scripts/codeql-error-baseline.json` are
 reported as baselined; warning/note results are advisory. A nonempty result list
-therefore need not fail. Stale baseline entries fail on main pushes but warn on
-PR/merge-group checks, which read the protected base baseline. The owner is
+therefore need not fail. Stale baseline entries fail on the scheduled or
+dispatched run on `main` but warn on merge-group checks, which read the
+protected base baseline. The owner is
 [`codeql-sarif-policy.mjs`](../../scripts/codeql-sarif-policy.mjs). A clean
 completed scan may legitimately have an empty result list.
 
@@ -626,7 +689,8 @@ network reachability determine which advisory conditions apply.
 
 ## 2026-10 Axios redirect credential boundary
 
-The workspace pins `axios>follow-redirects` to 1.16.1 for
+The workspace pinned `axios>follow-redirects` to 1.16.1 (since raised to 1.16.2,
+see [the 2026-11 floor](#2026-11-advisory-floor)) for
 [GHSA-q3jh-wrc6-jgq8](https://github.com/advisories/GHSA-q3jh-wrc6-jgq8) and
 [GHSA-8r9p-f939-6h3c](https://github.com/advisories/GHSA-8r9p-f939-6h3c).
 Both affect 1.16.0. The threat is an attacker-controlled redirect destination
@@ -730,10 +794,14 @@ The latest published `@voltagent/core` (`2.11.0`) still declares the `0.203`
 trace exporter, the `0.204` logs exporter, and `uuid ^9.0.1`; no compatible
 VoltAgent update currently removes these resolutions. The three exact residuals
 in [`dependency-advisory-exceptions.json`](../../scripts/dependency-advisory-exceptions.json)
-carry an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
+carried an owner-approved, 30-day risk acceptance through **2026-11-07**, tracked
 by [issue #3510](https://github.com/kontourai/station/issues/3510). Their
-GHSA severity remains **moderate**; the issue's P1 label prioritizes removing
-the blocker and closing the residuals, not reclassifying those advisories.
+GHSA severity remains **moderate**. That acceptance expired, and the floor
+failed on these records from 2026-11-07 until the owner renewed all three,
+unchanged, on 2026-11-14 through **2026-12-13**; the 2026-11 recheck found no
+compatible upstream release (`@voltagent/core` 2.11.1 keeps the same pins).
+The issue's P1 label prioritizes removing the blocker and closing the
+residuals, not reclassifying those advisories.
 This acceptance does not claim the paths are unreachable or fixed. Remove each
 record as soon as its compatible upstream remediation lands, and run
 `npm run audit:policy` after VoltAgent or OpenTelemetry updates. Station's own
@@ -785,9 +853,24 @@ The isolated [source-policy workflow](../../.github/workflows/source-verificatio
 also receives `statuses:write`. It checks out trusted policy, never candidate
 code, and publishes only `Source verification policy` from existing GitHub run
 and job evidence. `PR: CI` calls it after core source checks and before optional
-delivery work for source-changing PR events. Lifecycle reconciliation handles
-requested, in-progress and completed source runs; metadata start events allocate
-no publisher, while metadata completion can reconcile existing proof.
+delivery work for source-changing PR events, and after `fast-checks` on merge
+groups, where it publishes on the queue head and checks out policy from the
+queue base. Both run the same verdict over the run's own completed source
+jobs, so a later lifecycle reconcile republishes the same state rather than
+replacing it. As with every merge-group job, including the title publisher,
+the merge-group workflow definition is the queued candidate's own; only the
+script comes from the base, and the main-branch lifecycle reconcile remains
+the recovery publisher. Lifecycle reconciliation publishes pending when a
+first attempt is requested and when a re-run attempt starts (`in_progress`
+with `run_attempt` above 1, because GitHub sends no `requested` event for a
+re-run), and publishes the verdict on completion. A first attempt's
+`in_progress` event is skipped at job level, since `requested` already
+published pending. Metadata request and start events allocate no publisher,
+while metadata completion can reconcile existing proof. The per-head
+concurrency group sits on the publishing job, not the workflow, so a run whose
+job is skipped never enters it: GitHub keeps one pending run per group, and a
+skipped run waiting there would replace and cancel a pending one that would
+have published.
 
 The policy binds the exact head, repository and every current main-target PR
 sharing that head. It checks recorded base ancestry and the current run attempt;
@@ -841,3 +924,52 @@ brace-expansion input safe. The prior threat model was untrusted deeply nested
 patterns exhausting the Node stack; the dependency graph and runtime controls
 are unchanged. Historical acceptance and investigation remain in
 [#3150](https://github.com/kontourai/station/issues/3150).
+
+## 2026-11 advisory floor
+
+The scheduled scan had failed since 2026-10-23. These upgrades clear its
+findings that have a compatible release; none adds or renews an exception.
+
+| Package | Advisory | From → to | How | Path |
+| --- | --- | --- | --- | --- |
+| `node-forge` | Seven high Forge advisories plus moderate/low production findings | 1.4.0 → 1.4.3 | Override floor, managed patch removed | SAP connectivity → `jks-js` |
+| `follow-redirects` | [GHSA-mrwp-f3q8-3g9p](https://github.com/advisories/GHSA-mrwp-f3q8-3g9p) (high) | 1.16.1 → 1.16.2 | `axios>follow-redirects` pin | SAP Cloud SDK → Axios |
+| `qs` | [GHSA-6pq8-jhm2-2vcw](https://github.com/advisories/GHSA-6pq8-jhm2-2vcw) | 6.16.0 → 6.16.1 | Override floor `^6.16.1` | Both body-parser lines |
+| `@hono/node-server` | [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f), [GHSA-jpvv-r467-5p4w](https://github.com/advisories/GHSA-jpvv-r467-5p4w) | 1.19.15 → 2.1.7 | `@voltagent/server-hono` child override | VoltAgent Hono provider |
+| `glob` / `minimatch` | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4), [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | 13.0.6 / 10.2.5 → 14.0.4 / 11.0.6 | `cacache@21` floor 21.0.2; `cacache@20>glob` override | Sigstore signing → `make-fetch-happen` |
+
+The follow-redirects threat is a caller-declared credential header reaching a
+cross-origin redirect target when `sensitiveHeaders` is an array from another
+JavaScript realm. A loopback probe forwarded the header on 1.16.1 and stripped it
+on the installed 1.16.2, keeping an unrelated header.
+
+The backslash-path advisory (GHSA-jpvv) is fixed on the 1.x line in 1.19.18,
+but the `serveStatic` double-decoding advisory (GHSA-rmxm) has no 1.x fix, so
+the 1.x line cannot clear both. VoltAgent's Hono package declares `^1.14.0`
+but uses only `serve()`; Station's own provider binds with the root 2.x copy.
+Version 2 drops Node 18 and the Vercel adapter, neither of which applies, so the
+nested copy now resolves to the same 2.1.7 that Station already loads. A probe
+through VoltAgent's resolution context served a Hono app on 2.1.7.
+
+Glob 14 replaces regular expressions with a non-recursive matcher. Cacache
+21.0.2 adopted glob 14 with library code identical to 21.0.1, so the Sigstore 5
+copy moves to that patch release. Cacache 20 has no glob 14 release, but
+20.0.4's glob calls match 21.0.2's, so its own override takes the release
+upstream already ships. Put, verify and `rm.all` probes behaved the same on
+glob 14 and on the untouched optional cacache 19 copy. Development-only glob 10
+and minimatch 9 copies are unchanged.
+
+Two findings have no compatible upgrade and still fail the floor:
+
+- `zod` 3.25.76, [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+  (high), is patched only in 4.6.6. GitLab's AI provider 3.6.1, VoltAgent's A2A
+  server 2.0.3 and VoltAgent's v3 JSON Schema converter declare Zod 3, and
+  VoltAgent core still requires the GitLab provider's 3.x line. A Zod 3 to 4
+  override changes those consumers' runtime contract
+  ([#4210](https://github.com/kontourai/station/issues/4210)).
+- The three VoltAgent residuals above expired on 2026-11-07. VoltAgent core
+  2.11.1 keeps uuid `^9.0.1` and the 0.203 and 0.204 OpenTelemetry exporters,
+  which pin core 2.0.1 and 2.1.0
+  ([#3510](https://github.com/kontourai/station/issues/3510)).
+
+Both need an owner decision; this change does not record one.

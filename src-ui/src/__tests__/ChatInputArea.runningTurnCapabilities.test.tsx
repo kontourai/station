@@ -180,6 +180,20 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
     expect(props.onClearAttachments).toHaveBeenCalledTimes(1);
   });
 
+  test('on a host that queues files, a running turn’s draft with files queues', () => {
+    const props = renderComposer({
+      input: 'with a file',
+      attachments: [FILE],
+      busyQueueTakesFiles: true,
+    });
+    expect(screen.queryByText(/running turn/)).toBeNull();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(send);
+    expect(props.onQueueFollowUp).toHaveBeenCalledOnce();
+    expect(props.onSend).not.toHaveBeenCalled();
+  });
+
   test('the same draft sends once no turn is running', () => {
     renderComposer({
       input: 'with a file',
@@ -238,19 +252,21 @@ describe('ChatInputArea: Stop beside the hidden Send', () => {
 describe('ChatInputArea: Agent chip identity', () => {
   test('the route is its own part of the chip and stays in the accessible name', () => {
     renderComposer({
-      agentLabel: 'Codex',
-      agentRoute: 'via model-proxy (home-server · Claude + Codex)',
+      agentLabel: 'Codex · via model-proxy (home-server · Claude + Codex)',
+      agentRoute: 'model-proxy (home-server · Claude + Codex)',
       onOpenAgentHandoff: vi.fn(),
       turnInFlight: false,
     });
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
     const chip = screen.getByRole('button', { name: /^Agent: / });
     expect(chip.getAttribute('aria-label')).toBe(
-      'Agent: Codex · via model-proxy (home-server · Claude + Codex). Change Agent',
+      'Agent: Codex. Connection: model-proxy (home-server · Claude + Codex). Change Agent',
     );
+    expect(chip.querySelector('.composer-choice__icon svg')).toBeTruthy();
     const name = chip.querySelector('.chat-input__agent-name');
     expect(name?.firstChild?.textContent).toBe('Codex');
     expect(chip.querySelector('.chat-input__agent-route')?.textContent).toBe(
-      ' · via model-proxy (home-server · Claude + Codex)',
+      ' · Connection: model-proxy (home-server · Claude + Codex)',
     );
   });
 });

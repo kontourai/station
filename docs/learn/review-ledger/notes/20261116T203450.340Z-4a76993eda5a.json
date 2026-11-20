@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The workflow table row and resource-manifest claims hold; the new child-process test is classified in vitest-resource-manifest.mjs.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

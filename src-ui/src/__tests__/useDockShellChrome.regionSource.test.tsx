@@ -120,9 +120,9 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       expect(result.current.chrome.isDockMaximized).toBe(true);
     });
 
-    test('an Activity shell maximizes its own region and never reaches navigation’s setter', () => {
+    test('an Agents shell maximizes its own region and never reaches navigation’s setter', () => {
       const { result } = mount('right');
-      act(() => result.current.model.placeSurface('activity', 'right'));
+      act(() => result.current.model.placeSurface('workspace-agents', 'right'));
       expect(result.current.chrome.canMaximize).toBe(true);
 
       act(() => result.current.chrome.applyDockSnap('full'));
@@ -148,7 +148,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
 
   // #928 D, closes #1380: a persisted region size renders. The record says
   // 517 and the legacy key says 400; the shell for that region must show 517.
-  test('an Activity shell seeds its width from the persisted region size, not the legacy chatDockWidth', () => {
+  test('an Agents shell seeds its width from the persisted region size, not the legacy chatDockWidth', () => {
     harness.settings.regionArrangement = {
       version: 1,
       regions: {
@@ -161,7 +161,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
         right: {
           visible: true,
           size: 517,
-          occupant: { kind: 'surface', id: 'activity' },
+          occupant: { kind: 'surface', id: 'workspace-agents' },
         },
         bottom: {
           visible: false,
@@ -279,7 +279,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.regions.bottom.visible).toBe(false);
   });
 
-  test('an inbound dockMode naming Activity does not evict it or move Chat over it', () => {
+  test('an inbound dockMode naming Agents does not evict it or move Chat over it', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -291,11 +291,11 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     const { result, rerender } = renderHook(() => useRegionModel(), {
       wrapper,
     });
-    act(() => result.current.placeSurface('activity', 'right'));
+    act(() => result.current.placeSurface('workspace-agents', 'right'));
     harness.dockMode = 'right';
     rerender();
 
-    expect(result.current.regions.right.occupant).toBe('activity');
+    expect(result.current.regions.right.occupant).toBe('workspace-agents');
     expect(result.current.regions.bottom.occupant).toBe('chat');
   });
 
@@ -459,7 +459,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.model.regions.bottom.size).toBe(320);
   });
 
-  test('dragging an Activity region never mirrors its width into Chat settings', () => {
+  test('dragging an Agents region never mirrors its width into Chat settings', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -479,7 +479,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       }),
       { wrapper },
     );
-    act(() => result.current.model.placeSurface('activity', 'right'));
+    act(() => result.current.model.placeSurface('workspace-agents', 'right'));
     harness.setDeviceSetting.mockClear();
     act(() => {
       result.current.chrome.setIsDragging(true);
@@ -494,7 +494,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     );
   });
 
-  test("Activity collapse and expand never rewrite Chat's persisted snap", () => {
+  test("Agents collapse and expand never rewrite Chat's persisted snap", () => {
     localStorage.setItem('station.chatDock.snap', 'half');
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -515,7 +515,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       }),
       { wrapper },
     );
-    act(() => result.current.model.placeSurface('activity', 'right'));
+    act(() => result.current.model.placeSurface('workspace-agents', 'right'));
     // #928 slice iii: any dock occupant may maximize its own region.
     expect(result.current.chrome.canMaximize).toBe(true);
 
@@ -526,25 +526,27 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(localStorage.getItem('station.chatDock.snap')).toBe('half');
   });
 
-  test("an Activity shell mounts from the default snap, not Chat's persisted one", () => {
+  test("an Agents shell mounts from the default snap, not Chat's persisted one", () => {
     localStorage.setItem('station.chatDock.snap', 'collapsed');
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    // The shell mounts only once Activity holds the region, as RegionShells
+    // The shell mounts only once Agents holds the region, as RegionShells
     // renders a shell per occupied region.
-    function ActivityInRight({ children }: { children: ReactNode }) {
+    function AgentsInRight({ children }: { children: ReactNode }) {
       const model = useRegionModel();
       useEffect(() => {
-        if (model.regions.right.occupant !== 'activity')
-          model.placeSurface('activity', 'right');
+        if (model.regions.right.occupant !== 'workspace-agents')
+          model.placeSurface('workspace-agents', 'right');
       }, [model]);
-      return model.regions.right.occupant === 'activity' ? children : null;
+      return model.regions.right.occupant === 'workspace-agents'
+        ? children
+        : null;
     }
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>
         <RegionModelProvider>
-          <ActivityInRight>{children}</ActivityInRight>
+          <AgentsInRight>{children}</AgentsInRight>
         </RegionModelProvider>
       </QueryClientProvider>
     );
@@ -565,7 +567,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
   test('a Chat shell folded to bottom persists no drag size: the height belongs to neither region', () => {
     // ≤768px folds every placement to bottom (useIsMobile.ts
     // `availablePlacements`); the dragged value is a height, so it must not
-    // land in Activity's bottom region nor in Chat's side region, whose
+    // land in Agents's bottom region nor in Chat's side region, whose
     // `size` is a width that mirrors to `chatDockWidth`.
     const innerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
     Object.defineProperty(window, 'innerWidth', {
@@ -592,12 +594,16 @@ describe('useDockShellChrome reads its open state from the region model', () => 
         }),
         { wrapper },
       );
-      // Chat to `right`, Activity to the vacated `bottom` — two moves, since
+      // Chat to `right`, Agents to the vacated `bottom` — two moves, since
       // a placement into an occupied dock region joins it rather than
       // swapping (#2046 2a).
       act(() => result.current.model.placeSurface('chat', 'right'));
-      act(() => result.current.model.placeSurface('activity', 'bottom'));
-      expect(result.current.model.regions.bottom.occupant).toBe('activity');
+      act(() =>
+        result.current.model.placeSurface('workspace-agents', 'bottom'),
+      );
+      expect(result.current.model.regions.bottom.occupant).toBe(
+        'workspace-agents',
+      );
       expect(result.current.model.regions.right.occupant).toBe('chat');
       expect(result.current.chrome.effectiveDockSlotPlacement).toBe('bottom');
       const rightWidthBefore = result.current.model.regions.right.size;
@@ -682,14 +688,14 @@ describe('setRegionOpen reopens at the shell’s own snap (#2155 D3)', () => {
 
   /**
    * #1385, the converse and the reason the snap is the SHELL's: Chat's
-   * persisted key says Full, and the Activity shell reopens Half — it keeps
+   * persisted key says Full, and the Agents shell reopens Half — it keeps
    * its own snap in memory and never reads that key. Its own Full, reached
    * through its own maximize, does reopen Full.
    */
-  test('an Activity shell ignores Chat’s persisted Full, and honours its own', () => {
+  test('an Agents shell ignores Chat’s persisted Full, and honours its own', () => {
     window.localStorage.setItem(SNAP_KEY, 'full');
     const { result } = mountShell('right');
-    act(() => result.current.model.placeSurface('activity', 'right'));
+    act(() => result.current.model.placeSurface('workspace-agents', 'right'));
     expect(result.current.chrome.dockSnap).toBe('half');
 
     act(() => result.current.model.setRegion('right', { visible: false }));
@@ -748,7 +754,7 @@ describe('setRegionOpen reopens at the shell’s own snap (#2155 D3)', () => {
 
 /**
  * #4399: on a phone, Chat actions › Full screen is `applyDockSnap('full')`,
- * and the drawer's Activity row opens the page AT `/` — no pathname change,
+ * and the drawer's Agents row opens the page AT `/` — no pathname change,
  * so the restore is the region model's (`restoreMaximizedDocks`), which
  * clears `maximized` and nothing else. The publishing shell must not then
  * re-derive Full from its own snap and keep the page covered.
@@ -782,7 +788,7 @@ describe('a page open at / shows the page past a full-screen phone dock (#4399)'
     window.localStorage.removeItem(SNAP_KEY);
   });
 
-  test('the drawer’s Activity row returns a full-screen Chat to Half', () => {
+  test('the drawer’s Agents row returns a full-screen Chat to Half', () => {
     const restore = stubPhone();
     try {
       const client = new QueryClient({
@@ -818,12 +824,12 @@ describe('a page open at / shows the page past a full-screen phone dock (#4399)'
       );
 
       act(() => {
-        result.current.model.openSurfaceInRegion('activity', {
+        result.current.model.openSurfaceInRegion('home', {
           region: 'main',
         });
       });
 
-      expect(result.current.model.regions.main.occupant).toBe('activity');
+      expect(result.current.model.regions.main.occupant).toBe('home');
       expect(result.current.model.regions.bottom.maximized).toBe(false);
       expect(result.current.chrome.dockSnap).toBe('half');
       expect(result.current.chrome.dockHeight).toBe(

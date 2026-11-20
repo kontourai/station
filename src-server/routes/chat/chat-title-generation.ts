@@ -160,7 +160,7 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
   }
 
   title = title.replace(/\s+/g, ' ').trim();
-  if (!/^[\p{L}\p{M}\p{N} '’&-]+$/u.test(title)) return null;
+  if (!/^[\p{L}\p{M}\p{N} '\u2019&-]+$/u.test(title)) return null;
   if (title.length > MAX_TITLE_CHARS) {
     title = title.slice(0, MAX_TITLE_CHARS).trim();
   }

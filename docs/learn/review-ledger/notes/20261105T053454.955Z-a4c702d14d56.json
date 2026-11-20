@@ -1,7 +1,0 @@
-{
-  "revision": "3de23cd1ed4607411cecb311135664de0fed9fc4",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"#4515 fix round 1: the connection inspector now skips the prerequisite probe and model discovery for an engine the managed policy does not allow (both can run its program); it still reads as disabled. Checked the module map's connection inspector and managed policy entries; none claims discovery runs for a disallowed engine.","inputs":["docs/architecture/module-map.md","src-server/services/connections/connection-inspector.ts"]}
-  ]
-}

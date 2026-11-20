@@ -1,6 +1,7 @@
 /**
  * #3160: a pooled station-control stdio child carries no verified caller, so
- * every Session tool refuses it before it makes a request. Run as a real child
+ * every Session tool refuses it before it makes a request. #2377 slice D: so
+ * does every read of nobody's data (`list_agents`, `get_config`). Run as a real child
  * process (the stdio entry marker is process-global), pointed at a port with
  * nothing listening: a request would fail loudly, so a typed
  * `station_control_caller_required` refusal can only come from the tool-side
@@ -35,6 +36,9 @@ const calls = {
   send_to_session: { sessionId: 's', text: 'hi', requestKey: 'key-0000001' },
   interrupt_session: { sessionId: 's', requestKey: 'key-0000002' },
   wait_session: { sessionId: 's', until: 'idle' },
+  // #2377 slice D: reads of nobody's data are refused too.
+  list_agents: {},
+  get_config: {},
 };
 const out = {};
 let id = 10;
@@ -46,7 +50,7 @@ console.log(JSON.stringify(out));
 process.exit(0);
 `;
 
-test('a caller-less stdio child is refused by every Session tool, before any request', async () => {
+test('a caller-less stdio child is refused by every Session tool and every read, before any request', async () => {
   const result = await run(
     process.execPath,
     ['--import', 'tsx', '--input-type=module', '-e', probe],
@@ -67,7 +71,9 @@ test('a caller-less stdio child is refused by every Session tool, before any req
     { isError: boolean; body: { success?: boolean; code?: string } }
   >;
   expect(Object.keys(out).sort()).toEqual([
+    'get_config',
     'interrupt_session',
+    'list_agents',
     'send_to_session',
     'wait_session',
   ]);

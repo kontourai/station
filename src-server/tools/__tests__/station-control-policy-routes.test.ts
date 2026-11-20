@@ -13,6 +13,7 @@
  */
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import type { ACPEngineSetupEntry } from '@kontourai/station-contracts/acp';
 import { Hono } from 'hono';
 import {
   afterAll,
@@ -73,6 +74,27 @@ beforeAll(async () => {
     // environment is "current".
     if (c.req.path === '/.well-known/station/v1')
       return c.json({ environmentId: 'environment-current' });
+    if (c.req.path === '/acp/setup')
+      return c.json({
+        success: true,
+        data: [
+          {
+            id: 'antigravity',
+            name: 'Google Antigravity',
+            source: 'core',
+            detected: true,
+            configured: false,
+            enabled: false,
+            status: 'not-connected',
+            handshakeObservedAt: null,
+            httpTools: 'unknown',
+            connectionId: null,
+            relatedConnectionIds: [],
+            setupPath: '/connections/engines/new/antigravity',
+            nextAction: 'connect',
+          },
+        ] satisfies ACPEngineSetupEntry[],
+      });
     if (c.req.path === '/api/knowledge/roots') {
       if (revokeAfterRoots)
         revokeStationControlMcpToken(
@@ -161,6 +183,7 @@ const GUIDE_TARGET = {
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  open_engine_setup: { id: 'antigravity' },
   list_walkthroughs: { projectSlug: 'project-a' },
   get_walkthrough: { projectSlug: 'project-a', id: 'walkthrough-1' },
   read_pull_request_guide: { target: GUIDE_TARGET },
@@ -197,6 +220,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   device_close: { deviceSessionId: 'device-session' },
 
+  propose_appearance: { revision: 'r', name: 'Quiet', css: '' },
   get_personal_board: { slug: 'daily' },
   propose_personal_board: {
     slug: 'daily.v2',
@@ -215,6 +239,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   search_sessions: { query: 'cobalt' },
   search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },
+  settle_conversation: { conversationId: 'c', settled: true },
   board_pin: {
     reference: { kind: 'session', id: 's' },
     name: 'w',
@@ -237,6 +262,27 @@ const ARGS: Record<string, Record<string, unknown>> = {
     schedule: { kind: 'every', everyMs: 3_600_000 },
     prompt: 'p',
   },
+  propose_automation_source: {
+    kind: 'github-poll',
+    name: 'ci',
+    repository: 'o/r',
+  },
+  propose_automation_rule: {
+    name: 'ci failures',
+    sourceId: 's',
+    match: {
+      type: 'github.workflow_run.completed',
+      where: { 'run.conclusion': 'failure' },
+    },
+    action: {
+      kind: 'dispatch-task',
+      projectId: 'p',
+      agentId: 'a',
+      instructions: 'i',
+      budget: { maxTurns: 1, maxTokens: 1, maxWallRuntimeMs: 1 },
+    },
+    rateLimit: { maxStartsPerHour: 1 },
+  },
   declare_pull_request: {
     provider: 'github',
     host: 'github.com',
@@ -245,6 +291,9 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   task_summary_update: { text: 'Now: tests pass.', baseRevision: 0 },
   task_record: { kind: 'decision', key: 'storage', text: 'Use SQLite.' },
+  read_project_note: { id: 'note-1' },
+  remember_project_note: { title: 'Release moved', body: 'To Friday.' },
+  forget_project_note: { id: 'note-1' },
   task_thread_list: {},
   task_thread_reply: {
     threadId: 'thread-1',
@@ -500,6 +549,16 @@ describe('the authority table routes are the routes the tools call', () => {
           name,
           arguments: keyedTurnToolArguments(name, ARGS[name] ?? {}),
         });
+        if (name === 'open_engine_setup') {
+          expect(
+            recorded
+              .filter((entry) => entry.internal)
+              .map(({ method, path }) => ({ method, path })),
+          ).toEqual([
+            { method: 'GET', path: '/acp/setup' },
+            { method: 'POST', path: '/api/ui' },
+          ]);
+        }
         if (name === 'list_knowledge_roots') {
           const envelope = JSON.parse(
             result.result.content.find(

@@ -1,7 +1,0 @@
-{
-  "revision": "55104a9913995d40a4d3a5d226953ca4f51a17e9",
-
-  "notes": [
-    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"lifecycle.test.ts changed only the faked-Windows upgrade case (#2675 W2): it now stubs the managed update reader to report no installed policy, because the real reader would open the Windows registry this process only pretends to run on. No assertion, lifecycle behaviour or OAuth/MCP evidence this doc cites changed; I re-read the doc's references to that test file.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","packages/cli/src/__tests__/lifecycle.test.ts"]}
-  ]
-}

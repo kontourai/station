@@ -1,0 +1,37 @@
+{
+  "path": "docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md",
+
+  "kind": "historical",
+
+  "state": "source-reviewed",
+
+  "summary": "Pinned Stations manager renders and attributed browser focus observations after the bounded navigation repairs.",
+
+  "limits": "Exact retained dialog crops; selected original auditor interactions and DOM observations. Not a repeated full adjacent Task, touch, native, provider, two-human, hosted or release qualification.",
+
+  "sources": [
+    "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+
+    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+
+    "src-ui/src/components/header/HeaderActions.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+
+    "docs/reviews/sidebar-focus-20261107/manager-capture-manifest.json",
+
+    "docs/reviews/sidebar-focus-20261107/manager-dark-1440x900.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-light-1440x900.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-dark-390x844.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-light-390x844.png",
+
+    "docs/reviews/sidebar-focus-20261107/row-editor-dark-390x844.png"
+  ],
+
+  "checks": [
+    "Root opened all five dialog/editor crops. Fresh independent Sol artifact review opened all five, matched hashes, dimensions and exact raw crop pixels/ICC profiles, checked four matching product blobs and privacy/evidence limits. Original custodian retained separate normal stop/process/port/registry/browser settlement; no global-idle or unrelated-PID claim."
+  ]
+}

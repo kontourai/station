@@ -1,7 +1,0 @@
-{
-  "revision": "6b073f04abe0c53362236c9d665bfb182b0a58b5",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Reviewed #4483 shared contextual-redaction change: native asset URL sanitation and source-coordinate retention are unchanged; contextual credential scans now reach later keys after harmless prefixes. No native profile, launch, packaging or build behavior changed. Existing native-asset redaction prose remains accurate; no native launch/build proof claimed.","inputs":["docs/guides/desktop-build.md","packages/shared/src/redaction.ts"]}
-  ]
-}

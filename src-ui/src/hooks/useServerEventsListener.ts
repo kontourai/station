@@ -8,7 +8,9 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   applyACPStatusEvent,
   applyServerUpdateStateEvent,
+  serverUpdateStateQueryKey,
 } from '@kontourai/station-sdk';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import {
@@ -20,6 +22,7 @@ import { navigationStore } from '../contexts/NavigationContext';
 import { toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { playDeliveredNotificationSound } from '../lib/notification-sounds';
+import { GENERAL_EVENTS_RESUMED_EVENT } from './orchestration/resumeCursor';
 import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
 
 type EventHandler = (data: Record<string, unknown>) => void;
@@ -61,19 +64,17 @@ export const NOTIFICATION_TOAST_DISPLAY_MS = 8000;
 const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
 
 /**
- * NOTIFICATION_DELIVERED data handler. Every delivery plays its category's
- * sound — turn ends included, even for the chat the user is watching (owner
- * decision: always chime). It then shows a toast, except for an
- * `approval-request` (its own approval UI) and a turn-completion record (the
- * client's own end-of-turn toast owns it), either of which would otherwise
- * double-surface. Exported so it's directly unit-testable without standing
- * up the full SSE hook.
+ * Silent envelopes remain in History without an interrupt. Other delivered
+ * turn ends still chime, including in the foreground chat. Their visual
+ * notification and the approval UI have separate owners.
  */
 export function handleNotificationDeliveredToast(
   data: Record<string, unknown>,
   isCurrent: () => boolean = () => true,
 ): void {
   if (!isCurrent()) return;
+  const metadata = data.metadata as Record<string, unknown> | undefined;
+  if (readNotificationEnvelope({ metadata })?.interrupt === 'silent') return;
   const category = data.category;
   if (typeof category === 'string') {
     playDeliveredNotificationSound(
@@ -82,7 +83,7 @@ export function handleNotificationDeliveredToast(
     );
   }
   if (
-    data.category === 'approval-request' ||
+    category === 'approval-request' ||
     data.source === TURN_COMPLETION_SOURCE
   ) {
     return;
@@ -90,7 +91,6 @@ export function handleNotificationDeliveredToast(
   const title = data.title as string | undefined;
   if (!title) return;
   const body = data.body as string | undefined;
-  const metadata = data.metadata as Record<string, unknown> | undefined;
   const showPlainToast = () => {
     if (!isCurrent()) return;
     toastStore.show(
@@ -102,9 +102,6 @@ export function handleNotificationDeliveredToast(
     );
   };
   if (metadata?.envelope) {
-    // #2587: attribution + Open, loaded on first enveloped delivery. A chunk
-    // that fails to load (offline, a deploy replaced it) must not cost the
-    // user the toast itself.
     void import('../lib/notification-envelope-toast')
       .then((module) =>
         module.showEnvelopeNotificationToast(
@@ -200,6 +197,7 @@ function refreshEngineReadiness(queryClient: QueryClient): void {
     'acp-connections',
     'acp-unregistered-connections',
     'acp-connection-registry',
+    'engine-setup',
   ]) {
     queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
   }
@@ -235,21 +233,18 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
     qc.invalidateQueries({ queryKey: ['agents'] });
-    reloadPluginRegistry();
   },
   [SERVER_EVENTS.PLUGINS_REMOVED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
     qc.invalidateQueries({ queryKey: ['agents'] });
-    reloadPluginRegistry();
   },
   [SERVER_EVENTS.PLUGINS_UPDATED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['agents'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });
     qc.invalidateQueries({ queryKey: ['layouts'] });
-    reloadPluginRegistry();
   },
   // archive#3815: a withdrawn permission must stop working in
   // ALREADY-LOADED frames. `PluginRegistry` copies `permissions.granted` into
@@ -261,7 +256,6 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['projects'] });
     qc.invalidateQueries({ queryKey: ['plugins'] });
-    reloadPluginRegistry();
   },
   [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: (qc) => {
     qc.invalidateQueries({ queryKey: ['plugin-updates'] });
@@ -280,11 +274,58 @@ function invalidateInboxQueries(queryClient: {
   queryClient.invalidateQueries({ queryKey: ['attention'] });
 }
 
+/**
+ * Events whose handler also rebuilds the loaded plugin registry. Kept beside
+ * `EVENT_HANDLERS` rather than inside it, so that table stays a list of query
+ * invalidations a resumed stream can replay (see
+ * `invalidateQueriesForMissedServerEvents`).
+ */
+const PLUGIN_REGISTRY_RELOAD_EVENTS: ReadonlySet<string> = new Set([
+  SERVER_EVENTS.PLUGINS_INSTALLED,
+  SERVER_EVENTS.PLUGINS_REMOVED,
+  SERVER_EVENTS.PLUGINS_UPDATED,
+  SERVER_EVENTS.PLUGINS_GRANTS_CHANGED,
+]);
+
 export function invalidateQueriesForServerEvent(
   event: string,
   queryClient: { invalidateQueries: (options: any) => unknown },
 ) {
   EVENT_HANDLERS[event]?.(queryClient);
+  if (PLUGIN_REGISTRY_RELOAD_EVENTS.has(event)) reloadPluginRegistry();
+}
+
+/**
+ * General events are not replayed, so a stream that re-opens after a failure
+ * may have missed any of them. This makes every invalidation in
+ * `EVENT_HANDLERS` once, plus the server update state the stream otherwise
+ * writes directly: the queries those events keep current, and no others. A
+ * blanket `invalidateQueries()` here would refetch every mounted query on each
+ * reconnect, which is what overloads a slow Station (see
+ * `useInvalidateCachesOnConnectionSwitch.ts`).
+ *
+ * `cancelRefetch: false` keeps a read that is already in flight instead of
+ * abandoning it for a second request: several handlers name the same key, and
+ * a reconnect that follows an outage lands beside the health recovery's own
+ * refetches (`useQueryCacheReconnectSync`).
+ *
+ * Not replayed: toasts, navigation and the plugin registry reload. The
+ * registry rebuild disposes every loaded plugin, which is too much to do on
+ * each reconnect without knowing a plugin event was missed.
+ */
+export function invalidateQueriesForMissedServerEvents(
+  queryClient: QueryClient,
+  apiBase: string,
+): void {
+  const keepInFlight = {
+    invalidateQueries: (
+      filters: Parameters<QueryClient['invalidateQueries']>[0],
+    ) => queryClient.invalidateQueries(filters, { cancelRefetch: false }),
+  };
+  for (const handler of Object.values(EVENT_HANDLERS)) handler(keepInFlight);
+  keepInFlight.invalidateQueries({
+    queryKey: serverUpdateStateQueryKey(apiBase),
+  });
 }
 
 export function useServerEventsListener(
@@ -335,6 +376,10 @@ export function useServerEventsListener(
         // a later A generation) after the connection has changed.
         if (!subscriptionAuthority?.isCurrent()) return;
         const event = message.event;
+        if (event === GENERAL_EVENTS_RESUMED_EVENT) {
+          invalidateQueriesForMissedServerEvents(queryClient, apiBase);
+          return;
+        }
         if (
           event === SERVER_EVENTS.ANSWER_ASSESSMENT_UPDATED ||
           event === SERVER_EVENTS.ANSWER_NARRATIVE_UPDATED

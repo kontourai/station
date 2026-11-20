@@ -36,8 +36,6 @@
 
     "src-server/runtime/bootstrap/runtime-tenant-context.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/services/knowledge/knowledge-document-import-service.ts",
 
     "src-server/routes/knowledge/knowledge-document-import-routes.ts",

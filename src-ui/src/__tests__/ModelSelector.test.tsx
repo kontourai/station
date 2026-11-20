@@ -59,6 +59,26 @@ describe('ModelSelector', () => {
     fireEvent.mouseDown(screen.getByText(/Use .claude-opus-4-9./));
     expect(onChange).toHaveBeenCalledWith('claude-opus-4-9');
   });
+
+  test('keeps the keyboard highlight when its parent re-renders while the list is open', () => {
+    const onChange = vi.fn();
+    const models = [
+      { id: 'haiku', name: 'Claude Haiku', originalId: 'haiku' },
+      { id: 'sonnet', name: 'Claude Sonnet', originalId: 'sonnet' },
+    ];
+    const view = render(
+      <ModelSelector value="" onChange={onChange} models={models} />,
+    );
+
+    fireEvent.focus(screen.getByRole('textbox'));
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    // The same list again: the highlight must not return to the first row.
+    view.rerender(
+      <ModelSelector value="" onChange={onChange} models={models} />,
+    );
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('sonnet');
+  });
 });
 
 describe('/model selection', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "337ffbe5034ff34a015435c1895239dedbdd23a8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Only the exact-path edge for the deleted src-desktop/tauri.beta.conf.json was removed (#4929 deleted the file); the selection model, edge semantics and commands the testing guide describes are unchanged.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

@@ -381,12 +381,12 @@ export const PREBUILT_ARCHIVE_MARKER = Object.freeze({
  * The build manifest `station start` compares the served identity against.
  * It is the shape lifecycle.ts's `validateBuildManifest` accepts, filled the
  * way its `resolveSourceBuildManifest` fills it for a packaged release tree:
- * the release SHA, with the release ref as the branch.
+ * the release SHA, with the canonical product-version label as the branch.
  */
 function writeServerBuildManifest(serverDir, release) {
   writeFileSync(
     join(serverDir, 'station-build.json'),
-    `${JSON.stringify({ sha: release.sha, branch: release.ref, builtAt: release.createdAt }, null, 2)}\n`,
+    `${JSON.stringify({ sha: release.sha, branch: release.schemaVersion === 3 ? `v${release.version}` : release.ref, builtAt: release.createdAt }, null, 2)}\n`,
   );
 }
 

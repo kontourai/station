@@ -1,0 +1,19 @@
+{
+  "revision": "2ff9ffc7c0655c354ee3802324a02ef950bd0018",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed: a card Done now alerts only under the finish producer's released key (a later clean session exit keeps the released entry). Release, store, packaging and build claims in citing guides are unaffected.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]}
+  ]
+}

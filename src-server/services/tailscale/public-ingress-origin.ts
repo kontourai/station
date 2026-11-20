@@ -34,6 +34,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { isRecord } from '../../utils/is-record.js';
 
 export interface TailscaleCliResult {
   readonly stdout: string;
@@ -141,10 +142,6 @@ interface ServeOriginCandidate {
    * foreground `serve` session overrides it.
    */
   readonly ownedByStation: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Every `host:port` a foreground session configures or exposes through Funnel. */

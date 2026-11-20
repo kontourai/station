@@ -1,0 +1,7 @@
+{
+  "revision": "3afec36bb999e09105c317e05f2388d30cefb2bd",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Read the product-base paragraph against scripts/nightly-release-base.mjs and the three workflow steps: the guard still runs at top-level decision, portable publication and native cohort admission; added that an empty listing, like an unavailable or malformed one, does not count as bootstrap (the script now refuses a zero-release listing and a non-zero gh exit). Other workflow changes: none.","inputs":["docs/guides/nightly.md",".github/workflows/nightly-native-cohort.yml",".github/workflows/nightly.yml",".github/workflows/portable-nightly-publish.yml"]}
+  ]
+}

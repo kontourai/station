@@ -59,8 +59,8 @@
 //      not exhaustive static analysis — mitigated by keeping the pattern
 //      list easy to extend.
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 // ---------------------------------------------------------------------------
 // Check 1: no bare confirm()/prompt() or window.confirm()/window.prompt()
@@ -130,6 +130,7 @@ export function scanForBannedConfirmPrompt(file, content) {
 export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/learning-review/LearningReviewPanel.tsx',
   'src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx',
+  'src-ui/src/views/apps/AppDetailsDialog.tsx',
   'src-ui/src/views/ProjectSettingsView.tsx',
   'src-ui/src/views/SkillsView.tsx',
   'src-ui/src/views/agent-editor/useAgentsViewModel.ts',
@@ -228,11 +229,7 @@ function listTrackedFilesUnder(dir) {
   // used here because it unexpectedly excludes files directly inside `dir`
   // on this git version; listing everything and filtering the extension in
   // JS sidesteps that pathspec-glob ambiguity entirely).
-  const out = execFileSyncBounded('git', ['ls-files', `${dir}/**`], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return out.trim().split('\n').filter(Boolean);
+  return gitLsFiles([`${dir}/**`]);
 }
 
 function isTsOrTsx(file) {

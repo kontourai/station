@@ -12,15 +12,10 @@
  * owns the file (the device shares' pattern).
  */
 import { randomBytes } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DeviceSshHost } from '@kontourai/station-contracts/mobile-device';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { isSshDeviceTarget } from './ssh-device-target.js';
 
 export type DeviceHostRefusal =
@@ -220,8 +215,6 @@ export class DeviceHostStore {
   #save(): void {
     mkdirSync(join(this.#path, '..'), { recursive: true });
     const shape: StoreShape = { version: 1, hosts: this.#hosts };
-    const temp = `${this.#path}.${process.pid}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(shape, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temp, this.#path);
+    writeJsonDurably(this.#path, shape);
   }
 }

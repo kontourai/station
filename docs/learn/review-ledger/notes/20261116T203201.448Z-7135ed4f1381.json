@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Documents past-the-end reads on ChildWorkTranscriptPage; checked against both readers.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

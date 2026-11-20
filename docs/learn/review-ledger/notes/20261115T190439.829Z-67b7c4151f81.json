@@ -1,0 +1,7 @@
+{
+  "revision": "c7349ae1b1013d411705928155fce471a483f9a3",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Fix round for the finished-alert hold: rewrote the episode, persistence and card paragraphs against turn-completion-notifications.ts, finished-alert-episodes.ts, agent-activity-publisher.ts, agent-activity-card.ts and runtime-route-support.ts. Checked: the producer marks a completed turn pending synchronously, persists pending episodes and replays them at start, removes a row only after the record is written, re-reads holds on projection updates; the card reads episodes (Running while attached and pending, unalerted Done while detached), dates the released Done from the release under the terminal's key, flushes on episode change, and a delegated child's Done raises no alert. Each claim is pinned by a test in agent-activity-publisher.test.ts or turn-completion-notifications.test.ts.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/agent-activity-card.ts","src-server/services/notifications/agent-activity-publisher.ts","src-server/services/orchestration/turn-completion-notifications.ts","src-server/services/orchestration/finished-alert-episodes.ts"]}
+  ]
+}

@@ -9,6 +9,7 @@ import {
   type BrowserContext,
   expect as browserExpect,
   chromium,
+  type Page,
 } from '@playwright/test';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -170,7 +171,11 @@ afterAll(async () => {
   expect(serverErrors).toEqual([]);
 });
 
-async function pageAt(width: number, suffix = '') {
+async function pageAt(
+  width: number,
+  suffix = '',
+  configure?: (context: BrowserContext) => Promise<void>,
+) {
   const context = await browser.newContext({
     viewport: { width, height: 900 },
   });
@@ -180,6 +185,7 @@ async function pageAt(width: number, suffix = '') {
       await route.continue();
     else await route.abort();
   });
+  await configure?.(context);
   const page = await context.newPage();
   await page.goto(`${origin}/${suffix}`);
   return page;
@@ -403,6 +409,41 @@ test.each([390, 1440])(
   },
   30_000,
 );
+
+test('skill metadata stays searchable while the browser uses the body title and outline', async () => {
+  let releaseManifest!: () => void;
+  const manifest = new Promise<void>((resolve) => {
+    releaseManifest = resolve;
+  });
+  let page: Page;
+  try {
+    page = await pageAt(1440, '', async (context) => {
+      await context.route(`${origin}/atlas-data.json`, async (route) => {
+        await manifest;
+        await route.continue();
+      });
+    });
+    await page.getByRole('searchbox').fill('name: deslop');
+  } finally {
+    releaseManifest();
+  }
+  const result = page
+    .getByRole('navigation', { name: 'Search results' })
+    .getByRole('link', {
+      name: 'Deslop .agents/skills/deslop/SKILL.md',
+      exact: true,
+    });
+  await browserExpect(result).toBeVisible();
+  await result.click();
+  const article = page.getByRole('article');
+  await browserExpect(article.getByRole('heading').first()).toHaveText(
+    'Deslop',
+  );
+  const outline = page.getByRole('navigation', { name: 'Document sections' });
+  await browserExpect(outline.getByRole('link').first()).toHaveText('Deslop');
+  await outline.getByRole('link', { name: 'Deslop', exact: true }).click();
+  await browserExpect(page).toHaveURL(/section=deslop$/);
+});
 
 test('narrow reading, keyboard disclosure, and section links preserve visible content', async () => {
   const page = await pageAt(390);

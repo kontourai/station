@@ -1,0 +1,17 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#2376 slice 2: testing.md changed only its agent-context budget paragraph (codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound). Searched this page for the budget, codexBoundToolsJsonBytes and the Codex bound channel; it restates none of them.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#2376 slice 2: testing.md changed only its agent-context budget paragraph (codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound). Searched this page for the budget, codexBoundToolsJsonBytes and the Codex bound channel; it restates none of them.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2376 slice 2: testing.md changed only its agent-context budget paragraph (codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound). Searched this page for the budget, codexBoundToolsJsonBytes and the Codex bound channel; it restates none of them.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#2376 slice 2: testing.md changed only its agent-context budget paragraph (codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound). Searched this page for the budget, codexBoundToolsJsonBytes and the Codex bound channel; it restates none of them.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#2376 slice 2: testing.md changed only its agent-context budget paragraph (codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound). Searched this page for the budget, codexBoundToolsJsonBytes and the Codex bound channel; it restates none of them.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"#2376 slice 2: testing.md changed only its agent-context budget paragraph (codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound). Searched this page for the budget, codexBoundToolsJsonBytes and the Codex bound channel; it restates none of them.","inputs":["docs/guides/testing.md"]}
+  ]
+}

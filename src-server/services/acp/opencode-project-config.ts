@@ -21,7 +21,7 @@
  * The user's own home directory and above are the user's scope, as are
  * OpenCode's global configuration directories: they are not scanned.
  */
-import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import {
@@ -36,6 +36,7 @@ import {
   sep,
 } from 'node:path';
 import { type ParseError, parse } from 'jsonc-parser';
+import { isRecord } from '../../utils/is-record.js';
 
 const CONFIG_FILE_NAMES = ['opencode.json', 'opencode.jsonc'] as const;
 const CODE_DIR_NAMES = ['plugin', 'plugins', 'tool', 'tools'] as const;
@@ -43,7 +44,7 @@ const CODE_DIR_NAMES = ['plugin', 'plugins', 'tool', 'tools'] as const;
 export const OPENCODE_CONFIG_SCAN_MAX_BYTES = 1024 * 1024;
 
 /** The real path of `path`, or of its deepest existing ancestor joined back. */
-function realish(path: string): string {
+export function realish(path: string): string {
   let existing = path;
   const rest: string[] = [];
   while (!existsSync(existing)) {
@@ -238,6 +239,20 @@ export function openCodeEditNeedsPerson(
 ): boolean {
   const targets = openCodeEditTargets(rawInput);
   if (!targets) return true;
+  return openCodeWriteTargetsNeedPerson(targets, cwd, env, home);
+}
+
+/**
+ * {@link openCodeEditNeedsPerson} for absolute write targets already read
+ * from a request.
+ */
+function openCodeWriteTargetsNeedPerson(
+  targets: readonly string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  home: string,
+): boolean {
+  if (targets.length === 0) return true;
   const root = openCodeGitRoot(cwd) ?? realish(resolve(cwd));
   const global = openCodeGlobalConfigPaths(env, home);
   return targets.some((target) => {
@@ -252,16 +267,74 @@ export function openCodeEditNeedsPerson(
   });
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+/**
+ * The native (OpenCode 2.x `opencode serve`) counterpart of
+ * {@link openCodeEditNeedsPerson}, for a `permission.asked` request's
+ * `action` and `resources`. OpenCode names a write's target relative to the
+ * session's directory when it is inside it, else absolute
+ * (`core/src/file-access.ts` resolve), so `cwd` must be the directory the
+ * session was created at.
+ *
+ * - `edit` (write, edit, patch, worktree removal, image output): a person's
+ *   when any target is one {@link openCodeEditNeedsPerson} would give a
+ *   person, or one Station cannot place (no resources, a relative target
+ *   with `.`/`..` segments).
+ * - `external_directory` (`<dir>/*`, asked before any read or write outside
+ *   the project): a person's when the directory is or holds OpenCode
+ *   configuration (an OpenCode config path, or a global configuration
+ *   location at, inside or under it), since a grant for it would let a later
+ *   write there through.
+ * - Anything else: not this guard's (false).
+ */
+export function openCodeNativeAskNeedsPerson(
+  request: { readonly action: string; readonly resources: readonly string[] },
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): boolean {
+  if (request.action === 'edit') {
+    if (request.resources.length === 0) return true;
+    const base = realish(resolve(cwd));
+    const targets: string[] = [];
+    for (const resource of request.resources) {
+      if (isAbsolute(resource)) {
+        targets.push(resource);
+        continue;
+      }
+      const parts = resource.split(/[\\/]+/);
+      if (parts.some((part) => part === '.' || part === '..' || part === ''))
+        return true;
+      targets.push(join(base, ...parts));
+    }
+    return openCodeWriteTargetsNeedPerson(targets, cwd, env, home);
+  }
+  if (request.action === 'external_directory') {
+    if (request.resources.length === 0) return true;
+    const global = openCodeGlobalConfigPaths(env, home);
+    return request.resources.some((resource) => {
+      const directory = resource.replace(/[\\/]\*+$/, '');
+      if (!isAbsolute(directory) || /[*?]/.test(directory)) return true;
+      const real = realish(resolve(directory));
+      return (
+        isOpenCodeConfigPath(directory) ||
+        isOpenCodeConfigPath(real) ||
+        global.some(
+          (path) =>
+            isInsideIgnoringCase(real, path) ||
+            isInsideIgnoringCase(path, real),
+        )
+      );
+    });
+  }
+  return false;
 }
 
 /** Entries of a config map (`mcp`, `formatter`, `lsp`) that run a command. */
 function commandEntries(value: unknown, key: string): string[] {
-  if (!isPlainObject(value)) return [];
+  if (!isRecord(value)) return [];
   return Object.entries(value)
     .filter(([, entry]) => {
-      if (!isPlainObject(entry)) return false;
+      if (!isRecord(entry)) return false;
       if (entry.enabled === false || entry.disabled === true) return false;
       return (
         entry.command !== undefined || (key === 'mcp' && entry.type === 'local')
@@ -270,12 +343,20 @@ function commandEntries(value: unknown, key: string): string[] {
     .map(([name]) => `${key} "${name}"`);
 }
 
+function configPathIsMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
 async function configFileFindings(path: string): Promise<string[]> {
   let size: number;
   try {
-    size = (await stat(path)).size;
-  } catch {
-    return [];
+    const info = await stat(path);
+    if (!info.isFile()) return [`${path} (Station could not inspect it)`];
+    size = info.size;
+  } catch (error) {
+    return configPathIsMissing(error)
+      ? []
+      : [`${path} (Station could not inspect it)`];
   }
   if (size > OPENCODE_CONFIG_SCAN_MAX_BYTES) {
     return [`${path} (too large for Station to check)`];
@@ -288,7 +369,7 @@ async function configFileFindings(path: string): Promise<string[]> {
   }
   const errors: ParseError[] = [];
   const parsed: unknown = parse(text, errors, { allowTrailingComma: true });
-  if (errors.length > 0 || !isPlainObject(parsed)) {
+  if (errors.length > 0 || !isRecord(parsed)) {
     return [`${path} (Station could not parse it)`];
   }
   const found = [
@@ -309,7 +390,9 @@ async function codeDirFindings(dotDir: string): Promise<string[]> {
     let entries: string[];
     try {
       entries = await readdir(dir);
-    } catch {
+    } catch (error) {
+      if (!configPathIsMissing(error))
+        found.push(`${dir} (Station could not inspect it)`);
       continue;
     }
     if (entries.length > 0) found.push(dir);
@@ -343,8 +426,12 @@ export async function findOpenCodeProjectCode(
     const dotDir = join(dir, '.opencode');
     let isDir = false;
     try {
-      isDir = statSync(dotDir).isDirectory();
-    } catch {}
+      isDir = (await stat(dotDir)).isDirectory();
+      if (!isDir) findings.push(`${dotDir} (Station could not inspect it)`);
+    } catch (error) {
+      if (!configPathIsMissing(error))
+        findings.push(`${dotDir} (Station could not inspect it)`);
+    }
     if (isDir) {
       findings.push(...(await codeDirFindings(dotDir)));
       for (const name of CONFIG_FILE_NAMES) {
@@ -365,5 +452,5 @@ export function openCodeProjectCodeRefusal(
 ): string {
   const shown = findings.slice(0, 5).join('; ');
   const more = findings.length > 5 ? `; and ${findings.length - 5} more` : '';
-  return `this project's OpenCode configuration runs its own code when OpenCode starts, which no approval mode covers (${shown}${more})`;
+  return `this project's OpenCode configuration runs its own code when OpenCode starts or could not be inspected safely (${shown}${more})`;
 }

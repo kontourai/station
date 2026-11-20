@@ -3,6 +3,7 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type { TaskRelationshipRouteAdapters } from '../../routes/orchestration/task-relationships.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { TaskRelationshipError } from '../../services/projects/task-relationship-state.js';
 import type { TaskRoomWorkModule } from '../../services/projects/task-room-work-module.js';
 
 /** Batches discovery, then prepares and rechecks each exact relationship's reader. */
@@ -66,15 +67,22 @@ export function createTaskInboxProjection(deps: {
     for (const task of tasks) {
       const conversationIds = [...candidates.get(task.id)!];
       if (!conversationIds.length) continue;
-      const access = await deps.relationships.authorityForRequest(
-        request,
-        undefined,
-        {
-          taskId: task.id,
-          conversationIds,
-        },
-      );
-      if (access) prepared.push({ task, conversationIds, access });
+      try {
+        const access = await deps.relationships.authorityForRequest(
+          request,
+          undefined,
+          { taskId: task.id, conversationIds },
+        );
+        if (access) prepared.push({ task, conversationIds, access });
+      } catch (error) {
+        // Admission can disappear after discovery. Omit that Task's chats,
+        // while preserving failures that indicate a broken store or adapter.
+        if (
+          !(error instanceof TaskRelationshipError) ||
+          error.code !== 'unavailable'
+        )
+          throw error;
+      }
     }
     const currentCandidates = await discover();
     const result = new Map<string, readonly string[]>();

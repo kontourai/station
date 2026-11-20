@@ -245,3 +245,79 @@ describe('a non-zero exit is how these CLIs signal signed-out', () => {
     expect(result.detail).toMatch(/not found on this host/i);
   });
 });
+
+/**
+ * #1942: Muse has no login-status verb; `muse usage --json` answers it.
+ * Captured live against Muse Code 1.4.18, macOS, 2026-11-13:
+ *   empty XDG_CONFIG_HOME -> exit 1, stderr
+ *     'muse usage: not logged in: run `muse login` first'
+ *   signed-in home        -> exit 0, stdout
+ *     '{"schemaVersion":1,"allowance":null,"reason":"no_allowance","hint":null}'
+ */
+describe('muse enrolment', () => {
+  const MUSE_SIGNED_OUT_STDERR =
+    'muse usage: not logged in: run `muse login` first\n';
+  const MUSE_SIGNED_IN_STDOUT =
+    '{"schemaVersion":1,"allowance":null,"reason":"no_allowance","hint":null}\n';
+
+  test('points muse at the profile as its XDG config root, and runs the bare login', () => {
+    expect(enrolmentHomeEnv('muse', '/p')).toEqual({ XDG_CONFIG_HOME: '/p' });
+    const composed = enrolmentCommand('muse', '/p');
+    expect(composed.command).toBe('muse');
+    expect(composed.args).toEqual(['login']);
+    expect(composed.env).toEqual({ XDG_CONFIG_HOME: '/p' });
+  });
+
+  test('signed out: exit 1 with "not logged in" on stderr', async () => {
+    const result = await verifyEnrolment(
+      'muse',
+      '/p',
+      rejectingDeps({ stderr: MUSE_SIGNED_OUT_STDERR }),
+    );
+    expect(result.state).toBe('unauthenticated');
+  });
+
+  test('signed in: the usage envelope on stdout', async () => {
+    const d = deps({ stdout: MUSE_SIGNED_IN_STDOUT });
+    const result = await verifyEnrolment('muse', '/station/profiles/work', d);
+    expect(result.state).toBe('authenticated');
+    const call = (d.execFile as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(call[0]).toBe('muse');
+    expect(call[1]).toEqual(['usage', '--json']);
+    // The profile's home, and the launcher held to no download or prompt.
+    expect(call[2].env).toMatchObject({
+      XDG_CONFIG_HOME: '/station/profiles/work',
+      MUSE_NO_AUTO_UPDATE: '1',
+      MUSE_LOGIN: '0',
+      PATH: '/usr/bin',
+    });
+  });
+
+  test("an ambient META_API_KEY never reaches the profile's sign-in check", async () => {
+    const d = deps({ stdout: MUSE_SIGNED_IN_STDOUT });
+    d.env = { ...d.env, META_API_KEY: 'sk-ambient' };
+    await verifyEnrolment('muse', '/station/profiles/work', d);
+    const call = (d.execFile as unknown as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(call[2].env).toMatchObject({
+      XDG_CONFIG_HOME: '/station/profiles/work',
+    });
+    expect(call[2].env).not.toHaveProperty('META_API_KEY');
+  });
+
+  test('anything else is unknown, never a verdict', async () => {
+    for (const stdout of ['', 'muse: network unreachable', '{"allowance":1}']) {
+      const result = await verifyEnrolment('muse', '/p', deps({ stdout }));
+      expect(result.state).toBe('unknown');
+    }
+    const failed = await verifyEnrolment(
+      'muse',
+      '/p',
+      rejectingDeps({
+        stderr: 'muse: installed binary is missing; rerun the installer',
+      }),
+    );
+    expect(failed.state).toBe('unknown');
+  });
+});

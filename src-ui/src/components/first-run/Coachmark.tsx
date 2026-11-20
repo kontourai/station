@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import { FIRST_RUN_ANCHOR_ATTRIBUTE } from './tour-steps';
 import './Coachmark.css';
 
@@ -63,9 +64,6 @@ interface CoachmarkPosition {
   top: number;
   placement: 'above' | 'below';
 }
-
-const FOCUSABLE =
-  'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export interface CoachmarkProps {
   anchor: string;
@@ -227,19 +225,17 @@ export function Coachmark({
     }
     if (event.key !== 'Tab') return;
     const focusable = Array.from(
-      cardRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
+      cardRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
     );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || active === cardRef.current)) {
+    // Focus starts on the card itself: Shift+Tab from there wraps too.
+    if (event.shiftKey && document.activeElement === cardRef.current) {
+      const last = focusable.at(-1);
+      if (!last) return;
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
+      return;
     }
+    wrapTabFocus(event, focusable);
   };
 
   return createPortal(

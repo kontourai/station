@@ -174,10 +174,10 @@ describe('OpenSSH alias discovery', () => {
 });
 
 /**
- * `src-server/AGENTS.md`: "Every new process launch must set
- * `windowsHide: true`" — a Windows child spawned without it flashes a console
- * window at the user. Nothing in the repo scans for the rule, so the one
- * process this module launches is pinned here through the real
+ * Every process launch sets `windowsHide: true`: a Windows child spawned
+ * without it flashes a console window at the user. `windows-hide-ratchet.mjs`
+ * scans for the omission only where the options are visible in the call; this
+ * pins the one process this module launches through the real
  * `createSystemOpenSshRunner`, not by reading the source.
  */
 describe('createSystemOpenSshRunner process launch', () => {

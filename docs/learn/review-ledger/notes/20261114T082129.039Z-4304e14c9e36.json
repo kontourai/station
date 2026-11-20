@@ -1,0 +1,11 @@
+{
+  "revision": "38741dc533374c99ece892300b07d2bcec389122",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Reviewed the RC-only delta in generateServerReleaseNotes against the shared release-tag parser, predecessor selection, CLI caller and RC draft step. Nightly identity, availability fallback, bounded retries and immutable comparison links remain unchanged. Updated current draft terminology to Stable/RC, documented RC-to-RC and final-to-prior-Stable bounds; no provider publication or packaged runtime is claimed.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-release-notes.mjs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed integration of main RC preflight with unsigned-Windows observation, receipt staging, inventory validation and draft creation. Canonical Stable arguments retain the Windows overlay; MSI checksum, observed signer and updater verification remain mandatory. Updated notes composition: server changelog and installation instructions plus the inventory-derived signing disclosure. Receipt/OS fixtures do not establish a real tagged MSI build.","inputs":["docs/guides/native-releases.md","scripts/lib/windows-release-signing.mjs"]},
+
+    {"path":"README.md","note":"Reviewed only the integration delta affecting its Nightly installation/distribution links: RC predecessor selection and tagged draft signing disclosure do not alter the README install commands, published package contracts or Nightly identity. The README makes no claim about RC changelog predecessors or Authenticode observation step names. No prose change; existing broader review retained.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

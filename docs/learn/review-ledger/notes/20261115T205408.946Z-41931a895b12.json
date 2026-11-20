@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"packages/shared/README.md","note":"child-workload leaf contract unchanged: close() still rejects on a failed cleanup; retry policy lives in the server launcher.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]}
+  ]
+}

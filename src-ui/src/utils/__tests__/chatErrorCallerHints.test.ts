@@ -134,7 +134,7 @@ describe("full access keeps main's hints exactly", () => {
   it.each([
     [
       { message: RAW, code: ENGINE_SESSION_BINDING_DEAD_CODE },
-      'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
+      'Send your message again to continue in a new engine session, or start a new chat.',
     ],
     [
       { message: 'x', code: SESSION_ENDED_REJECTION_CODE },
@@ -150,7 +150,7 @@ describe("full access keeps main's hints exactly", () => {
     ],
     [
       { message: OAUTH, code: ENGINE_TURN_FAILED_CODE },
-      'Sign in on that computer, then try again — or switch to another agent.',
+      'Sign in on that computer and try again, or switch to another agent.',
     ],
     [
       {

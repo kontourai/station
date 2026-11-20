@@ -1,7 +1,0 @@
-{
-  "revision": "395462fd4b684fd7cae9e4cc6a288222c563bd75",
-
-  "notes": [
-    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed AddMachineModal managed-limit fixture and its production hook: remote-control enrollment is disabled under local-only policy, while Connect a Station and SSH computer creation remain separate paths. The historical native-launcher banner and current server-owned SSH creator description remain accurate; the fixture does not establish a native launch.","inputs":["docs/design/ssh-launched-environments.md","src-ui/src/__tests__/AddMachineModal.test.tsx"]}
-  ]
-}

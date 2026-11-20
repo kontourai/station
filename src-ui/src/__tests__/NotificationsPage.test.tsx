@@ -27,6 +27,11 @@ let notifications: Notification[] = [];
 let notificationsError: Error | null = null;
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 let sessions: OrchestrationSessionSummary[] = [];
+// The person's own feed (#4799), at the SDK boundary.
+let personFeed: Notification[] = [];
+let personFeedPending = false;
+let hostScope = true;
+const markPersonRead = vi.fn(async () => 'read');
 
 // Snooze is a Feature Preview; off unless a test turns it on.
 let snoozePreviews: { id: string; enabled: boolean }[] = [];
@@ -95,6 +100,23 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       mutate: acknowledgeAttentionItem,
     }),
     acknowledgeAttentionItem: sdkMocks.acknowledgeAttentionItem,
+    usePersonNotificationsQuery: () =>
+      personFeedPending
+        ? {
+            data: undefined,
+            isError: false,
+            isSuccess: false,
+            refetch: vi.fn(),
+          }
+        : {
+            data: personFeed,
+            isError: false,
+            isSuccess: true,
+            refetch: vi.fn(),
+          },
+    useMarkPersonNotificationReadMutation: () => ({
+      mutateAsync: markPersonRead,
+    }),
   };
 });
 
@@ -102,6 +124,14 @@ const acknowledgeAttentionItem = sdkMocks.acknowledgeAttentionItem;
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () =>
+    hostScope
+      ? {
+          apiBase: 'http://station.test',
+          authorityKey: 'host',
+          isCurrent: () => true,
+        }
+      : undefined,
 }));
 
 const navigate = vi.fn();
@@ -109,7 +139,9 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
 
+import userEvent from '@testing-library/user-event';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
@@ -192,6 +224,10 @@ describe('NotificationsPage', () => {
     notificationsError = null;
     attention = { items: [], pendingCount: 0 };
     sessions = [];
+    personFeed = [];
+    personFeedPending = false;
+    hostScope = true;
+    markPersonRead.mockClear();
     clearActivity.mockReset();
     dismiss.mockReset();
     action.mockReset();
@@ -434,12 +470,7 @@ describe('NotificationsPage', () => {
     };
     renderPage();
     expect(
-      screen.getByText(/That approval request isn’t available/i),
-    ).toBeTruthy();
-    // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
+      screen.getByText('That approval request is no longer available.'),
     ).toBeTruthy();
     expect(document.activeElement).not.toBe(
       screen.getByTestId('attention-item'),
@@ -479,12 +510,7 @@ describe('NotificationsPage', () => {
     );
     renderPage();
     expect(
-      screen.getByText(/That approval request isn’t available/i),
-    ).toBeTruthy();
-    // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
+      screen.getByText('That approval request is no longer available.'),
     ).toBeTruthy();
     expect(screen.queryByText('All caught up')).toBeNull();
   });
@@ -502,6 +528,109 @@ describe('NotificationsPage', () => {
       screen.getByRole('button', { name: 'Dismiss eligible items' }),
     ).toHaveProperty('disabled', true);
   });
+
+  // #4799: a mention in the person's own feed, in the exact stored shape.
+  test.each([
+    { inbox: 'empty', key: '{Enter}' },
+    { inbox: 'non-empty', key: ' ' },
+  ])(
+    'For you shows an unread mention with a $inbox host inbox, never beside All caught up, and opens it from the keyboard',
+    async ({ inbox, key }) => {
+      const id = 'c1000000-0000-4000-8000-000000000001';
+      const messageId = 'a1000000-0000-4000-8000-000000000009';
+      const path = `/projects/room-live?section=room&message=${messageId}`;
+      const at = '2026-11-15T12:00:00.000Z';
+      personFeed = [
+        {
+          id,
+          source: 'project-room',
+          category: 'room-mention',
+          title: 'Lin mentioned you in #general',
+          body: '@Ada the pricing copy is ready.',
+          priority: 'normal',
+          status: 'delivered',
+          scheduledAt: null,
+          deliveredAt: at,
+          metadata: {
+            projectSlug: 'room-live',
+            messageId,
+            envelope: {
+              v: 1,
+              source: { kind: 'system', subsystem: 'project-room' },
+              audience: {
+                kind: 'principal',
+                principalId: 'human:local:ada',
+                projectId: 'project-room-live',
+              },
+              urgency: 'attention',
+              target: { kind: 'path', path },
+              interrupt: 'default',
+            },
+          },
+          createdAt: at,
+          updatedAt: at,
+        } as Notification,
+      ];
+      if (inbox === 'non-empty')
+        notifications = [
+          {
+            id: 'activity-1',
+            source: 'scheduler',
+            category: 'turn-completed',
+            title: 'Your agent finished',
+            priority: 'normal',
+            status: 'delivered',
+            scheduledAt: null,
+            deliveredAt: at,
+            createdAt: at,
+            updatedAt: at,
+          } as Notification,
+        ];
+      const open = vi
+        .spyOn(navigationStore, 'navigate')
+        .mockImplementation(() => {});
+      try {
+        renderPage();
+        const forYou = screen.getByRole('region', { name: 'For you' });
+        const row = within(forYou).getByRole('button', {
+          name: /Lin mentioned you in #general, unread/,
+        });
+        expect(screen.queryByText('All caught up')).toBeNull();
+        row.focus();
+        await userEvent.keyboard(key);
+        await waitFor(() =>
+          expect(markPersonRead).toHaveBeenCalledWith(
+            expect.objectContaining({ id }),
+          ),
+        );
+        expect(open).toHaveBeenCalledWith(path);
+      } finally {
+        open.mockRestore();
+      }
+    },
+  );
+
+  // The cases above all used a settled person feed with a host scope, so none
+  // could see what an empty host inbox shows while the feed is still loading
+  // or when no host scope exists to read it. "All caught up" may be claimed
+  // only after a successful feed answered with no mentions.
+  test.each([
+    { name: 'person feed still loading', pending: true, scope: true },
+    { name: 'no host scope to read it', pending: false, scope: false },
+  ])(
+    'an empty host inbox with the $name never claims All caught up',
+    ({ pending, scope }) => {
+      personFeedPending = pending;
+      hostScope = scope;
+      renderPage();
+      expect(screen.queryByText('All caught up')).toBeNull();
+      expect(screen.queryByRole('region', { name: 'For you' })).toBeNull();
+      if (pending)
+        expect(
+          screen.getByRole('status', { name: 'Loading notifications' }),
+        ).toBeTruthy();
+    },
+  );
 
   test('filters both inbox sections and stores shareable filters in the URL', () => {
     const timestamp = '2026-08-11T12:00:00.000Z';

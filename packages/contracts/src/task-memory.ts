@@ -165,6 +165,40 @@ export interface TaskMemoryAttention {
   readonly openQuestionCount: number;
 }
 
+/** The longest {@link TaskLatestReport.text} the Tasks list carries. */
+export const TASK_LATEST_REPORT_MAX = 160;
+
+/**
+ * The first line of a Task's current summary, as the Tasks list carries it
+ * (#5064): the one-line latest report a Project Overview row prints. The
+ * whole summary stays in Task memory; `at` is when that revision was written.
+ */
+export interface TaskLatestReport {
+  readonly text: string;
+  readonly at: string;
+}
+
+export interface TaskLatestReportPresentation {
+  readonly latestReport?: TaskLatestReport;
+}
+
+/**
+ * A summary's report line: its first non-empty line, leading Markdown
+ * heading or list markers removed, cut to {@link TASK_LATEST_REPORT_MAX}
+ * characters with `…`. `undefined` for a summary with no text.
+ */
+export function taskLatestReportLine(summary: string): string | undefined {
+  const line = summary
+    .split(/\r?\n/)
+    .map((entry) => entry.replace(/^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/, ''))
+    .map((entry) => entry.trim())
+    .find((entry) => entry.length > 0);
+  if (!line) return undefined;
+  return line.length > TASK_LATEST_REPORT_MAX
+    ? `${line.slice(0, TASK_LATEST_REPORT_MAX - 1)}…`
+    : line;
+}
+
 /**
  * Whether a Task waits on a person's answer: it has an open question and is
  * still live. A done or canceled Task's leftover questions ask nobody.

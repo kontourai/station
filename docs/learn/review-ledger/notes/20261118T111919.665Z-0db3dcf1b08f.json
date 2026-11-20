@@ -1,0 +1,7 @@
+{
+  "revision": "a1e904ca9f2d0fc705913f231753b4cf5097d5de",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Reviewed the browser check at a desktop width above the reader outline breakpoint. The viewport correction affects only the test.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts"]}
+  ]
+}

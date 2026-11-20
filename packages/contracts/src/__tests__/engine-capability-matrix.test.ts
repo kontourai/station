@@ -54,6 +54,16 @@ describe('engine capability matrix', () => {
     expect(externalSessionContinuationSupport('station')).toMatchObject({
       state: 'unknown',
     });
+    // No source lists Muse sessions Station did not start.
+    expect(externalSessionContinuationSupport('muse')).toMatchObject({
+      state: 'unsupported',
+      reason: expect.stringMatching(/Muse sessions it did not start/),
+    });
+    // ACP sessions are listed read-only; resume is not evidenced to keep history.
+    expect(externalSessionContinuationSupport('acp')).toMatchObject({
+      state: 'unsupported',
+      reason: expect.stringMatching(/no evidence that resuming one keeps/),
+    });
   });
 
   test('sessionDeliveryChannels reproduces the shipped per-engine delivery truth (acp/claude/codex; bedrock/ollama undefined)', () => {
@@ -225,9 +235,74 @@ describe('engine capability matrix', () => {
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
   });
 
+  test('an OpenCode connection reads the opencode row only while it projects the opencode engine', () => {
+    // Preview on: the inspector projects `engineId: 'opencode'`.
+    expect(
+      resolveEngineCapabilityMatrix('opencode', {
+        type: 'acp',
+        config: { engineId: 'opencode' },
+      }),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.opencode);
+    expect(
+      resolveEngineCapabilityMatrix('my-opencode', {
+        type: 'acp',
+        engineId: 'opencode',
+      }),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.opencode);
+    // Preview off: the same record projects `acp`, exactly as on the base.
+    expect(
+      resolveEngineCapabilityMatrix('opencode', {
+        type: 'acp',
+        config: { engineId: 'acp' },
+      }),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
+  });
+
+  test('the opencode row states what both of its transports deliver', () => {
+    const row = ENGINE_CAPABILITY_MATRICES.opencode!;
+    expect(row.engineId).toBe('opencode');
+    expect(row).toMatchObject({
+      systemPrompt: { state: 'unsupported' },
+      instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
+      toolServers: {
+        state: 'session',
+        channel: 'wire',
+        builtinStationControlDelivery: {
+          mechanism: 'http-header-token',
+          basis: 'runtime_observation',
+          observation: 'acp-mcp-http',
+        },
+      },
+      skills: { state: 'unsupported' },
+      commands: { state: 'unsupported' },
+      modelSelection: { state: 'session', channel: 'wire' },
+      // An Agent's session (the only one with a staged policy) runs over ACP.
+      toolPolicy: {
+        state: 'partial',
+        permissionHook: 'requestPermission',
+        adapterModule: 'acp-adapter',
+      },
+      imageInput: {
+        state: 'session',
+        channel: 'native-content',
+        basis: 'runtime_observation',
+      },
+      midTurnSteer: true,
+      subagentObservability: { state: 'declared', signals: ['lifecycle'] },
+      subagentControl: { state: 'none' },
+    });
+    // It is never the unknown-engine matrix the UI hides everything behind.
+    expect(row).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+    expect(sessionDeliveryChannels('opencode')).toEqual({
+      toolServers: true,
+      skills: false,
+      systemPrompt: false,
+    });
+  });
+
   test('an unknown external engine resolves to the all-unsupported conservative matrix, never silently editable surfaces', () => {
-    const result = resolveEngineCapabilityMatrix('opencode-connection', {
-      type: 'opencode',
+    const result = resolveEngineCapabilityMatrix('goose-connection', {
+      type: 'goose',
       config: {},
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
@@ -522,7 +597,7 @@ describe('station#1549: the observation-based basis (policy in the cell, evidenc
     ).toBe('chat-only');
   });
 
-  test('station#1684: EXACTLY ONE shipped cell carries an observation basis, and it is acp', () => {
+  test('station#1684: only the ACP-backed rows carry an observation basis: acp, and opencode (whose fallback is ACP)', () => {
     // Slice 1's version of this test asserted that EVERY shipped cell was
     // `declared` — its way of pinning "this slice adds a type and changes no
     // behavior". Slice 2 is the change it was holding the door for, so the
@@ -544,7 +619,10 @@ describe('station#1549: the observation-based basis (policy in the cell, evidenc
         expect(delivery.basis).toBe('declared');
       }
     }
-    expect(observationBased).toEqual(['acp']);
+    // `opencode` (round 4): its ACP fallback reads the same live
+    // `mcpCapabilities.http` observation as `acp`; its native transport has
+    // HTTP MCP by its verified API.
+    expect(observationBased).toEqual(['acp', 'opencode']);
   });
 
   test('resolveBuiltinAgentEngineBinding never optimistically binds an unobserved connection, and binds it the moment evidence says yes', () => {
@@ -1097,18 +1175,17 @@ describe('acpApprovalControl (#3290)', () => {
     }
   });
 
-  test('every other command, a wrapper included, leaves the engine to decide', () => {
+  test('external ACP commands use the shared permission-request path', () => {
     for (const command of [
+      'agy',
       'kiro-cli',
       'npx',
       'opencode-ai',
       '/usr/bin/opencode/agent',
-      '',
-      undefined,
-      null,
     ]) {
-      expect(acpStationApprovalEngine(command)).toBeUndefined();
-      expect(acpApprovalControl(command)).toBe('engine');
+      expect(acpApprovalControl(command)).toBe('requests');
     }
+    for (const command of ['', undefined, null])
+      expect(acpApprovalControl(command)).toBe('engine');
   });
 });

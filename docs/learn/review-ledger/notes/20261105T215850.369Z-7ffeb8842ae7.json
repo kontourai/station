@@ -1,9 +1,0 @@
-{
-  "revision": "686d79d4879451ff65eebf41a8a23806210be328",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Reviewed the legacy-host compatibility repair through the real Sources consumer and SDK decoder. GitHub CLI sign-in is derived only from explicit authentication.state; a missing authentication object stays Not confirmed regardless of legacy read-action outcome. Added that user-visible rule to the guide. Mounted unverified/failed legacy cases failed on the reviewed code; with the fix all13 focused UI/SDK tests pass, including the explicit signed-in case. A separate ordinary browser probe passed at390/1440 in both themes with valid legacy identity/resolution/status GET fixtures and real Project CRUD/preview choice. Account/scopes stay Not reported without an error or false sign-in claim. API shape, server probes, access policy, credential writes and repository authority are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/views/project-settings/ProjectRepositoryAccess.tsx","src-ui/src/views/project-settings/__tests__/ProjectRepositorySources.test.tsx"]},
-
-    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the changed Connections guidance and Sources renderer against the machine/authority distinctions here. Missing host authentication metadata remains Not confirmed; legacy integration action outcomes do not establish CLI authentication. Station identity, local path custody, connection direction, Peer registration, sharing and credential authority do not change. The new mounted consumer regression and four phone/desktop theme observations qualify the displayed certainty only; they do not renew physical-device, fleet, real-provider or repository-permission evidence. No prose change needed.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
-  ]
-}

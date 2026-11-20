@@ -5,6 +5,9 @@ import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+  isInputRequestEvent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
@@ -13,6 +16,7 @@ import {
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestPreviewFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -58,6 +62,10 @@ export function handleRequestOpenedEvent(
     chat.pendingApprovalTurnIds ?? {};
   chatStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingRequestKinds: {
+      ...chat.pendingRequestKinds,
+      [event.requestId]: isInputRequestEvent(event) ? 'input' : 'approval',
+    },
     pendingApprovalTurnIds:
       typeof event.turnId === 'string'
         ? { ...otherTurnIds, [event.requestId]: event.turnId }
@@ -110,6 +118,21 @@ function openLiveInputRequestRecord(
     );
     return;
   }
+  const link = inputRequestUrlFromRequestEvent(event);
+  if (link) {
+    openInputRequestRecordPart(
+      event,
+      {
+        ...base,
+        kind: 'url',
+        requester: link.requester,
+        message: inputRequestSummary(link.message),
+      },
+      undefined,
+      station,
+    );
+    return;
+  }
   if (event.requestType !== 'approval' && event.requestType !== 'permission')
     return;
   const toolCallId = event.payload?.toolCallId;
@@ -144,8 +167,9 @@ export function raiseRequestOpenedToast(
   const chatStore = activeChatsStore.forStation(station);
   const chat = chatStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
-  // A form has no one-click answer; the pending-requests card collects it.
-  if (inputRequestFromRequestEvent(event)) return;
+  // A form or a link has no one-click answer; the pending-requests card
+  // collects it (a link's Allow would claim it was opened).
+  if (isCardAnsweredRequestEvent(event)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
@@ -203,6 +227,7 @@ export function raiseRequestOpenedToast(
       ...(toolRequestServerGrantFromPayload(event.payload) === 'server'
         ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
         : {}),
+      ...ruleGrantLabelView(event.payload),
     },
     station,
   );
@@ -216,7 +241,16 @@ type ApprovalToastView = {
   grantLabel?: string;
   /** Set only when the request offers the Station browser server grant. */
   serverGrantLabel?: string;
+  /** Set only when the request offers the command-prefix grant. */
+  ruleGrantLabel?: string;
 };
+
+function ruleGrantLabelView(payload: Record<string, unknown> | undefined): {
+  ruleGrantLabel?: string;
+} {
+  const ruleGrant = toolRequestRuleGrantFromPayload(payload);
+  return ruleGrant ? { ruleGrantLabel: ruleGrant.label } : {};
+}
 
 function showApprovalToast(
   apiBase: string,
@@ -231,7 +265,7 @@ function showApprovalToast(
   const needsContentLoad = requestNeedsContentLoad(event, station);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
-    sessionGrantScope?: 'server',
+    sessionGrantScope?: 'server' | 'rule',
   ) => {
     const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
@@ -292,7 +326,11 @@ function showApprovalToast(
         ? approvalDecisionBody(undefined).options.filter(
             (option) => option.effect === 'deny',
           )
-        : approvalDecisionBody(view.grantLabel, view.serverGrantLabel).options
+        : approvalDecisionBody(
+            view.grantLabel,
+            view.serverGrantLabel,
+            view.ruleGrantLabel,
+          ).options
       ).map((option) => ({
         label: option.label,
         variant:
@@ -373,7 +411,7 @@ async function answerFromToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
-  sessionGrantScope?: 'server',
+  sessionGrantScope?: 'server' | 'rule',
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);
@@ -506,6 +544,11 @@ export function handleRequestResolvedEvent(
   approvalToasts.delete(event.requestId);
   chatStore.updateChat(event.threadId, {
     pendingApprovals,
+    pendingRequestKinds: Object.fromEntries(
+      Object.entries(chat.pendingRequestKinds ?? {}).filter(
+        ([id]) => id !== event.requestId,
+      ),
+    ),
     pendingApprovalTurnIds,
     answeredApprovals: (chat.answeredApprovals ?? []).filter(
       (id) => id !== event.requestId,
@@ -523,6 +566,7 @@ export function handleRequestResolvedEvent(
 type PendingApprovalState = Pick<
   ChatUIState,
   | 'pendingApprovals'
+  | 'pendingRequestKinds'
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
@@ -575,6 +619,11 @@ export function settlePendingApprovalsOnTurnEnd(
   }
   return {
     pendingApprovals: pending.filter((requestId) => !settled.has(requestId)),
+    pendingRequestKinds: Object.fromEntries(
+      Object.entries(chat?.pendingRequestKinds ?? {}).filter(
+        ([id]) => !settled.has(id),
+      ),
+    ),
     // A settled request is gone; its "answered here" mark goes with it.
     answeredApprovals: (chat?.answeredApprovals ?? []).filter(
       (requestId) => !settled.has(requestId),

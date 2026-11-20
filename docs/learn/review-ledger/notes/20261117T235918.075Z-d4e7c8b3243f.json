@@ -1,0 +1,7 @@
+{
+  "revision": "856ab8b8b77b87240ca35f1c444d5f8728eb72f7",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the E2E coverage matrix Agents row and its representative-coverage limits against tests/agents-pane.spec.ts at 856ab8b8b77b87240ca35f1c444d5f8728eb72f7. The existing primary product journey retains its running-task sheet assertion and now checks keyboard opening, Escape and focus return, and exact footer at 390x844 and 1440x900 in light and dark themes, plus the 44px phone action height. The selected four cases passed with retained current-state screenshots and animations disabled; the wide case uses a coarse-pointer context. Orchestration events are fixture-injected; this does not establish a before/after comparison, live provider or native-device behavior, or complete Agents coverage. The matrix remains accurate and needs no prose change.","inputs":["tests/agents-pane.spec.ts"]}
+  ]
+}

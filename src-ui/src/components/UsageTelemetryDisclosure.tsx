@@ -38,10 +38,15 @@ import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { describeStationFailure } from '../utils/stationFailure';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
+import { PageCallout } from './PageCallout';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
-import type { TelemetryChoiceAuthority } from './UsageSharingChoices';
+import {
+  kontourReceivesOnlyLite,
+  SHARING_LABELS,
+  type TelemetryChoiceAuthority,
+} from './UsageSharingChoices';
 import { UsageSharingPrompt } from './UsageSharingPrompt';
 import './UsageTelemetryDisclosure.css';
 
@@ -305,7 +310,7 @@ async function responseData(response: Response): Promise<Disclosure> {
 async function acknowledgementData(response: Response): Promise<Disclosure> {
   if (response.status === 403)
     throw new UsageTelemetryAcknowledgementForbiddenError(
-      'This device cannot acknowledge Full usage telemetry. The operator can review it in Settings.',
+      "This device can't turn on detailed usage telemetry. The Station operator can review it in Settings.",
     );
   return responseData(response);
 }
@@ -394,6 +399,9 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         : Math.min(1000 * 2 ** failureCount, 30_000),
   });
   const status = useTelemetryStatus(query.data?.publishers !== undefined);
+  const authorCanReceiveFull =
+    !!status.data?.authorEndpoint &&
+    !kontourReceivesOnlyLite(status.data.publishers.kontour);
   const author = useQuery({
     queryKey: [
       'usage-telemetry-disclosure',
@@ -402,7 +410,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
       'kontour',
       status.data?.authorEndpoint,
     ],
-    enabled: !!status.data?.authorEndpoint,
+    enabled: authorCanReceiveFull,
     queryFn: ({ signal }) =>
       scoped
         ? getJson(
@@ -434,6 +442,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     query.data?.inventoryRevision,
     status.data?.liteInventoryRevision,
     status.data?.authorEndpoint,
+    authorCanReceiveFull,
     author.data?.acknowledged,
     dntActive,
   ]);
@@ -451,7 +460,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
           (state.reason === 'DNT' ||
             (state.userChoice === 'full' &&
               (id === 'kontour'
-                ? !!status.data.authorEndpoint && !author.data?.acknowledged
+                ? authorCanReceiveFull && !author.data?.acknowledged
                 : !query.data?.acknowledged)) ||
             (state.tier === 'lite' &&
               status.data.liteNotices?.[id]?.inventoryRevision !==
@@ -509,7 +518,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     data: query.data
       ? {
           ...query.data,
-          ...(author.data
+          ...(authorCanReceiveFull && author.data
             ? {
                 authorDisclosure: author.data as Disclosure & {
                   destination: string;
@@ -519,12 +528,12 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         }
       : undefined,
     dismissalRevision,
-    isError: query.isError || author.isError,
+    isError: query.isError || (authorCanReceiveFull && author.isError),
     readError: query.isError,
     settled:
       !query.isLoading &&
       (!query.data?.publishers || !status.isLoading) &&
-      (!status.data?.authorEndpoint || !author.isLoading),
+      (!authorCanReceiveFull || !author.isLoading),
     // `events` is read with Object.entries below: a host that answers with an
     // unexpected shape (older build, error envelope) must degrade to showing
     // nothing, not throw through the app shell and blank the window.
@@ -619,7 +628,7 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   return (
     <>
       <p className="usage-telemetry-disclosure__lede">
-        Full telemetry sends the following pseudonymous product-usage events
+        Detailed usage telemetry sends these pseudonymous product-usage events
         only when a telemetry endpoint is configured. Its installation hash
         rotates monthly and is never linked to an account by Station. It never
         sends conversation content, filesystem paths, repository names,
@@ -731,7 +740,7 @@ function DisclosureSummary({
     <>
       <p className={chrome.lede}>
         {data.publishers?.operator?.reason === 'DNT'
-          ? 'DO_NOT_TRACK is active: nothing is sent. Save an operator choice of Off, Lite, or Full. Full will still require confirmation after DO_NOT_TRACK is removed.'
+          ? 'Do Not Track is on, so nothing is sent. Save your choice for later. Detailed usage still asks first once Do Not Track is off.'
           : usageTelemetryDisclosureSummary(data.endpointConfigured)}
       </p>
       <details className={chrome.inventory}>
@@ -1155,30 +1164,23 @@ function useUsageTelemetryDecision(
     labels:
       operator?.reason === 'DNT'
         ? {
-            keep: `Save operator choice as ${dntChoice[0].toUpperCase()}${dntChoice.slice(1)}`,
-            change: 'Save operator choice as Full',
+            keep: `Save your choice: ${SHARING_LABELS[dntChoice]}`,
+            change: `Save your choice: ${SHARING_LABELS.full}`,
           }
-        : tierAware &&
-            savedChoice === 'full' &&
-            operator?.reason === 'disclosure'
-          ? {
-              keep: 'Allow Full usage telemetry',
-              change: 'Turn off usage telemetry',
-            }
-          : tierAware
-            ? enabled
-              ? {
-                  keep: 'Keep Full usage telemetry on',
-                  change: 'Turn off usage telemetry',
-                }
-              : {
-                  keep:
-                    savedChoice === 'off' || operator?.tier === 'off'
-                      ? 'Keep usage telemetry off'
-                      : 'Turn off usage telemetry',
-                  change: 'Allow Full usage telemetry',
-                }
-            : usageTelemetryDecisionLabels(enabled),
+        : tierAware
+          ? enabled
+            ? {
+                keep: 'Keep detailed usage telemetry on',
+                change: 'Turn off usage telemetry',
+              }
+            : {
+                keep:
+                  savedChoice === 'off' || operator?.tier === 'off'
+                    ? 'Keep usage telemetry off'
+                    : 'Turn off usage telemetry',
+                change: 'Allow detailed usage telemetry',
+              }
+          : usageTelemetryDecisionLabels(enabled),
     busy,
     keep: () =>
       requestDecision(
@@ -1210,15 +1212,6 @@ function useUsageTelemetryDecision(
       </p>
     ) : (
       <>
-        {tierAware &&
-          savedChoice === 'full' &&
-          operator?.reason === 'disclosure' && (
-            <p className="usage-telemetry-disclosure__lede">
-              Your saved operator choice is Full, awaiting acknowledgement. Full
-              events are not sent until you allow them. Turning telemetry off
-              saves Off before acknowledging this inventory.
-            </p>
-          )}
         {acknowledgeErrorNotice(
           acknowledgeError,
           scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
@@ -1243,7 +1236,7 @@ function DisclosureDntChoices({
       className="usage-telemetry-disclosure__choices"
       disabled={decision.busy}
     >
-      <legend>Operator choice</legend>
+      <legend>Your choice</legend>
       {(['off', 'lite', 'full'] as const).map((tier) => (
         <label key={tier}>
           <input
@@ -1252,7 +1245,7 @@ function DisclosureDntChoices({
             checked={choice.value === tier}
             onChange={() => choice.onChange(tier)}
           />
-          {tier[0].toUpperCase() + tier.slice(1)}
+          {SHARING_LABELS[tier]}
         </label>
       ))}
     </fieldset>
@@ -1285,7 +1278,7 @@ function DisclosureDecisionActions({
         aria-busy={decision.busy}
         onClick={decision.keep}
       >
-        {decision.retry ? 'Try again' : decision.labels.keep}
+        {decision.retry ? 'Retry' : decision.labels.keep}
       </Button>
     </>
   );
@@ -1400,15 +1393,29 @@ export function UsageTelemetryDisclosureStep({
  */
 export function UsageTelemetryDisclosure({
   firstRun = false,
+  offerOnHome = false,
 }: {
   firstRun?: boolean;
+  offerOnHome?: boolean;
 }) {
   const keepRef = useRef<HTMLButtonElement>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const { data, isError, settled, outstanding, dismissalRevision } =
     useUsageTelemetryDisclosureState();
   const decision = useUsageTelemetryDecision(data);
   if (!settled || !data?.events || (!firstRun && isError)) return null;
   if (firstRun && !outstanding) return null;
+  if (offerOnHome && !reviewOpen)
+    return (
+      <PageCallout
+        calloutId="review-usage-sharing"
+        ariaLabel="Usage sharing"
+        title="Usage sharing"
+        action={
+          <Button onClick={() => setReviewOpen(true)}>Review choices</Button>
+        }
+      />
+    );
 
   if (data.publishers)
     return firstRun ? (

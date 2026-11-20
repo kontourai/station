@@ -13,8 +13,7 @@ import {
  * anchored to its own tick, up to 30 seconds apart.
  *
  * The interval runs only while something is subscribed and the page is
- * visible. Once a second, because `formatDuration` shows seconds under a
- * minute. A hidden page holds no timer; becoming visible catches up at once.
+ * visible. Once a second, matching the seconds shown in elapsed durations. A hidden page holds no timer; becoming visible catches up at once.
  */
 const TICK_MS = 1000;
 

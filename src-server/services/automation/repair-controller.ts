@@ -17,13 +17,15 @@ import {
   type ManagedListenerAdmission,
   managedRepairRelayHost,
 } from '../../security/managed-network-exposure.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { sourceGrantsRuleAction } from './automation-config-validation.js';
 import {
   automationConfigurationFingerprint,
   automationIntentMessage,
-  automationPolicyFingerprint,
+  automationMandate,
+  automationPolicyMatches,
 } from './automation-intent.js';
 import type {
   AutomationActionReceipt,
@@ -188,11 +190,11 @@ export class IsolatedRepairController {
       rule.action.kind !== 'isolated-repair' ||
       !rule.episode ||
       !sourceGrantsRuleAction(source, rule) ||
-      automationPolicyFingerprint(source, rule) !== intent.policyFingerprint ||
-      automationPolicyFingerprint(source, {
+      !automationPolicyMatches(intent.policyFingerprint, source, rule) ||
+      !automationPolicyMatches(intent.policyFingerprint, source, {
         ...rule,
         action: intent.action,
-      }) !== intent.policyFingerprint ||
+      }) ||
       source.repository !== fields.repository ||
       fields['run.head_repository'] !== source.repository ||
       !['push', 'schedule', 'workflow_dispatch'].includes(
@@ -318,11 +320,16 @@ export class IsolatedRepairController {
           continue;
         const config = this.options.policy.read();
         const rule = config.rules.find((r) => r.id === intent.ruleId);
-        if (rule?.action.kind !== 'isolated-repair') continue;
-        // A rule that is not `live` may not act. Its retained intent is
-        // refused now, as the native Task runtime does, so it cannot dispatch
-        // a stale repair if the rule is switched back to `live` later.
-        if (rule.mode !== 'live') {
+        // #4575: a rule that was deleted, moved to another action kind, or is
+        // not `live` may not act. Its retained intent is refused now, as the
+        // native Task runtime does, so it can never dispatch a stale repair
+        // if the identical rule is restored (or switched back to `live`)
+        // within the event window.
+        if (
+          !rule ||
+          rule.action.kind !== 'isolated-repair' ||
+          rule.mode !== 'live'
+        ) {
           ledger.updateIntent(
             intent.intentId,
             { state: 'refused', reason: 'policy_changed' },
@@ -330,20 +337,16 @@ export class IsolatedRepairController {
           );
           continue;
         }
-        const claim = ledger.claimAction({
-          episodeKey: intent.episodeKey,
-          expectedEpisodeId: intent.episodeId,
-          deliveryKey: intent.deliveryKey,
+        // #4513: a held claim records why; only a claim starts work.
+        const receipt = ledger.claimIntent(intent, {
           now: Date.now(),
           maxStartsPerHour: rule.rateLimit.maxStartsPerHour,
-          maxConcurrentActions:
-            AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions,
         });
-        if (claim.kind !== 'claimed') continue;
+        if (!receipt) continue;
         try {
-          await this.start(intent, claim.receipt);
+          await this.start(intent, receipt, rule.name);
         } catch {
-          claim.receipt.release();
+          receipt.release();
           if (ledger.readIntent(intent.intentId)?.state === 'pending')
             ledger.updateIntent(
               intent.intentId,
@@ -358,7 +361,11 @@ export class IsolatedRepairController {
       this.busy = false;
     }
   }
-  private async start(intent: RepairIntent, claim: AutomationActionReceipt) {
+  private async start(
+    intent: RepairIntent,
+    claim: AutomationActionReceipt,
+    ruleName: string,
+  ) {
     const profile = this.store.execution(intent.action.profileId);
     const owner = exactProcessIdentity(process.pid);
     if (!profile || !owner)
@@ -374,13 +381,17 @@ export class IsolatedRepairController {
       'automation-rule',
       intent.intentId,
     );
-    this.options
-      .ledger()
-      .updateIntent(
-        intent.intentId,
-        { taskId: task.id, taskCreatedAt: task.createdAt },
-        Date.now(),
-      );
+    this.options.ledger().updateIntent(
+      intent.intentId,
+      {
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        ...(intent.mandate
+          ? {}
+          : { mandate: automationMandate(intent, ruleName) }),
+      },
+      Date.now(),
+    );
     const runId = randomUUID();
     let run = await this.store.create({
       version: 1,
@@ -538,7 +549,7 @@ export class IsolatedRepairController {
             this.options.logger.warn(
               'Repair relay refused by the managed policy',
               {
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
             throw new Error(MANAGED_REPAIR_RELAY_REFUSED);

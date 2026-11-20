@@ -1,0 +1,89 @@
+/* #5063: the `#general` coordinator's suggested-Tasks card and bar. */
+
+.room-coordinator-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  max-width: 40rem;
+}
+
+.room-coordinator-card__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.room-coordinator-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) 0;
+}
+
+.room-coordinator-card__row + .room-coordinator-card__row {
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+.room-coordinator-card__main {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+
+.room-coordinator-card__title {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.room-coordinator-card__meta,
+.room-coordinator-card__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.room-coordinator-card__side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.room-coordinator-card__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.room-coordinator-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-3);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+}
+
+.room-coordinator-bar__status {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+/* Touch layouts get the shell's 44px floor (`--touch-target-min`, set only
+   on phones and coarse pointers); desktop keeps the compact row. */
+.room-coordinator-card button,
+.room-coordinator-bar button {
+  min-height: var(--touch-target-min, auto);
+}

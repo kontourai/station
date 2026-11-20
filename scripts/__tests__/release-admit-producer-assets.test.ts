@@ -57,7 +57,8 @@ const admitRun = release.jobs['assemble-draft']?.steps?.find(
 )?.run;
 
 const STABLE_TAG = 'v1.2.3';
-const PREVIEW_TAG = 'v1.2.3-preview.1';
+// A release candidate stages under its own tag as the Stable ring (#4929).
+const CANDIDATE_TAG = 'v1.2.3-rc.1';
 const IOS_BUNDLE_VERSION = '10203';
 
 type Layout = Record<string, string[]>;
@@ -137,6 +138,12 @@ function producerLayout(tag: string, channel: 'preview' | 'stable'): Layout {
       'station-client-build.json',
     ],
     'station-container-sbom-source': ['station-container-source.json'],
+    [`station-android-play-observation-${IOS_BUNDLE_VERSION}`]: [
+      'android-store-authority.json.observation.json',
+    ],
+    [`station-android-store-authority-${IOS_BUNDLE_VERSION}`]: [
+      'android-store-authority.json',
+    ],
     [`station-${iosChannel}-ios-staged-${IOS_BUNDLE_VERSION}`]: [
       ipa,
       'provider-receipts/testflight-build.json',
@@ -264,6 +271,10 @@ const KNOWN_NON_RELEASE_UPLOADS: Record<string, string> = {
     'build descriptor consumed by the native producers',
   'station-container-sbom-source':
     'scanner scratch; assemble-draft downloads it separately as SBOM input',
+  [`station-android-store-authority-${expression('needs.preflight.outputs.android_version_code')}`]:
+    'raw Play readback receipt; candidate store authority is assembled separately',
+  [`station-android-play-observation-${expression('needs.preflight.outputs.android_version_code')}`]:
+    'failed Play observation journal; private diagnostic evidence',
   [`station-${expression('inputs.channel')}-ios-verification-failure-${expression('inputs.bundle_version')}`]:
     'failure-only diagnostic IPA',
   [`station-${expression('inputs.channel')}-ios-testflight-${expression('inputs.bundle_version')}`]:
@@ -344,6 +355,8 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       for (const excluded of [
         'station-client-build.json',
         'station-container-source.json',
+        'android-store-authority.json',
+        'android-store-authority.json.observation.json',
         'source-identity.json',
         'testflight-build.json',
         'summary.json',
@@ -354,29 +367,46 @@ describe('assemble-draft producer asset admission (#2977)', () => {
   );
 
   it(
-    'admits no iOS asset for a preview tag, whose variants exclude iOS',
+    'admits every producer asset of a release candidate, iOS included, named for its tag',
     async () => {
       const result = await runAdmitStep(
-        producerLayout(PREVIEW_TAG, 'preview'),
-        'preview',
+        producerLayout(CANDIDATE_TAG, 'stable'),
+        'stable',
       );
       expect(result.status, result.stderr).toBe(0);
       expect(result.admitted).toEqual(
-        requiredProducerAssets(PREVIEW_TAG, 'preview'),
+        requiredProducerAssets(CANDIDATE_TAG, 'stable'),
       );
-      expect(result.admitted?.some((name) => name.includes('-ios-'))).toBe(
-        false,
+      expect(result.admitted).toContain(
+        `station-${CANDIDATE_TAG}-ios-device.ipa`,
       );
+      expect(result.admitted).toContain(
+        `station-${CANDIDATE_TAG}-ios-simulator.app.tar.gz`,
+      );
+      expect(result.admitted).toContain('station-release-ring-stable.json');
     },
     FIXTURE_TEST_TIMEOUT_MS,
   );
 
   it(
-    'admits the host-stream archives and payload for both rings, never the per-target build artifacts',
+    'refuses the retired preview channel before copying anything',
+    async () => {
+      const result = await runAdmitStep(
+        producerLayout(CANDIDATE_TAG, 'stable'),
+        'preview',
+      );
+      expectRefusal(result, 'unknown release channel "preview"');
+      expect(result.admitted).toEqual([]);
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'admits the host-stream archives and payload for a final tag and a candidate, never the per-target build artifacts',
     async () => {
       for (const [tag, channel] of [
         [STABLE_TAG, 'stable'],
-        [PREVIEW_TAG, 'preview'],
+        [CANDIDATE_TAG, 'stable'],
       ] as const) {
         const result = await runAdmitStep(
           producerLayout(tag, channel),
@@ -666,9 +696,7 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       expression('needs.preflight.outputs.ios_bundle_version'),
     );
     expect(iosDevice?.with?.channel).toBe(
-      expression(
-        "needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable'",
-      ),
+      expression('needs.preflight.outputs.channel'),
     );
     const staged = (load(testFlightText) as Workflow).jobs.deliver?.steps?.find(
       (step) =>

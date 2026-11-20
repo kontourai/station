@@ -288,7 +288,7 @@ describe('the checklist', () => {
     const goose = row('goose');
     expect(goose.closest('details')).not.toBeNull();
     expect(goose.querySelector('input')).toBeNull();
-    expect(goose.textContent).toContain('Not found on this machine.');
+    expect(goose.textContent).toContain('Not found on this computer.');
     const hint = within(goose).getByRole('group', {
       name: 'How to install Goose',
     });
@@ -376,10 +376,10 @@ describe('on a paired device the chapter names the host it scanned', () => {
     renderPaired([CODEX]);
     expect(
       screen.getByText(
-        'Station found these on workshop, the computer it runs on. Pick the ones you use and Station sets up an agent for each — you can change them later.',
+        'Station found these on workshop, the computer it runs on. Pick the ones you use and Station sets up an agent for each.',
       ),
     ).toBeTruthy();
-    expect(screen.queryByText(/found these on this machine/)).toBeNull();
+    expect(screen.queryByText(/found these on this computer/)).toBeNull();
   });
 
   test('the still-scanning line names the host', () => {
@@ -409,9 +409,11 @@ describe('on a paired device the chapter names the host it scanned', () => {
   test('on the host the same rows keep their original wording', () => {
     renderChapter([CODEX, OPENCODE]);
     expect(
-      screen.getByText(/Station found these on this machine\./),
+      screen.getByText(/Station found these on this computer\./),
     ).toBeTruthy();
-    expect(row('opencode').textContent).toContain('Not found on this machine.');
+    expect(row('opencode').textContent).toContain(
+      'Not found on this computer.',
+    );
     expect(screen.queryByText(/workshop/)).toBeNull();
   });
 });
@@ -812,7 +814,7 @@ describe('the lede describes the list, so it needs one', () => {
       />,
     );
     expect(
-      screen.queryByText(/Station found these on this machine/),
+      screen.queryByText(/Station found these on this computer/),
     ).toBeNull();
     expect(screen.getByTestId('first-run-engines-loading')).toBeTruthy();
   });
@@ -823,7 +825,7 @@ describe('the lede describes the list, so it needs one', () => {
     // must not claim Station "found these".
     renderChapter([]);
     expect(
-      screen.queryByText(/Station found these on this machine/),
+      screen.queryByText(/Station found these on this computer/),
     ).toBeNull();
     expect(screen.getByTestId('first-run-engines-none')).toBeTruthy();
   });
@@ -831,7 +833,7 @@ describe('the lede describes the list, so it needs one', () => {
   test('the lede appears once there is a list to describe', () => {
     renderChapter([CODEX]);
     expect(
-      screen.getByText(/Station found these on this machine/),
+      screen.getByText(/Station found these on this computer/),
     ).toBeTruthy();
   });
 });
@@ -1131,7 +1133,7 @@ describe('the list lede describes the list it stands over', () => {
     expect(screen.queryByText(/Pick the ones you use/)).toBeNull();
     expect(
       screen.getByText(
-        'Station found these on this machine and set each one up. Nothing to pick here — you can change them later.',
+        'Station found these on this computer and set each one up.',
       ),
     ).toBeTruthy();
     expect(checkbox('codex')).toBeNull();
@@ -1147,7 +1149,7 @@ describe('the list lede describes the list it stands over', () => {
     expect(screen.queryByText(/set each one up/)).toBeNull();
     expect(
       screen.getByText(
-        'Station found these on this machine. None can be set up from here right now — each row says why.',
+        'Station found these on this computer. None can be set up from here yet; each row says why.',
       ),
     ).toBeTruthy();
   });

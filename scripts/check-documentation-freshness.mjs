@@ -34,6 +34,11 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(
       JSON.stringify({
         mode: result.policy.mode,
+        // What the scope was computed against, so a caller can name it
+        // (the pre-push hook prints it when a stale local base is likely).
+        reason: result.policy.reason,
+        base: result.policy.base ?? null,
+        mergeBase: result.policy.mergeBase ?? null,
         historyUnavailable: result.historyUnavailable,
         appendOnly: result.policy.appendOnly ?? 'not-checked',
         reviews: result.reviews.size,

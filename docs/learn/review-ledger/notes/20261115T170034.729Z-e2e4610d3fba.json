@@ -1,0 +1,11 @@
+{
+  "revision": "ed24ce534c32668fc80bff37596b760b37649d9b",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Restored the Android keyboard images bullet lost in the merge; Paste image is room-only; matches KeyboardImageIntake and the device test on a Pixel.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only an onAttachUnavailable comment changed; reply/start composers still take keyboard images through paste events and its link now lands on the restored bullet.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only an internal comment in ChatInputArea changed; Paste image remains room-only as written.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

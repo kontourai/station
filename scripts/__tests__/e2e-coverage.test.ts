@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   E2E_INVALID_TEST_INFO_PATTERN,
   e2eArtifactPathErrors,
@@ -598,6 +599,7 @@ describe('startup-heavy non-overlap', () => {
 
 describe('owned bucket lifecycle', () => {
   const bucket = { name: 'fixture', script: 'fixture-script', weight: 1 };
+  const makeTempDir = trackTempDirs();
 
   it('terminates the complete owned group when captured output overflows', async () => {
     const execution = ownedExecutionFixture();
@@ -733,7 +735,12 @@ describe('owned bucket lifecycle', () => {
     });
   });
 
-  it('uses npm.cmd and only marks a Windows tree settled after taskkill succeeds', async () => {
+  it("runs npm's JS entry under Node on Windows, never npm.cmd, and only marks the tree settled after taskkill succeeds", async () => {
+    // `npm.cmd` with `shell: false` throws a synchronous EINVAL on Windows,
+    // so the bucket goes through scripts/lib/npm-cli.mjs like every other npm
+    // spawn here. The entry is a real file because the resolver checks it.
+    const npmCli = join(makeTempDir('station-e2e-coverage-npm-'), 'npm-cli.js');
+    writeFileSync(npmCli, '');
     const execution = ownedExecutionFixture();
     const execute = vi.fn(() => execution);
     execution.terminate = vi.fn(async () => undefined);
@@ -741,10 +748,12 @@ describe('owned bucket lifecycle', () => {
     const runner = startBucket(bucket, {
       execute,
       platform: 'win32',
+      env: { npm_execpath: npmCli },
     });
 
     const options = execute.mock.calls[0][4];
-    expect(execute.mock.calls[0][0]).toBe('npm.cmd');
+    expect(execute.mock.calls[0][0]).toBe(process.execPath);
+    expect(execute.mock.calls[0][1]).toEqual([npmCli, 'run', bucket.script]);
     expect(options).toMatchObject({ shell: false });
     expect(options.treeSettled()).toBe(false);
     await runner.cancel('SIGTERM');

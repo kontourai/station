@@ -112,7 +112,17 @@ export type NotificationSource =
       conversationId?: string;
       assurance: NotificationAgentAssurance;
     }
-  | { kind: 'system'; subsystem: string }
+  | {
+      kind: 'system';
+      subsystem: string;
+      /**
+       * The local Project (`ProjectConfig.id`) of the session the record is
+       * about, recorded when that session started (#5072). The Project's
+       * notification level and its foreground suppression apply only when
+       * it is present. Absent: not about a Project's work.
+       */
+      projectId?: string;
+    }
   | { kind: 'provider'; providerId: string }
   /**
    * Read-side only: a v1 source whose `kind` this build does not know (a
@@ -173,6 +183,41 @@ export const TURN_COMPLETION_NOTIFICATION_SOURCE = 'turn-completion';
  * the parameter.
  */
 export const OPENED_NOTIFICATION_QUERY_PARAM = 'openedNotification';
+
+/**
+ * The query parameter an OS notification's open link carries for the
+ * Station that sent it: that Station's environment id, the `environmentId`
+ * a client saved for it when it connected. A client opening the link while
+ * connected to another Station switches to the saved connection with that
+ * id before it navigates, and says so when it has none. It names a saved
+ * connection, never an origin: the link itself stays a relative path.
+ */
+export const NOTIFICATION_STATION_QUERY_PARAM = 'station';
+
+const NOTIFICATION_STATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+/** An environment id as a notification link may carry it. */
+export function isNotificationStationId(value: unknown): value is string {
+  return (
+    typeof value === 'string' && NOTIFICATION_STATION_ID_PATTERN.test(value)
+  );
+}
+
+/**
+ * The one href a notification for a session opens, on every channel: the
+ * chat dock open on that session, inside its Project when it has one. The
+ * dock's cold open (`useChatDockActiveChatSync`) resolves the id against the
+ * Station, so the same href serves runtime and managed sessions.
+ */
+export function notificationSessionHref(input: {
+  sessionId: string;
+  projectSlug?: string;
+}): string {
+  const query = `chat=${encodeURIComponent(input.sessionId)}&dock=open`;
+  return input.projectSlug
+    ? `/projects/${encodeURIComponent(input.projectSlug)}?${query}`
+    : `/?${query}`;
+}
 
 /** Categories agent notifications are stored under, one per urgency. */
 export const AGENT_NOTIFICATION_CATEGORIES = {

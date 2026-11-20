@@ -1,0 +1,7 @@
+{
+  "revision": "4f9732df9683b1788b8a5caefa50bbcf50e6dcae",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed content-derived wrapping in the measured DetailHeader consumer shapes against the shared component, tablet cascade and column overrides. The phone layout, heading ownership and tablet touch floor remain as before. The subtitle now contains long unbroken references. Geometry is verified in Chromium, with platform fallback fonts in the harness.","inputs":["docs/design/shell-skeletons.md"]}
+  ]
+}

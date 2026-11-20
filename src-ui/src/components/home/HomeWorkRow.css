@@ -1,0 +1,9 @@
+/* #4695: the agent-reported plan under a Home row. It starts at the row's
+   text column (border, Home's inline pad, the unread gutter) and tucks into
+   the row's bottom pad, so it reads as the row's last line. */
+.home-work-row__plan {
+  margin-top: calc(var(--k-space-1) * -1.5);
+  padding-inline: calc(1px + var(--k-space-1) + var(--k-space-3))
+    var(--k-space-1);
+  padding-bottom: calc(var(--k-space-1) * 2.5);
+}

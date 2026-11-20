@@ -1,0 +1,21 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Re-read for the one-ledger-commit-per-Nightly change (npm row moved from nightly-cli to the cohort record job, with a record-cli-ledger fallback). This page makes no claim about which job writes the npm ledger row or how many ledger commits a run makes; its statements about cohort decisions, markers, channels and delivery are unaffected.","inputs":[".github/workflows/nightly.yml"]}
+  ]
+}

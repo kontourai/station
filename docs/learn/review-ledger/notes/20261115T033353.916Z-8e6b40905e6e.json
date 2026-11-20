@@ -1,0 +1,7 @@
+{
+  "revision": "ff1661f37fffeb3468c255c72dbafc75a37ba585",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed the added fallback and rollback paragraphs against the record step: if the combined commit fails it records Android, then desktop, with main's exact invocation, and leaves npm to record-cli-ledger. Duplicates after a landed commit are refused. The commit helper runs from the job checkout and the appender from origin/main. With the old appender on main, native rows still land and the npm row is lost (EXECUTED in a scratch run against the merge-base scripts). Manual recovery uses the single-record helper form.","inputs":["docs/guides/releasing.md",".github/workflows/nightly.yml"]}
+  ]
+}

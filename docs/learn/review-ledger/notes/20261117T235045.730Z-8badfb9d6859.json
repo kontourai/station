@@ -1,0 +1,7 @@
+{
+  "revision": "d4bfc5f388bc594e39e6bc1c3d713e0964c344e6",
+
+  "notes": [
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Final functional receipt: corrected isolated Chromium production-UI control passed in 48.4s on d4bfc5f388bc594e39e6bc1c3d713e0964c344e6 via the canonical smoke-live runner under a shared heavy-check slot. It exercised the real raw bridge, visible Plan/Edit brief, keyboard input, exact autosave batch/apply/layout and Saved adoption, then refused stale revision, wrong Task and hidden preview. Owned runtime teardown settled. Focused primary controls 60/60; old remote implementation injected after a clean commit failed the primary success regression and restored source passed. This is a one-sample functional control only: no Windows physical, native, ADEMark, p95 or full reference qualification; five warmups/100 reference samples and budgets remain unchanged. No product visual layout changed. Independent review and delivery admission remain with parent.","inputs":["docs/reference/interactive-workspace-performance.md"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "786eb696188a508b6bf9690c89b3c6a60d72158a",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Shared-store binding follow-up: checked the regenerated SessionLifecycleModule topic against its canonical module-map section and source. The body now describes independent local-service registrations, any-held custody and registration-specific disposal. The generated digest changes with that body; topic id, title, tags, catalog selection and MCP access behavior are unchanged. The reference remains accurate. Executed cascade/boundary/service integration: 1187/1187; three binding mutations each failed once and restored 35/35. No live-provider or installation qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

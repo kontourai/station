@@ -433,6 +433,178 @@ describe.runIf(process.platform !== 'win32')(
       );
     });
 
+    /**
+     * Replays event sequences through the workflow's own concurrency and `if`
+     * expressions under GitHub's documented group rule: one running and one
+     * pending run per group, and a newly queued run cancels the pending one.
+     * Workflow-level concurrency applies to every run; job-level concurrency
+     * is modelled as applying only to a job whose `if` admits it (a skipped
+     * job is not queued). That second rule is GitHub's behaviour as
+     * documented, not something a local test can observe.
+     */
+    it('never lets an event the arm job skips displace a pending arm run', () => {
+      type Job = {
+        if: string;
+        concurrency?: { group: string; 'cancel-in-progress': boolean };
+      };
+      const workflow = load(
+        readFileSync(
+          resolve(
+            import.meta.dirname,
+            '../../.github/workflows/landing-automation.yml',
+          ),
+          'utf8',
+        ),
+      ) as {
+        concurrency?: { group: string; 'cancel-in-progress': boolean };
+        jobs: Record<string, Job>;
+      };
+      const pr = {
+        number: 7,
+        head: { ref: 'feature', repo: { full_name: 'owner/repo' } },
+      };
+      const otherPr = {
+        number: 8,
+        head: { ref: 'other-feature', repo: { full_name: 'owner/repo' } },
+      };
+      const events: Record<string, Record<string, unknown>> = {
+        labelB: {
+          event_name: 'pull_request_target',
+          event: {
+            action: 'labeled',
+            label: { name: 'station-autoland' },
+            pull_request: otherPr,
+          },
+        },
+        greenCiB: {
+          event_name: 'workflow_run',
+          event: {
+            workflow_run: {
+              conclusion: 'success',
+              event: 'pull_request_target',
+              head_branch: 'other-feature',
+              head_repository: { full_name: 'owner/repo' },
+            },
+          },
+        },
+        label: {
+          event_name: 'pull_request_target',
+          event: {
+            action: 'labeled',
+            label: { name: 'station-autoland' },
+            pull_request: pr,
+          },
+        },
+        otherLabel: {
+          event_name: 'pull_request_target',
+          event: {
+            action: 'labeled',
+            label: { name: 'documentation' },
+            pull_request: pr,
+          },
+        },
+        dequeued: {
+          event_name: 'pull_request_target',
+          event: { action: 'dequeued', pull_request: pr },
+        },
+        greenCi: {
+          event_name: 'workflow_run',
+          event: {
+            workflow_run: {
+              conclusion: 'success',
+              event: 'pull_request_target',
+              head_branch: 'feature',
+              head_repository: { full_name: 'owner/repo' },
+            },
+          },
+        },
+        redCi: {
+          event_name: 'workflow_run',
+          event: {
+            workflow_run: {
+              conclusion: 'failure',
+              event: 'pull_request_target',
+              head_branch: 'feature',
+              head_repository: { full_name: 'owner/repo' },
+            },
+          },
+        },
+      };
+      const context = (name: string) => ({
+        repository: 'owner/repo',
+        ...events[name],
+      });
+      const interpolate = (template: string, github: Record<string, unknown>) =>
+        template.replace(/\$\{\{([\s\S]*?)\}\}/g, (_match, body: string) =>
+          String(evaluate(`\${{${body}}}`, github)),
+        );
+      // Returns the events whose arm job executes, in arrival order. The
+      // first event's run is already running when the rest arrive.
+      const replay = (names: string[]) => {
+        const groups = new Map<string, { running: number; pending?: number }>();
+        const cancelled = new Set<number>();
+        const queue = (group: string, index: number) => {
+          const slot = groups.get(group);
+          if (!slot) return groups.set(group, { running: index });
+          if (slot.pending !== undefined) cancelled.add(slot.pending);
+          slot.pending = index;
+        };
+        names.forEach((name, index) => {
+          const github = context(name);
+          if (workflow.concurrency)
+            queue(interpolate(workflow.concurrency.group, github), index);
+          const arm = workflow.jobs.arm;
+          if (arm.concurrency && evaluate(arm.if, github))
+            queue(interpolate(arm.concurrency.group, github), index);
+        });
+        return names.filter(
+          (name, index) =>
+            !cancelled.has(index) &&
+            evaluate(workflow.jobs.arm.if, context(name)),
+        );
+      };
+      // Two real runs: the newer pending run replaces the older one, which
+      // loses nothing because every arm run re-reads the live PR.
+      expect(replay(['label', 'greenCi', 'label'])).toEqual(['label', 'label']);
+      // Real, then irrelevant: the pending real run survives.
+      for (const irrelevant of ['otherLabel', 'dequeued', 'redCi'])
+        expect(replay(['label', 'greenCi', irrelevant])).toEqual([
+          'label',
+          'greenCi',
+        ]);
+      // Irrelevant, then real.
+      expect(replay(['greenCi', 'otherLabel', 'label'])).toEqual([
+        'greenCi',
+        'label',
+      ]);
+      // Label and CI events for one PR share one group, so arm runs for the
+      // same PR never overlap.
+      expect(
+        interpolate(
+          workflow.jobs.arm.concurrency?.group ?? '',
+          context('label'),
+        ),
+      ).toBe(
+        interpolate(
+          workflow.jobs.arm.concurrency?.group ?? '',
+          context('greenCi'),
+        ),
+      );
+      expect(workflow.jobs.arm.concurrency?.['cancel-in-progress']).toBe(false);
+      // Another PR's arm events neither displace this PR's pending arm run
+      // nor queue behind it: the key separates PRs.
+      for (const other of ['labelB', 'greenCiB'])
+        expect(replay(['label', 'greenCi', other])).toEqual([
+          'label',
+          'greenCi',
+          other,
+        ]);
+      const group = (name: string) =>
+        interpolate(workflow.jobs.arm.concurrency?.group ?? '', context(name));
+      expect(group('labelB')).not.toBe(group('label'));
+      expect(group('greenCiB')).toBe(group('labelB'));
+    });
+
     it('loads the trusted workflow helper when a PR event base predates that helper', async () => {
       const directory = makeTempDir('station-dequeue-policy-revision-');
       const cwd = join(directory, 'repository');
@@ -455,6 +627,10 @@ describe.runIf(process.platform !== 'win32')(
       for (const path of [
         'merge-queue-dequeue.mjs',
         'qualification-evidence.mjs',
+        // The trusted checkout is the whole tree at workflow_sha, so the
+        // fixture carries the helper's full local import closure.
+        'lib/bounded-capture.mjs',
+        'lib/github-evidence-fetch.mjs',
         'lib/module-entry.mjs',
       ]) {
         writeFileSync(

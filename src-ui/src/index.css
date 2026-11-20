@@ -1,26 +1,18 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
-@import url("./styles/control-recipes.css");
-@import url("./styles/layout-recipes.css");
 @import url("@kontourai/station-sdk/action-control.css");
-/* Console Kit token contract (roadmap), now consumed from the
-   published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
-   Decision: token *definitions* load globally (the published tokens/index.css
-   targets :root and [data-theme="light"]; scoping them under a wrapper class
-   would mean forking the vendor file, which the @kontourai/ui consumer guide
-   forbids), but `--k-*` *consumption* is scoped to the Kontour-facing
-   surfaces — trust panel, readiness panel, flow run console, gate verdict
-   cards. Station's base chrome stays on its own --bg-… and --text-… tokens
-   until the S4 suite-coherence pass. The two namespaces don't overlap, and
-   @kontourai/ui's dark default + [data-theme="light"] skin key off the same
-   documentElement data-theme attribute ThemeToggle already manages, so both
-   token systems flip together. fonts.css supplies the --k-font-* faces
-   (self-hosted woff2, same vendored pattern as Station's own fonts.css
-   import above — #2648). react/styles.css carries
-   the shared primitive class contract (was imported via the deleted mirror). */
+/* Load the kit fonts and tokens before the shared component styles. Station
+   sets the density-sensitive --k-text-sm value in tokens.css. */
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");
+@import url("./styles/control-recipes.css");
+@import url("./styles/layout-recipes.css");
+
+/* Shared kit tooltips are control labels and use Station's readable text size. */
+.tooltip {
+  font-size: var(--text-xs);
+}
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
@@ -44,7 +36,7 @@
    and `channel-text-contrast.test.tsx` measures the rendered text on its
    real surfaces, including the raised rows the panel links sit on and the
    sidebar home button's hover fill behind the badge. Where a channel's
-   signature hue fails (nightly #8b5cf6, beta #5865f2, the dev light
+   signature hue fails (nightly #8b5cf6 and the dev light
    #a75f0d), the mode uses a nearby shade of it for brand and roles alike. A dark-mode fill light enough to read on the dark page cannot
    carry white text at 4.5:1, so dark modes pair it with dark text. */
 :root.is-dev-build {
@@ -76,22 +68,6 @@
   --k-focus: #98560c;
 }
 
-:root[data-app-channel="beta"] {
-  --k-brand: #7983f4;
-  --k-brand-contrast: #06080b;
-  --k-action: #7983f4;
-  --k-action-contrast: #06080b;
-  --k-focus: #7983f4;
-}
-
-:root[data-app-channel="beta"][data-theme="light"] {
-  --k-brand: #4f5bd5;
-  --k-brand-contrast: #ffffff;
-  --k-action: #4f5bd5;
-  --k-action-contrast: #ffffff;
-  --k-focus: #4f5bd5;
-}
-
 :root[data-app-channel="nightly"] {
   --k-brand: #9d7bf8;
   --k-brand-contrast: #06080b;
@@ -108,10 +84,6 @@
   --k-focus: #7c3aed;
 }
 
-:root[data-app-channel="beta"] img[src="/favicon.png"] {
-  content: url("/favicon-beta.png");
-}
-
 :root[data-app-channel="nightly"] img[src="/favicon.png"] {
   content: url("/favicon-nightly.png");
 }
@@ -121,7 +93,7 @@
    that suppress outlines. Pointer focus remains visually unchanged.
 
    The ring follows `--k-focus` where something chose a focus colour: a
-   white-label theme, or a Dev, Beta or Nightly build (the channel blocks
+   white-label theme, or a Dev or Nightly build (the channel blocks
    above). Everywhere else it follows the accent, so a device accent chosen
    in Appearance colours it. The installed @kontourai/ui tokens always define
    `--k-focus`, so "is it defined" cannot tell those apart; instead
@@ -147,7 +119,6 @@
 :is(
     :root[data-brand-focus],
     :root.is-dev-build,
-    :root[data-app-channel="beta"],
     :root[data-app-channel="nightly"]
   )
   :where(
@@ -1144,74 +1115,8 @@ button:hover {
   font-size: var(--k-text-sm);
 }
 
-/* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
-   presentation; the mobile rule binds them to the visual viewport so the
-   software keyboard cannot push actions below the reachable screen.
- *
- * #1638/#1662: the layer below is the `layer` prop every consumer of
- * `ResponsiveDialogSurface` is REQUIRED to declare, keyed off the attribute
- * the component stamps from it, so the number a surface gets is the kind its
- * author named rather than whatever its feature stylesheet happened to say.
- *
- * The `!important` is load-bearing. Method, because the outcome alone does not
- * establish the cause: for each overlay below, the computed z-index is read in
- * Chromium twice — once as declared, once with `!important` stripped from
- * these three declarations only — AND once on the feature class ALONE. That
- * third reading is what discriminates. Without it, "unaffected by
- * `!important`" is equally well explained by the feature rule never applying
- * at that viewport, which is exactly the trap the last entry sits in.
- *
- * SIX overlays that carry this class set a z-index of their own below the dock
- * (`--layer-dock` 9200; `--layer-notification` 9400). The `!important`
- * arbitrates FIVE:
- *
- *   selector                          alone   +class   stripped
- *   .tool-call-batch-sheet__overlay    1000    10000       1000
- *   .delegation-launcher__overlay        35    10000         35
- *   .command-launcher__overlay           30    10000         30
- *   .active-work-frame__overlay          20    10000         20
- *   .drill-down-overlay                1000    10000       1000
- *
- * The first four are later than this rule in the built entry stylesheet
- * (measured: +24 to +55 KB past it) at equal specificity — single class
- * against single class — so without `!important` source order hands them the
- * feature value. `.drill-down-overlay` is not in the entry sheet at all; it
- * rides a lazily loaded chunk, and the reading above composes that chunk
- * AFTER the entry sheet, which is the order a dynamic import produces. That
- * ordering is the condition for its row, so it is stated rather than implied.
- *
- * Every surface portals to the body now, so one reading its feature value
- * would land behind the dock entirely rather than being clamped by it.
- *
- * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
- * its cause is source order rather than `!important` — which took the third
- * reading to establish. Its `z-index: 70` lives inside the shell mobile
- * breakpoint (the one `useIsMobile` keeps in lockstep: max-width 768px, or a
- * coarse pointer under 540px tall — spelled out rather than quoted verbatim,
- * because the lockstep scanner reads this file as source text and cannot tell
- * a quoted at-rule in prose from a real one). At a desktop viewport it does
- * not apply at all, so any conclusion drawn there is about a rule that was
- * never in the cascade. Measured at 390x844,
- * where it IS live: alone it computes 70, so the rule applies; with this class
- * it computes 10000 both as declared and with `!important` stripped. Its rule
- * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
- * wins on order. Do not cite it as justification for these declarations.
- *
- * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
- * cover a sibling dialog. The `!important` already defeated that before the
- * portal, so it is inert now exactly as it was then — a stacked confirm
- * resolves against its sibling by DOM order, which is what it already did.
- *
- * The remaining overlays that carry this class have nothing to arbitrate, but
- * not for the reason an earlier draft of this comment gave: it said they
- * declare `--layer-dialog` themselves, and seven of them declare no z-index at
- * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
- * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
- * `.agent-actions-overlay`, `.learning-source-overlay`,
- * `.basis-pane-fallback-overlay`). They compute automatically and take
- * whatever these rules give them, which is a different fact with the same
- * consequence. The rest do declare `--layer-dialog`, so they agree with these
- * rules by coincidence rather than by arbitration. */
+/* The shared layer wins over feature styles, including lazy chunks loaded
+   after this stylesheet. Feature classes still own each surface's geometry. */
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
@@ -1224,6 +1129,12 @@ button:hover {
 
 .responsive-surface-overlay[data-responsive-layer="system"] {
   z-index: var(--layer-system) !important;
+}
+
+/* A popover opened from inside this one stands in for it
+   (`yieldToChildPopover`): one surface shows at a time. */
+.responsive-surface-overlay[data-yielded] > .responsive-surface-panel {
+  visibility: hidden;
 }
 
 /* station#753: one open transition for every dialog/sheet that renders
@@ -1791,8 +1702,23 @@ button:hover {
 
 .region-tabs__item {
   display: flex;
-  flex: 0 0 auto;
+  /* Unselected tabs give way first, down to a few letters with an ellipsis,
+     so a narrow side bar keeps the selected pane's name whole instead of
+     scrolling it out behind the bar's buttons ("Agen"). */
+  flex: 0 1 auto;
+  min-width: 4em;
   align-items: center;
+}
+
+.region-tabs__item:has(> [aria-selected="true"]) {
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
+.region-tabs__item > .region-tabs__tab {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .region-tabs__tab {
@@ -2393,284 +2319,6 @@ button:hover {
   }
 }
 
-/* Project context breadcrumb between tabs and body */
-.chat-dock__project-context {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--accent-primary) 4%, var(--bg-primary));
-  border-bottom: 1px solid var(--border-primary);
-}
-/* archive#793: the badge is now a real button that always opens the project
-   switcher — button-reset so it keeps the prior text-only look, plus a
-   hover/focus affordance a plain link previously carried via its `--link`
-   modifier (removed: every badge is activatable now, not just some). */
-/* #1552 D3: a CHIP, in the body font, with a folder glyph.
- *
- * It was monospace at weight 600 with an underline-on-hover — a plain-text
- * status segment, which was right when it shared a row with a visible directory
- * path (#1536 F removed that) and wrong afterwards: it left the dock header
- * with two type families and made the project read as a fragment of a path
- * rather than as the named thing you can change. The glyph carries "project",
- * the bordered chip carries "this is a control", and the path — the reason the
- * monospace family was ever here — is the `title`.
- *
- * The accent colour this rule's predecessor removed stays removed: bound or
- * unbound, the chip is neutral, because a colour that never changes encodes no
- * state. */
-.chat-dock__project-badge {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 2px var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--k-text-sm);
-  font-weight: 500;
-}
-.chat-dock__project-badge:hover,
-.chat-dock__project-badge:focus-visible {
-  border-color: var(--accent-border);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-.chat-dock__project-badge-glyph {
-  flex: 0 0 auto;
-  color: var(--text-tertiary);
-}
-.chat-dock__project-badge-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* No project bound: the glyph alone, and a square target for it. There is no
-   label to hold the box open, so it gets its own width. */
-.chat-dock__project-badge--unbound {
-  justify-content: center;
-  padding: 2px;
-  min-width: 22px;
-}
-.chat-dock__project-badge-clear {
-  flex-shrink: 0;
-  border: none;
-  border-radius: 3px;
-  padding: 0 4px;
-  background: none;
-  color: var(--text-muted);
-  font-size: var(--k-text-sm);
-  line-height: 1.4;
-  cursor: pointer;
-}
-.chat-dock__project-badge-clear:hover,
-.chat-dock__project-badge-clear:focus-visible {
-  color: var(--text-primary);
-  background: var(--bg-tertiary);
-}
-/* #1536 F: the start-truncated directory segment (parent + accent leaf, its
-   bidi isolate for #304, and the `HomeFolderLabel` fallback) is gone from this
-   row. It was the widest thing in the dock header and it left the conversation
-   title beside it about one character on a 110-character worktree path. The
-   path is the project badge's `title` and the More menu's "Copy folder path";
-   the coding-layout link the leaf carried is that menu's "Open in Coding".
-   `.new-chat-modal__context-dir--fallback` still names the retired
-   `--fallback` rule in a comment: that surface keeps its own visible path. */
-.chat-dock__project-context > .git-tooltip-anchor {
-  min-width: 0;
-  margin-left: auto;
-}
-
-/* archive#793: shared desktop-popover/mobile-sheet body for the project switcher
-   (ChatDockProjectSwitcherSheet), opened from the desktop badge above or the
-   mobile header's own trigger. Reuses the composer-popover-overlay/panel and
-   responsive-dialog-header shell classes for chrome (chat/chat.css) —
-   only the switcher's own list/row/action geometry lives here. */
-.chat-dock__project-switcher-panel {
-  display: flex;
-  flex-direction: column;
-  max-height: min(480px, 70vh);
-}
-.chat-dock__project-switcher-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: var(--space-2);
-  gap: 2px;
-  list-style: none;
-  overflow-y: auto;
-}
-/* archive#3319 revision of the archive#793 presentation: the row IS the Continue
-   action; Open demotes to a right-aligned icon. Both stay real, separately
-   tabbable buttons on every row (D5's substance). */
-.chat-dock__project-switcher-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 2px;
-  border-radius: var(--radius-md);
-}
-.chat-dock__project-switcher-row:hover,
-.chat-dock__project-switcher-row:focus-within {
-  background: var(--bg-hover);
-}
-.chat-dock__project-switcher-row.is-current {
-  padding: 1px;
-  border: 1px solid var(--accent-border);
-  background: var(--bg-selected);
-}
-.chat-dock__project-switcher-switch {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--k-space-3);
-  min-width: 0;
-  min-height: 44px;
-  justify-content: center;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  text-align: left;
-  cursor: pointer;
-}
-.chat-dock__project-switcher-icon {
-  display: flex;
-  width: 28px;
-  align-items: center;
-  justify-content: center;
-}
-.chat-dock__project-switcher-accent {
-  width: 3px;
-  height: 22px;
-  border-radius: var(--radius-pill);
-}
-.chat-dock__project-switcher-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  max-width: 100%;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-.chat-dock__project-switcher-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Decorative only (aria-hidden in the component) — the row it flags never
-   disables either action; see D5 in the kontourai-station-793 plan. */
-.chat-dock__project-switcher-cue {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary);
-}
-.chat-dock__project-switcher-panel {
-  position: relative;
-}
-.chat-dock__project-switcher-help {
-  position: absolute;
-  right: var(--k-space-4);
-  bottom: calc(52px + var(--k-space-3) * 2 + var(--k-space-2));
-  left: var(--k-space-4);
-  margin: 0;
-  padding: var(--k-space-3);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-overlay);
-  background: var(--bg-secondary);
-  box-shadow: var(--k-elevation-overlay);
-  color: var(--text-primary);
-  font-size: var(--k-text-md);
-  line-height: var(--k-leading-normal);
-  pointer-events: none;
-}
-.chat-dock__project-switcher-current {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--k-action);
-}
-/* Row action wrapper — its `-actions` suffix is also what
-   scripts/responsive-surface-ratchet.mjs discovers for the action-surface
-   inventory, and what the mobile 44px floor at index.css's shared
-   `[class$="-actions"]` rule targets automatically. Holds only the demoted
-   Open icon since the #3319 revision (the row itself is Continue). */
-.chat-dock__project-switcher-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-}
-.chat-dock__project-switcher-open {
-  display: inline-flex;
-  min-width: 44px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.chat-dock__project-switcher-open:hover,
-.chat-dock__project-switcher-open:focus-visible {
-  border-color: var(--border-secondary);
-  background: var(--bg-tertiary);
-  color: var(--accent-primary);
-}
-
-/* archive#3319: the icon-only Open fits beside the name at every width, so the
-   phone layout no longer stacks full-width action rows — one grid, name
-   truncates, 44px targets guaranteed by the buttons' own minimums. */
-.chat-dock__context-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.chat-dock__project-context
-  > .git-tooltip-anchor
-  + .chat-dock__context-actions {
-  margin-left: 0;
-}
-
-.chat-dock__context-actions button {
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.chat-dock__context-actions button:hover,
-.chat-dock__context-actions button:focus-visible,
-.chat-dock__context-actions button.is-active {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-  outline: none;
-}
-
 .chat-dock__workspace {
   display: flex;
   flex: 1;
@@ -2856,9 +2504,6 @@ button:hover {
 .active-work-frame__overlay {
   position: fixed;
   inset: 0;
-  /* Local to the dock stacking context, which owns the chrome-level
-     --layer-dock slot. Local stacking stays below 100 by convention. */
-  z-index: 20;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -2884,7 +2529,6 @@ button:hover {
 .command-launcher__overlay {
   position: fixed;
   inset: 0;
-  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3932,9 +3576,13 @@ button:hover {
   will-change: transform;
 }
 
-.chat-scroll-to-bottom:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+/* A tap must not leave the button scaled. Color hovers are not movement
+   and stay outside this query. */
+@media (hover: hover) and (pointer: fine) {
+  .chat-scroll-to-bottom:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .message {
@@ -4342,16 +3990,24 @@ button:hover {
   }
 }
 
-/* Backgrounded provider tasks that outlive the assistant turn. */
+/* Backgrounded work that outlives the assistant turn: the strip's card holds
+   its count line and the running tasks the transcript does not show. It does
+   not clip its content, so the product-wide focus ring (offset outside the
+   button) stays whole. */
+.background-tasks-strip {
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+}
+
 .background-tasks-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .background-tasks-banner__label {
@@ -4375,14 +4031,26 @@ button.background-tasks-banner {
   cursor: pointer;
 }
 
+/* The card's inner radius (10px less its 1px border), so the hover fill
+   meets its corners; square at the bottom when task rows follow. */
+button.background-tasks-banner {
+  border-radius: 9px;
+}
+
+.background-tasks-strip:has(.background-tasks-banner__tasks)
+  > button.background-tasks-banner {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
   background: color-mix(in srgb, var(--k-brand) 10%, transparent);
 }
 
 /* archive#1301: visually-hidden live-region sibling
-   for the button variant above — same clip technique as Checkbox.css's
-   `.cb__input` / `.composer-mode-sheet__option-input`. Carries the
+   for the button variant above — same clip technique as
+   `.composer-mode-sheet__option-input`. Carries the
    `role="status"` this text's screen-reader auto-announcement depends on,
    which a `<button>` cannot also carry. */
 
@@ -4434,10 +4102,10 @@ button.background-tasks-banner:focus-visible {
 }
 
 .ephemeral-message {
-  animation: fadeIn var(--motion-slow) var(--ease-in);
+  animation: fadeIn var(--motion-slow) var(--ease-out);
   transition:
-    opacity var(--motion-slow) var(--ease-out),
-    transform var(--motion-slow) var(--ease-out);
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
 }
 
 /* A notice the user reads and acts on (Retry, Dismiss), not a transcript
@@ -4681,7 +4349,7 @@ button.tool-call__line:hover {
 
 .tool-call__status-footer {
   margin-top: 0.5rem;
-  color: var(--success-text);
+  color: var(--k-text);
   font-size: 0.9em;
 }
 
@@ -5670,6 +5338,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .usage-telemetry-disclosure__inventory > summary {
+  min-block-size: var(--touch-target-min, 0px);
+  align-content: center;
   cursor: pointer;
   padding: 8px 0;
   color: var(--text-secondary);
@@ -6154,167 +5824,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   pointer-events: none;
 }
 
-/* Attachment Preview Menu */
-.attachment-menu {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 10000;
-  min-width: 280px;
-  max-width: 400px;
-}
-
-.attachment-menu__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.attachment-menu__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.attachment-menu__count {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.attachment-menu__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.attachment-menu__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background: var(--bg-secondary) !important;
-  border-radius: 4px;
-  border: none !important;
-}
-
-.attachment-menu__item:hover {
-  background: var(--bg-secondary) !important;
-  transform: none !important;
-}
-
-/* The preview trigger is a real button: keyboard users tab to it and press
-   Enter. (The old clickable img carried a keydown handler it could never
-   receive — an img is not focusable — so the preview was pointer-only.) */
-.attachment-menu__thumbnail-button {
-  padding: 0;
-  border: none !important;
-  background: none !important;
-  cursor: pointer;
-  border-radius: 4px;
-  /* The img fills the box; keep the button's own box the same 48px square. */
-  line-height: 0;
-  flex: 0 0 auto !important;
-  transition: box-shadow var(--motion-base) var(--ease-standard);
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__thumbnail-button:hover {
-  background: none !important;
-  transform: none !important;
-}
-
-.attachment-menu__thumbnail-button:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.attachment-menu__thumbnail {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 4px;
-}
-
-.attachment-menu__file-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  font-size: var(--text-5xl);
-  flex-shrink: 0;
-}
-
-.attachment-menu__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.attachment-menu__name {
-  font-size: var(--text-base);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-menu__size {
-  font-size: var(--k-text-xs);
-  color: var(--text-muted);
-}
-
-.attachment-menu__remove-btn {
-  background: none !important;
-  border: none !important;
-  cursor: pointer;
-  padding: 4px;
-  color: var(--text-muted);
-  font-size: var(--text-2xl);
-  line-height: 1;
-  flex: 0 0 auto !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__remove-btn:hover {
-  background: none !important;
-  transform: none !important;
-  color: var(--text-primary);
-}
-
-.attachment-menu__add-btn,
-.attachment-menu__clear-btn {
-  background: none !important;
-  border: none !important;
-  cursor: pointer;
-  font-size: var(--k-text-sm);
-  color: var(--color-primary);
-  font-weight: 600;
-  padding: 2px 4px;
-  flex: 0 0 auto !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__add-btn:hover,
-.attachment-menu__clear-btn:hover {
-  background: none !important;
-  transform: none !important;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   :root {
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
@@ -6457,22 +5966,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-inline: calc(var(--k-space-1) + var(--k-space-4));
   }
 
-  .chat-dock__project-switcher-switch {
-    min-height: 64px;
-    padding: var(--k-space-3);
-    font-size: var(--k-text-lg);
-  }
-
-  .chat-dock__project-switcher-label {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  .chat-dock__project-switcher-current {
-    text-transform: none;
-    letter-spacing: normal;
-  }
-
   .responsive-surface-actions {
     min-width: 0;
     max-width: 100%;
@@ -6566,9 +6059,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      second line that the clip removes, so the app name is either shown in full
      or not at all - a text-overflow ellipsis here is what produced "S...". The
      logo stays (it is the home link) and the toolbar stays one row. The
-     connection chip is a 44px dot, or a dot and a Station name capped at
-     120px when healthy (chat.css), so the lockup is the one member of the row
-     that gives up width. Both children are 22px tall and
+     lockup takes leftover space after the action cluster. Both children are 22px tall and
      share one line, so nothing of the wrapped line peeks into the clip. */
   .app-toolbar__lockup {
     display: flex;
@@ -6579,11 +6070,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* The gap below the first line keeps the wrapped wordmark out of the
        4px the clip margin lends to the focus ring. */
     row-gap: 8px;
-    /* Shrinkable, never below the logo. When the name does not fit, the lockup
-       shrinks to the room there is; the blank remainder is invisible and the
-       action cluster stays put. */
-    flex: 0 1 auto;
+    flex: 1 1 0;
     min-width: 22px;
+    max-width: max-content;
     height: 22px;
     overflow: hidden;
   }
@@ -6702,9 +6191,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-wrap: nowrap;
   }
 
-  /* The wordmark never truncates (see `.app-toolbar__lockup`). The right-hand
-     action cluster stays on-screen at <=390px because the lockup is the one
-     member of the row that gives up width. */
+  /* The action cluster shares the toolbar's single row. */
+  .app-toolbar__actions {
+    flex-wrap: nowrap;
+  }
 
   /* Phone connection chrome is a touchable status dot, with the Station's
      short name beside it when healthy. Its full accessible name and
@@ -6746,37 +6236,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-bottom: calc(var(--space-2) + var(--safe-bottom));
   }
 
-  .chat-dock__project-switcher-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  /* Contain the project-context row: the action buttons get their own
-     full-width scrollable line instead of forcing the whole row (and the
-     dock) past the viewport edge. */
-  .chat-dock__project-context {
-    min-width: 0;
-    max-width: 100%;
-    flex-wrap: wrap;
-    overflow-x: hidden;
-  }
-
-  .chat-dock__project-context > .git-tooltip-anchor {
-    display: none;
-  }
-
-  .chat-dock__context-actions {
-    flex: 1 1 100%;
-    min-width: 0;
-    margin-left: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-  .chat-dock__context-actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .chat-dock__context-actions button,
   .active-work-frame__file {
     min-height: 44px;
   }
@@ -6893,41 +6352,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     inset: 0;
     background: rgba(0, 0, 0, 0.3);
     z-index: 19;
-  }
-
-  .attachment-menu {
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    top: calc(
-      var(--responsive-visual-viewport-top, 0px) +
-      var(--app-toolbar-total-height) +
-      var(--space-3)
-    );
-    right: max(12px, var(--safe-right, 0px));
-    bottom: auto;
-    left: max(12px, var(--safe-left, 0px));
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    max-height: min(
-      60dvh,
-      calc(var(--responsive-visual-viewport-height, 100dvh) - 96px)
-    );
-    overflow: hidden;
-  }
-
-  .attachment-menu__list {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-  }
-
-  .attachment-menu__add-btn,
-  .attachment-menu__clear-btn,
-  .attachment-menu__remove-btn {
-    min-width: 44px;
-    min-height: 44px;
   }
 }
 
@@ -7412,157 +6836,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 .acp-badge__dot--pulse {
   animation: acp-pulse var(--motion-status-pulse) var(--ease-standard) infinite;
-}
-
-/* ── Project Dashboard ──────────────────────────────────────────── */
-
-.project-dashboard__modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--layer-dialog);
-}
-
-.project-dashboard__modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  padding: 24px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-/* ── Knowledge Section ──────────────────────────────────────────── */
-
-.knowledge-section__badge {
-  font-size: var(--k-text-sm);
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.knowledge-section__scan-result {
-  margin-top: 8px;
-  font-size: var(--text-base);
-  color: var(--success-text, #22c55e);
-}
-
-.knowledge-section__empty {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.knowledge-section__dropzone {
-  border: 2px dashed var(--border-primary);
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard);
-  margin-bottom: 8px;
-}
-
-.knowledge-section__dropzone:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-secondary);
-}
-
-.knowledge-section__dropzone--active {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
-  color: var(--accent-primary);
-}
-
-.knowledge-section__doc-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.knowledge-section__doc {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 5px;
-  font-size: var(--text-base);
-}
-
-.knowledge-section__doc-name {
-  flex: 1;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.knowledge-section__doc-remove {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--text-xl);
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.knowledge-section__doc-remove:hover {
-  color: var(--error-text);
-}
-
-.knowledge-section__status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  padding-top: 4px;
-}
-
-.knowledge-section__clear-btn {
-  background: none;
-  border: none;
-  color: var(--error-text);
-  cursor: pointer;
-  font-size: var(--k-text-sm);
-  padding: 2px 6px;
-}
-
-.knowledge-section__clear-btn:hover {
-  text-decoration: underline;
-}
-
-.knowledge-section__migrate {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-primary);
-}
-
-.knowledge-section__migrate-copy {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-
-.knowledge-section__migrate-errors {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  font-size: var(--k-text-sm);
-  color: var(--error-text);
 }
 
 /* ── ChatDock Project Filter ────────────────────────────────────── */
@@ -8051,129 +7324,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* Mobile: compact chat dock header and tab bar */
-/* ── Provider Overview ── */
-.provider-overview {
-  padding: 2rem 2.5rem;
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.provider-overview__header {
-  margin-bottom: 1.5rem;
-}
-
-.provider-overview__title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem;
-  letter-spacing: -0.02em;
-}
-
-.provider-overview__desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.provider-overview__card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 0.875rem 1rem;
-}
-
-.provider-overview__card-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  padding: 0.3rem 0.4rem;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background var(--motion-fast) var(--ease-standard);
-}
-
-.provider-overview__card-item:hover {
-  background: var(--bg-tertiary);
-}
-
-.provider-overview__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-muted);
-}
-
-.provider-overview__dot--active {
-  background: var(--success-text, #22c55e);
-}
-
-/* Quick Setup (shown when no providers exist) */
-.provider-overview__quickstart {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border-primary);
-}
-
-.provider-overview__quickstart-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem;
-}
-
-.provider-overview__quickstart-desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0 0 0.75rem;
-}
-
-.provider-overview__quickstart-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.provider-overview__group-label {
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin: 1rem 0 0.5rem;
-}
-
-.provider-overview__group-label:first-of-type {
-  margin-top: 0;
-}
-
-.provider-picker-modal {
-  max-width: 460px;
-  width: 90vw;
-}
-
-.provider-picker-modal .modal-body {
-  max-height: min(65vh, 560px);
-  overflow-y: auto;
-}
-
-.provider-picker-modal__desc {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
-.provider-picker-modal__search {
-  margin-bottom: 0.75rem;
-}
-
 /*
  * Shared filter-field styling for every "type to narrow this list" surface
  * (the split-pane list header, both Add Provider pickers). It lives in this
@@ -8206,41 +7356,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .list-filter-input::placeholder {
   color: var(--text-muted);
-}
-
-.provider-overview__quickstart-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  width: 100%;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-
-.provider-overview__quickstart-btn:hover {
-  border-color: var(--accent-primary);
-}
-
-.provider-overview__quickstart-icon {
-  font-size: 1.25rem;
-}
-
-.provider-overview__quickstart-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.provider-overview__quickstart-meta {
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  margin-top: 1px;
 }
 
 .provider-detail__progress {
@@ -9072,14 +8187,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   .chat-dock__mobile-header {
     padding: var(--space-1) 8px;
   }
-
-  /* #4391's size control is a third 44px leading slot: with it the bar's
-     44px floors no longer fit, and the title overlapped Switch project. A
-     phone chat already opens full screen and Chat actions keeps Full screen,
-     so this slot gives way too. */
-  .chat-dock__mobile-header .chat-dock__mobile-extent {
-    display: none;
-  }
 }
 
 /* touch-action does not inherit: a drag-passthrough control (the identity
@@ -9224,9 +8331,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 }
 
-/* Project above, chat name below — the hierarchy reads parent → child, and it
-   is what the old standalone project-context row used to carry. */
-.chat-dock__mobile-project,
+/* Conversation title and optional Agent/Station attribution. */
 .chat-dock__mobile-identity {
   flex: 1 1 auto;
   display: flex;
@@ -9254,11 +8359,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
-.chat-dock__mobile-project {
-  flex: 1 1 0;
-  min-width: 44px;
-}
-
 .chat-dock__mobile-identity {
   justify-content: flex-start;
   min-width: 80px;
@@ -9269,7 +8369,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   justify-self: end;
 }
 
-.chat-dock__mobile-project-lines,
 .chat-dock__mobile-identity-lines {
   display: flex;
   flex: 0 1 auto;
@@ -9289,7 +8388,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   background: var(--bg-hover);
 }
 
-.chat-dock__mobile-project-caption,
 .chat-dock__mobile-eyebrow {
   max-width: 100%;
   overflow: hidden;
@@ -9302,7 +8400,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   white-space: nowrap;
 }
 
-.chat-dock__mobile-project-name,
 .chat-dock__mobile-title {
   display: flex;
   align-items: center;
@@ -9313,16 +8410,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-15);
   font-weight: 600;
   line-height: 1.2;
-}
-
-.chat-dock__mobile-project-name {
-  display: block;
-}
-
-.chat-dock__mobile-project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-dock__mobile-title-text {
@@ -9727,12 +8814,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     pointer-events: none;
   }
 
-  /* Editing gets the limited height. Blurring the textarea restores the
-     model/agent selectors; input and Send keep their full touch targets. */
+  /* Empty metadata yields the limited height to editing. Keep connection
+     status, next-turn destinations and transcript navigation visible. */
   .app__main
     .chat-dock--bottom
     .chat-input:has(textarea:focus)
-    > .chat-input__meta {
+    > .chat-input__meta:not(
+      :has(
+        .chat-input__next-turn-notice,
+        .chat-input__composer-notice,
+        .chat-status-pill,
+        .chat-scroll-to-bottom
+      )
+    ) {
     display: none;
   }
 }
@@ -9805,6 +8899,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 56px;
   justify-content: flex-start;
 }
+/* Glyph and radio mark sit on the title's line, not the middle of a wrapped
+   description. Compounded: chat.css loads after this file and its
+   `.composer-actions-menu__item` centres every row. */
+.composer-actions-menu__item.composer-mode-sheet__option {
+  align-items: flex-start;
+  padding-block: var(--k-space-2);
+}
 
 /* The notes above the list start where a row's content does: the list's
    padding (`--space-2`, i.e. `--k-space-1`) plus the row's own
@@ -9819,8 +8920,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     calc(var(--k-space-1) + var(--k-space-3) / 2) 0;
 }
 
-/* Visually-hidden native radio input (same clip technique as Checkbox.css's
-   `.cb__input`) — the label carries the visible row styling; the input
+/* Visually-hidden native radio input (1px clip) — the label carries the
+   visible row styling; the input
    supplies real radio semantics/keyboard behavior. */
 .composer-mode-sheet__option-input {
   position: absolute;
@@ -9845,9 +8946,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-glyph {
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   width: 24px;
-  text-align: center;
+  height: var(--composer-mode-sheet-title-line, 24px);
   font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .composer-mode-sheet__option-body {
@@ -9858,6 +8962,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
+.composer-mode-sheet__option-body strong {
+  line-height: var(--composer-mode-sheet-title-line, 24px);
+}
+
 .composer-mode-sheet__option-body small {
   color: var(--text-muted);
   font-size: var(--k-text-sm);
@@ -9866,6 +8974,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-mark {
   flex: 0 0 auto;
+  /* Centred on the 24px title line. */
+  margin-block-start: 2px;
   width: 20px;
   height: 20px;
   border: 2px solid var(--border-secondary);
@@ -9900,6 +9010,24 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
   font-size: var(--k-text-sm);
   line-height: 1.4;
+}
+
+/* What is running now: the one note a reader needs before choosing. */
+.composer-mode-sheet__status {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--k-text-sm);
+  line-height: 1.4;
+}
+
+/* The shared Checkbox, on a row tall enough to hit comfortably. */
+.composer-mode-sheet__save-default {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+.composer-mode-sheet__save-default .cb__label {
+  font-size: var(--k-text-sm);
 }
 
 /* #3290: the read-only approval explanation of an engine-decided engine. */

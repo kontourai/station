@@ -1,0 +1,7 @@
+{
+  "revision": "968bacab14fdd1d11f0da8ffa317c65880b9cc4c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Stated that a truncated pass stays candidate_limit even when reached transcripts are refused, and that the warning counts refusals by reason; checked against the outcome logic and the over-bound malformed-file test.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

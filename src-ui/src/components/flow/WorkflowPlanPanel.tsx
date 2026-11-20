@@ -1,5 +1,6 @@
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
 import type { ChatMessage } from '../../types';
 import {
@@ -7,6 +8,7 @@ import {
   deriveLatestPlanArtifactFromMessages,
   type PlanArtifact,
 } from '../../utils/planArtifacts';
+import { nextTabIndex } from '../../utils/tab-navigation';
 import { ActionRow } from '../ActionRow';
 import { LazyMarkdown } from '../chat/LazyMarkdown';
 import { LoadFullContent } from '../chat/LoadFullContent';
@@ -178,6 +180,12 @@ export function renderInlineMarkdown(text: string): ReactNode {
   });
 }
 
+/** The plan's two views, in tab order. */
+const PLAN_VIEWS = [
+  { key: 'steps', label: 'Steps' },
+  { key: 'markdown', label: 'Markdown' },
+] as const;
+
 function slugifyTitle(value: string) {
   return (
     value
@@ -284,6 +292,8 @@ function StepStatusBadge({ status }: { status: WorkflowPlanStepStatus }) {
 type WorkflowPlanRuntimeState = {
   status?: string | null;
   pendingApprovals?: number;
+  pendingInputs?: number;
+  waitingOnUser?: boolean;
   isProcessingStep?: boolean;
 };
 
@@ -295,7 +305,7 @@ type WorkflowPlanRuntimeStrip = {
 
 /**
  * Pure {label,tone,live} derivation for the runtime-state strip. Richest
- * signal first: pending approvals outrank in-flight tool activity, which
+ * signal first: permissions, then input requests, outrank tool activity, which
  * outranks the coarser session `status`, mirroring
  * `deriveActivityLabel`'s richest-signal-first convention
  * (StreamingMessage.tsx) for the analogous per-message activity hint.
@@ -305,7 +315,14 @@ export function deriveWorkflowRuntimeStrip(
 ): WorkflowPlanRuntimeStrip | null {
   if ((runtimeState?.pendingApprovals || 0) > 0) {
     return {
-      label: `Needs approval (${runtimeState?.pendingApprovals})`,
+      label: `${SESSION_STATUS_WORDS.approval} (${runtimeState?.pendingApprovals})`,
+      tone: 'attention',
+      live: true,
+    };
+  }
+  if ((runtimeState?.pendingInputs ?? 0) > 0) {
+    return {
+      label: `${SESSION_STATUS_WORDS.answer} (${runtimeState?.pendingInputs})`,
       tone: 'attention',
       live: true,
     };
@@ -314,7 +331,12 @@ export function deriveWorkflowRuntimeStrip(
     return { label: 'Running · tool', tone: 'live', live: true };
   }
   if (runtimeState?.status === 'awaiting-approval') {
-    return { label: 'Needs approval', tone: 'attention', live: true };
+    if (runtimeState.waitingOnUser === false) return null;
+    return {
+      label: SESSION_STATUS_WORDS.waiting,
+      tone: 'attention',
+      live: true,
+    };
   }
   if (
     runtimeState?.status === 'running' ||
@@ -374,6 +396,7 @@ function WorkflowPlanPanelView({
   runtimeState,
 }: WorkflowPlanPanelProps) {
   const [activeView, setActiveView] = useState<'steps' | 'markdown'>('steps');
+  const viewTabsId = useId();
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
     'idle',
   );
@@ -536,28 +559,52 @@ function WorkflowPlanPanelView({
             </div>
           </div>
 
-          <div className="workflow-plan-panel__view-switcher" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeView === 'steps'}
-              className={`workflow-plan-panel__view-tab${activeView === 'steps' ? ' is-active' : ''}`}
-              onClick={() => setActiveView('steps')}
-            >
-              Steps
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeView === 'markdown'}
-              className={`workflow-plan-panel__view-tab${activeView === 'markdown' ? ' is-active' : ''}`}
-              onClick={() => setActiveView('markdown')}
-            >
-              Markdown
-            </button>
+          <div
+            className="workflow-plan-panel__view-switcher"
+            role="tablist"
+            aria-label="Plan views"
+          >
+            {PLAN_VIEWS.map(({ key, label }, index) => {
+              const selected = activeView === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  id={`${viewTabsId}-tab-${key}`}
+                  aria-selected={selected}
+                  aria-controls={
+                    selected ? `${viewTabsId}-panel-${key}` : undefined
+                  }
+                  tabIndex={selected ? 0 : -1}
+                  className={`workflow-plan-panel__view-tab${selected ? ' is-active' : ''}`}
+                  onClick={() => setActiveView(key)}
+                  onKeyDown={(event) => {
+                    const next = nextTabIndex(
+                      index,
+                      PLAN_VIEWS.length,
+                      event.key,
+                    );
+                    if (next === null) return;
+                    event.preventDefault();
+                    setActiveView(PLAN_VIEWS[next].key);
+                    event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                      [next]?.focus();
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="workflow-plan-panel__body">
+          <div
+            className="workflow-plan-panel__body"
+            role="tabpanel"
+            id={`${viewTabsId}-panel-${activeView}`}
+            aria-labelledby={`${viewTabsId}-tab-${activeView}`}
+          >
             {activeView === 'steps' ? (
               hasSteps ? (
                 <ol className="workflow-plan-panel__steps">

@@ -1,0 +1,11 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Only added the pull-request-feedback paragraph in Compatibility; citing pages' links into the reference still resolve to unchanged sections.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only added the pull-request-feedback paragraph in Compatibility; citing pages' links into the reference still resolve to unchanged sections.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Only added the pull-request-feedback paragraph in Compatibility; citing pages' links into the reference still resolve to unchanged sections.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

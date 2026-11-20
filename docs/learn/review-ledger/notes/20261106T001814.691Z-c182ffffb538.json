@@ -1,7 +1,0 @@
-{
-  "revision": "2c87ba3b1e0cd7d1ed71fa028cd9b30607e6bc5f",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"No toolbar connection-chip or wordmark claims; the chat.css change adds only the phone .app-toolbar__conn-notice overlay rule.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

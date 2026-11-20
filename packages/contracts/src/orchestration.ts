@@ -1,13 +1,18 @@
 import type { AgentId, EngineId } from './agent-identity.js';
 import type { AttentionRequestReference } from './attention.js';
+import type { QueuedChatAttachmentDescriptor } from './chat-attachment.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin, ClientOriginSender } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
-import type { InputRequestContent } from './input-request.js';
+import type {
+  InputRequestContent,
+  SessionGrantScope,
+} from './input-request.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
+  EngineApprovalReviewer,
   ModelLaunchPlan,
   ProviderDurabilityProfile,
   ProviderSendTurnInput,
@@ -95,6 +100,31 @@ export type AdoptSessionTarget =
   | { kind: 'project'; projectSlug: string }
   | { kind: 'own-folder' };
 
+/**
+ * Whether the external harness that wrote an attached session is still
+ * working on it, read from the followed transcript alone. Station does not
+ * own that process and cannot see it: neither Claude Code (no open handle on
+ * its transcript) nor Codex (its app-server holds every loaded rollout open,
+ * working or not) gives a process signal that means "running".
+ *
+ * - `active`: the transcript's latest turn has no completion and the
+ *   transcript was written within {@link ATTACHED_SOURCE_ACTIVE_WINDOW_MS}.
+ *   Continuing now forks a conversation that is still moving; adoption is
+ *   refused unless the request says `continueWhileSourceActive`.
+ * - `quiet`: the latest turn has no completion, but nothing was written for
+ *   longer than the window. It was interrupted, crashed, its engine records
+ *   no completions, or a silent tool is still running: Station cannot tell.
+ * - `idle`: the latest turn ended (or none started).
+ */
+export interface AttachedSourceActivity {
+  state: 'active' | 'quiet' | 'idle';
+  /** Source time of the newest event Station imported from the transcript. */
+  lastWriteAt?: string;
+}
+
+/** How recent a transcript write keeps an open turn `active`. */
+export const ATTACHED_SOURCE_ACTIVE_WINDOW_MS = 5 * 60_000;
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
@@ -103,6 +133,12 @@ export type OrchestrationCommand =
       idempotencyKey?: string;
       /** #3386: where a conversation no project claims continues. */
       target?: AdoptSessionTarget;
+      /**
+       * Continue even though the source reads `active`
+       * ({@link AttachedSourceActivity}); without it Station refuses with
+       * `continuation_source_active`. The original keeps running either way.
+       */
+      continueWhileSourceActive?: true;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -157,10 +193,15 @@ export type OrchestrationCommand =
        * Only with `acceptForSession`. `server` widens the session grant from
        * the one tool to the whole in-process Station browser server, and only
        * where the request offered it (an authentic `station-browser` call).
+       * `rule` narrows it to the Bash command prefixes the engine suggested,
+       * only where the request offered them (a Claude Bash ask); Station
+       * then mints no tool grant. A scope the request did not offer, and a
+       * `rule` answer to an engine other than Claude, is a one-call accept.
        * Absent keeps the per-tool grant, so an older client's answer is
-       * unchanged. An engine that cannot honour it takes the per-tool grant.
+       * unchanged. An engine without the server grant takes the per-tool
+       * grant for `server`.
        */
-      sessionGrantScope?: 'server';
+      sessionGrantScope?: SessionGrantScope;
       /**
        * docs/design/event-content-spill.md: required to allow a request whose
        * content EventStore stored out of line (`spilledContent` set). The
@@ -985,6 +1026,10 @@ export interface TurnProgressSilence {
  * recognizes only its narrower progress vocabulary (#2959/#3031).
  */
 export interface TurnProgressObservation {
+  /** Execution Session observed by the watchdog, when reported by the host. */
+  threadId?: string;
+  /** Turn observed by the watchdog, when reported by the host. */
+  turnId?: string;
   lastProgressEventAt: string;
   progressSilence?: TurnProgressSilence;
 }
@@ -1179,6 +1224,8 @@ export interface OrchestrationEngineStartWaitFrame {
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Soonest armed check-back in this conversation; approval proposals are excluded. */
+  nextWakeUpAt?: string;
   /** Aggregate owned execution activity; the parent's own event fold is retained. */
   ownedWork?: OwnedSessionActivity & {
     state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
@@ -1203,6 +1250,7 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * one the user chose: an otherwise-unbound ACP or confined Codex session
    * runs under `<stationHome>/runtime/<engine>-workspaces/session/<digest>`,
    * and (#4389) a chat with no Project runs in `<stationHome>/scratch/<id>`.
+   * New Windows folders substitute a per-Station root outside private data.
    * The server decides (`isStationChatFolder`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
@@ -1216,6 +1264,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * inherited default until the next report.
    */
   appliedApprovalMode?: ApprovalMode;
+  /** The latest engine-confirmed mode on this execution Session. */
+  currentModeId?: string;
+  /** Reviewer reported by the engine for this binding. Unknown if omitted or unrecognized. */
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;
@@ -1231,6 +1283,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
     latest: ClientOrigin;
     hasOtherOrigins: boolean;
   };
+  /**
+   * `'provider'` when this session's most recent `turn.started` is a turn the
+   * engine opened on its own (`isProviderTriggeredTurn`): a reply to
+   * background work, not to a send. Absent for any other latest turn. An
+   * inbox reads it so an engine-opened turn does not bring back a
+   * conversation the person dismissed.
+   */
+  latestTurnTrigger?: 'provider';
   lastEventAt?: string;
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
@@ -1263,6 +1323,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   openRequestIds?: string[];
   /** Current requests that suspend progress; absent on older hosts. */
   blockingOpenRequestIds?: string[];
+  /** Display-only kinds of unresolved requests; never changes request routing. Absent on older hosts. */
+  openRequestKinds?: Record<string, 'input' | 'approval'>;
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   /**
@@ -1377,6 +1439,13 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   hasActiveTurn?: boolean;
   /**
+   * Read-only attached sessions only: whether the harness that wrote the
+   * transcript is still working on it, derived at read time
+   * ({@link AttachedSourceActivity}). Absent on older hosts and on every
+   * other session.
+   */
+  attachedSourceActivity?: AttachedSourceActivity;
+  /**
    * #2310: true when this session is a **Draft** — it exists, but no turn has
    * started and no send was attempted anywhere in its CONVERSATION's lineage
    * (the root Session and every continuation/handoff child), and nothing in
@@ -1477,6 +1546,14 @@ export interface OrchestrationSessionEventPage {
   hasMore: boolean;
   /** Per-thread sequence to resume from. */
   nextSequence: number;
+  /**
+   * #5077: the thread's highest per-thread `sequence` (0 for none), read in
+   * the same snapshot as `events`. Per-thread sequences may have gaps once
+   * rows are compacted, so `session.eventCount` is a count and not a bound
+   * on any sequence or cursor; this is. Optional because older hosts omit
+   * it. Their logs are gap-free, so their `session.eventCount` equals it.
+   */
+  highWaterSequence?: number;
 }
 
 /** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */
@@ -1560,11 +1637,32 @@ export interface OrchestrationConversationEventWindow
   contextBoundaries: import('./conversation-context-boundary.js').ConversationContextBoundaryTranscriptMarker[];
 }
 
+export const STAGED_CONVERSATION_HANDOFF_PREVIEW = Object.freeze({
+  id: 'staged-agent-changes',
+  label: 'Stage chat Agent changes',
+  description:
+    'Choose the Agent and model for the next message. Sending starts a fresh Session with bounded conversation text.',
+});
+
+/** Send-time approval for a fresh Session seeded with bounded conversation text. */
+export interface StagedConversationHandoff {
+  expectedCurrentSessionId: string;
+  contextPolicy: 'continue-from-history';
+}
+
 export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
   'authorizedTranscript',
   'ownerTenantWorkspace',
   'targetAgentModel',
 ] as const);
+
+/**
+ * The machine code on a handoff refused because the conversation's current
+ * Session still has a turn running or has not settled, so a client can say
+ * what to do instead of showing the server's sentence.
+ */
+export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
+  'conversation_handoff_predecessor_busy';
 
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
@@ -1768,6 +1866,11 @@ export interface ConversationInboxEntry {
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;
   message: string;
+  /**
+   * Files sent with the message, when it carries any (`followUpAttachments`
+   * hosts). Descriptors only; the bytes stay on the Station.
+   */
+  attachments?: QueuedChatAttachmentDescriptor[];
   createdAt: string;
   updatedAt: string;
   /** The turn it started, once `sent`. */
@@ -1785,7 +1888,9 @@ export interface ConversationInboxEntry {
    * `continuation_workspace_corrupt_worktree_binding`,
    * `continuation_workspace_worktree_gone`,
    * `continuation_workspace_different_project`,
-   * `continuation_workspace_worktree_moved`, or `start_refused` for any
+   * `continuation_workspace_worktree_moved`, `attachment_unavailable` (a file
+   * held with the message was no longer stored), `attachment_input_unsupported`
+   * (the engine takes no files), or `start_refused` for any
    * other refusal.
    */
   reasonCode?: string;
@@ -1821,6 +1926,8 @@ export interface ConversationReadMessage {
   textTruncated?: { originalBytes: number };
   tools?: string[];
   createdAt?: string;
+  /** Another Station's record (`importedFrom`), not a row of this conversation. */
+  importedFrom?: string;
 }
 
 export type ConversationReadProvenance =
@@ -1955,6 +2062,33 @@ export interface TerminalProcessDetail {
   history: string;
 }
 
+/** See {@link ConversationListItem.readState}. */
+export interface ConversationReadState {
+  /**
+   * This conversation's current content version (#3075): a monotonic
+   * number that moves only when readable transcript content is appended,
+   * never on lifecycle bookkeeping. Opaque: compare it only with versions
+   * of the same conversation, and acknowledge it as rendered
+   * (`readVersion`).
+   */
+  version: number;
+  /** The highest version the caller has been shown, never above `version`. */
+  seenVersion: number;
+  /** `version > seenVersion`. */
+  unread: boolean;
+}
+
+/**
+ * See {@link ConversationListItem.readState}: the caller is a person, but
+ * their read state could not be read (a store that does not decode). Unknown,
+ * never "read"; the conversation itself is still listed.
+ */
+export interface ConversationReadStateUnavailable {
+  /** The inventory's own version for the item (epoch ms of `updatedAt`). */
+  version: number;
+  unavailable: true;
+}
+
 /**
  * S2 of #1302 (conversation-surface consolidation): one item shape for the
  * global conversation-inventory endpoint (`GET /api/conversations`), folding
@@ -2014,8 +2148,20 @@ export interface ConversationListItem {
   acceptedModel?: string;
   /** Server-resolved Station/Environment namespace for this conversation. */
   environmentId?: string;
-  /** Version of this conversation that the current user has opened. */
+  /**
+   * The stored "last viewed" version this caller's person key holds. A raw
+   * fact: read {@link readState} for whether the conversation is unread.
+   */
   acknowledgedAt?: string;
+  /**
+   * #3075: the caller's read state, derived by the server
+   * (`@kontourai/station-contracts/read-markers`). `version` is this item's
+   * current content version, the value to send (as `readVersion`) when
+   * marking what was rendered read. Absent when the server keeps no read state for the
+   * caller; `{ version, unavailable: true }` when it keeps one but could not
+   * read it. Never guess it from `acknowledgedAt`.
+   */
+  readState?: ConversationReadState | ConversationReadStateUnavailable;
   /**
    * Whether the conversation has an open turn. When `activity` is present
    * this is exactly `activity.openTurn !== undefined`.
@@ -2073,6 +2219,23 @@ export interface ConversationOpenCallerAccess {
 }
 
 export type ConversationOpenResolution = (
+  | {
+      /** The next turn can start the reserved empty-context execution. */
+      status: 'fresh-context-ready';
+      conversation: ConversationListItem;
+      predecessorSessionId: string;
+      reservedSessionId: string;
+      /** Earlier messages remain readable but are not passed to the next engine. */
+      transcript: {
+        available: true;
+        owner: 'runtime';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: true;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
   | {
       /** A saved, authorized fork with no provider Session until first send. */
       status: 'fork-ready';

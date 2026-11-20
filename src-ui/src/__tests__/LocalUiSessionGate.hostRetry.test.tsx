@@ -205,7 +205,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     expect(protectedMount).not.toHaveBeenCalled();
 
     fetchMock.mockImplementation(() => Promise.resolve(new Response('{}')));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await screen.findByText('Protected application mounted');
     expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT + 1);
   });
@@ -286,7 +286,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
             finishRetry = resolve;
           }),
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
 
       let finishLauncher: (response: Response) => void = () => {};
@@ -322,7 +322,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
           expect(
             (
               screen.getByRole('button', {
-                name: 'Try again',
+                name: 'Retry',
               }) as HTMLButtonElement
             ).disabled,
           ).toBe(false),
@@ -423,7 +423,7 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
           new RegExp(`attempt 2 of ${LOCAL_UI_SESSION_ATTEMPT_LIMIT}`, 'i'),
         ),
       ).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(reload).toHaveBeenCalledTimes(1);
       // The bound is not spent by the degraded timer: attempt 2 is still the one
       // in flight, and no third request was made on its behalf.

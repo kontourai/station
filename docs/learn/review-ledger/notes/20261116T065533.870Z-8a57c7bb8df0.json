@@ -1,0 +1,7 @@
+{
+  "revision": "79c677596d077e961a5dad38a10cbe09a3d582e4",
+
+  "notes": [
+    {"path":"README.md","note":"nightly.md fix-round delta: retention details only. README links getting-started#nightly-desktop-downloads, which still exists; its claims (download the installer, Nightly is a testing channel) are unaffected.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

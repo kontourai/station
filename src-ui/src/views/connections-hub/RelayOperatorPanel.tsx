@@ -26,14 +26,14 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
-type AppChannel = 'stable' | 'beta' | 'nightly';
+type AppChannel = 'stable' | 'nightly';
 type PendingDevice = RelayManagementView['pendingDevices'][number];
 
 const APP_LABEL: Record<AppChannel, string> = {
   stable: 'Station',
-  beta: 'Beta',
   nightly: 'Nightly',
 };
 const LIFETIMES: readonly [RelayInvitationLifetime, string][] = [
@@ -104,6 +104,7 @@ export function RelayOperatorPanel() {
 }
 
 function OperatorPanel({ scope }: { scope: Scope }) {
+  useDecisionSurface('relay-device-enrollment');
   const [inviting, setInviting] = useState(false);
   const [removing, setRemoving] = useState<RelaySetupApproval | null>(null);
   // Recipients whose invitation write may have happened without its link
@@ -187,7 +188,7 @@ function OperatorPanel({ scope }: { scope: Scope }) {
     return (
       <ErrorState
         title="Devices unavailable"
-        action={<Button onClick={() => void query.refetch()}>Try again</Button>}
+        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
       />
     );
   }
@@ -224,6 +225,12 @@ function OperatorPanel({ scope }: { scope: Scope }) {
           ]}
         />
       </div>
+      {view.retiredRecords && (
+        <p className="settings__field-hint" role="status">
+          {view.retiredRecords.approvals + view.retiredRecords.pendingDevices}{' '}
+          retired Beta records excluded from device setup.
+        </p>
+      )}
       {view.pendingDevices.length > 0 && (
         <ul className="relay-operator__list" aria-label="Waiting for approval">
           {view.pendingDevices.map((device) => (
@@ -287,7 +294,6 @@ function OperatorPanel({ scope }: { scope: Scope }) {
             <li className="relay-operator__item" key={entry.approvalId}>
               <span className="relay-operator__name">
                 {entry.surface.channel === 'stable' ||
-                entry.surface.channel === 'beta' ||
                 entry.surface.channel === 'nightly'
                   ? `${APP_LABEL[entry.surface.channel]} app`
                   : 'Station app'}
@@ -379,11 +385,10 @@ function InviteDeviceDialog({
   onUnconfirmed: (recipient: string, uncertain: boolean) => void;
   onClose: () => void;
 }) {
+  useDecisionSurface('relay-device-enrollment');
   const platformChannel = usePlatformProfile().channel;
   const [channel, setChannel] = useState<AppChannel>(
-    platformChannel === 'stable' || platformChannel === 'beta'
-      ? platformChannel
-      : 'nightly',
+    platformChannel === 'stable' ? platformChannel : 'nightly',
   );
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [setupText, setSetupText] = useState('');
@@ -516,7 +521,7 @@ function InviteDeviceDialog({
           <>
             <fieldset className="relay-invite__apps">
               <legend>Their app</legend>
-              {(['stable', 'beta', 'nightly'] as const).map((value) => (
+              {(['stable', 'nightly'] as const).map((value) => (
                 <Button
                   key={value}
                   size="sm"

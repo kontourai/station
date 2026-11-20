@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { completeNativeCapabilityReport } from '../platform/native/__tests__/completeNativeCapabilityReportFixture';
 import type {
   NativeCapabilityReport,
   NativeCommandResult,
@@ -227,6 +228,85 @@ describe('PlatformProfile derivation', () => {
     );
   });
 
+  test('offers recovery when iOS never returns its saved Station list', async () => {
+    vi.useFakeTimers();
+    let resolveRead!: () => void;
+    const read = new Promise<void>((resolve) => {
+      resolveRead = resolve;
+    });
+    const profileRead = vi.fn(() => read);
+    state.adapter = tauriAdapter('ios', 'disabled');
+    state.profileHydrate = profileRead;
+    const authorize = vi.fn(async () => true);
+    state.authorizeRememberedProfile = authorize;
+    vi.resetModules();
+    try {
+      const { PlatformBootstrap } = await import(
+        '../platform/PlatformProfileContext'
+      );
+      render(
+        <PlatformBootstrap>
+          <div>Workspace</div>
+        </PlatformBootstrap>,
+      );
+      await act(async () => vi.dynamicImportSettled());
+      expect(profileRead).toHaveBeenCalledOnce();
+      await act(async () => vi.advanceTimersByTimeAsync(29_999));
+      expect(
+        screen.queryByRole('button', { name: 'Reload Station' }),
+      ).toBeNull();
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Station stopped waiting for the saved Station list.',
+      );
+      expect(
+        screen.getByRole('button', { name: 'Reload Station' }),
+      ).toBeTruthy();
+
+      await act(async () => resolveRead());
+      expect(screen.queryByText('Workspace')).toBeNull();
+      expect(authorize).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  function wireAdapter(channel: unknown, includeChannel = true) {
+    const payload = {
+      ...completeNativeCapabilityReport('android'),
+      ...(includeChannel ? { channel } : {}),
+    };
+    return import('../platform/native/tauri').then(
+      ({ TauriNativePlatformAdapter }) =>
+        new TauriNativePlatformAdapter({
+          invoke: async () => payload as never,
+          listen: async () => () => {},
+        }),
+    );
+  }
+
+  test('preserves an omitted legacy channel through the real native adapter', async () => {
+    const profile = await resolveProfile(await wireAdapter(undefined, false));
+    expect(profile).toMatchObject({ target: 'android', channel: 'stable' });
+    expect(document.documentElement.dataset.appChannel).toBe('stable');
+  });
+
+  test.each(['beta', 'unreviewed', null])(
+    'keeps explicit unsupported channel %s outside the active profile and startup mark',
+    async (channel) => {
+      localStorage.setItem('station-startup-mark', 'beta');
+      const profile = await resolveProfile(await wireAdapter(channel));
+      expect(profile).toMatchObject({
+        target: 'unknown',
+        isTauri: true,
+        isMobile: false,
+      });
+      expect(profile.channel).toBeUndefined();
+      expect(document.documentElement.dataset.appChannel).toBeUndefined();
+      expect(localStorage.getItem('station-startup-mark')).toBeNull();
+    },
+  );
+
   test('web adapter resolves to a non-native web profile', async () => {
     const profile = await resolveProfile(
       platformProfileAdapter({
@@ -277,6 +357,44 @@ describe('PlatformProfile derivation', () => {
     expect(fallback).toHaveBeenCalledWith(true);
     expect(remembered).toHaveBeenCalledOnce();
   });
+
+  test.each([
+    ['its remembered Station', true],
+    ['the default Station', false],
+  ])(
+    'a mobile launch that cannot authorize %s still mounts the shell and records the recovery',
+    async (_label, openLastStationOnLaunch) => {
+      // An interrupted re-pairing leaves the launch Station `requires-auth`, and
+      // the host refuses to authorize it on every later start.
+      const refused = async () => {
+        throw new Error('the saved Station is not configured');
+      };
+      state.openLastStationOnLaunch = openLastStationOnLaunch;
+      state.authorizeRememberedProfile = refused;
+      state.authorizeDefaultProfile = refused;
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      state.adapter = tauriAdapter('ios', 'disabled');
+      vi.resetModules();
+      const mod = await import('../platform/PlatformProfileContext');
+
+      render(
+        <mod.PlatformBootstrap>
+          <span data-testid="protected-shell">protected</span>
+        </mod.PlatformBootstrap>,
+      );
+
+      try {
+        expect(await screen.findByTestId('protected-shell')).toBeTruthy();
+        expect(screen.queryByRole('alert')).toBeNull();
+        const recovery = mod.nativeProfileBootstrapRecoveryError();
+        expect(recovery).toContain('Connections');
+        expect(recovery).not.toContain('not configured');
+        expect(warned).toHaveBeenCalledOnce();
+      } finally {
+        warned.mockRestore();
+      }
+    },
+  );
 
   test('desktop macOS with an enabled tray supervises and tags the root', async () => {
     const profile = await resolveProfile(tauriAdapter('macos', 'enabled'));
@@ -476,13 +594,13 @@ describe('PlatformProfile derivation', () => {
             platform: 'android',
             capabilities: [],
             devBuild: true,
-            channel: 'beta',
+            channel: 'dev',
           },
         }),
       }),
     );
     expect(root.classList.contains('is-dev-build')).toBe(true);
-    expect(root.dataset.appChannel).toBe('beta');
+    expect(root.dataset.appChannel).toBe('dev');
     // Channel accents are stylesheet defaults; an inline brand would outrank
     // the user's persisted accent choice.
     expect(root.style.getPropertyValue('--k-brand')).toBe('');
@@ -512,7 +630,6 @@ describe('PlatformProfile derivation', () => {
     const root = document.documentElement;
     for (const [report, mark] of [
       [{ channel: 'nightly' }, 'nightly'],
-      [{ channel: 'beta' }, 'beta'],
       [{ channel: 'stable', devBuild: true }, 'dev'],
     ] as const) {
       localStorage.clear();

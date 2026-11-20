@@ -11,9 +11,7 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Classifies a diff with one node script so container-only changes still
-    # skip the smoke job. Hosted because the public repo has free GitHub-hosted
-    # minutes; this job does not need desktop-win.
+    # Classify the full diff so docs-only pushes skip the smoke job.
     runs-on: ubuntu-22.04
     if: ${{ github.event_name != 'pull_request' }}
     timeout-minutes: 10
@@ -49,14 +47,9 @@ jobs:
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: false
-    # The fleet listener provides docker + playwright. (Run 33228038600's
-    # device-pairing timeout, once blamed on the github-hosted environment
-    # here, was actually the anonymous-browser premise gap fixed in #917 —
-    # the runner move neither caused nor fixed it.)
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
-    # Budget = the longest capacity wait below (45 min) + the smoke itself
-    # (~20-25 min) + margin. Raising the wait without raising this only moves
-    # the failure from the reserve step to the job timeout.
+    # The VM owns its Docker daemon for this job. There is no shared
+    # desktop-win host capacity to reserve.
+    runs-on: ubuntu-24.04
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,25 +58,9 @@ jobs:
       - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
         with:
           require-docker: "true"
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "9"
-          # Weight 9 of 10 is admitted only once every other desktop-win
-          # lease has drained. The 45-minute wait was sized for a post-merge
-          # Windows floor (weight 5, 45-minute budget) that no longer exists
-          # (run 33589882367: a 600s wait timed out behind it). The remaining
-          # desktop-win tenants are all dispatch-only, so a wait here now
-          # means an operator dispatched one of them.
-          timeout-seconds: "2700"
-          owner-lifetime-seconds: "7800"
       - id: isolate-docker
         name: Isolate Docker client state
-        # Persistent WSL hosts may also use Docker Desktop interactively. Keep
-        # CI independent from its credential helper and Windows logon state.
+        # Use job-owned Docker configuration and retain guarded cleanup.
         run: |
           umask 077
           docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
@@ -99,11 +76,11 @@ jobs:
       - name: Install repo-pinned Chromium
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install --with-deps chromium
       - name: Build, pair, persist, and clean up
         env:
           STATION_RELEASE_SHA: ${{ github.sha }}
-          STATION_RELEASE_REF: v0.0.0-preview.1
+          STATION_RELEASE_REF: v0.0.0-rc.1
           STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
       - name: Verify public-ingress protocol and port isolation
@@ -119,10 +96,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove isolated Docker client state
-        # Only when the isolate step ran: if the capacity reservation failed,
-        # DOCKER_CONFIG was never set and the refusal below reported
-        # `Refusing unexpected DOCKER_CONFIG:` as the job's last error,
-        # burying the real one (the same run above).
+        # Earlier setup failures leave no Docker configuration to clean up.
         if: always() && steps.isolate-docker.outcome == 'success'
         run: |
           case "$DOCKER_CONFIG" in

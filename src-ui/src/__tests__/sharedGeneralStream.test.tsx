@@ -31,6 +31,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 const current = () => true;
 
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { GENERAL_EVENTS_RESUMED_EVENT } from '../hooks/orchestration/resumeCursor';
 import { subscribeSharedOrchestrationStream } from '../hooks/orchestration/sharedStreamListeners';
 
 afterEach(() => {
@@ -139,4 +140,79 @@ test('general frame ids never become orchestration resume cursors', () => {
   );
   expect(transport.calls[1].options.initialLastEventId).toBeUndefined();
   next();
+});
+
+/*
+ * General events are not replayed. The connection that carries them tells its
+ * listeners when it re-opens after a failure, so they can re-read what those
+ * events would have refreshed; the other connection's failures say nothing
+ * about general events.
+ */
+const resumed = {
+  event: 'station:general',
+  data: JSON.stringify({ event: GENERAL_EVENTS_RESUMED_EVENT, data: '{}' }),
+};
+const acknowledged = () =>
+  new Response(null, { headers: { 'X-Station-General-Stream': '1' } });
+
+test('the shared stream announces a re-open after a failure, not its first open', () => {
+  const base = 'https://resume-shared.test';
+  const seen = vi.fn();
+  const subscription = subscribeSharedOrchestrationStream(base, {
+    onMessage: seen,
+  });
+  const release = ensureOrchestrationEventStream(
+    base,
+    undefined,
+    'person',
+    true,
+    true,
+  );
+  const [stream] = transport.calls;
+  stream.options.onOpen(acknowledged());
+  expect(seen).not.toHaveBeenCalled();
+
+  stream.options.onError(new Error('socket closed'));
+  expect(seen).not.toHaveBeenCalled();
+  stream.options.onOpen(acknowledged());
+  expect(seen.mock.calls).toEqual([[resumed]]);
+
+  // One notice per failure: an open that follows no failure adds none.
+  stream.options.onOpen(acknowledged());
+  expect(seen).toHaveBeenCalledTimes(1);
+  release();
+  subscription.close();
+});
+
+test('in legacy mode the /events connection announces its own re-open', () => {
+  const base = 'https://resume-legacy.test';
+  const seen = vi.fn();
+  const subscription = subscribeSharedOrchestrationStream(base, {
+    onMessage: seen,
+  });
+  const release = ensureOrchestrationEventStream(
+    base,
+    undefined,
+    'person',
+    true,
+  );
+  const [stream, legacy] = transport.calls;
+  expect(legacy.url).toBe(`${base}/events`);
+  legacy.options.onOpen(new Response(null));
+  // The orchestration stream carries no general events here.
+  stream.options.onOpen(new Response(null));
+  stream.options.onError(new Error('socket closed'));
+  stream.options.onOpen(new Response(null));
+  expect(seen).not.toHaveBeenCalled();
+
+  legacy.options.onError(new Error('socket closed'));
+  legacy.options.onOpen(new Response(null));
+  expect(seen.mock.calls).toEqual([[resumed]]);
+
+  // A connection that has been released announces nothing.
+  legacy.options.onError(new Error('socket closed'));
+  release();
+  legacy.options.onOpen(new Response(null));
+  expect(seen).toHaveBeenCalledTimes(1);
+  subscription.close();
 });

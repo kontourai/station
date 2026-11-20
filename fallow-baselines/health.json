@@ -3834,11 +3834,6 @@
         "count": 2
       }
     },
-    "scripts/__tests__/advisory-review-gate.test.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "scripts/__tests__/app-store-connect-receipt.test.ts": {
       "complexity_critical": {
         "count": 1
@@ -4363,11 +4358,6 @@
       },
       "crap_moderate": {
         "count": 15
-      }
-    },
-    "scripts/advisory-review-gate.mjs": {
-      "crap_moderate": {
-        "count": 2
       }
     },
     "scripts/agent-identity-supported-surface-inventory.mjs": {
@@ -17113,14 +17103,6 @@
         "count": 1
       }
     },
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx": {
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/components/chat-dock/ChatDockResizeHandle.tsx": {
       "complexity_moderate": {
         "count": 1
@@ -23750,7 +23732,6 @@
     "src-ui/src/utils/chatErrorTranslation.ts:complexity",
     "src-server/services/projects/task-browser-recording.ts:complexity",
     "packages/cli/src/commands/operate/derive.ts:complexity",
-    "scripts/advisory-review-gate.mjs:untested risk",
     "scripts/cli-mcp-parity.mjs:complexity",
     "src-server/runtime/diagnostics/task-room-acceptance-control.ts:untested risk",
     "src-ui/src/components/ImageInspector.tsx:complexity",

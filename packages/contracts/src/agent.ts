@@ -58,7 +58,6 @@ export interface AgentGuardrails {
    * Do not treat it as a working safety control until an adapter wires it.
    */
   stopSequences?: string[];
-  maxSteps?: number;
 }
 
 /** Default agent guardrails applied when an agent doesn't specify its own. */
@@ -140,11 +139,19 @@ export interface AgentQuickPrompt {
 
 export interface AgentUIConfig {
   component?: string;
-  quickPrompts?: AgentQuickPrompt[];
   workflowShortcuts?: string[];
 }
 
+export const AGENT_SHARED_TURNS_VERSION =
+  'station.agent-shared-turns/v1' as const;
+
 export interface AgentExecutionConfig {
+  /** Operator declaration only; admission and confinement remain server responsibilities. */
+  sharedTurns?: {
+    version: typeof AGENT_SHARED_TURNS_VERSION;
+    mode: 'model-only';
+    allowedModelIds: readonly string[];
+  };
   /**
    * The engine connection this Agent runs on. ABSENT means Station's own
    * engine (`engineId 'station'`) — the target contract in
@@ -250,10 +257,6 @@ export const BUILTIN_DELEGATION_DENIALS: readonly BuiltinDelegationDenial[] = [
       'Refuses a delegated child from sending messages through Station control.',
   },
   {
-    pattern: 'station-control_delegate_task',
-    refusal: 'Refuses a delegated child from delegating additional tasks.',
-  },
-  {
     pattern: 'station-control_add_*',
     refusal: 'Refuses a delegated child from adding Station-managed resources.',
   },
@@ -325,6 +328,8 @@ export interface AgentDelegationContext {
   rootAgentSlug: AgentId;
   rootConversationId?: string;
   allowedTools?: string[];
+  /** Additional inherited allowlists: a tool must match every group. Empty groups deny all tools. */
+  toolAllowlistConstraints?: string[][];
   blockedTools?: string[];
   denyApprovals?: boolean;
 }
@@ -399,20 +404,9 @@ export interface AgentSpec {
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
   region?: string;
-  maxSteps?: number;
+  /** VoltAgent model steps per turn (1–100). Null or absent uses the fallback. */
+  maxSteps?: number | null;
   guardrails?: AgentGuardrails;
-  /**
-   * @deprecated Nothing reads this block. It stays declared because the
-   * agent schema rejects unknown keys, so removing it would stop existing
-   * agent files that carry it from loading.
-   * SUNSET(#3879): remove from this type and `schemas/agent.schema.json` once
-   * agent files no longer carry it.
-   */
-  streaming?: {
-    useNewPipeline?: boolean;
-    enableThinking?: boolean;
-    debugStreaming?: boolean;
-  };
   tools?: AgentTools;
   skills?: string[];
   commands?: Record<string, SlashCommand>;
@@ -423,6 +417,34 @@ export interface AgentSpec {
     engineId: string;
     detectedAt: string;
   };
+}
+
+/** Remove only the retired fields at legacy configuration boundaries. */
+export function withoutRetiredAgentConfigFields(value: AgentSpec): AgentSpec;
+export function withoutRetiredAgentConfigFields(value: unknown): unknown;
+export function withoutRetiredAgentConfigFields(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const ui = record.ui;
+  const hasQuickPrompts =
+    ui !== null &&
+    typeof ui === 'object' &&
+    !Array.isArray(ui) &&
+    Object.getOwnPropertyDescriptor(ui, 'quickPrompts') !== undefined;
+  if (
+    Object.getOwnPropertyDescriptor(record, 'streaming') === undefined &&
+    !hasQuickPrompts
+  )
+    return value;
+
+  const next = { ...record };
+  delete next.streaming;
+  if (hasQuickPrompts) {
+    const nextUi = { ...ui } as Record<string, unknown>;
+    delete nextUi.quickPrompts;
+    next.ui = nextUi;
+  }
+  return next;
 }
 
 export interface AgentMetadata {

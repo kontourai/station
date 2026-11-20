@@ -10,6 +10,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -22,7 +23,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dispatch = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'draft-discard-test',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -144,12 +149,52 @@ function accepted(threadId: string) {
   };
 }
 
+async function discardAfterUndoWindow(
+  button: HTMLElement,
+  during?: () => void,
+) {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  fireEvent.click(button);
+  await act(async () => {});
+  during?.();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(8000);
+  });
+  vi.useRealTimers();
+}
+
 describe('#2312 discarding Drafts from the inbox', () => {
   beforeEach(() => {
     localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
     dispatch.mockReset();
     queryClient = new QueryClient();
+  });
+
+  it('retains Search focus after a delayed discard while still closing its open tab', async () => {
+    dispatch.mockResolvedValue(accepted(FRESH.threadId));
+    const rows = items([FRESH, WORKED], {
+      [FRESH.threadId]: {
+        agentSlug: 'fresh-agent',
+        status: 'idle',
+        orchestrationSessionStarted: true,
+        currentSessionId: FRESH.threadId,
+        conversationId: FRESH.threadId,
+        createdAt: NOW - 23 * HOUR,
+        messages: [],
+      },
+    });
+    const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
+    const search = screen.getByRole('searchbox', { name: 'Search inbox' });
+    const discard = screen.getByRole('button', {
+      name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard, () => search.focus());
+    await waitFor(() =>
+      expect(onCloseChat).toHaveBeenCalledWith(FRESH.threadId),
+    );
+    expect(document.activeElement).toBe(search);
   });
 
   it('an orchestration-only Draft is discarded by the server command, and the session list is re-read', async () => {
@@ -159,10 +204,13 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const { onCloseChat } = renderPanel(rows);
 
     const drafts = screen.getByRole('region', { name: 'Open' });
-    fireEvent.click(
-      within(drafts).getByRole('button', {
-        name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
-      }),
+    const discard = within(drafts).getByRole('button', {
+      name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /^Draft claude:worked[, ]/ }),
     );
 
     await waitFor(() =>
@@ -171,7 +219,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
       }),
     );
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: FRESH.threadId,
     });
@@ -211,14 +259,14 @@ describe('#2312 discarding Drafts from the inbox', () => {
     expect(row?.orchestrationThreadId).toBe(FRESH.threadId);
     const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', { name: `Discard draft ${row?.title}` }),
     );
 
     await waitFor(() =>
       expect(onCloseChat).toHaveBeenCalledWith(FRESH.threadId),
     );
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
       type: 'discardDraft',
       threadId: FRESH.threadId,
     });
@@ -240,7 +288,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH]);
     renderPanel(rows);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -263,7 +311,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH]);
     const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -287,7 +335,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     const rows = items([FRESH]);
     renderPanel(rows);
 
-    fireEvent.click(
+    await discardAfterUndoWindow(
       screen.getByRole('button', {
         name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
       }),
@@ -331,7 +379,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
     ).toBeTruthy();
   });
 
-  it('the mobile inbox keeps older drafts Open and offers server discard', async () => {
+  it('moves phone Details focus on discard and preserves newer focus after a late reply', async () => {
     dispatch.mockResolvedValue(accepted(STALE.threadId));
     const rows = items([FRESH, STALE]);
     render(
@@ -350,24 +398,77 @@ describe('#2312 discarding Drafts from the inbox', () => {
     );
     const staleTitle = titleOf(rows, STALE.threadId);
     expect(screen.getByText(staleTitle)).toBeTruthy();
-    // The picker keeps one ⋯ per row (#3144); Discard is in its sheet.
-    fireEvent.click(
-      screen.getByRole('button', { name: `Details for ${staleTitle}` }),
+    const details = screen.getByRole('button', {
+      name: `Details for ${staleTitle}`,
+    });
+    details.focus();
+    fireEvent.click(details);
+    const sheet = await screen.findByRole('dialog', {
+      name: `Details for ${staleTitle}`,
+    });
+    const discard = within(sheet).getByRole('button', {
+      name: `Discard draft ${staleTitle}`,
+    });
+    discard.focus();
+    await discardAfterUndoWindow(discard);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: `Details for ${staleTitle}` }),
+      ).toBeNull(),
     );
-    fireEvent.click(
-      await screen.findByRole(
-        'button',
-        { name: `Discard draft ${staleTitle}` },
-        { timeout: 8000 },
-      ),
+    expect(document.activeElement).toBe(
+      screen.getByText(titleOf(rows, FRESH.threadId)).closest('button'),
     );
 
     await waitFor(() =>
-      expect(dispatch).toHaveBeenCalledWith({
+      expect(dispatch.mock.calls[0]?.[0]).toEqual({
         type: 'discardDraft',
         threadId: STALE.threadId,
       }),
     );
+
+    const freshTitle = titleOf(rows, FRESH.threadId);
+    let accept!: (result: ReturnType<typeof accepted>) => void;
+    const response = new Promise<ReturnType<typeof accepted>>((resolve) => {
+      accept = resolve;
+    });
+    dispatch.mockImplementationOnce(() => response);
+    const freshDetails = screen.getByRole('button', {
+      name: `Details for ${freshTitle}`,
+    });
+    freshDetails.focus();
+    fireEvent.click(freshDetails);
+    const freshSheet = await screen.findByRole('dialog', {
+      name: `Details for ${freshTitle}`,
+    });
+    const freshDiscard = within(freshSheet).getByRole('button', {
+      name: `Discard draft ${freshTitle}`,
+    });
+    freshDiscard.focus();
+    await discardAfterUndoWindow(freshDiscard);
+    expect(dispatch.mock.calls[1]?.[0]).toEqual({
+      type: 'discardDraft',
+      threadId: FRESH.threadId,
+    });
+    fireEvent.click(
+      within(freshSheet).getByRole('button', { name: 'Close details' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: `Details for ${freshTitle}` }),
+      ).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    const search = screen.getByRole('searchbox', {
+      name: 'Search chats and tasks',
+    });
+    expect(document.activeElement).toBe(search);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await act(async () => accept(accepted(FRESH.threadId)));
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['orchestration-sessions'],
+    });
+    expect(document.activeElement).toBe(search);
   });
 
   it('the mobile inbox names a completed parent with reported background work as active', () => {

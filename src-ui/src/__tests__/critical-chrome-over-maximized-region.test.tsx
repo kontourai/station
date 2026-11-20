@@ -18,8 +18,8 @@ import {
 } from '../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
-vi.mock('../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="sessions-view" />,
+vi.mock('../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="sessions-view" />,
 }));
 // The Chat shell would mount the whole chat data stack; this file needs the
 // region surface HOST, not what Chat renders inside it.
@@ -75,7 +75,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('maximizing Activity uses the shared dock shell', async () => {
+test('maximizing Agents uses the shared dock shell', async () => {
   const compound = '.chat-dock.is-maximized';
 
   render(
@@ -90,29 +90,32 @@ test('maximizing Activity uses the shared dock shell', async () => {
   );
   await waitFor(() => expect(model).not.toBeNull());
 
-  act(() => model?.showSurface('activity'));
-  await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'), {
-    timeout: 10_000,
-  });
+  act(() => model?.showSurface('workspace-agents'));
+  await waitFor(
+    () => expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    {
+      timeout: 10_000,
+    },
+  );
   // The pane behind this shell is lazy, and on a loaded machine the mount can
   // take longer than testing-library's 1s default — observed live, as an
-  // "Activity shell never rendered" against a DOM holding only its skeleton.
+  // "Agents shell never rendered" against a DOM holding only its skeleton.
   const activityShell = await waitFor(
     () => {
       const shell = document.querySelector<HTMLElement>(
-        'section[aria-label="Activity"]',
+        'section[aria-label="Agents"]',
       );
-      if (!shell) throw new Error('Activity shell never rendered');
+      if (!shell) throw new Error('Agents shell never rendered');
       return shell;
     },
     { timeout: 10_000 },
   );
-  // Both directions: an un-maximized Activity region must NOT match, or the
+  // Both directions: an un-maximized Agents region must NOT match, or the
   // assertion below would pass on a selector that matches every shell.
   expect(activityShell.matches(compound)).toBe(false);
 
-  // Since #2045/#2055 the Activity pane mounts behind its own lazy boundary
-  // INSIDE the shell (`renderActivityDockPane`), so the shell's section —
+  // Since #2045/#2055 the Agents pane mounts behind its own lazy boundary
+  // INSIDE the shell (`renderAgentsDockPane`), so the shell's section —
   // and its skeleton — exist one async hop before the header carrying the
   // expand control does. The section's existence says nothing about the
   // control's; wait for the control where it renders. (Observed live as a
@@ -131,6 +134,6 @@ test('maximizing Activity uses the shared dock shell', async () => {
 
   expect(
     activityShell.matches(compound),
-    `a maximized Activity region must match "${compound}", the selector every #1132/#920 rule keys on`,
+    `a maximized Agents region must match "${compound}", the selector every #1132/#920 rule keys on`,
   ).toBe(true);
 });

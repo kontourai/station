@@ -1,5 +1,10 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import {
+  CHILD_WORK_TRANSCRIPT_PAGE_MAX,
+  type ChildWorkTranscriptPage,
+} from '@kontourai/station-contracts/child-work';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
@@ -13,9 +18,19 @@ import {
   COOPERATIVE_STOP_BUDGET_MS,
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
+import type {
+  SessionLiveContinuity,
+  SessionRewindOutcome,
+} from '@kontourai/station-contracts/provider';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import { useContext } from 'react';
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useCallback, useContext, useEffect, useMemo } from 'react';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
@@ -32,6 +47,7 @@ import {
   type ProviderTaskStopResult,
   stopProviderTask as stopProviderTaskClient,
 } from '../client/delegations';
+import { reconnectEngineMcpServer as reconnectEngineMcpServerClient } from '../client/engine-mcp-servers';
 import {
   continueExecutionMessage,
   getConversationContextBoundaryStatus,
@@ -67,6 +83,10 @@ import {
   hasRecordedTurnFailure,
   rememberSentTurnKey,
 } from '../client/sent-turn-key';
+import {
+  getSessionLiveContinuity,
+  rewindSessionToTurn as rewindSessionToTurnClient,
+} from '../client/session-rewind';
 import { isStationAnswer } from '../client/station-envelope';
 import {
   type ConnectionReadTarget,
@@ -140,6 +160,12 @@ export class AdoptSessionError extends Error {
    * retry (a folder Station will not continue in), for showing as written.
    */
   readonly refusal?: string;
+  /**
+   * Station's typed refusal code, when it sent one. `continuation_source_active`
+   * means the source is still running and nothing was created; the same
+   * request with `continueWhileSourceActive` proceeds.
+   */
+  readonly code?: string;
 
   constructor(input: {
     failureClass: AdoptSessionFailureClass;
@@ -148,6 +174,7 @@ export class AdoptSessionError extends Error {
     status?: number;
     cause?: unknown;
     refusal?: string;
+    code?: string;
   }) {
     super(input.message);
     this.name = 'AdoptSessionError';
@@ -156,6 +183,7 @@ export class AdoptSessionError extends Error {
     this.status = input.status;
     this.cause = input.cause;
     if (input.refusal) this.refusal = input.refusal;
+    if (input.code) this.code = input.code;
   }
 }
 
@@ -288,11 +316,13 @@ export async function fetchConversationContextBoundaryStatus(
   conversationId: string,
   idempotencyKey: string,
   apiBase?: string,
+  request?: Pick<ClientRequestOptions, 'signal' | 'requestScope'>,
 ): Promise<ConversationContextBoundaryProjection> {
   return getConversationContextBoundaryStatus(
     await resolveApiBase(apiBase),
     conversationId,
     idempotencyKey,
+    request,
   );
 }
 
@@ -300,19 +330,29 @@ export function useConversationContextBoundaryStatusQuery(
   conversationId: string,
   idempotencyKey: string,
   apiBase?: string,
-  config?: QueryConfig<ConversationContextBoundaryProjection>,
+  config?: QueryConfig<ConversationContextBoundaryProjection> &
+    Pick<ClientRequestOptions, 'requestScope'>,
 ) {
   const query = orchestrationQueries.contextBoundary(
     conversationId,
     idempotencyKey,
   );
+  const requestScope = config?.requestScope;
   return useApiQuery(
-    [...query.queryKey, apiBase ?? 'default'],
-    () =>
+    [
+      ...query.queryKey,
+      apiBase ?? 'default',
+      ...(requestScope ? [requestScope.authorityKey] : []),
+    ],
+    (signal) =>
       fetchConversationContextBoundaryStatus(
         conversationId,
         idempotencyKey,
         apiBase,
+        {
+          signal,
+          requestScope,
+        },
       ),
     {
       enabled:
@@ -575,20 +615,125 @@ export function useStopProviderTaskMutation(apiBase?: string) {
   });
 }
 
+export interface ReconnectEngineMcpServerInput {
+  threadId: string;
+  serverName: string;
+  /** Begin the server's sign-in; its consent link arrives as a URL request. */
+  startOAuth: boolean;
+}
+
+/**
+ * Ask a Session's engine to restart one MCP server it runs itself (or begin
+ * its sign-in). Answers the engine's `EngineCommandOutcome`; a host without
+ * the route answers `unsupported`.
+ */
+export async function reconnectOrchestrationEngineMcpServer(
+  input: ReconnectEngineMcpServerInput & { apiBase?: string },
+): Promise<EngineCommandOutcome> {
+  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  return reconnectEngineMcpServerClient(
+    resolvedApiBase,
+    input.threadId,
+    input.serverName,
+    { startOAuth: input.startOAuth },
+  );
+}
+
+export function useReconnectEngineMcpServerMutation(apiBase?: string) {
+  return useMutation({
+    mutationFn: (input: ReconnectEngineMcpServerInput) =>
+      reconnectOrchestrationEngineMcpServer({ ...input, apiBase }),
+  });
+}
+
+/**
+ * What a Session's live engine declared it can do natively (`live: false`
+ * when nothing holds it). A host without the read answers nothing offered.
+ */
+export function useSessionLiveContinuityQuery(
+  threadId: string | undefined,
+  apiBase?: string,
+  config?: QueryConfig<SessionLiveContinuity>,
+) {
+  const target = captureConnectionReadTarget(config?.readTarget);
+  apiBase = target?.targetApiBase ?? apiBase;
+  return useApiQuery(
+    [
+      'orchestration-session-continuity',
+      ...(target
+        ? [target.requestScope.authorityKey, target.runtimeKey ?? '']
+        : []),
+      apiBase ?? 'default',
+      threadId ?? '',
+    ],
+    async (signal) =>
+      getSessionLiveContinuity(await resolveApiBase(apiBase), threadId ?? '', {
+        signal,
+        requestScope: target?.requestScope,
+      }),
+    {
+      enabled: Boolean(threadId) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 30_000,
+      gcTime: config?.gcTime,
+      refetchOnMount: config?.refetchOnMount,
+      refetchInterval: config?.refetchInterval,
+      retry: config?.retry ?? false,
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
+export interface RewindSessionToTurnInput {
+  threadId: string;
+  /** The turn to rewind to before; it and every later turn are hidden. */
+  turnId: string;
+}
+
+/**
+ * Rewind a Session's engine context in place to before one turn. Answers the
+ * typed `SessionRewindOutcome`; a host without the route answers
+ * `unsupported`.
+ */
+export async function rewindOrchestrationSessionToTurn(
+  input: RewindSessionToTurnInput & {
+    apiBase?: string;
+    requestScope?: ApiRequestScope;
+  },
+): Promise<SessionRewindOutcome> {
+  return rewindSessionToTurnClient(
+    await resolveApiBase(input.apiBase),
+    input.threadId,
+    input.turnId,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
+  );
+}
+
+export function useRewindSessionToTurnMutation(
+  apiBase?: string,
+  requestScope?: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: (input: RewindSessionToTurnInput) =>
+      rewindOrchestrationSessionToTurn({ ...input, apiBase, requestScope }),
+  });
+}
+
 /** #3163: one page of transcript messages per fetch. */
 const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
 
 /**
  * #3163: an engine subagent's own read-only transcript, paged by message.
  * `fetchNextPage` continues where the last page ended. Off until `enabled`,
- * so a closed row reads nothing; a transcript is history, so it is fetched
- * once and not polled.
+ * so a closed row reads nothing. Running children poll every two seconds;
+ * the live child-work owner disables polling when the child settles.
  */
 export function useChildWorkTranscriptQuery(
   input: {
     threadId: string;
     childId: string;
     enabled?: boolean;
+    /** Re-read a live child through the query owner; stops when the reader unmounts. */
+    running?: boolean;
     requestScope?: ApiRequestScope;
   },
   apiBase?: string,
@@ -620,7 +765,275 @@ export function useChildWorkTranscriptQuery(
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
     staleTime: 30_000,
+    refetchInterval: input.running ? 2_000 : false,
   });
+}
+
+/** A transcript read from a server that names no page ranges. */
+function isLegacyTranscript(
+  data: { pages: readonly ChildWorkTranscriptPage[] } | undefined,
+): boolean {
+  const first = data?.pages[0];
+  return first !== undefined && first.endOffset === undefined;
+}
+
+/** Where a page of a child's transcript is read from. */
+type ChildTranscriptPageParam =
+  | { kind: 'tail' }
+  | { kind: 'before'; end: number }
+  | { kind: 'range'; offset: number; end: number };
+
+/**
+ * An engine subagent's transcript read the way a chat reads: the latest
+ * messages first, older ones on request (`fetchPreviousPage`, shown above),
+ * and, while the child runs, only what follows the last message read. A
+ * poll reads from that cursor and appends; against a server with ranges it
+ * never re-reads loaded pages (an older server, without them, re-reads its
+ * loaded pages each poll, as it always did).
+ * `refreshLatest` reads past the cursor now (for a reported change, or the
+ * settle that carries the last messages); `reload` starts again from the
+ * latest messages.
+ */
+export function useChildWorkTranscriptTailQuery(
+  input: {
+    threadId: string;
+    childId: string;
+    enabled?: boolean;
+    /** Poll past the cursor every two seconds while the child runs. */
+    running?: boolean;
+    requestScope?: ApiRequestScope;
+  },
+  apiBase?: string,
+) {
+  const client = useQueryClient();
+  const enabled =
+    (input.enabled ?? true) &&
+    input.threadId.length > 0 &&
+    input.childId.length > 0;
+  const authorityKey = input.requestScope?.authorityKey ?? null;
+  const key = useMemo(
+    () => [
+      'orchestration-child-work-transcript-tail',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+      authorityKey,
+    ],
+    [apiBase, input.threadId, input.childId, authorityKey],
+  );
+  const read = async (
+    page: { offset?: number; limit: number; tail?: boolean },
+    signal: AbortSignal,
+  ) =>
+    getChildWorkTranscript(
+      await resolveApiBase(apiBase),
+      input.threadId,
+      input.childId,
+      page,
+      {
+        signal,
+        ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+      },
+    );
+  const history = useInfiniteQuery<
+    ChildWorkTranscriptPage,
+    Error,
+    InfiniteData<ChildWorkTranscriptPage, ChildTranscriptPageParam>,
+    unknown[],
+    ChildTranscriptPageParam
+  >({
+    queryKey: key,
+    enabled,
+    initialPageParam: { kind: 'tail' },
+    queryFn: ({ pageParam, signal }) => {
+      if (pageParam.kind === 'tail')
+        return read(
+          { tail: true, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
+          signal,
+        );
+      if (pageParam.kind === 'range')
+        return read(
+          {
+            offset: pageParam.offset,
+            limit: Math.max(1, pageParam.end - pageParam.offset),
+          },
+          signal,
+        );
+      const offset = Math.max(
+        0,
+        pageParam.end - CHILD_WORK_TRANSCRIPT_PAGE_SIZE,
+      );
+      return read({ offset, limit: pageParam.end - offset }, signal);
+    },
+    // Older messages are the previous pages: they render above.
+    getPreviousPageParam: (first) =>
+      first.offset !== undefined && first.offset > 0
+        ? { kind: 'before', end: first.offset }
+        : undefined,
+    // The page after the last one. A server that names its pages' range is
+    // read forward from `endOffset`: the cursor read below appends those
+    // pages, and a refetch (an invalidation) rebuilds every loaded page
+    // from the first one instead of keeping only that first page. A server
+    // from before ranges ignores `tail` and pages forward from the first
+    // message by `nextOffset`, as `useChildWorkTranscriptQuery` does.
+    getNextPageParam: (last) => {
+      // An empty ranged page is the transcript's end: stop there, so a
+      // refetch does not walk one empty read per page the cursor appended.
+      if (last.endOffset !== undefined && last.endOffset === last.offset)
+        return undefined;
+      if (last.endOffset !== undefined)
+        return {
+          kind: 'range',
+          offset: last.endOffset,
+          end: last.endOffset + CHILD_WORK_TRANSCRIPT_PAGE_MAX,
+        };
+      return last.nextOffset !== undefined
+        ? {
+            kind: 'range',
+            offset: last.nextOffset,
+            end: last.nextOffset + CHILD_WORK_TRANSCRIPT_PAGE_SIZE,
+          }
+        : undefined;
+    },
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    // An older server has no cursor to read past: a running child re-reads
+    // its loaded pages, as before ranges existed.
+    refetchInterval: (query) =>
+      input.running && isLegacyTranscript(query.state.data) ? 2_000 : false,
+  });
+  const pages = history.data?.pages;
+  const legacy = isLegacyTranscript(history.data);
+  const cursor = legacy ? undefined : pages?.[pages.length - 1]?.endOffset;
+  const since = useQuery({
+    queryKey: [...key, 'since', cursor ?? null],
+    // Also read once per mount and on window focus, so a reopened reader,
+    // or one whose `running` is stale, still catches up past its cursor.
+    enabled: enabled && cursor !== undefined,
+    queryFn: ({ signal }) =>
+      read({ offset: cursor!, limit: CHILD_WORK_TRANSCRIPT_PAGE_MAX }, signal),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: input.running ? 2_000 : false,
+  });
+  const latest = since.data;
+  // The first page was read as "the latest messages". Once it names its
+  // range, record that range as its param, so a refetch (any invalidation)
+  // re-reads the same messages instead of a newer tail that would drop the
+  // pages between them.
+  const first = pages?.[0];
+  const firstParam = history.data?.pageParams[0];
+  useEffect(() => {
+    // A server reads from past the end as from the end. A first page that
+    // starts before the offset its param asked for, or comes back empty from
+    // a nonzero one (rewritten to exactly that length), means the transcript
+    // was rewritten shorter while it sat loaded: start again from its latest
+    // messages rather than show the empty range past the new end. A first
+    // page asked from a nonzero offset was only ever recorded non-empty.
+    const asked =
+      firstParam?.kind === 'range'
+        ? firstParam.offset
+        : firstParam?.kind === 'before'
+          ? Math.max(0, firstParam.end - CHILD_WORK_TRANSCRIPT_PAGE_SIZE)
+          : undefined;
+    if (
+      asked !== undefined &&
+      first?.offset !== undefined &&
+      (first.offset < asked || (asked > 0 && first.endOffset === first.offset))
+    ) {
+      void client.resetQueries({ queryKey: key, exact: true });
+      return;
+    }
+    if (
+      firstParam?.kind !== 'tail' ||
+      first?.offset === undefined ||
+      first.endOffset === undefined
+    )
+      return;
+    const { offset, endOffset } = first;
+    client.setQueryData<
+      InfiniteData<ChildWorkTranscriptPage, ChildTranscriptPageParam>
+    >(key, (data) =>
+      data && data.pageParams[0]?.kind === 'tail' && data.pages[0] === first
+        ? {
+            pages: data.pages,
+            pageParams: [
+              { kind: 'range', offset, end: Math.max(endOffset, offset + 1) },
+              ...data.pageParams.slice(1),
+            ],
+          }
+        : data,
+    );
+  }, [first, firstParam, client, key]);
+  useEffect(() => {
+    // A read from past the end names the transcript's end. Behind the
+    // cursor means the transcript was rewritten shorter: start again from
+    // its latest messages rather than wait at a cursor nothing will reach.
+    if (
+      latest?.offset !== undefined &&
+      cursor !== undefined &&
+      latest.offset < cursor
+    ) {
+      void client.resetQueries({ queryKey: key, exact: true });
+      return;
+    }
+    if (
+      !latest ||
+      latest.offset === undefined ||
+      latest.endOffset === undefined ||
+      latest.endOffset <= latest.offset
+    )
+      return;
+    const { offset, endOffset } = latest;
+    client.setQueryData<
+      InfiniteData<ChildWorkTranscriptPage, ChildTranscriptPageParam>
+    >(key, (data) =>
+      data && data.pages[data.pages.length - 1]?.endOffset === offset
+        ? {
+            pages: [...data.pages, latest],
+            pageParams: [
+              ...data.pageParams,
+              {
+                kind: 'range',
+                offset,
+                end: endOffset,
+              },
+            ],
+          }
+        : data,
+    );
+  }, [latest, client, key, cursor]);
+  const { refetch: refetchSince } = since;
+  const { refetch: refetchHistory } = history;
+  const refreshLatest = useCallback(() => {
+    if (cursor !== undefined) void refetchSince();
+    else if (legacy) void refetchHistory();
+  }, [cursor, legacy, refetchSince, refetchHistory]);
+  const reload = useCallback(
+    () => void client.resetQueries({ queryKey: key, exact: true }),
+    [client, key],
+  );
+  return {
+    ...history,
+    /**
+     * With ranges, later messages arrive past the cursor on their own; there
+     * is no later page to fetch, whatever the query's own param says.
+     */
+    hasNextPage: legacy && history.hasNextPage,
+    /**
+     * Later pages wait to be read: only from a server that pages forward
+     * from the first message (no ranges), where they are not read on their
+     * own. With ranges, later messages arrive past the cursor.
+     */
+    hasLaterPage: legacy && history.hasNextPage,
+    /** The cursor read failed; loaded messages stay. */
+    latestError: since.error,
+    refreshLatest,
+    reload,
+  };
 }
 
 export function useChildWorkInstructionsQuery(
@@ -811,6 +1224,7 @@ function rejectedContinuation(
   status: number,
   detail?: string,
   retryable?: unknown,
+  code?: unknown,
 ): AdoptSessionError {
   const statusMessage =
     status === 401 || status === 403
@@ -828,6 +1242,7 @@ function rejectedContinuation(
     retryable: !permanent,
     status,
     ...(permanent && detail ? { refusal: detail } : {}),
+    ...(typeof code === 'string' && code ? { code } : {}),
   });
 }
 
@@ -837,6 +1252,8 @@ export async function adoptOrchestrationSession(input: {
   intent?: AdoptOrchestrationSessionIntent;
   /** #3386: where a conversation no project claims continues. */
   target?: AdoptSessionTarget;
+  /** Continue although Station reads the source as still running. */
+  continueWhileSourceActive?: true;
 }): Promise<AdoptedSessionResult> {
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const intent = input.intent ?? createAdoptOrchestrationSessionIntent();
@@ -852,6 +1269,9 @@ export async function adoptOrchestrationSession(input: {
           sourceThreadId: input.sourceThreadId,
           idempotencyKey: intent.idempotencyKey,
           ...(input.target ? { target: input.target } : {}),
+          ...(input.continueWhileSourceActive
+            ? { continueWhileSourceActive: true }
+            : {}),
         }),
       },
     );
@@ -882,6 +1302,7 @@ export async function adoptOrchestrationSession(input: {
     data?: AdoptedSessionResult;
     error?: string;
     retryable?: unknown;
+    code?: unknown;
   };
   try {
     result = (await response.json()) as typeof result;
@@ -918,6 +1339,7 @@ export async function adoptOrchestrationSession(input: {
       response.status,
       result.error?.trim(),
       result.retryable,
+      result.code,
     );
   return result.data as AdoptedSessionResult;
 }
@@ -926,17 +1348,25 @@ export async function dispatchOrchestrationCommandWithReceipt<T = unknown>(
   command: OrchestrationCommandInput,
   apiBase?: string,
   timeoutMs?: number,
+  opts?: Pick<ClientRequestOptions, 'requestScope'>,
 ): Promise<OrchestrationCommandDispatchResult<T>> {
+  const scope = snapshotInvocationScope(opts?.requestScope);
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/orchestration/commands`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(command),
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    },
-  );
+  const url = `${resolvedApiBase}/api/orchestration/commands`;
+  const deadline = timeoutMs !== undefined ? { timeoutMs } : {};
+  const response = scope
+    ? await mutateJson(
+        url,
+        'POST',
+        { requestScope: scope, ...deadline },
+        command,
+      )
+    : await authenticatedFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+        ...deadline,
+      });
   const result = (await response.json()) as {
     success: boolean;
     data?: T;
@@ -1224,8 +1654,12 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
-  /** With `acceptForSession`: grant the whole Station browser server. */
-  sessionGrantScope?: 'server';
+  /**
+   * With `acceptForSession`: `server` grants the whole Station browser
+   * server; `rule` only the Bash command prefixes the engine suggested.
+   * Honoured only where the request offered that scope.
+   */
+  sessionGrantScope?: 'server' | 'rule';
   /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */

@@ -13,6 +13,7 @@ import {
 } from '../app-shell/RouteViewBoundary';
 import { routeTransitionStore } from '../app-shell/route-transition-store';
 import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
+import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 
 class ThrowingView extends Component<{ error?: unknown }> {
@@ -45,6 +46,7 @@ function ConditionallyThrowingView({
 
 describe('RouteViewBoundary', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -56,6 +58,45 @@ describe('RouteViewBoundary', () => {
     );
 
     expect(screen.getByRole('status', { name: 'Loading view' })).toBeTruthy();
+  });
+
+  test('each suspended route gets its own loading window and offers connection review when unavailable', () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <RouteViewBoundary routeKey="agents">
+        <SuspendedView />
+      </RouteViewBoundary>,
+    );
+
+    act(() => vi.advanceTimersByTime(DEGRADED_QUERY_TIMEOUT_MS - 1));
+    expect(screen.getByRole('status', { name: 'Loading view' })).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
+
+    rerender(
+      <RouteViewBoundary routeKey="schedule" stationUnavailable>
+        <SuspendedView />
+      </RouteViewBoundary>,
+    );
+    expect(screen.getByRole('status', { name: 'Loading view' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    act(() => vi.advanceTimersByTime(DEGRADED_QUERY_TIMEOUT_MS));
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Check your Station connection.',
+    );
+    expect(screen.queryByRole('button', { name: 'Reload Station' })).toBeNull();
+    const opened = vi.fn();
+    window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened, {
+      once: true,
+    });
+    try {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Review connection' }),
+      );
+      expect(opened).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+    }
   });
 
   test('publishes the suspended route so the shell can mark it pending', () => {
@@ -198,7 +239,7 @@ describe('RouteViewBoundary', () => {
         screen.getByRole('button', { name: 'Reload Station' }),
       ).toBeTruthy();
       // A retry here cannot work: React caches the rejected lazy promise.
-      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     });
 
     test('a failed chunk download offers its reload only once back online', () => {
@@ -215,7 +256,7 @@ describe('RouteViewBoundary', () => {
         );
 
         expect(screen.getByRole('alert').textContent).toContain(
-          'not saved on this device',
+          'isn’t saved on this device',
         );
         expect(
           screen.queryByRole('button', { name: 'Reload Station' }),
@@ -240,7 +281,7 @@ describe('RouteViewBoundary', () => {
       );
 
       expect(screen.getByRole('alert').textContent).toContain(
-        'not available to you',
+        'isn’t available to you',
       );
       expect(
         screen.queryByRole('button', { name: 'Reload Station' }),
@@ -331,7 +372,7 @@ describe('RouteViewBoundary', () => {
       // Whatever made the view throw is now fixed; only a REMOUNT can
       // discover that — a re-render of the same failed tree cannot.
       state.shouldThrow = false;
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
       // The route mounted and committed for the first time on the retry —
       // the failed attempt never committed, so this is a genuine mount of the

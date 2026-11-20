@@ -296,7 +296,11 @@ describe('the toolbar connection chip fits the mobile action cluster', () => {
     const [label] = ruleBodies(chatCss, '\n.app-toolbar__conn-label');
     expect(label).toMatch(/max-width:\s*\d+px/);
     const [state] = ruleBodies(chatCss, '\n.app-toolbar__conn-state');
-    expect(state).toMatch(/min-width:\s*\d+px/);
+    // #4692: the reservation may scale with the density's base size
+    // (`calc(<px>em / <base px>)`); either way the slot is reserved.
+    expect(state).toMatch(
+      /min-width:\s*(?:\d+px|calc\(\s*\d+em\s*\/\s*\d+\s*\))/,
+    );
   });
 });
 

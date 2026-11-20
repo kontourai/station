@@ -33,7 +33,16 @@ function observedGoal(
       typeof data.status === 'string' ? NATIVE_STATUSES[data.status] : null,
     tokenBudget: data.tokenBudget ?? null,
   });
-  if (!goal) throw Error('Invalid goal response');
+  // Codex reports every accounting figure; the contract makes them optional
+  // only for implementations that report none, so a Codex goal without
+  // them stays an invalid response.
+  if (
+    !goal ||
+    goal.tokenBudget === undefined ||
+    goal.tokensUsed === undefined ||
+    goal.timeUsedSeconds === undefined
+  )
+    throw Error('Invalid goal response');
   return goal;
 }
 

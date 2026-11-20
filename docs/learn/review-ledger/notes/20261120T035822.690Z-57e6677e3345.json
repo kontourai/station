@@ -1,0 +1,7 @@
+{
+  "revision": "4934efe4c1867e04ad885251f713c6d3972b8948",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the two Inbox refresh input edges against the browser fixture and the hosted affected-test planner. With the edges removed, both selector cases omit the Inbox suite and fail. With the edges restored, both select the real browser suite. The existing import graph and broader lane rules still apply.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

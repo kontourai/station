@@ -65,6 +65,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useDiffCommentsQuery: () => ({ data: [] }),
   useCreateDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  // Agent feedback's preview is off: its strip reads nothing.
+  useFeaturePreviewsQuery: () => ({ data: [] }),
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({

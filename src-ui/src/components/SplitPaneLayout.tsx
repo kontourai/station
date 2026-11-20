@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { useFoldSplit } from '../hooks/useFoldSplit';
 import { useIsMobile, useStackedListDetail } from '../hooks/useIsMobile';
+import { useSwipeActions } from '../hooks/useSwipeActions';
 import {
   afterInitialStartup,
   initialStartupIsActive,
@@ -73,7 +74,7 @@ function detailRootClassName(
   return `split-pane__right${rightVisible ? ' split-pane__right--visible' : ''}${showMobileDetailSheet ? ' split-pane__right--sheet' : ''}${placement === 'portaled' ? ' split-pane__right--portaled' : ''}`;
 }
 
-interface SplitPaneItem {
+export interface SplitPaneItem {
   id: string;
   name: string;
   subtitle?: React.ReactNode;
@@ -91,6 +92,7 @@ interface SplitPaneItem {
    * in it.
    */
   trailing?: React.ReactNode;
+  swipeAction?: { label: string; onSelect: () => void };
   /**
    * Makes the row button a drag source (#3159: a conversation reference).
    * Absent renders the row exactly as before.
@@ -408,6 +410,59 @@ const OWNS_ARROW_KEYS = [
 
 function ownsArrowKeys(target: HTMLElement): boolean {
   return Boolean(target.closest(OWNS_ARROW_KEYS));
+}
+
+function SwipeableSplitPaneRow({
+  action,
+  itemKey,
+  children,
+}: {
+  action: NonNullable<SplitPaneItem['swipeAction']>;
+  itemKey: string;
+  children: React.ReactNode;
+}) {
+  const mobile = useIsMobile();
+  const { open, close, style, dragging, actionsVisible, ...gestures } =
+    useSwipeActions(mobile, {
+      triggerSelector: '.split-pane__item',
+      actionWidth: 96,
+    });
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: touch gesture exposes a button, with the same action available in the detail menu.
+    <div
+      className="split-pane__swipe-row"
+      data-split-pane-line={itemKey}
+      data-dragging={dragging || undefined}
+      style={style}
+      {...gestures}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget
+          .querySelector<HTMLButtonElement>('.split-pane__item')
+          ?.focus();
+        close();
+      }}
+    >
+      <div
+        className="split-pane__swipe-actions"
+        hidden={!actionsVisible}
+        inert={!open}
+      >
+        <Button
+          variant="danger"
+          onClick={() => {
+            close();
+            action.onSelect();
+          }}
+        >
+          {action.label}
+        </Button>
+      </div>
+      <div className="split-pane__swipe-content">{children}</div>
+    </div>
+  );
 }
 
 export function SplitPaneLayout({
@@ -1252,12 +1307,14 @@ export function SplitPaneLayout({
          * is an explicit request to show it regardless of the list.
          */
         null : (
-          <Empty
-            variant="prominent"
-            icon={<span className="split-pane__empty-icon">{emptyIcon}</span>}
-            label={emptyTitle}
-            description={emptyDescription}
-          />
+          <div className="split-pane__detail-empty">
+            <Empty
+              variant="prominent"
+              icon={<span className="split-pane__empty-icon">{emptyIcon}</span>}
+              label={emptyTitle}
+              description={emptyDescription}
+            />
+          </div>
         )}
       </DetailPaneContext.Provider>
     </>
@@ -1445,7 +1502,9 @@ export function SplitPaneLayout({
                     aria-labelledby={nameId}
                     aria-describedby={describedBy}
                     data-split-pane-nav={itemKey}
-                    data-split-pane-line={item.trailing ? undefined : itemKey}
+                    data-split-pane-line={
+                      item.trailing || item.swipeAction ? undefined : itemKey
+                    }
                     {...(item.onDragStart
                       ? {
                           draggable: true,
@@ -1496,7 +1555,9 @@ export function SplitPaneLayout({
                   <div
                     key={`row-content:${item.id}`}
                     className="split-pane__item-row"
-                    data-split-pane-line={itemKey}
+                    data-split-pane-line={
+                      item.swipeAction ? undefined : itemKey
+                    }
                   >
                     {row}
                     <div className="split-pane__item-trailing">
@@ -1505,6 +1566,17 @@ export function SplitPaneLayout({
                   </div>
                 ) : (
                   row
+                );
+                const actionableRow = item.swipeAction ? (
+                  <SwipeableSplitPaneRow
+                    key={item.id}
+                    action={item.swipeAction}
+                    itemKey={itemKey}
+                  >
+                    {rowContent}
+                  </SwipeableSplitPaneRow>
+                ) : (
+                  rowContent
                 );
                 const entry = (
                   <React.Fragment key={item.id}>
@@ -1553,10 +1625,10 @@ export function SplitPaneLayout({
                     {group
                       ? groupExpanded && (
                           <div className="split-pane__group-member">
-                            {rowContent}
+                            {actionableRow}
                           </div>
                         )
-                      : rowContent}
+                      : actionableRow}
                   </React.Fragment>
                 );
                 return item.section &&
@@ -1643,7 +1715,16 @@ export function SplitPaneCompanion({
 }: {
   children?: React.ReactNode;
   companion?: React.ReactNode;
-  sheet?: { label: string; onDismiss(): void };
+  /**
+   * The companion on a phone. `page` fills the screen instead of rising as a
+   * sheet (a room's thread, #4795); Back still closes it.
+   */
+  sheet?: {
+    label: string;
+    onDismiss(): void;
+    page?: boolean;
+    historyMode?: React.ComponentProps<typeof Dialog>['historyMode'];
+  };
   className?: string;
   /** A local supporting inspection slot; its content marks itself with data-companion-content. */
   inspection?: {
@@ -1680,8 +1761,12 @@ export function SplitPaneCompanion({
               title={sheet.label}
               closeLabel={`Close ${sheet.label.toLowerCase()}`}
               onClose={sheet.onDismiss}
+              historyMode={sheet.historyMode}
               size="lg"
-              panelClassName="split-pane-companion__sheet"
+              panelClassName={`split-pane-companion__sheet${sheet.page ? ' split-pane-companion__page' : ''}`}
+              overlayClassName={
+                sheet.page ? 'split-pane-companion__page-overlay' : undefined
+              }
             >
               {companion}
             </Dialog>

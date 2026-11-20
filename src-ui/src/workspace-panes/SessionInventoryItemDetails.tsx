@@ -179,7 +179,7 @@ function InputDetails({
         description={failure.description}
         retry={
           failure.retryable
-            ? { label: 'Try again', onRetry: () => void query.refetch() }
+            ? { label: 'Retry', onRetry: () => void query.refetch() }
             : undefined
         }
         fallback={fallback}
@@ -233,7 +233,7 @@ function ToolDetails({
         description={failure.description}
         retry={
           failure.retryable
-            ? { label: 'Try again', onRetry: () => void query.refetch() }
+            ? { label: 'Retry', onRetry: () => void query.refetch() }
             : undefined
         }
         fallback={fallback}
@@ -282,7 +282,7 @@ export function SessionInventoryItemDetails({
   const detailsRef = useRef<HTMLElement>(null);
   const openSession = (session: string) => {
     onDismiss?.();
-    showSurface('activity', { session });
+    showSurface('chat', { session });
   };
   const row = item.row;
   if (!row)

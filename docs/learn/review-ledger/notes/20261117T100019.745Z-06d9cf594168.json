@@ -1,0 +1,7 @@
+{
+  "revision": "8d918f39f092f0b1e469ac90629edec85035554d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The new-chat setup card Details summary now takes --touch-target-min (44px on touch widths only); the closed Details disclosure and per-Agent reason claims are unchanged and desktop sizing is unchanged. Checked against ChatSetupHelper.tsx and Kontour captures of run-setup-{dark,light}-{390,412,1440} and overlay-mobile-sheet.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/ChatStart.css"]}
+  ]
+}

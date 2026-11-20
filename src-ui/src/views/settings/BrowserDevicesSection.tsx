@@ -95,7 +95,7 @@ export function BrowserDevicesSection() {
                 description={describeBrowserFailure(access.error)}
                 action={
                   <Button size="sm" onClick={() => void access.refetch()}>
-                    Try again
+                    Retry
                   </Button>
                 }
               />
@@ -120,7 +120,7 @@ export function BrowserDevicesSection() {
       </div>
       <div {...settingsRow('device-setup')} tabIndex={-1}>
         <p className="settings__field-hint">
-          Device hub, sharing with Projects, and agent device access.
+          Device helper, sharing with Projects, and agent device access.
         </p>
         {requestScope ? (
           <DeviceSetupEntry

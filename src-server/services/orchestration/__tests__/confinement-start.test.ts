@@ -9,6 +9,7 @@
 import { join } from 'node:path';
 import type {
   ConfinementMechanism,
+  ConfinementNetworkPlan,
   ConfinementPlan,
   ConfinementPosture,
 } from '@kontourai/station-contracts/execution-confinement';
@@ -31,9 +32,11 @@ import { codexSandboxConfinementProvider } from '../../../providers/adapters/cod
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
+import { createBubblewrapConfinementProvider } from '../../../security/confinement/bubblewrap.js';
 import {
   assertRequiredConfinementObserved,
   type ConfinementProvider,
+  confinedNetworkPlan,
   observedConfinementRecord,
 } from '../../../security/confinement/confinement-provider.js';
 import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
@@ -192,6 +195,9 @@ describe('#2494: a start resolves its confinement before the engine is touched',
   let codex: RecordingAdapter;
   let stationDefault: ApprovalMode | undefined;
   let service: OrchestrationService;
+  /** #4769: what `confinedNetworkPolicy` answers, and how often it is read. */
+  let networkSetting: unknown;
+  let networkPolicyReads: number;
 
   function createService(
     confinementProviders?: readonly ConfinementProvider[],
@@ -215,6 +221,10 @@ describe('#2494: a start resolves its confinement before the engine is touched',
       // #2494: Seatbelt available on any host unless a test replaces it.
       confinementProviders:
         confinementProviders ?? confinementProvidersForTests(),
+      confinedNetworkPolicy: async () => {
+        networkPolicyReads += 1;
+        return confinedNetworkPlan(networkSetting);
+      },
     });
   }
 
@@ -225,6 +235,8 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     claude = new RecordingAdapter('claude');
     codex = new RecordingAdapter('codex');
     stationDefault = undefined;
+    networkSetting = undefined;
+    networkPolicyReads = 0;
     service = createService();
   });
 
@@ -361,6 +373,109 @@ describe('#2494: a start resolves its confinement before the engine is touched',
       confinement: 'workspace',
       modelOptions: { approvalMode: 'auto' },
     });
+  });
+
+  const RESTRICTED: ConfinementNetworkPlan = {
+    policy: 'restricted',
+    allowedHosts: ['registry.npmjs.org', '*.github.com'],
+  };
+
+  test('#4769: a restricted network policy reaches the plan of a required Claude start; with none, the plan is unchanged', async () => {
+    await start('claude-open', 'claude', { approvalMode: 'never' });
+    expect(claude.starts.at(-1)!.confinementPlan).toEqual(CLAUDE_REQUIRED_PLAN);
+    networkSetting = {
+      mode: 'restricted',
+      allowedHosts: RESTRICTED.allowedHosts,
+    };
+    await start('claude-restricted', 'claude', { approvalMode: 'never' });
+    expect(claude.starts.at(-1)!.confinementPlan).toEqual({
+      ...CLAUDE_REQUIRED_PLAN,
+      network: RESTRICTED,
+    });
+    networkSetting = { mode: 'full' };
+    await start('claude-full', 'claude', { approvalMode: 'never' });
+    expect(claude.starts.at(-1)!.confinementPlan).toEqual(CLAUDE_REQUIRED_PLAN);
+  });
+
+  test('#4769: a start that requires no confinement never reads the policy, so an operator or Auto start is unaffected', async () => {
+    networkSetting = { mode: 'restricted', allowedHosts: [] };
+    await start('claude-auto', 'claude', { approvalMode: 'auto' });
+    await start('claude-operator', 'claude', {
+      approvalMode: 'never',
+      operator: true,
+    });
+    await start('codex-operator', 'codex', {
+      approvalMode: 'never',
+      operator: true,
+    });
+    expect(networkPolicyReads).toBe(0);
+    expect(claude.starts.map((input) => input.confinementPlan)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    // Codex's own sandbox is still engaged unrequired, with no network plan.
+    expect(codex.starts.at(-1)!.confinementPlan).not.toHaveProperty('network');
+  });
+
+  test('#4769: a required Codex start under a restricted network is refused, naming why Codex cannot restrict it', async () => {
+    networkSetting = { mode: 'restricted', allowedHosts: [] };
+    const refused = start('codex-restricted', 'codex', {
+      approvalMode: 'never',
+    });
+    // The dispatch boundary carries the refusal's typed code.
+    await expect(refused).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      receipt: { status: 'rejected' },
+      message: expect.stringMatching(
+        /restricted network.*codex-sandbox: .*not available for Codex sessions/,
+      ),
+    });
+    expect(codex.starts).toHaveLength(0);
+  });
+
+  test('#4769: on Linux a required Claude start under a restricted network is refused by name: bubblewrap cannot restrict it yet', async () => {
+    await replaceService([
+      codexSandboxConfinementProvider,
+      createBubblewrapConfinementProvider({
+        platform: () => 'linux',
+        bwrap: process.execPath,
+        probe: () => ({ ok: true, reason: 'test stand-in' }),
+      }) as ConfinementProvider,
+    ]);
+    networkSetting = { mode: 'restricted', allowedHosts: [] };
+    await expect(
+      start('claude-linux', 'claude', { approvalMode: 'never' }),
+    ).rejects.toMatchObject({
+      code: 'confinement_mechanism_unavailable',
+      receipt: { status: 'rejected' },
+      message: expect.stringContaining(
+        'bubblewrap: restricted network is not available with the bubblewrap sandbox yet',
+      ),
+    });
+    expect(claude.starts).toHaveLength(0);
+    // Unrestricted, the same host still resolves bubblewrap as before.
+    networkSetting = undefined;
+    await start('claude-linux-open', 'claude', { approvalMode: 'never' });
+    expect(claude.starts.at(-1)!.confinementPlan?.mechanism).toBe('bubblewrap');
+  });
+
+  test('#4769: a policy that cannot be read refuses a required start rather than running it open', async () => {
+    for (const setting of [
+      { mode: 'restricted' },
+      { mode: 'restricted', allowedHosts: ['https://registry.npmjs.org'] },
+      'restricted',
+    ]) {
+      networkSetting = setting;
+      await expect(
+        start(`claude-bad-${JSON.stringify(setting).length}`, 'claude', {
+          approvalMode: 'never',
+        }),
+      ).rejects.toMatchObject({
+        code: 'confinement_mechanism_unavailable',
+        receipt: { status: 'rejected' },
+      });
+    }
+    expect(claude.starts).toHaveLength(0);
   });
 
   test('a workspace Claude start at auto engages nothing and is recorded honestly: host, no mechanism, not required', async () => {

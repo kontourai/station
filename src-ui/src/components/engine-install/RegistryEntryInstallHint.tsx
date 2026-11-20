@@ -46,29 +46,31 @@ function LiveRegistryEntryInstallHint({
     entries?.find((candidate) => candidate.id === entry.id) ?? entry;
   if (registryEntryDiscovery(current) !== 'not-installed') return null;
   return (
-    <EngineInstallHint
-      name={current.name}
-      recipe={current.hostInstall}
-      devicePresentation={devicePresentation}
-      provenance={current.source === 'core' ? undefined : current.sourceName}
-      onCheckAgain={() => {
-        setRechecking(true);
-        // The re-read updates the host's search PATH; the refetch then
-        // carries the fresh detection into the shared catalogue query.
-        void recheckACPConnectionRegistry()
-          .then((result) =>
-            setRecheckRefused(result.status === 'not-permitted'),
-          )
-          .catch(() => undefined)
-          .then(() => refetch())
-          .finally(() => setRechecking(false));
-      }}
-      checking={rechecking || isFetching}
-      checkAgainNotice={
-        recheckRefused
-          ? hostActionCopy('engine-recheck-not-permitted', devicePresentation)
-          : undefined
-      }
-    />
+    <>
+      <EngineInstallHint
+        name={current.name}
+        recipe={current.hostInstall}
+        devicePresentation={devicePresentation}
+        provenance={current.source === 'core' ? undefined : current.sourceName}
+        onCheckAgain={() => {
+          setRechecking(true);
+          // The re-read updates the host's search PATH; the refetch then
+          // carries the fresh detection into the shared catalogue query.
+          void recheckACPConnectionRegistry()
+            .then((result) =>
+              setRecheckRefused(result.status === 'not-permitted'),
+            )
+            .catch(() => undefined)
+            .then(() => refetch())
+            .finally(() => setRechecking(false));
+        }}
+        checking={rechecking || isFetching}
+        checkAgainNotice={
+          recheckRefused
+            ? hostActionCopy('engine-recheck-not-permitted', devicePresentation)
+            : undefined
+        }
+      />
+    </>
   );
 }

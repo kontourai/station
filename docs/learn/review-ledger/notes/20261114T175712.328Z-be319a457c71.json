@@ -1,0 +1,7 @@
+{
+  "revision": "cd992c8a62bca428e7d40114f0651304f8ce079a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the PR source FIFO paragraph against ci.yml after adding the release-bot slot: the three-part identity (head ref changeset-release/main, head repository, station-automation[bot] author) matches both group expressions, shard and statics share ci-pr-release-bot, supersession still cancels older heads, and the slot count is now eight.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/actionlint-gate.mjs"]}
+  ]
+}

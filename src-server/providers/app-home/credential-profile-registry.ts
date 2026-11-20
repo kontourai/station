@@ -20,6 +20,7 @@ import {
   appHomeProfileDir,
   type EnsureAppHomeProfileOptions,
   ensureAppHomeProfile,
+  locateAppHomeProfile,
 } from './app-home-profiles.js';
 
 const MAX_PROFILES = 64;
@@ -623,6 +624,18 @@ export async function ensureCredentialProfileAppHome(
   options: EnsureAppHomeProfileOptions = {},
 ) {
   return ensureAppHomeProfile(
+    credentialProfileStorageId(engineId, ref),
+    options,
+  );
+}
+
+/** #4774: the directory {@link ensureCredentialProfileAppHome} would return, creating nothing. */
+export async function locateCredentialProfileAppHome(
+  engineId: string,
+  ref: string,
+  options: { homeDir?: string } = {},
+) {
+  return locateAppHomeProfile(
     credentialProfileStorageId(engineId, ref),
     options,
   );

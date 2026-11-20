@@ -448,6 +448,99 @@ describe('Config Routes', () => {
     expect(body.data.defaultModel).toBe('gpt-4');
   });
 
+  test('#4769: PUT /app refuses a confinedNetwork with an allowed host the broker cannot read, and saves a valid one', async () => {
+    for (const confinedNetwork of [
+      { mode: 'restricted', allowedHosts: ['bad host!'] },
+      { mode: 'restricted', allowedHosts: ['https://x.com'] },
+      { mode: 'restricted' },
+      { mode: 'loopback' },
+    ]) {
+      const loader = createMockConfigLoader();
+      const app = createConfigRoutes(loader as any, mockLogger);
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confinedNetwork }),
+      });
+      expect(response.status, JSON.stringify(confinedNetwork)).toBe(400);
+      await expect(json(response)).resolves.toMatchObject({
+        success: false,
+        error: expect.stringContaining('confinedNetwork'),
+      });
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    }
+    const loader = createMockConfigLoader();
+    const app = createConfigRoutes(loader as any, mockLogger);
+    const saved = await app.request('/app', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        confinedNetwork: {
+          mode: 'restricted',
+          allowedHosts: ['registry.npmjs.org', '*.github.com'],
+        },
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect(loader.updateAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confinedNetwork: {
+          mode: 'restricted',
+          allowedHosts: ['registry.npmjs.org', '*.github.com'],
+        },
+      }),
+    );
+  });
+
+  test('#4769: an agent cannot change the confined network policy, not even to widen its own; the operator can', async () => {
+    const loader = createMockConfigLoader();
+    const app = new Hono();
+    let agent = true;
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(
+        c.req.raw,
+        agent
+          ? {
+              kind: 'internal',
+              credential: 'internal-test',
+              authority: 'operator-credential',
+              source: 'bearer',
+            }
+          : {
+              kind: 'credential',
+              credential: 'operator-test',
+              authority: 'operator-credential',
+              source: 'bearer',
+            },
+      );
+      await next();
+    });
+    app.route('/', createConfigRoutes(loader as any, mockLogger));
+    const put = (confinedNetwork: unknown) =>
+      app.request('/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confinedNetwork }),
+      });
+    for (const value of [
+      { mode: 'full' },
+      { mode: 'restricted', allowedHosts: ['exfil.example'] },
+      null,
+    ]) {
+      const refused = await put(value);
+      expect(refused.status, JSON.stringify(value)).toBe(403);
+      expect((await json(refused)).error).toContain(
+        'cannot change the confined network policy',
+      );
+    }
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    agent = false;
+    expect((await put({ mode: 'full' })).status).toBe(200);
+    expect(loader.updateAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ confinedNetwork: { mode: 'full' } }),
+    );
+  });
+
   test('PUT /app rejects injected legacy credential application authority', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);
@@ -685,6 +778,31 @@ describe('Config Routes', () => {
     });
     expect(mutationObserved).toHaveBeenCalledOnce();
     expect(loader.updateAppConfig).toHaveBeenCalledOnce();
+  });
+
+  test('usage sharing can be turned off while Agent configuration is unavailable', async () => {
+    const loader = createMockConfigLoader({
+      telemetryTier: { operator: 'lite' },
+    });
+    const applyConfigurationMutation = vi.fn(async () => {
+      throw new Error('Agent configuration is unavailable');
+    });
+    const app = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      applyConfigurationMutation,
+    );
+    const response = await app.request('/app', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telemetryTier: { operator: 'off' } }),
+    });
+    expect(response.status).toBe(200);
+    expect(applyConfigurationMutation).not.toHaveBeenCalled();
+    expect(loader.updateAppConfig).toHaveBeenCalledWith({
+      telemetryTier: { operator: 'off' },
+    });
   });
 
   test('GET /app includes provenance, with source "env" for injected runtime-derived keys', async () => {
@@ -1708,6 +1826,9 @@ describe('Config Routes (real ConfigLoader + filesystem)', () => {
         'null',
         '{"year":"banana"}',
         '{"timeStyle":"short"}',
+        '{"mont":"2-digit"}',
+        '{"hour12":"false"}',
+        '{"fractionalSecondDigits":1.5}',
       ]) {
         const response = await app.request('/app', {
           method: 'PUT',

@@ -1,0 +1,11 @@
+{
+  "revision": "9210382cb3f156e3e231246c18b9dd90c2d17477",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed Session, conversation, attention and contract vocabulary against the additive request-kind and elapsed-display delta. No identity definition or capability meaning changes; Needs answer remains the existing input rung and permissions retain approval. No prose change needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the contracts-reference addition against integration ownership, authentication, tenant boundaries and deployment qualification. Optional summary request metadata changes no integration method, credential, storage or hosted-admission contract. No prose change needed and no deployment qualification added.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the additive domain-owned openRequestKinds shape and compatibility wording against this route. The change adds no environment-dependent contract helper and no copied implementation. The route to the contracts reference and pure domain ownership instructions remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -28,6 +28,7 @@ type Step = {
   with?: Record<string, unknown>;
 };
 type Job = {
+  'runs-on'?: string;
   needs?: string | string[];
   if?: string;
   uses?: string;
@@ -170,6 +171,12 @@ function effectsOfCaller(job: Job): string[] {
 }
 
 describe('two-phase native Nightly', () => {
+  test('routes TestFlight uploads to the reviewed iOS build runner pool', () => {
+    const delivery = workflow('testflight-delivery.yml');
+    expect(delivery.jobs?.deliver?.['runs-on']).toBe('xcode-27');
+    expect(delivery.jobs?.upload?.['runs-on']).toBe('xcode-27');
+  });
+
   test('the guard model reads the real delivery workflow: upload is unreachable in build mode and reachable in upload mode', () => {
     const delivery = workflow('testflight-delivery.yml');
     const upload = delivery.jobs?.upload ?? {};
@@ -210,6 +217,7 @@ describe('two-phase native Nightly', () => {
       'native-cohort',
       'nightly-cli',
       'portable-nightly',
+      'record-cli-ledger',
     ]);
   });
 
@@ -371,7 +379,12 @@ describe('two-phase native Nightly', () => {
           ),
       ),
     );
-    expect(finalAttest.map(([id]) => id)).toEqual(['protected-finalize']);
+    // The second attempt is the same verifier, run only when the first never
+    // got a runner; both attest under this workflow's identity.
+    expect(finalAttest.map(([id]) => id)).toEqual([
+      'protected-finalize',
+      'protected-finalize-retry',
+    ]);
     const verify = (
       cohort.jobs?.['record-native-completion']?.steps ?? []
     ).find((step) =>

@@ -65,11 +65,11 @@ export class GateTestAdapter implements ProviderAdapterShape {
     return { outcome: 'no-active-turn' };
   }
   async respondToRequest(): Promise<void> {}
-  async stopSession(): Promise<void> {}
+  async stopSession(_threadId: string): Promise<void> {}
   async listSessions(): Promise<ProviderSession[]> {
     return [];
   }
-  async hasSession(): Promise<boolean> {
+  async hasSession(_threadId: string): Promise<boolean> {
     return false;
   }
   async stopAll(): Promise<void> {}

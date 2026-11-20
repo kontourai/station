@@ -1,0 +1,13 @@
+{
+  "revision": "be97c38e6aa167b8457052d292f01ba01609f6b9",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the ordinary Tools tab, tool selection helpers, and save/copy serializers. The read-only section shows the authored unattended patterns, including the all-tools wildcard. Remove and disable prune integration-specific patterns, retained selected tools keep their scoped grants, and save writes the resulting list even when empty. Copy starts without the unattended list. Agent-wide patterns and runtime approval checks retain their meaning.","inputs":["docs/guides/agent-configuration.md","src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","src-ui/src/views/agent-editor/utils.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed the Tools tab delta. The separate unattended pattern readout and integration pruning do not change the Browser access switch, supported engine delivery, device tool path, or any proposed interaction capability.","inputs":["docs/design/agent-interaction-capabilities.md","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the Agent configuration guide and Tools tab delta. The editor shows and prunes per-Agent unattended approval patterns through the existing form and save route. Agent identity, identity selectors, and the supported removal inventory keep their existing semantics.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared the tool-server topic with the changed Tools tab. The read-only unattended pattern list sits beside selected integrations, and removal prunes their scoped grants. The topic's current statement that approvals sit beside selected actions describes the unchanged interactive controls.","inputs":["docs/reference/station-docs.md","src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx"]}
+  ]
+}

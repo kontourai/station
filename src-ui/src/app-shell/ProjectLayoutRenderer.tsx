@@ -70,6 +70,7 @@ import {
 import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspacePaneNotice';
 import {
   admitRestoredFilePreviewPaneInstance,
+  FILE_PREVIEW_PANE_DESCRIPTOR,
   filePreviewPanePresentationLabel,
   filePreviewPanePresentationPath,
   removeRemovedFilePreviewPaneState,
@@ -91,6 +92,11 @@ import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePa
 import type { WorkspacePaneHostPanePresentation } from '../workspace-panes/WorkspacePaneHostTabs';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
+import {
+  WORKSPACE_PANE_ACTION_ELSEWHERE,
+  WORKSPACE_PANE_AVAILABILITY_CHECKING,
+  WORKSPACE_PLUGIN_PANE_UNBOUND,
+} from '../workspace-panes/workspacePaneCopy';
 import {
   isProjectPlaceableWorkspacePane,
   isWorkspacePaneInstanceOwnedByProject,
@@ -851,8 +857,7 @@ export function LayoutStackHost({
   if (catalog.isError && catalog.data === undefined) {
     return chatOnly(
       <ErrorState
-        title={`Could not load ${workspaceName}`}
-        description="Station could not read this Project’s pane catalog."
+        title={`Couldn’t load ${workspaceName}`}
         action={
           <button type="button" onClick={() => void catalog.refetch()}>
             Retry
@@ -1012,7 +1017,9 @@ export function LayoutStackHost({
       paneEntry?.descriptor ??
       (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
         ? WORKSPACE_BASIS_PANE_DESCRIPTOR
-        : stack.descriptorFor(instance.descriptorId));
+        : instance.descriptorId === FILE_PREVIEW_PANE_DESCRIPTOR.id
+          ? FILE_PREVIEW_PANE_DESCRIPTOR
+          : stack.descriptorFor(instance.descriptorId));
     const Pane =
       descriptor &&
       getBuiltinWorkspacePaneRenderer(
@@ -1116,7 +1123,7 @@ export function LayoutStackHost({
         return (
           <Empty
             label="Workspace pane unavailable"
-            description="Station could not bind this plugin pane to its owning Project and plugin."
+            description={WORKSPACE_PLUGIN_PANE_UNBOUND}
           />
         );
       }
@@ -1309,9 +1316,9 @@ export function LayoutStackHost({
         onAction={(_entry, action) => {
           if (action.code === 'retry-availability-check') {
             void catalog.refetch();
-            return 'Checking the current pane availability.';
+            return WORKSPACE_PANE_AVAILABILITY_CHECKING;
           }
-          return 'This layout can explain the requirement but cannot complete that step from its pane catalog.';
+          return WORKSPACE_PANE_ACTION_ELSEWHERE;
         }}
         canExecuteAction={(_entry, action) =>
           action.code === 'retry-availability-check'

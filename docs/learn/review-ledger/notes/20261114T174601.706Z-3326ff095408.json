@@ -1,0 +1,7 @@
+{
+  "revision": "e3f3d880eaa77a53fe91942099dc2f15924aea5f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the PR source FIFO ceiling paragraph against ci.yml after the shard-slot change: five shared shard groups routed by (last PR digit mod 5 + shard - 1) mod 5, statics still two parity buckets, seven PR computation slots, groups held while waiting for a runner, and base-branch reading under pull_request_target. Merge-group, push and dispatch identities unchanged.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/actionlint-gate.mjs"]}
+  ]
+}

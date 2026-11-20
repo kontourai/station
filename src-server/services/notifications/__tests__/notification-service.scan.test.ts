@@ -56,6 +56,7 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
         'scheduler',
         'approval-inbox',
         'turn-completion',
+        'pull-request-feedback',
       ]),
     );
     for (const source of found)

@@ -83,7 +83,7 @@ function ActiveDeviceReveal({
     ],
     enabled: !!scope && !!open,
     queryFn: async ({ signal }) => {
-      if (!scope?.isCurrent()) throw new Error('Station authority changed');
+      if (!scope?.isCurrent()) throw new Error('Station access changed');
       return fetchDeviceAgentReveals(
         scope.apiBase,
         projectSlug,

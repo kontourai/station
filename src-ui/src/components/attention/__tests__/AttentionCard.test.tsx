@@ -6,13 +6,19 @@ import type {
   ApprovalAttentionItem,
   AttentionItem,
   DevicePairingAttentionItem,
+  GateBlockedAttentionItem,
+  GateExceptionAttentionItem,
+  GateRouteBackAttentionItem,
   PluginLifecycleProposalAttentionItem,
+  PullRequestFeedbackAttentionItem,
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
+import { evaluateFlowGate } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 
 const action = vi.fn();
 const dismiss = vi.fn();
@@ -55,8 +61,25 @@ vi.mock('../../../utils/attentionOpen', async (importOriginal) => ({
   navigateToAttentionTarget: (href: string) => navigate(href),
 }));
 
+const feedbackScope = vi.hoisted(() => ({
+  apiBase: 'http://station.test',
+  authorityKey: 'owner',
+  isCurrent: () => true,
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => feedbackScope,
+}));
+
+const feedbackSdk = vi.hoisted(() => ({
+  sendAgain: vi.fn(async () => undefined),
+  turnOff: vi.fn(async () => undefined),
+}));
+vi.mock('@kontourai/station-sdk/pull-request-feedback', () => ({
+  sendPullRequestFeedbackAgain: (...args: unknown[]) =>
+    feedbackSdk.sendAgain(...(args as [])),
+  turnOffPullRequestFeedback: (...args: unknown[]) =>
+    feedbackSdk.turnOff(...(args as [])),
 }));
 
 const acknowledgeApiBases: Array<string | undefined> = [];
@@ -106,6 +129,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { AttentionCard } from '../AttentionCard';
 
 beforeEach(() => {
@@ -391,6 +415,8 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     review();
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('device-pairing-review');
     screen.getByRole('button', { name: 'Approve' }).click();
     expect(pairingMocks.confirmPairing).toHaveBeenCalledWith(
       'pair-req-1',
@@ -673,20 +699,16 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
  * already acknowledged; Open did not, and that asymmetry was the bug.
  */
 describe('AttentionCard — opening acknowledges (#3203)', () => {
-  test('opening a failed session acknowledges it, then navigates', async () => {
+  test('opening a failed session navigates in the app, then acknowledges it', async () => {
     renderCard(baseFailure());
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-    // The navigation is deferred until the ack resolves — otherwise the
-    // destination's own `/api/attention` read races the write it depends on.
-    expect(navigate).not.toHaveBeenCalled();
-    await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(
-        '/?surface=activity&session=thread-boom',
-      ),
+    // In-app navigation unloads nothing, so opening does not wait for the ack.
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=thread-boom',
     );
+    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
   });
 
   test('a failing acknowledgement still opens the session', async () => {
@@ -702,7 +724,7 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     );
   });
 
-  test('an approval row still opens with the plain anchor and acknowledges nothing', () => {
+  test('an approval row opens in the app and acknowledges nothing', () => {
     // Only `session-failed` is acknowledgeable; the projection ignores an ack
     // recorded against any other kind, so recording one here would be a write
     // that changes nothing while claiming the row was seen.
@@ -711,7 +733,7 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     screen.getByRole('link', { name: 'Open session' }).click();
 
     expect(acknowledgeAsync).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith('/projects/demo?chat=thread-1');
   });
 });
 
@@ -850,5 +872,238 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
     ).toBe(
       'Proposed by station in conversation c1 (self-reported by the agent)',
     );
+  });
+});
+
+describe('AttentionCard — Flow gate cards and the device Flow preview', () => {
+  const FLOW_HREF = '/projects/station/flow-console?run=run-1';
+  const source = {
+    threadId: 'thread-alpha',
+    runId: 'run-1',
+    gateId: 'verify',
+    projectSlug: 'station',
+  };
+  const stamps = {
+    createdAt: '2026-06-28T00:00:02.000Z',
+    updatedAt: '2026-06-28T00:00:02.000Z',
+  };
+  const routeBack: GateRouteBackAttentionItem = {
+    id: 'gate-route-back:run-1:verify',
+    kind: 'gate-route-back',
+    title: 'Route back: verify',
+    ...stamps,
+    source,
+    openHref: FLOW_HREF,
+    routeBackTo: 'implement',
+    attempt: 2,
+    maxAttempts: 3,
+  };
+  const blocked: GateBlockedAttentionItem = {
+    id: 'gate-blocked:run-1:verify',
+    kind: 'gate-blocked',
+    title: 'Blocked: verify',
+    ...stamps,
+    source,
+    openHref: FLOW_HREF,
+  };
+  const exception: GateExceptionAttentionItem = {
+    id: 'gate-exception:run-1:verify',
+    kind: 'gate-exception',
+    title: 'Exception needed: verify',
+    ...stamps,
+    source,
+    openHref: FLOW_HREF,
+    limitExceeded: true,
+  };
+  const cases = [
+    { item: routeBack, action: 'Re-evaluate' },
+    { item: blocked, action: 'Re-evaluate' },
+    { item: exception, action: 'Accept exception…' },
+  ] as const;
+
+  afterEach(() =>
+    deviceSettingsStore.resetMany([
+      'developerToolsEnabled',
+      'experimentalFlowEnabled',
+    ]),
+  );
+
+  test('explains an explicitly reopened run using the evaluation response', async () => {
+    vi.mocked(evaluateFlowGate).mockResolvedValueOnce({
+      reopened: {
+        gateId: 'verify',
+        verdict: 'route-back',
+        missing: ['merge-readiness'],
+      },
+    });
+    renderCard(blocked);
+    fireEvent.click(screen.getByRole('button', { name: 'Re-evaluate' }));
+    expect(
+      await screen.findByText(
+        'The completed run reopened after verify returned route-back.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Evidence still needed for merge-readiness.'),
+    ).toBeTruthy();
+  });
+
+  test.each(cases)(
+    '$item.kind: with the Flow preview off, offers no flow console link but keeps the card and its action',
+    ({ item, action }) => {
+      // Developer tools on but the Flow switch off: still off on this device.
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', false);
+      renderCard(item);
+
+      expect(
+        screen.queryByRole('link', { name: 'Open flow console' }),
+      ).toBeNull();
+      expect(screen.getByText(item.title)).toBeTruthy();
+      expect(screen.getByRole('button', { name: action })).toBeTruthy();
+      if (item.kind === 'gate-route-back')
+        expect(
+          screen.getByText('Routes back to implement. Attempt 2 of 3.'),
+        ).toBeTruthy();
+    },
+  );
+
+  test.each(cases)(
+    '$item.kind: with Developer tools off, offers no flow console link',
+    ({ item, action }) => {
+      deviceSettingsStore.set('developerToolsEnabled', false);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      renderCard(item);
+
+      expect(
+        screen.queryByRole('link', { name: 'Open flow console' }),
+      ).toBeNull();
+      expect(screen.getByRole('button', { name: action })).toBeTruthy();
+    },
+  );
+
+  test.each(cases)(
+    '$item.kind: with the Flow preview on, links to the run console',
+    ({ item, action }) => {
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      renderCard(item);
+
+      const link = screen.getByRole('link', { name: 'Open flow console' });
+      expect(link.getAttribute('href')).toBe(FLOW_HREF);
+      expect(screen.getByRole('button', { name: action })).toBeTruthy();
+    },
+  );
+});
+
+describe('AttentionCard — pull request feedback needs you', () => {
+  const identity = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'acme', name: 'widgets' },
+    ref: '42',
+  };
+  const feedbackItem = (
+    overrides: Partial<PullRequestFeedbackAttentionItem> = {},
+  ): PullRequestFeedbackAttentionItem => ({
+    id: 'pull-request-feedback:0123456789abcdef',
+    kind: 'pull-request-feedback',
+    title: '#42 still failing after 3 rounds',
+    body: 'ci / unit-tests failed on a1b2c3d. Auto-fix is paused.',
+    createdAt: '2026-11-16T09:00:00.000Z',
+    updatedAt: '2026-11-16T09:00:00.000Z',
+    sessionId: 'session-a',
+    source: { conversationId: 'chat-a', identity },
+    reason: 'round-limit',
+    cap: 'head',
+    headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    pullRequestUrl: 'https://github.com/acme/widgets/pull/42',
+    openHref: '/projects/p?chat=session-a&dock=open',
+    viewerMayChange: true,
+    ...overrides,
+  });
+  const buttons = () =>
+    screen.getAllByRole('button').map((button) => button.textContent);
+
+  beforeEach(() => {
+    feedbackSdk.sendAgain.mockClear();
+    feedbackSdk.turnOff.mockClear();
+  });
+
+  test('paused: Send again is the one primary action, first, then Open pull request, Turn off last', async () => {
+    renderCard(feedbackItem());
+    const actions = document.querySelector(
+      '.attention-item__footer .notice-actions',
+    );
+    expect(
+      [...(actions?.children ?? [])].map((element) => element.textContent),
+    ).toEqual(['Send again', 'Open pull request', 'Turn off agent feedback']);
+    expect(screen.getByText('Agent feedback')).toBeTruthy();
+    expect(screen.getByText('#42 still failing after 3 rounds')).toBeTruthy();
+    const send = screen.getByRole('button', { name: 'Send again' });
+    expect(send.className).toContain('notice-action--primary');
+    expect(
+      screen
+        .getAllByRole('button')
+        .filter((button) => button.className.includes('--primary')),
+    ).toEqual([send]);
+    expect(
+      screen
+        .getByRole('link', { name: 'Open pull request' })
+        .getAttribute('href'),
+    ).toBe('https://github.com/acme/widgets/pull/42');
+    await act(async () => fireEvent.click(send));
+    expect(feedbackSdk.sendAgain).toHaveBeenCalledWith(
+      'http://station.test',
+      'chat-a',
+      identity,
+      { requestScope: feedbackScope },
+    );
+  });
+
+  test('agent stopped: Open chat is primary and there is no Send again', () => {
+    renderCard(
+      feedbackItem({
+        reason: 'agent-stopped',
+        title: '#42 has feedback waiting',
+        body: 'Its agent stopped, so 2 failing checks were not sent.',
+      }),
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    const open = screen.getByRole('link', { name: 'Open chat' });
+    expect(open.getAttribute('href')).toBe(
+      '/projects/p?chat=session-a&dock=open',
+    );
+    expect(open.className).toContain('notice-action--primary');
+    expect(buttons()).toContain('Turn off agent feedback');
+  });
+
+  test('Turn off turns this pull request off in its own chat', async () => {
+    renderCard(feedbackItem());
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Turn off agent feedback' }),
+      ),
+    );
+    expect(feedbackSdk.turnOff).toHaveBeenCalledWith(
+      'http://station.test',
+      'chat-a',
+      identity,
+      { requestScope: feedbackScope },
+    );
+    expect(feedbackSdk.sendAgain).not.toHaveBeenCalled();
+  });
+
+  test('a reader who may not change it gets the remedy, not buttons that would be refused', () => {
+    renderCard(feedbackItem({ viewerMayChange: false }));
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Turn off agent feedback' }),
+    ).toBeNull();
+    expect(screen.getByTestId('attention-pr-feedback-remedy').textContent).toBe(
+      "Change this from the chat on this Station's owner device.",
+    );
+    // The way to it stays.
+    expect(screen.getByRole('link', { name: 'Open chat' })).toBeTruthy();
   });
 });

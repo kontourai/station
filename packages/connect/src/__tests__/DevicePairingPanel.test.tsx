@@ -1211,9 +1211,7 @@ describe('device pairing panels', () => {
         'Too many access requests',
       );
       expect(
-        screen
-          .getByRole('button', { name: 'Try again' })
-          .hasAttribute('disabled'),
+        screen.getByRole('button', { name: 'Retry' }).hasAttribute('disabled'),
       ).toBe(false);
       localStorage.removeItem(
         'station-http-development:http://100.64.0.21:3492',
@@ -1284,7 +1282,7 @@ describe('device pairing panels', () => {
     ).toBeTruthy();
     expect(document.body.textContent).not.toContain('network unavailable');
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('defaults the device name from userAgentData high-entropy values while staying editable', async () => {
@@ -2907,7 +2905,7 @@ describe('device pairing panels', () => {
         .value,
     ).toBe('stable');
     fireEvent.change(screen.getByLabelText('Pairing client channel'), {
-      target: { value: 'beta' },
+      target: { value: 'nightly' },
     });
     expect(
       (screen.getByLabelText('Pairing QR destination') as HTMLSelectElement)
@@ -2916,14 +2914,14 @@ describe('device pairing panels', () => {
     expect(
       (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
         .value,
-    ).toBe('beta');
+    ).toBe('nightly');
     await waitFor(() =>
       expect(
         screen.getByTestId('pairing-qr').getAttribute('data-payload'),
-      ).toMatch(/^station-beta:\/\/pair\?/),
+      ).toMatch(/^station-nightly:\/\/pair\?/),
     );
     expect(
-      screen.queryByRole('link', { name: /App Store|Google Play|beta/ }),
+      screen.queryByRole('link', { name: /App Store|Google Play|nightly/ }),
     ).toBeNull();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -2931,7 +2929,7 @@ describe('device pairing panels', () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^station-beta:\/\/pair\?linkVersion=1&clientChannel=beta&payload=/,
+          /^station-nightly:\/\/pair\?linkVersion=1&clientChannel=nightly&payload=/,
         ),
       ),
     );
