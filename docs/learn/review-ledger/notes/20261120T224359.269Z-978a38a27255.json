@@ -1,0 +1,7 @@
+{
+  "revision": "c70cf907c18949671accb1d04a8725943933e984",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the device-auth runtime fixture binding to the real pending-start projection. The monitoring and read-marker authority claims are unchanged. This fixture still mounts the runtime with actual device principal and owner-standing checks.","inputs":["docs/guides/monitoring.md","packages/telemetry-broker/README.md","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts","src-ui/src/pages/ProfilePage.tsx"]}
+  ]
+}

@@ -5,6 +5,9 @@ import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/run
 import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
 import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
+import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
+import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
+import { withEngineStartPreparation } from './engine-start-preparation.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 
@@ -26,6 +29,7 @@ import type {
   AgentRunStatus,
   AgentRunSummary,
   ConversationTurnActivity,
+  EngineStartWaitObservation,
   OrchestrationDelegationContext,
   OrchestrationPeerPendingRequest,
   OrchestrationSessionSummary,
@@ -73,7 +77,10 @@ import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tena
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
-import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import {
+  EngineStartCancelledError,
+  type RuntimeEngineStartLease,
+} from '../infra/resource-posture.js';
 import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
@@ -572,6 +579,8 @@ export function buildOrchestrationSessionSummary(options: {
   answerability: SessionAnswerabilityObservation;
   /** Process-local watchdog observation; never reconstructed from event time. */
   turnProgress?: TurnProgressObservation;
+  /** #4568: process-local capacity wait of a person's engine start. */
+  engineStartWait?: EngineStartWaitObservation;
   /** #2309: the conversation activity projection's read for this thread. */
   conversationActivity?: ConversationTurnActivity;
   /** Durable current execution child, supplied by a lineage-aware reader. */
@@ -803,6 +812,9 @@ export function buildOrchestrationSessionSummary(options: {
       ? { lastTurnAbortReason: lastEvent.reason }
       : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
+    ...(options.engineStartWait
+      ? { engineStartWait: options.engineStartWait }
+      : {}),
     ...(options.conversationActivity
       ? { conversationActivity: options.conversationActivity }
       : {}),
@@ -1814,12 +1826,14 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  signal?: AbortSignal;
   /** Production composition reauthorizes the retained Project after preparation. */
   assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
     invoke: () => Promise<ProviderSession>,
+    input: ProviderSessionStartInput,
   ) => Promise<ProviderSession>;
   eventStore?: EventStore;
   assertAdapterReady: (
@@ -1918,9 +1932,10 @@ export interface RecoveredSessionStartOptions {
     input: ProviderSessionStartInput,
   ) => void;
   /**
-   * The same observed-host admission gate used for foreground engine starts.
-   * A critical refusal leaves the persisted session recoverable and writes no
-   * recovery-failure event — it is a deferral, not a verdict on the session.
+   * The engine-start lease, under the intent of whoever needs this start
+   * (#4568). A capacity refusal is recorded like any failed reopen; a
+   * person's Stop during the wait (`EngineStartCancelledError`) records
+   * nothing, because nothing ran.
    */
   admitEngineStart?: (
     threadId: string,
@@ -1970,6 +1985,7 @@ export async function startRecoveredOrchestrationSession(options: {
   const { session, adapter, tenantExecutionContext } = options;
   const deps = options.options;
   try {
+    throwIfAborted(deps.signal);
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
@@ -1997,9 +2013,13 @@ export async function startRecoveredOrchestrationSession(options: {
           }
         : {}),
       metadata: recoveredMetadata,
+      ...(deps.signal ? { signal: deps.signal } : {}),
     };
     if (deps.resolveSessionCwd) {
-      startInput = await deps.resolveSessionCwd(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.resolveSessionCwd(startInput)),
+        deps.signal,
+      );
     }
     startInput =
       deps.prepareModelLaunch?.(adapter, startInput, session.model) ??
@@ -2010,12 +2030,21 @@ export async function startRecoveredOrchestrationSession(options: {
       typeof recoveredMetadata?.connectionId === 'string'
         ? recoveredMetadata.connectionId
         : undefined;
-    await deps.assertAdapterReady(adapter, recoveredConnectionId);
+    await raceWithSignal(
+      deps.assertAdapterReady(adapter, recoveredConnectionId),
+      deps.signal,
+    );
     if (deps.applyApprovalPosture) {
-      startInput = await deps.applyApprovalPosture(adapter, startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.applyApprovalPosture(adapter, startInput)),
+        deps.signal,
+      );
     }
     if (deps.resolveSessionAgent) {
-      startInput = await deps.resolveSessionAgent(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.resolveSessionAgent(startInput)),
+        deps.signal,
+      );
     }
     const unavailableReason = sessionAgentStartUnavailableReason({
       agentSlug: startInput.metadata?.agentSlug,
@@ -2027,31 +2056,46 @@ export async function startRecoveredOrchestrationSession(options: {
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {
-      startInput = await deps.applyCredentialProfile(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.applyCredentialProfile(startInput)),
+        deps.signal,
+      );
     }
     // #4435: the adapter's governance check runs before the start boundary,
     // as it does for a fresh start. Inside the boundary, a definitive refusal
     // (OpenCode's approval rules could not be read) was recorded as a start
     // that may have happened, and every retry was refused behind it.
-    await adapter.preflightStart?.(startInput);
+    if (adapter.preflightStart)
+      await raceWithSignal(adapter.preflightStart(startInput), deps.signal);
+    throwIfAborted(deps.signal);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
-      await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
-      // #2873: a respawn re-resolves the folder an agent's dispatch recorded
-      // and refuses a different result, before any adapter call.
-      assertDispatchCwdUnmoved(startInput, startInput.cwd);
-      recovered = await withTenantExecutionContext(
-        startInput.tenantExecutionContext,
-        () =>
-          deps.invokeSessionStart
-            ? deps.invokeSessionStart(startInput.threadId, () =>
-                adapter.startSession(startInput),
-              )
-            : // #2377 slice D: never inherit a dispatch route's server scope.
-              runEngineOutsideStationServerScope(() =>
-                adapter.startSession(startInput),
-              ),
+      recovered = await withEngineStartPreparation<ProviderSession>(
+        deps.signal,
+        async (invokeProvider) => {
+          await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
+          throwIfAborted(deps.signal);
+          // #2873: a respawn re-resolves the folder an agent's dispatch recorded
+          // and refuses a different result, before any adapter call.
+          assertDispatchCwdUnmoved(startInput, startInput.cwd);
+          return withTenantExecutionContext(
+            startInput.tenantExecutionContext,
+            () =>
+              deps.invokeSessionStart
+                ? deps.invokeSessionStart(
+                    startInput.threadId,
+                    () =>
+                      invokeProvider(() => adapter.startSession(startInput)),
+                    startInput,
+                  )
+                : invokeProvider(() =>
+                    runEngineOutsideStationServerScope(() =>
+                      adapter.startSession(startInput),
+                    ),
+                  ),
+          );
+        },
       );
     } finally {
       admissionLease?.release();
@@ -2072,6 +2116,14 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
+    // #4568: a person's Stop cancelled this start while it waited for the
+    // start lease. No provider started and nothing failed, so the Session
+    // keeps its record exactly as it was.
+    if (
+      error instanceof EngineStartCancelledError ||
+      error instanceof ReceiverExecutionRefusal
+    )
+      throw error;
     const message = errorMessage(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,

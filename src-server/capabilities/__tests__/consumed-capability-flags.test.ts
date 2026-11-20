@@ -960,6 +960,7 @@ const CONSUMED_FLAGS: Record<
       readEventStreamReplay: () => [missed],
       replayTurnProvenanceSidecar: () => ({}),
       retainSessionDeletionReader: () => () => {},
+      readableEngineStartWaits: () => [],
       conversationStreamBinding: () => undefined,
     });
     const response = await routes.request('/events', {

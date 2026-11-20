@@ -349,6 +349,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       lease: OpenCodeServeLease;
       planKey: string;
       timer: ReturnType<typeof setTimeout>;
+      detachAbort?: () => void;
     }
   >();
   private readonly inner: ProviderAdapterShape;
@@ -724,8 +725,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   }
 
   async preflightStart(input: ProviderSessionStartInput): Promise<void> {
+    input.signal?.throwIfAborted();
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
+    input.signal?.throwIfAborted();
     if (!plan) {
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
@@ -744,29 +747,33 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       await this.assertInspectableProjectConfig(plan.cwd);
     // The governance check needs no tool servers; it reads from a server
     // that has none added.
+    input.signal?.throwIfAborted();
     const lease = await this.verifiedLease(
       plan,
       input.threadId,
       openCodeMcpDigest([]),
     );
     if (!lease) {
+      input.signal?.throwIfAborted();
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
     }
     try {
+      input.signal?.throwIfAborted();
       await this.assertGovernable(
         lease.client,
         lease.cwd,
         floor,
         agent ?? 'build',
       );
+      input.signal?.throwIfAborted();
     } catch (error) {
       lease.release();
       throw error;
     }
     // Nothing was added to it: the start takes it over for its own tool
     // servers (`startLease`) instead of starting a second server.
-    this.keepPreflightLease(input.threadId, plan, lease);
+    this.keepPreflightLease(input.threadId, plan, lease, input.signal);
   }
 
   async startSession(
@@ -874,6 +881,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     if (!held) return undefined;
     this.preflightLeases.delete(threadId);
     clearTimeout(held.timer);
+    held.detachAbort?.();
     return held;
   }
 
@@ -882,18 +890,23 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     threadId: string,
     plan: NativePlan,
     lease: OpenCodeServeLease,
+    signal?: AbortSignal,
   ): void {
     this.takePreflightLease(threadId)?.lease.release();
-    const timer = setTimeout(() => {
+    const release = () => {
       if (this.preflightLeases.get(threadId)?.lease !== lease) return;
-      this.preflightLeases.delete(threadId);
-      lease.release();
-    }, PREFLIGHT_LEASE_HOLD_MS);
+      this.takePreflightLease(threadId)?.lease.release();
+    };
+    const timer = setTimeout(release, PREFLIGHT_LEASE_HOLD_MS);
     timer.unref?.();
+    signal?.addEventListener('abort', release, { once: true });
     this.preflightLeases.set(threadId, {
       lease,
       planKey: nativePlanKey(plan),
       timer,
+      ...(signal
+        ? { detachAbort: () => signal.removeEventListener('abort', release) }
+        : {}),
     });
   }
 

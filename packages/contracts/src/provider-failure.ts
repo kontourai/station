@@ -101,6 +101,9 @@ export const CONFINED_NETWORK_DENIED_CODE = 'confined_network_denied';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
+/** #4568: a person's Stop cancelled their engine start before any provider start. */
+export const RESOURCE_ENGINE_START_CANCELLED_CODE =
+  'resource_engine_start_cancelled';
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
 /**
  * A start or turn refused because the Feature Preview that gates the engine
@@ -206,6 +209,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONFINED_NETWORK_DENIED_CODE]: 'permission_denied',
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
+  [RESOURCE_ENGINE_START_CANCELLED_CODE]: 'cancelled',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
