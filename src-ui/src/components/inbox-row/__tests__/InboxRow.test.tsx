@@ -66,6 +66,25 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   dispatchOrchestrationCommandWithReceipt: discardCommand,
 }));
 
+const resolutionState = vi.hoisted(() => ({
+  supported: false,
+  mutate: vi.fn(),
+}));
+vi.mock('../../chat-dock/useConversationWorkState', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../chat-dock/useConversationWorkState')
+    >();
+  return {
+    ...actual,
+    useConversationWorkState: () => ({
+      ...actual.useConversationWorkState(),
+      supported: resolutionState.supported,
+      change: { isPending: false, mutate: resolutionState.mutate },
+    }),
+  };
+});
+
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 
 /**
@@ -865,6 +884,77 @@ describe('shared inbox actions', () => {
     expect(onDismiss).toHaveBeenCalledWith(row.item, details);
     expect(onCloseChat).not.toHaveBeenCalled();
   });
+});
+
+it('owned running chats can be dismissed while idle chats can be settled', () => {
+  const running = { ...rowFor().item, conversationId: 'running-chat' };
+  const idle = {
+    ...rowFor({ hasActiveTurn: false }).item,
+    id: 'idle',
+    title: 'Review next steps',
+    lifecycleLabel: 'Ready' as const,
+    conversationId: 'idle-chat',
+  };
+  const dismiss = vi.fn();
+  resolutionState.supported = true;
+  try {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'running', label: 'Running', items: [running] },
+            { id: 'idle', label: 'Idle', items: [idle] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="hover"
+          onActivate={vi.fn()}
+          onDismiss={dismiss}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Dismiss ${running.title} from inbox`,
+      }),
+    );
+    expect(dismiss).toHaveBeenCalledWith(
+      running,
+      expect.any(HTMLButtonElement),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Settle Review next steps' }),
+    );
+    expect(resolutionState.mutate).toHaveBeenCalledWith({
+      conversationId: 'idle-chat',
+      settled: true,
+    });
+  } finally {
+    resolutionState.supported = false;
+    resolutionState.mutate.mockClear();
+  }
+});
+
+it('swipe actions place Settle to the right of Snooze', () => {
+  const row = rowFor({ hasActiveTurn: false });
+  renderRow(row, {
+    chrome: 'touch',
+    hoverCard: true,
+    swipeActions: true,
+    swipeOpen: true,
+    onSnoozeWake: vi.fn(),
+    resolution: { settled: false, pending: false, onChange: vi.fn() },
+  });
+  const tray = document.querySelector<HTMLElement>('.inbox-row__swipe-actions');
+  if (!tray) throw new Error('Missing swipe actions');
+  expect(
+    within(tray)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim()),
+  ).toEqual(['Snooze', 'Settle']);
 });
 
 describe('the Details sheet belongs to the item, not to the row instance', () => {

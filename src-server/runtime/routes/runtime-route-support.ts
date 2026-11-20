@@ -57,6 +57,7 @@ import {
   FinishedAlertEpisodes,
 } from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
@@ -614,6 +615,8 @@ export function configureRuntimeSupportServices(
   );
   const resolveSessionProjectId = (threadId: string) =>
     resolveSessionRecord(threadId)?.localProjectId;
+  const resolveChatTitle = (threadId: string) =>
+    notificationChatTitle(context.orchestrationEventStore, threadId);
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
@@ -673,6 +676,7 @@ export function configureRuntimeSupportServices(
     context.logger,
     {
       resolveProjectId: resolveSessionProjectId,
+      resolveChatTitle,
       readFinishedAlertHold,
       onReplayedDelivery: (notification) =>
         options.coordinatorWakes?.()?.observeNotification(notification),
@@ -692,7 +696,7 @@ export function configureRuntimeSupportServices(
     context.orchestrationService,
     notificationService,
     context.logger,
-    { resolveProjectId: resolveSessionProjectId },
+    { resolveProjectId: resolveSessionProjectId, resolveChatTitle },
   );
   notificationService.dispatch('service-start', () =>
     notificationService.start(),

@@ -75,7 +75,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useDismissNotificationMutation: () => ({
     isPending: false,
-    mutate: dismiss,
+    mutateAsync: async (id: string) => dismiss(id),
   }),
   useNotificationActionMutation: () => ({
     isPending: false,
@@ -722,6 +722,52 @@ describe('NotificationHistory undo window', () => {
 
       expect(dismiss).toHaveBeenCalledTimes(1);
       expect(dismiss).toHaveBeenCalledWith('notif-undo');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a focused dismissal keeps other notifications visible while the server saves it', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderOne();
+      const close = vi.fn();
+      notifications = [
+        ...notifications,
+        {
+          ...notifications[0],
+          id: 'remaining',
+          title: 'Remaining notification',
+        },
+      ];
+      view.rerender(
+        <NotificationHistory isOpen onClose={close} onViewAll={vi.fn()} />,
+      );
+      let confirm: (() => void) | undefined;
+      dismiss.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirm = resolve;
+          }),
+      );
+      const menuItem = openRowAction('Dismiss', { index: 0 });
+      menuItem.focus();
+      fireEvent.click(menuItem);
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+      expect(screen.getByText('Remaining notification')).toBeTruthy();
+      expect(close).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.queryByText('Approval needed')).toBeNull();
+      expect(screen.getByText('Dismissing…')).toBeTruthy();
+      await act(async () => {
+        confirm?.();
+      });
+      expect(screen.queryByText('Approval needed')).toBeNull();
+      expect(screen.getByText('Remaining notification')).toBeTruthy();
+      expect(close).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
