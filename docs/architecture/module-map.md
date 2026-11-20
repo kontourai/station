@@ -5237,7 +5237,9 @@ source turn's recorded `resourceAdmissionIntent`, independently of its actor's
 `dispatchOrigin`. An automatic send can keep interactive source attribution
 while retaining background admission. Legacy events without the policy field
 fall back to origin; unrecognized policy values remain background. The recovery
-owner's signal reaches admission and preparation. While a person's
+owner's signal reaches admission and preparation. A credential restart takes
+the lease before stopping the current provider, so a queued cancellation or
+capacity refusal leaves that provider in place. While a person's
 start for an existing Session is queued, its summary carries
 `engineStartWait`, published through the session-projection update the
 composer refreshes from. The wait clears on admission, cancellation, timeout
@@ -5264,10 +5266,6 @@ retire the caller's wait, lease and pending identity while a preparation promise
 remains unresolved; its late continuation is fenced. Once the adapter is
 invoked, cancellation no longer races its result into a pre-start refusal:
 possible provider effects retain their normal outcome and uncertainty custody.
-
-**Correction evidence status.** These receiver, target, replay-policy and
-never-settling-preparation corrections are a source checkpoint awaiting admitted
-regressions. Earlier local receipts and PNGs do not verify this checkpoint.
 
 Other Station runtimes have their own controllers; this is not the verification
 coordinator's host-wide scheduler.

@@ -1379,8 +1379,8 @@ recorded turn/key. A delayed Stop for another invocation cannot be retargeted by
 thread identity alone. Before the adapter call, Stop retires owned preparation
 even if a workspace or receiver check never returns; a late completion cannot
 launch the engine. After adapter invocation, the existing provider outcome and
-indeterminate-delivery rules still apply. These review corrections are prepared
-in source; their new reaching regressions have not yet been executed.
+indeterminate-delivery rules still apply. A credential restart waits for
+admission before it tears down the current provider process.
 
 ### Return on this device
 

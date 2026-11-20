@@ -72,8 +72,7 @@ adapter-supplied policy when correlating the accepted send. Recovery reads the
 recorded policy and the source turn/submission identifiers; these fields do not
 become client input or grant execution authority. Older turns without the field
 retain origin-based fallback, while an unrecognized present policy fails closed
-to background admission. The source correction and its regression cases await
-an admitted verification phase.
+to background admission.
 
 ### Delegated execution ownership
 

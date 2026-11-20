@@ -96,6 +96,15 @@ async function harness(
   const backgroundGate = deferred();
   const backgroundEntered = deferred();
   const original = adapter.startSession.bind(adapter);
+  const liveThreads = new Set<string>();
+  if (options.credentialRecovery) {
+    vi.spyOn(adapter, 'hasSession').mockImplementation(async (threadId) =>
+      liveThreads.has(threadId),
+    );
+    vi.spyOn(adapter, 'stopSession').mockImplementation(async (threadId) => {
+      liveThreads.delete(threadId);
+    });
+  }
   let observedStarts = 0;
   vi.spyOn(adapter, 'startSession').mockImplementation(async (input) => {
     if (input.threadId === 'background') {
@@ -103,7 +112,8 @@ async function harness(
       await backgroundGate.promise;
     }
     const session = await original(input);
-    if (options.credentialRecovery)
+    if (options.credentialRecovery) {
+      liveThreads.add(input.threadId);
       adapter.events.push({
         method: 'session.started',
         eventId: `observed-start-${++observedStarts}`,
@@ -114,6 +124,7 @@ async function harness(
         initialState: 'created',
         metadata: input.metadata,
       });
+    }
     return session;
   });
   /**
@@ -1063,6 +1074,7 @@ describe('review corrections at the engine-start owner boundary', () => {
   ) {
     const h = await harness({ credentialRecovery: true });
     h.service.initialize();
+    await awaitSessionRecoveryCompleted(h.service);
     expect(await h.freshStart('live')).toMatchObject({ status: 'accepted' });
     await vi.waitFor(async () => {
       expect(h.eventStore.findSessionOwnerUserId('live')).toBe('owner');
@@ -1105,6 +1117,7 @@ describe('review corrections at the engine-start owner boundary', () => {
         resourceAdmissionIntent: intent,
       }),
     );
+    expect(h.startsFor('live')).toBe(1);
     const lease = await h.holdStartLease();
     const reserve = vi.spyOn(h.resourcePosture, 'reserveEngineStart');
     const waiting = h.waitPublished('live', true);
@@ -1153,6 +1166,7 @@ describe('review corrections at the engine-start owner boundary', () => {
       retryable: true,
     });
     expect(h.startsFor('live')).toBe(1);
+    expect(await h.adapter.hasSession('live')).toBe(true);
     await lease.release();
   });
 
