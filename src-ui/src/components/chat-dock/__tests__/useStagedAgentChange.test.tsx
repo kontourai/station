@@ -16,6 +16,7 @@ const harness = vi.hoisted(() => ({
   lookup: vi.fn(),
   updateChat: vi.fn(),
   readChats: vi.fn(),
+  retained: new Map<string, unknown>(),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -33,6 +34,18 @@ vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
   activeChatsStore: { getSnapshot: harness.readChats },
   useActiveChatActions: () => ({ updateChat: harness.updateChat }),
+}));
+
+vi.mock('../../../lib/staged-handoff-attempt-store', () => ({
+  stagedHandoffAttempts: {
+    read: async (key: string) => harness.retained.get(key),
+    write: async (key: string, value: unknown) => {
+      harness.retained.set(key, value);
+    },
+    remove: async (key: string) => {
+      harness.retained.delete(key);
+    },
+  },
 }));
 
 vi.mock('../../../lib/outboundQueue', () => ({
@@ -75,7 +88,7 @@ const source: ChatSession = {
 };
 const scope = { apiBase: 'http://station.test', authorityKey: 'authority' };
 
-function mount() {
+function mount(requestScope = scope) {
   const report = vi.fn();
   const clear = vi.fn();
   const prepared = vi.fn(async () => ({
@@ -94,7 +107,9 @@ function mount() {
     useStagedAgentChange({
       apiBase: scope.apiBase,
       chat: source,
-      scope,
+      scope: requestScope,
+      recoveryAuthority: 'stable-principal-and-station',
+      agents: [agentA, agentB],
       scopeIsCurrent: () => true,
       composer,
       onAccepted: vi.fn(),
@@ -106,7 +121,14 @@ function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  sessionStorage.clear();
+  localStorage.clear();
+  harness.retained.clear();
+  harness.lookup.mockRejectedValue(
+    Object.assign(new Error('No reservation'), {
+      status: 404,
+      stationEnvelope: true,
+    }),
+  );
   harness.readChats.mockReturnValue({
     chat: { ...source, input: 'first turn', attachments: [] },
   });
@@ -211,7 +233,8 @@ test('reload checks the same key without sending or consuming the draft', async 
   const sent = harness.post.mock.calls[0]?.[2];
   first.unmount();
 
-  const restored = mount();
+  const newScope = { ...scope, authorityKey: 'new-activation' };
+  const restored = mount(newScope);
   expect(restored.result.current.selected).toBeUndefined();
   expect(restored.result.current.pending).toBeDefined();
   harness.lookup.mockResolvedValueOnce({
@@ -223,9 +246,55 @@ test('reload checks the same key without sending or consuming the draft', async 
     scope.apiBase,
     'conversation',
     sent.idempotencyKey,
-    { requestScope: scope },
+    { requestScope: newScope },
   );
   expect(harness.post).toHaveBeenCalledTimes(1);
   expect(restored.clear).not.toHaveBeenCalled();
   expect(restored.result.current.pending).toBeUndefined();
+});
+
+test('reconnect retries an exact request that never reached Station', async () => {
+  const first = mount();
+  act(() => first.result.current.stage(agentB));
+  harness.post.mockRejectedValueOnce(new TypeError('request dropped'));
+  await act(async () => first.result.current.send());
+  const exact = harness.post.mock.calls[0]?.[2];
+  first.unmount();
+
+  const restored = mount({ ...scope, authorityKey: 'reconnected' });
+  harness.lookup.mockRejectedValue(
+    Object.assign(new Error('No reservation'), {
+      status: 404,
+      stationEnvelope: true,
+    }),
+  );
+  await act(async () => restored.result.current.send());
+  expect(restored.result.current.canRetry).toBe(true);
+  expect(harness.post).toHaveBeenCalledTimes(1);
+  harness.post.mockResolvedValueOnce({
+    handoff: {
+      currentSessionId: 'successor',
+      predecessorSessionId: 'source',
+      target: {
+        agentId: 'agent-b',
+        engine: { kind: 'connection', connectionId: 'engine-b' },
+      },
+    },
+  });
+  await act(async () => restored.result.current.send());
+  expect(harness.post.mock.calls[1]?.[2]).toEqual(exact);
+  expect(restored.prepared).not.toHaveBeenCalled();
+  expect(restored.result.current.pending).toBeUndefined();
+});
+
+test('the staged Send refuses while a recorded approval choice needs to be carried', async () => {
+  const { result, clear } = mount();
+  act(() => result.current.stage(agentB));
+  harness.readChats.mockReturnValue({
+    chat: { ...source, queuedApprovalMode: 'ask' },
+  });
+  await act(async () => result.current.send());
+  expect(harness.post).not.toHaveBeenCalled();
+  expect(clear).not.toHaveBeenCalled();
+  expect(result.current.selected?.agent.slug).toBe('agent-b');
 });

@@ -246,7 +246,7 @@ describe('ConversationHandoffDialog', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Use Codex reviewer on Send' }),
     );
-    expect(onStage).toHaveBeenCalledWith(codex, undefined, 'gpt-5', false);
+    expect(onStage).toHaveBeenCalledWith(codex, undefined, undefined, false);
     expect(dialog.onClose).toHaveBeenCalledTimes(1);
     expect(prepareDraft).not.toHaveBeenCalled();
     expect(handoffExecutionMessage).not.toHaveBeenCalled();

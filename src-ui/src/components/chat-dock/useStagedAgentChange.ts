@@ -4,10 +4,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { STAGED_CONVERSATION_HANDOFF_PREVIEW } from '@kontourai/station-contracts/orchestration';
 import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
-import type {
-  ClientRequestOptions,
-  handoffExecutionMessage,
-} from '@kontourai/station-sdk/client';
+import type { ClientRequestOptions } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useRef, useState } from 'react';
 import {
@@ -17,13 +14,13 @@ import {
 import type { AgentData } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import type { useChatInput } from '../../hooks/useChatInput';
+import type { StagedHandoffAttempt } from '../../lib/staged-handoff-attempt-store';
 import type { ChatSession } from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
 
-type Request = Parameters<typeof handoffExecutionMessage>[2];
 function retainedSendKey(storageKey: string): string | undefined {
   try {
-    return sessionStorage.getItem(storageKey) ?? undefined;
+    return localStorage.getItem(storageKey) ?? undefined;
   } catch {
     return undefined;
   }
@@ -57,6 +54,8 @@ export function useStagedAgentChange({
   composer,
   scope,
   scopeIsCurrent,
+  recoveryAuthority,
+  agents,
   blockedReason,
   onAccepted,
   report,
@@ -73,6 +72,8 @@ export function useStagedAgentChange({
   >;
   scope: ClientRequestOptions['requestScope'];
   scopeIsCurrent?: () => boolean;
+  recoveryAuthority?: string;
+  agents: readonly AgentData[];
   blockedReason?: string;
   onAccepted: () => void;
   report: (message: string) => void;
@@ -84,7 +85,7 @@ export function useStagedAgentChange({
     scope,
   );
   const enabled =
-    Boolean(scopeIsCurrent?.()) &&
+    Boolean(recoveryAuthority && scopeIsCurrent?.()) &&
     previews.data?.some(
       (preview) =>
         preview.id === STAGED_CONVERSATION_HANDOFF_PREVIEW.id &&
@@ -92,28 +93,21 @@ export function useStagedAgentChange({
     ) === true;
   const key = JSON.stringify([
     apiBase,
-    scope?.authorityKey,
+    recoveryAuthority,
     chat?.conversationId,
   ]);
   const storageKey = `station.staged-handoff.v1:${key}`;
-  const restoredKey = chat?.conversationId
-    ? retainedSendKey(storageKey)
-    : undefined;
+  const restoredKey =
+    chat?.conversationId && recoveryAuthority
+      ? retainedSendKey(storageKey)
+      : undefined;
   const [plan, setPlan] = useState<{ key: string; selection: Selection }>();
   const [attemptState, setAttemptState] = useState<{
     key: string;
     sending: boolean;
   }>();
-  const attempt = useRef<
-    | {
-        key: string;
-        request: Request;
-        draft: string;
-        quotes: ReturnType<typeof chatDraftsStore.getQuotes>;
-        attachments: ReturnType<typeof useChatInput>['attachments'];
-      }
-    | undefined
-  >(undefined);
+  const attempt = useRef<StagedHandoffAttempt | undefined>(undefined);
+  const [retryKey, setRetryKey] = useState<string>();
   const sending = useRef(false);
   const selected = plan?.key === key ? plan.selection : undefined;
   const pending =
@@ -122,9 +116,15 @@ export function useStagedAgentChange({
       : restoredKey
         ? { sending: false }
         : undefined;
-  const clearAttempt = () => {
-    sessionStorage.removeItem(storageKey);
+  const clearAttempt = async () => {
+    const { stagedHandoffAttempts } = await import(
+      '../../lib/staged-handoff-attempt-store'
+    );
+
+    await stagedHandoffAttempts.remove(storageKey);
+    localStorage.removeItem(storageKey);
     if (attempt.current?.key === key) attempt.current = undefined;
+    setRetryKey(undefined);
   };
 
   const stage = (
@@ -180,12 +180,13 @@ export function useStagedAgentChange({
     if (
       !chat?.conversationId ||
       !scope ||
+      !recoveryAuthority ||
       !scopeIsCurrent?.() ||
       sending.current
     )
       return;
     const conversationId = chat.conversationId;
-    const retry = attempt.current?.key === key ? attempt.current : undefined;
+    let retry = attempt.current?.key === key ? attempt.current : undefined;
     if (!restoredKey && !selected) return;
     if (attempt.current && attempt.current.key !== key && !restoredKey) {
       report('Check the earlier Agent change before sending another one.');
@@ -222,29 +223,58 @@ export function useStagedAgentChange({
         scope,
         scopeIsCurrent,
       );
-      if (restoredKey && !retry) {
-        const observed = await transport.read(conversationId, restoredKey);
+      const { stagedHandoffAttempts } = await import(
+        '../../lib/staged-handoff-attempt-store'
+      );
+      if (restoredKey) {
+        const observed = await transport
+          .read(conversationId, restoredKey)
+          .catch((error: unknown) => {
+            if (!isStationRefusal(error, 404)) throw error;
+            return null;
+          });
         if (!scopeIsCurrent()) return;
         if (
-          observed.providerTurnId &&
+          observed?.providerTurnId &&
           ['accepted', 'completed', 'failed'].includes(observed.status)
         ) {
-          clearAttempt();
+          await clearAttempt();
           setPlan(undefined);
           onAccepted();
           report(
             'Station found the earlier message. Review the conversation before sending the draft again.',
           );
-        } else {
+          return;
+        }
+        if (observed && observed.status !== 'reserved') {
           report(
             'Station has not confirmed the earlier message. Your draft is still here.',
           );
+          return;
         }
-        return;
+        if (!retry) {
+          const retained = await stagedHandoffAttempts.read(storageKey);
+          if (
+            !retained ||
+            retained.key !== key ||
+            retained.request.idempotencyKey !== restoredKey
+          ) {
+            report(
+              'The original request is unavailable. Your draft is still here.',
+            );
+            return;
+          }
+          if (retryKey !== restoredKey) {
+            setRetryKey(restoredKey);
+            report('Retry Send to submit the original request.');
+            return;
+          }
+          retry = retained;
+        }
       }
-      if (!selected) return;
       let submission = retry;
       if (!submission) {
+        if (!selected) return;
         const prepared = await composer.prepareOutgoingText();
         if (!prepared) return;
         if ('refused' in prepared) {
@@ -256,6 +286,7 @@ export function useStagedAgentChange({
           attachments.some((file) => !file.data) ||
           attachmentStages.some(
             (stage) =>
+              stage.state !== 'complete' ||
               !attachments.some(
                 (file) => file.id === stage.clientAttachmentId && file.data,
               ),
@@ -285,7 +316,7 @@ export function useStagedAgentChange({
           key,
           draft: prepared.draft,
           quotes: prepared.quotes,
-          attachments: [...attachments],
+          attachmentIds: attachments.map((file) => file.id),
           request: {
             idempotencyKey,
             clientTurnId: `handoff:${idempotencyKey}`,
@@ -329,16 +360,38 @@ export function useStagedAgentChange({
       const exact = submission;
       const result = await outboundDispatch.fenceConversationHandoff(
         { conversationId, sessionId: chat.id },
-        () => {
+        async () => {
           if (!scopeIsCurrent())
             throw new Error('The Station connection changed.');
+          if (
+            activeChatsStore.getSnapshot()[chat.id]?.queuedApprovalMode !==
+            undefined
+          )
+            throw new Error(
+              'Settle the queued approval choice before switching Agents.',
+            );
           const earlier = retainedSendKey(storageKey);
           if (earlier && earlier !== exact.request.idempotencyKey)
             throw new Error(
               'Check the earlier Agent change before sending another one.',
             );
-          sessionStorage.setItem(storageKey, exact.request.idempotencyKey);
+          await stagedHandoffAttempts.write(storageKey, exact);
+          try {
+            localStorage.setItem(storageKey, exact.request.idempotencyKey);
+          } catch (error) {
+            await stagedHandoffAttempts.remove(storageKey);
+            throw error;
+          }
           attempt.current = exact;
+          if (!scopeIsCurrent())
+            throw new Error('The Station connection changed.');
+          if (
+            activeChatsStore.getSnapshot()[chat.id]?.queuedApprovalMode !==
+            undefined
+          )
+            throw new Error(
+              'Settle the queued approval choice before switching Agents.',
+            );
           dispatched = true;
           return transport.send(conversationId, exact.request);
         },
@@ -349,22 +402,25 @@ export function useStagedAgentChange({
       }
       if (!scopeIsCurrent()) return;
       const state = activeChatsStore.getSnapshot()[chat.id];
-      if (state?.currentSessionId === selected.sourceSessionId) {
+      const receipt = result.value.handoff;
+      if (state?.currentSessionId === receipt.predecessorSessionId) {
         updateChat(
           chat.id,
           acceptConversationHandoffUiState(
             state,
-            selected.agent,
-            result.value.handoff,
-            selected.executionAgent,
+            agents.find((agent) => agent.slug === receipt.target.agentId),
+            receipt,
+            agents.find(
+              (agent) => agent.slug === receipt.target.executionAgentId,
+            ),
           ),
         );
       }
       if (
-        state?.currentSessionId !== selected.sourceSessionId &&
-        state?.currentSessionId !== result.value.handoff.currentSessionId
+        state?.currentSessionId !== receipt.predecessorSessionId &&
+        state?.currentSessionId !== receipt.currentSessionId
       ) {
-        clearAttempt();
+        await clearAttempt();
         setPlan(undefined);
         onAccepted();
         return;
@@ -377,13 +433,14 @@ export function useStagedAgentChange({
         composer.handleClearInput();
       }
       chatDraftsStore.consumeQuotes(chat.id, exact.quotes);
-      if (state && exact.attachments.length) {
+      if (state && exact.attachmentIds.length) {
         const consumed = new Set(
           state.attachments
             .filter((file) =>
-              exact.attachments.some(
-                (original) =>
-                  original.id === file.id && original.data === file.data,
+              exact.attachmentIds.some(
+                (id, index) =>
+                  id === file.id &&
+                  exact.request.attachments?.[index]?.dataUrl === file.data,
               ),
             )
             .map((file) => file.id),
@@ -398,7 +455,7 @@ export function useStagedAgentChange({
           ),
         });
       }
-      clearAttempt();
+      await clearAttempt();
       setPlan(undefined);
       onAccepted();
     } catch (error) {
@@ -415,9 +472,9 @@ export function useStagedAgentChange({
           );
           await transport
             .read(conversationId, exact.request.idempotencyKey)
-            .catch((statusError: unknown) => {
+            .catch(async (statusError: unknown) => {
               if (scopeIsCurrent() && isStationRefusal(statusError, 404))
-                clearAttempt();
+                await clearAttempt();
             });
         }
       }
@@ -434,8 +491,22 @@ export function useStagedAgentChange({
 
   return {
     enabled,
+    previewChecking: Boolean(
+      chat &&
+        scope &&
+        (previews.data === undefined ||
+          (!recoveryAuthority &&
+            previews.data.some(
+              (preview) =>
+                preview.id === STAGED_CONVERSATION_HANDOFF_PREVIEW.id &&
+                preview.enabled,
+            ))),
+    ),
     selected,
     pending,
+    canRetry: Boolean(
+      attempt.current?.key === key || (restoredKey && retryKey === restoredKey),
+    ),
     stage,
     changeModel,
     changeOption,

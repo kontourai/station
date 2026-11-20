@@ -1020,13 +1020,13 @@ describe('executeForegroundMessage', () => {
         targetAgentId: 'agent-b',
         targetEnvironmentId: 'environment-kontour',
       },
-      outcome: 'existing',
+      outcome: 'existing' as const,
       carried: ['authorizedTranscript'],
       reset: ['providerNativeCursor'],
     }));
     deps.readConversationHandoffEffect = vi.fn(async () => ({
       marker: { sessionId },
-      status: 'indeterminate',
+      status: 'indeterminate' as const,
     }));
     await expect(
       executeForegroundMessage(

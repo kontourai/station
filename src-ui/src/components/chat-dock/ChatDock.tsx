@@ -2419,6 +2419,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     composer: chatInput,
     scope: requestAuthority,
     scopeIsCurrent: requestAuthority?.isCurrent,
+    recoveryAuthority:
+      authorityStatus === 'verified' &&
+      authorityNamespace &&
+      authorityObservation &&
+      requestAuthority?.draftRecoveryKey
+        ? JSON.stringify([
+            authorityNamespace,
+            authorityObservation.principal.id,
+            requestAuthority.draftRecoveryKey,
+          ])
+        : undefined,
+    agents: conversationAgents,
     blockedReason: !conversationCanMutate
       ? 'The current conversation cannot send.'
       : handoffDisabledReason,
@@ -2431,21 +2443,24 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const stagedSelection = stagedAgentChange.selected;
   const stagedBinding =
     stagedSelection?.executionAgent ?? stagedSelection?.agent;
+  const stagedModelConnection =
+    stagedSelection?.connectionId ??
+    stagedBinding?.execution?.runtimeOptions?.providerId;
   const stagedComposer =
     stagedSelection || stagedAgentChange.pending
       ? {
           ...stagedAgentChange,
           selection: stagedSelection,
-          models: stagedBinding
-            ? executionSelection
-                .modelsForAgent(stagedBinding)
-                .filter(
-                  (model) =>
-                    model.available !== false &&
-                    (!stagedSelection?.connectionId ||
-                      model.providerId === stagedSelection.connectionId),
-                )
-            : [],
+          models:
+            stagedBinding && stagedModelConnection
+              ? executionSelection
+                  .modelsForAgent(stagedBinding)
+                  .filter(
+                    (model) =>
+                      model.available !== false &&
+                      model.providerId === stagedModelConnection,
+                  )
+              : [],
         }
       : undefined;
 
@@ -5049,7 +5064,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                       : executionRoutes
                                   }
                                   onExecutionModelSelect={
-                                    conversationCanMutate
+                                    conversationCanMutate &&
+                                    !stagedAgentChange.previewChecking &&
+                                    !stagedAgentChange.pending
                                       ? conversationBoundaryDialogs.openExecutionHandoff
                                       : undefined
                                   }
@@ -5061,9 +5078,25 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   sendQueuedForUploads={
                                     startSendWaitsForUploads
                                   }
-                                  secondaryActions={secondaryActions}
+                                  secondaryActions={
+                                    secondaryActions &&
+                                    (stagedAgentChange.previewChecking ||
+                                      stagedAgentChange.pending)
+                                      ? {
+                                          ...secondaryActions,
+                                          onOpenHandoff: undefined,
+                                          handoffDisabled: true,
+                                          handoffDisabledReason:
+                                            stagedAgentChange.pending
+                                              ? 'Check the pending Agent change first.'
+                                              : 'Checking Agent change settings…',
+                                        }
+                                      : secondaryActions
+                                  }
                                   onOpenAgentHandoff={
-                                    handoffDisabledReason
+                                    handoffDisabledReason ||
+                                    stagedAgentChange.previewChecking ||
+                                    stagedAgentChange.pending
                                       ? undefined
                                       : () =>
                                           openConversationHandoff(
@@ -5277,7 +5310,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               />
             )}
 
-            {(handoffSource || contextResetSource) && (
+            {((handoffSource &&
+              !stagedAgentChange.previewChecking &&
+              !stagedAgentChange.pending) ||
+              contextResetSource) && (
               <LazyBoundary
                 load={loadConversationBoundaryDialogs}
                 componentProps={{

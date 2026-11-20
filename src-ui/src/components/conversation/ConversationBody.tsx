@@ -352,7 +352,7 @@ export interface ConversationBodyProps {
     ReturnType<
       typeof import('../chat-dock/useStagedAgentChange').useStagedAgentChange
     >,
-    'pending' | 'changeModel' | 'changeOption' | 'send' | 'undo'
+    'pending' | 'canRetry' | 'changeModel' | 'changeOption' | 'send' | 'undo'
   > & {
     selection?: NonNullable<
       ReturnType<
@@ -3040,7 +3040,9 @@ function LiveConversationBody({
                       !stagedAgentChange.pending.sending
                         ? () => void stagedAgentChange.send()
                         : undefined,
-                    checkLabel: stagedSelection ? 'Retry Send' : 'Check status',
+                    checkLabel: stagedAgentChange.canRetry
+                      ? 'Retry Send'
+                      : 'Check status',
                     onUndo: stagedAgentChange.pending
                       ? undefined
                       : stagedAgentChange.undo,

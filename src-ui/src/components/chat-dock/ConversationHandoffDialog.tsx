@@ -499,7 +499,7 @@ export function ConversationHandoffDialog({
         onStage(
           target,
           executionAgentId ? executionTarget : undefined,
-          modelId,
+          executionPreset?.modelId,
           Boolean(executionPreset && !executionAgentId),
         );
         onClose();

@@ -258,9 +258,11 @@ Send starts a fresh Session with recent authorized conversation text and the
 draft as its first message. The selected connection and source Session are
 checked again at dispatch. Busy or queued work is resolved before switching.
 A refused send leaves the draft and attachments in the composer. If delivery is
-unconfirmed, **Retry Send** uses the same request while it is retained in this
-tab. After reload, **Check status** looks up that attempt before allowing another
-send. Attachments whose bytes are unavailable can be reattached to the draft.
+unconfirmed, **Retry Send** uses the same request. After reload, **Check status**
+looks up that attempt before offering a retry. Station retains the exact request
+in browser storage under the verified Station and person until it settles.
+Attachments whose bytes are unavailable can be reattached to the draft.
+A queued approval choice must settle before switching Agents.
 
 A dedicated engine-default coding Agent offers the models on its own connection.
 Use **Agent** to switch coding engines. Compatible engine overrides remain
