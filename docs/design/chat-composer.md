@@ -261,7 +261,9 @@ checked again at dispatch. Busy or queued work is resolved before switching.
 A refused send leaves the draft and attachments in the composer. If delivery is
 unconfirmed, **Retry Send** uses the same request. After reload, **Check status**
 looks up that attempt before offering a retry. Station retains the exact request
-in browser storage under the verified Station and person until it settles.
+in browser storage under the verified Station and person. If the retained
+request expires before Station reserves it, **Withdraw Send** fences that request
+and leaves the draft in the composer.
 Attachments whose bytes are unavailable can be reattached to the draft.
 A queued approval choice must settle before switching Agents.
 

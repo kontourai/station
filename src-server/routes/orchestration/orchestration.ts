@@ -4211,6 +4211,49 @@ export function createOrchestrationRoutes(
     },
   );
 
+  app.delete(
+    '/conversations/:conversationId/handoffs/:idempotencyKey',
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const idempotencyKey = param(c, 'idempotencyKey');
+      if (conversationId.length > 512 || idempotencyKey.length > 200)
+        return c.json(
+          { success: false, error: 'Invalid conversation or handoff key.' },
+          400,
+        );
+      if (requestMayBeAnAgent(c.req.raw))
+        return c.json(
+          {
+            success: false,
+            error: 'Only the conversation owner can withdraw this request.',
+          },
+          403,
+        );
+      const { userId } = resolveDispatchActor(deps, c);
+      const outcome =
+        await orchestrationService.withdrawUnreservedConversationHandoff(
+          conversationId,
+          idempotencyKey,
+          userId,
+          readAuthorityFor(c),
+        );
+      if (outcome === 'unavailable')
+        return c.json(
+          { success: false, error: 'Conversation handoff not found' },
+          404,
+        );
+      if (outcome === 'reserved')
+        return c.json(
+          {
+            success: false,
+            error: 'Station has already reserved this Agent change.',
+          },
+          409,
+        );
+      return c.json({ success: true, data: { outcome } });
+    },
+  );
+
   app.get(
     '/conversations/:conversationId/handoffs/:idempotencyKey',
     async (c) => {

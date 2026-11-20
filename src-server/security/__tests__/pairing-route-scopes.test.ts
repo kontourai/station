@@ -1362,6 +1362,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       ['POST', handoff, 'orchestration:operate'],
       ['POST', stagedHandoff, 'orchestration:operate'],
       ['GET', handoffReceipt, 'orchestration:read'],
+      ['DELETE', handoffReceipt, 'orchestration:operate'],
       ['GET', eventWindow, 'orchestration:read'],
     ] as const) {
       expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
@@ -1385,10 +1386,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         'POST /api/orchestration/conversations/:conversationId/handoff',
         'POST /api/orchestration/conversations/:conversationId/staged-handoff',
         'GET /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
+        'DELETE /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
         'GET /api/orchestration/conversations/:conversationId/event-window',
       ].includes(`${leaf.method} ${leaf.path}`),
     );
-    expect(handoffLeaves).toHaveLength(4);
+    expect(handoffLeaves).toHaveLength(5);
     expect(
       handoffLeaves.filter(
         (leaf) => !isLeafScopeDeclared(leaf.method, leaf.path),

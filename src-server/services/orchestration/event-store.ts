@@ -14763,6 +14763,26 @@ export class EventStore {
     );
   }
 
+  /** Seal a key before any handoff reservation can claim it. */
+  withdrawUnreservedConversationHandoff(
+    conversationId: string,
+    idempotencyKey: string,
+  ): boolean {
+    const result = this.db
+      .prepare(`
+      INSERT INTO orchestration_handoff_withdrawals (conversation_id, idempotency_key)
+      SELECT ?, ? WHERE NOT EXISTS (
+        SELECT 1 FROM orchestration_conversation_handoffs
+        WHERE conversation_id = ? AND idempotency_key = ?
+      )
+      ON CONFLICT (conversation_id, idempotency_key)
+      DO UPDATE SET idempotency_key = excluded.idempotency_key
+      RETURNING idempotency_key
+    `)
+      .get(conversationId, idempotencyKey, conversationId, idempotencyKey);
+    return result !== undefined;
+  }
+
   /**
    * Persist the Station-owned marker for an explicit Agent/engine handoff.
    * This is intentionally unavailable to ordinary continuation callers.
@@ -15621,6 +15641,21 @@ export class EventStore {
               : undefined;
           this.db.exec('BEGIN IMMEDIATE');
           try {
+            if (
+              this.db
+                .prepare(`
+              SELECT 1 FROM orchestration_handoff_withdrawals
+              WHERE conversation_id = ? AND idempotency_key = ?
+            `)
+                .get(input.conversationId, input.idempotencyKey)
+            ) {
+              throw Object.assign(
+                new Error('This Agent change was withdrawn.'),
+                {
+                  code: 'conversation_handoff_withdrawn',
+                },
+              );
+            }
             const existingForKey = byKey.get(
               input.conversationId,
               input.idempotencyKey,
@@ -18191,6 +18226,9 @@ export class EventStore {
    */
   deleteConversationLineageRows(sessionIds: readonly string[]): void {
     const statements = [
+      `DELETE FROM orchestration_handoff_withdrawals WHERE conversation_id IN (
+        SELECT conversation_id FROM orchestration_conversation_sessions WHERE session_id = ?
+      )`,
       'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
       `DELETE FROM orchestration_conversation_handoffs
        WHERE session_id = ?1 OR predecessor_session_id = ?1`,

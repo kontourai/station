@@ -1,5 +1,5 @@
 import type { handoffExecutionMessage } from '@kontourai/station-sdk/client';
-import { createStore, del, get, set, update } from 'idb-keyval';
+import { createStore, get, set, update } from 'idb-keyval';
 import type { DraftQuote } from '../utils/answer-quotes';
 
 export interface StagedHandoffAttempt {
@@ -35,5 +35,13 @@ export const stagedHandoffAttempts = {
   },
   write: (key: string, attempt: StagedHandoffAttempt) =>
     set(key, { attempt, expiresAt: Date.now() + MAX_AGE_MS }, store()),
-  remove: (key: string) => del(key, store()),
+  remove: (key: string, idempotencyKey: string) =>
+    update<RetainedAttempt | undefined>(
+      key,
+      (record) =>
+        record?.attempt.request.idempotencyKey === idempotencyKey
+          ? undefined
+          : record,
+      store(),
+    ),
 };

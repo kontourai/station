@@ -6815,6 +6815,32 @@ export class OrchestrationService {
     return pending;
   }
 
+  async withdrawUnreservedConversationHandoff(
+    conversationId: string,
+    idempotencyKey: string,
+    userId: string,
+    authority: SessionReadScope,
+  ): Promise<'withdrawn' | 'reserved' | 'unavailable'> {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) return 'unavailable';
+    const detail = await this.readCurrentConversationSession(
+      conversationId,
+      authority,
+    );
+    if (
+      !detail ||
+      this.sessionRecordedOwnerId(detail.session.threadId) !== userId
+    )
+      return 'unavailable';
+    return store.withdrawUnreservedConversationHandoff(
+      conversationId,
+      idempotencyKey,
+    )
+      ? 'withdrawn'
+      : 'reserved';
+  }
+
   async readConversationHandoffStatus(
     conversationId: string,
     idempotencyKey: string,

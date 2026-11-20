@@ -616,6 +616,25 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         expect(store.conversationSessions(conversationId)).toHaveLength(1);
         stagedPreviewEnabled = true;
 
+        const withdrawnKey = 'withdraw-before-reservation';
+        const withdrawalPath = `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${withdrawnKey}`;
+        const withdrawn = await app.request(withdrawalPath, {
+          method: 'DELETE',
+        });
+        expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
+        expect(await withdrawn.json()).toMatchObject({
+          data: { outcome: 'withdrawn' },
+        });
+        const lateSend = await post(handoffPath, {
+          ...handoffBody,
+          idempotencyKey: withdrawnKey,
+        });
+        expect(lateSend.status).toBe(409);
+        expect(await lateSend.json()).toMatchObject({
+          code: 'conversation_handoff_withdrawn',
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
         const dedicatedOverride = await post(handoffPath, {
           ...handoffBody,
           target: {
@@ -722,6 +741,13 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           };
         };
       };
+      if (staged) {
+        const reserved = await app.request(
+          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${idempotencyKey}`,
+          { method: 'DELETE' },
+        );
+        expect(reserved.status).toBe(409);
+      }
       expect(handoffReceipt.data).toMatchObject({ sessionStarted: true });
       if (failFirstHandoffSeed) {
         try {

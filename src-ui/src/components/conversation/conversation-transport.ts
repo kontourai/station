@@ -10,6 +10,7 @@ import {
   StationRequestAuthorityError,
   sendExecutionMessageWithInventory,
   steerTurn,
+  withdrawUnreservedConversationHandoff,
 } from '@kontourai/station-sdk/client';
 import type {
   ConversationCapabilities,
@@ -113,6 +114,13 @@ export function createStagedHandoffTransport(
       conversationId: string,
       input: Parameters<typeof handoffExecutionMessage>[2],
     ) => handoffExecutionMessage(apiBase, conversationId, input, options()),
+    withdraw: (conversationId: string, idempotencyKey: string) =>
+      withdrawUnreservedConversationHandoff(
+        apiBase,
+        conversationId,
+        idempotencyKey,
+        options(),
+      ),
     read: (conversationId: string, idempotencyKey: string) =>
       getConversationHandoffStatus(
         apiBase,

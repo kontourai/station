@@ -14,6 +14,7 @@ import { useStagedAgentChange } from '../useStagedAgentChange';
 const harness = vi.hoisted(() => ({
   post: vi.fn(),
   lookup: vi.fn(),
+  withdraw: vi.fn(),
   updateChat: vi.fn(),
   readChats: vi.fn(),
   retained: new Map<string, unknown>(),
@@ -29,6 +30,7 @@ vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   handoffExecutionMessage: harness.post,
   getConversationHandoffStatus: harness.lookup,
+  withdrawUnreservedConversationHandoff: harness.withdraw,
 }));
 
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
@@ -316,7 +318,50 @@ test('a recovered request refused without a reservation releases the fence and k
   );
   await act(async () => restored.result.current.send());
   expect(harness.post).toHaveBeenCalledTimes(2);
+  expect(harness.withdraw).toHaveBeenCalledTimes(1);
   expect(restored.result.current.pending).toBeUndefined();
   expect(restored.clear).not.toHaveBeenCalled();
   expect(harness.retained.size).toBe(0);
+});
+
+test('a refusal cannot release the fence if Station has reserved the earlier request', async () => {
+  const { result, clear } = mount();
+  act(() => result.current.stage(agentB));
+  harness.post.mockRejectedValueOnce(new TypeError('request dropped'));
+  await act(async () => result.current.send());
+  harness.post.mockRejectedValueOnce(
+    Object.assign(new Error('Preview disabled'), {
+      status: 404,
+      stationEnvelope: true,
+    }),
+  );
+  harness.withdraw.mockRejectedValueOnce(new Error('Reservation exists'));
+  await act(async () => result.current.send());
+  expect(result.current.pending).toBeDefined();
+  expect(clear).not.toHaveBeenCalled();
+  expect(harness.retained.size).toBe(1);
+});
+
+test('an expired body can be withdrawn only with an exact Station receipt', async () => {
+  const initial = mount();
+  act(() => initial.result.current.stage(agentB));
+  harness.post.mockRejectedValueOnce(new TypeError('request dropped'));
+  await act(async () => initial.result.current.send());
+  const exact = harness.post.mock.calls[0]?.[2];
+  initial.unmount();
+  harness.retained.clear();
+
+  const restored = mount({ ...scope, authorityKey: 'reconnected' });
+  await act(async () => restored.result.current.send());
+  expect(restored.result.current.canWithdraw).toBe(true);
+  expect(harness.withdraw).not.toHaveBeenCalled();
+  await act(async () => restored.result.current.withdraw());
+  expect(harness.withdraw).toHaveBeenCalledWith(
+    scope.apiBase,
+    'conversation',
+    exact.idempotencyKey,
+    { requestScope: { ...scope, authorityKey: 'reconnected' } },
+  );
+  expect(restored.result.current.pending).toBeUndefined();
+  expect(restored.clear).not.toHaveBeenCalled();
 });

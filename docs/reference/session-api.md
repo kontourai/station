@@ -863,6 +863,10 @@ engine-native cursors and engine-local tool state stay with the source.
 The message can include attachments supported by the selected engine. If the
 response is lost, check the handoff status using the same key before trying
 another Send. A same-key retry must identify the same request.
+A conversation owner can withdraw a request that has no reservation with
+`DELETE /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey`.
+The withdrawal is durable. A late request under the same key cannot reserve
+a successor. Station refuses withdrawal after the reservation exists.
 
 The optional conversation-open `execution.environment: { kind: "current" }`
 requires the authorized current child's persisted start Environment identity to

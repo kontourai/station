@@ -4754,6 +4754,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/conversations/:conversationId/staged-handoff',
     },
     {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
+    },
+    {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
     },

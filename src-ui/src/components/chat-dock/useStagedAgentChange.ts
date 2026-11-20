@@ -108,6 +108,7 @@ export function useStagedAgentChange({
   }>();
   const attempt = useRef<StagedHandoffAttempt | undefined>(undefined);
   const [retryKey, setRetryKey] = useState<string>();
+  const [withdrawKey, setWithdrawKey] = useState<string>();
   const sending = useRef(false);
   const selected = plan?.key === key ? plan.selection : undefined;
   const pending =
@@ -116,15 +117,17 @@ export function useStagedAgentChange({
       : restoredKey
         ? { sending: false }
         : undefined;
-  const clearAttempt = async () => {
+  const clearAttempt = async (idempotencyKey: string) => {
     const { stagedHandoffAttempts } = await import(
       '../../lib/staged-handoff-attempt-store'
     );
 
-    localStorage.removeItem(storageKey);
-    await stagedHandoffAttempts.remove(storageKey);
+    if (retainedSendKey(storageKey) === idempotencyKey)
+      localStorage.removeItem(storageKey);
+    await stagedHandoffAttempts.remove(storageKey, idempotencyKey);
     if (attempt.current?.key === key) attempt.current = undefined;
     setRetryKey(undefined);
+    setWithdrawKey(undefined);
   };
 
   const stage = (
@@ -238,7 +241,7 @@ export function useStagedAgentChange({
           observed?.providerTurnId &&
           ['accepted', 'completed', 'failed'].includes(observed.status)
         ) {
-          await clearAttempt();
+          await clearAttempt(restoredKey);
           setPlan(undefined);
           onAccepted();
           report(
@@ -259,6 +262,7 @@ export function useStagedAgentChange({
             retained.key !== key ||
             retained.request.idempotencyKey !== restoredKey
           ) {
+            if (!observed) setWithdrawKey(restoredKey);
             report(
               'The original request is unavailable. Your draft is still here.',
             );
@@ -379,7 +383,10 @@ export function useStagedAgentChange({
           try {
             localStorage.setItem(storageKey, exact.request.idempotencyKey);
           } catch (error) {
-            await stagedHandoffAttempts.remove(storageKey);
+            await stagedHandoffAttempts.remove(
+              storageKey,
+              exact.request.idempotencyKey,
+            );
             throw error;
           }
           attempt.current = exact;
@@ -420,7 +427,7 @@ export function useStagedAgentChange({
         state?.currentSessionId !== receipt.predecessorSessionId &&
         state?.currentSessionId !== receipt.currentSessionId
       ) {
-        await clearAttempt();
+        await clearAttempt(exact.request.idempotencyKey);
         setPlan(undefined);
         onAccepted();
         return;
@@ -455,7 +462,7 @@ export function useStagedAgentChange({
           ),
         });
       }
-      await clearAttempt();
+      await clearAttempt(exact.request.idempotencyKey);
       setPlan(undefined);
       onAccepted();
     } catch (error) {
@@ -470,12 +477,16 @@ export function useStagedAgentChange({
             scope,
             scopeIsCurrent,
           );
-          await transport
-            .read(conversationId, exact.request.idempotencyKey)
-            .catch(async (statusError: unknown) => {
-              if (scopeIsCurrent() && isStationRefusal(statusError, 404))
-                await clearAttempt();
-            });
+          try {
+            await transport.withdraw(
+              conversationId,
+              exact.request.idempotencyKey,
+            );
+            if (scopeIsCurrent())
+              await clearAttempt(exact.request.idempotencyKey);
+          } catch {
+            // A reserved or unconfirmed request remains fenced.
+          }
         }
       }
       report(
@@ -483,6 +494,41 @@ export function useStagedAgentChange({
           ? 'Station has not confirmed the Agent change. Send again to retry the same request.'
           : describeStationFailure(error).body,
       );
+    } finally {
+      sending.current = false;
+      setAttemptState({ key, sending: false });
+    }
+  };
+
+  const withdraw = async () => {
+    if (
+      !withdrawKey ||
+      withdrawKey !== restoredKey ||
+      !chat?.conversationId ||
+      !scope ||
+      !scopeIsCurrent?.() ||
+      sending.current
+    )
+      return;
+    sending.current = true;
+    setAttemptState({ key, sending: true });
+    try {
+      const { createStagedHandoffTransport } = await import(
+        '../conversation/conversation-transport'
+      );
+      await createStagedHandoffTransport(
+        apiBase,
+        scope,
+        scopeIsCurrent,
+      ).withdraw(chat.conversationId, withdrawKey);
+      if (scopeIsCurrent()) {
+        await clearAttempt(withdrawKey);
+        report(
+          'The earlier Agent change was withdrawn. Your draft is still here.',
+        );
+      }
+    } catch (error) {
+      report(describeStationFailure(error).body);
     } finally {
       sending.current = false;
       setAttemptState({ key, sending: false });
@@ -504,6 +550,8 @@ export function useStagedAgentChange({
     ),
     selected,
     pending,
+    canWithdraw: Boolean(restoredKey && restoredKey === withdrawKey),
+    withdraw,
     canRetry: Boolean(
       attempt.current?.key === key || (restoredKey && retryKey === restoredKey),
     ),
