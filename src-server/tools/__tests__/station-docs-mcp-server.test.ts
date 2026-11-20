@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PERMISSION_TIERS } from '@kontourai/station-contracts/plugin';
 import { WORKSPACE_PANE_REGIONS } from '@kontourai/station-contracts/workspace-pane';
-import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { describe, expect, test } from 'vitest';
 import packageJson from '../../../package.json' with { type: 'json' };
 import {
@@ -19,6 +18,7 @@ import {
   searchStationDocs,
 } from '../station-docs-mcp-server.js';
 import { STATION_DOCS_VERSION } from '../station-docs-tools.js';
+import { callTool } from './station-docs-mcp-fixture.js';
 
 // Every topic as get_station_docs_topic serves it: the bundle mapped back to
 // the fields the tools have always returned.
@@ -38,9 +38,7 @@ const STATION_DOCS_TOPICS: StationDocsTopic[] = listStationDocsTopics().map(
  * `src-server/runtime/agents/__tests__/runtime-default-agent.test.ts`.
  */
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 type RegisteredTool = {
-  handler: (...args: any[]) => Promise<ToolResult>;
   description?: string;
 };
 
@@ -49,27 +47,6 @@ function registeredTools(): Record<string, RegisteredTool> {
   return (
     server as unknown as { _registeredTools: Record<string, RegisteredTool> }
   )._registeredTools;
-}
-
-async function callTool(
-  name: string,
-  args: Record<string, unknown>,
-): Promise<any> {
-  const server = createStationDocsMcpServer();
-  const client = new Client({ name: 'docs-test', version: '1' });
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverSide);
-  try {
-    await client.connect(clientSide);
-    const result = await client.callTool({ name, arguments: args });
-    const content = result.content[0];
-    if (content?.type !== 'text')
-      throw new Error('Expected a documentation text result.');
-    return JSON.parse(content.text);
-  } finally {
-    await client.close();
-    await server.close();
-  }
 }
 
 const SOURCE_FILES = [
