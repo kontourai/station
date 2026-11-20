@@ -385,6 +385,7 @@ async function start() {
     document.getElementById('provenance').textContent =
       `${atlas.documents.length} Markdown files · ${atlas.revision.slice(0, 12)}${atlas.dirty ? ' + local changes' : ''} · built ${atlas.builtAt}`;
     search.addEventListener('input', searchLibrary);
+    if (search.value.trim()) void searchLibrary();
     document.querySelector('.skip').addEventListener('click', (event) => {
       event.preventDefault();
       const content = document.getElementById('content');
