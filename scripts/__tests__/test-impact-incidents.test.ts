@@ -144,6 +144,14 @@ describe('Nightly regressions outside the import graph', () => {
       'src-server/services/__tests__/privacy-inventory.test.ts',
     ],
     [
+      'src-ui/src/components/refresh/ListRefresh.css',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.tsx',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
       'tests/interactive-workspace-performance-bridge.spec.ts',
       'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
     ],
