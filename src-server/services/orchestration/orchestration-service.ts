@@ -4513,8 +4513,6 @@ export class OrchestrationService {
     let armedInternalStopTurnId: string | undefined;
     let sessionTouched = false;
     const stopExistingSession = async () => {
-      if (!(await adapter.hasSession(input.threadId))) return;
-      throwIfAborted(input.signal);
       sessionTouched = true;
       // archive#3525: this stop tears down mid-turn, and the caller may
       // re-dispatch the SAME turn afterward — an internal retry, not a
@@ -4648,30 +4646,37 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
-        await stopExistingSession();
         session = await withEngineStartPreparation<ProviderSession>(
           input.signal,
           async (invokeProvider) => {
-            await this.authorizedConversationWorkspace(input.threadId);
-            // #2873: a respawn re-resolves the recorded folder like any start.
-            assertDispatchCwdUnmoved(startInput, startInput.cwd);
-            // #4568: a cancel during the capacity wait or the authorization
-            // above never reaches the provider.
+            const hasSession = await adapter.hasSession(input.threadId);
             throwIfAborted(input.signal);
-            return withTenantExecutionContext(tenantExecutionContext, () =>
-              this.runEngineSessionStart(startInput.threadId, () => {
-                this.assertForkContextAtProviderStart(startInput, {
-                  userId: this.sessionAuthz.sessionOwnerUserId(
-                    startInput.threadId,
-                  ),
-                  tenantExecutionContext,
-                });
-                return invokeProvider(() => {
+            await this.authorizedConversationWorkspace(input.threadId);
+            assertDispatchCwdUnmoved(startInput, startInput.cwd);
+            return invokeProvider(async () => {
+              if (hasSession) {
+                await stopExistingSession();
+                throwIfAborted(input.signal);
+                await raceWithSignal(
+                  this.authorizedConversationWorkspace(input.threadId),
+                  input.signal,
+                );
+                assertDispatchCwdUnmoved(startInput, startInput.cwd);
+              }
+              throwIfAborted(input.signal);
+              return withTenantExecutionContext(tenantExecutionContext, () =>
+                this.runEngineSessionStart(startInput.threadId, () => {
+                  this.assertForkContextAtProviderStart(startInput, {
+                    userId: this.sessionAuthz.sessionOwnerUserId(
+                      startInput.threadId,
+                    ),
+                    tenantExecutionContext,
+                  });
                   sessionTouched = true;
                   return adapter.startSession(startInput);
-                });
-              }),
-            );
+                }),
+              );
+            });
           },
         );
       } finally {

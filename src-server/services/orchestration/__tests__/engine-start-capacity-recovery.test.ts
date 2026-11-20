@@ -622,7 +622,7 @@ describe('a credential-profile restart (#4568)', () => {
   });
 
   test('a restart stopped after admission but before the provider start launches no engine', async () => {
-    const h = await harness();
+    const h = await harness({ credentialRecovery: true });
     await h.restoreDormant('live', { project: true });
     expect(
       await h.service.dispatch(
@@ -650,6 +650,7 @@ describe('a credential-profile restart (#4568)', () => {
     const result = await outcome;
     await settle();
     expect(h.startsFor('live')).toBe(1);
+    expect(await h.adapter.hasSession('live')).toBe(true);
     expect(result).toMatchObject({
       message: new EngineStartCancelledError().message,
     });
