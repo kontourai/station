@@ -223,6 +223,11 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     const rowTop = (await row.boundingBox())?.y ?? 0;
     await setUpdating(true);
     await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    await pill.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      );
+    });
     const [panelBounds, pillBounds] = await Promise.all([
       inbox.boundingBox(),
       pill.boundingBox(),

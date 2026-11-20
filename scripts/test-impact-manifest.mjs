@@ -664,6 +664,16 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     reason:
       'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
   })),
+  ...[
+    'src-ui/src/components/refresh/ListRefresh.css',
+    'src-ui/src/components/refresh/ListRefresh.tsx',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/inbox-swipe.browser.test.tsx'],
+    reason:
+      'the Inbox browser fixture loads refresh styles and bundles the component outside the import graph',
+  })),
   {
     pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
     supplemental: true,
