@@ -15,16 +15,9 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import type { useChatInput } from '../../hooks/useChatInput';
 import type { StagedHandoffAttempt } from '../../lib/staged-handoff-attempt-store';
+import { stagedHandoffRecovery } from '../../lib/staged-handoff-recovery';
 import type { ChatSession } from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
-
-function retainedSendKey(storageKey: string): string | undefined {
-  try {
-    return localStorage.getItem(storageKey) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function isStationRefusal(error: unknown, status?: number): boolean {
   return (
@@ -99,7 +92,7 @@ export function useStagedAgentChange({
   const storageKey = `station.staged-handoff.v1:${key}`;
   const restoredKey =
     chat?.conversationId && recoveryAuthority
-      ? retainedSendKey(storageKey)
+      ? stagedHandoffRecovery.read(key)
       : undefined;
   const [plan, setPlan] = useState<{ key: string; selection: Selection }>();
   const [attemptState, setAttemptState] = useState<{
@@ -122,8 +115,7 @@ export function useStagedAgentChange({
       '../../lib/staged-handoff-attempt-store'
     );
 
-    if (retainedSendKey(storageKey) === idempotencyKey)
-      localStorage.removeItem(storageKey);
+    stagedHandoffRecovery.remove(key, idempotencyKey);
     await stagedHandoffAttempts.remove(storageKey, idempotencyKey);
     if (attempt.current?.key === key) attempt.current = undefined;
     setRetryKey(undefined);
@@ -374,14 +366,14 @@ export function useStagedAgentChange({
             throw new Error(
               'Settle the queued approval choice before switching Agents.',
             );
-          const earlier = retainedSendKey(storageKey);
+          const earlier = stagedHandoffRecovery.read(key);
           if (earlier && earlier !== exact.request.idempotencyKey)
             throw new Error(
               'Check the earlier Agent change before sending another one.',
             );
           await stagedHandoffAttempts.write(storageKey, exact);
           try {
-            localStorage.setItem(storageKey, exact.request.idempotencyKey);
+            stagedHandoffRecovery.write(key, exact.request.idempotencyKey);
           } catch (error) {
             await stagedHandoffAttempts.remove(
               storageKey,
