@@ -1898,6 +1898,15 @@ export interface RecoveredSessionStartOptions {
     threadId: string,
   ) => Record<string, unknown> | undefined;
   /**
+   * The native resume binding the session's latest start recorded
+   * (`NATIVE_RESUME_BINDING_METADATA_KEY` on its `session.started`), which
+   * `readSessionStartMetadata` strips as a reserved key. A recovery that
+   * resumes a native session on an adapter declaring
+   * `continuity.recoveryBinding: 'required'` hands it back as
+   * `nativeResumeBindingKey`. `undefined` when none was recorded.
+   */
+  readNativeResumeBindingKey?: (threadId: string) => string | undefined;
+  /**
    * archive#1011: re-settle the recovered session's working directory the same way a
    * live start does (project binding → `cwd`). Recovery otherwise replays
    * only the `cwd` persisted at start, so a session created before that
@@ -1934,6 +1943,28 @@ export interface RecoveredSessionStartOptions {
 }
 
 /**
+ * The recorded native resume binding a start that resumes a session carries,
+ * shared by restart recovery and the credential-profile retry. Only an
+ * adapter declaring `continuity.recoveryBinding: 'required'` gets it, only
+ * with a cursor to resume, and never when the start switches to another
+ * credential profile, which changes the binding by design. Every other
+ * adapter (Claude, Codex) gets none: its recorded key can change
+ * legitimately (engine home, a deliberate profile switch, an older key
+ * scheme), and passing it would refuse a resume that works today.
+ */
+export function recordedResumeBindingForStart(
+  adapter: Pick<ProviderAdapterShape, 'metadata'>,
+  resumeCursor: unknown,
+  switchesCredentialProfile: boolean,
+  readRecorded: () => string | undefined,
+): string | undefined {
+  if (resumeCursor === undefined || switchesCredentialProfile) return undefined;
+  if (adapter.metadata?.continuity?.recoveryBinding !== 'required')
+    return undefined;
+  return readRecorded();
+}
+
+/**
  * archive#3476: start the engine for ONE already-restored session, using the
  * exact input a boot recovery pass used to build.
  *
@@ -1958,12 +1989,21 @@ export async function startRecoveredOrchestrationSession(options: {
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
+    const recordedBindingKey = recordedResumeBindingForStart(
+      adapter,
+      session.resumeCursor,
+      false,
+      () => deps.readNativeResumeBindingKey?.(session.threadId),
+    );
     let startInput: ProviderSessionStartInput = {
       threadId: session.threadId,
       provider: session.provider,
       ...(deps.prepareModelLaunch ? {} : { modelId: session.model }),
       cwd: session.cwd,
       resumeCursor: session.resumeCursor,
+      ...(recordedBindingKey
+        ? { nativeResumeBindingKey: recordedBindingKey }
+        : {}),
       persistSession: session.persistSession,
       ...(tenantExecutionContext
         ? {

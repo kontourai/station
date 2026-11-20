@@ -1220,8 +1220,8 @@ text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
 The mode picker defaults to **Queue** for every engine. Station holds a
 follow-up for the next turn when the current one is still running. A chosen
-mode holds until the conversation changes. Claude Code, Codex and Muse on
-`muse serve` have additive steering. A Muse Session on `muse exec` reports no
+mode holds until the conversation changes. Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
+preview engine have additive steering. A Muse Session on `muse exec` reports no
 steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
 cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
@@ -1233,7 +1233,7 @@ take new steering input. The next turn runs confined (#2898).
 Station-owned steering waits durably for the next post-tool boundary in the
 turn Station accepted. If the turn ends first, the pending row explains why
 Steer was refused. Its wording says **Steer when safe**.
-Claude and Codex retain engine-defined native placement. The composer reads the
+Claude, Codex and the GitHub Copilot (SDK) preview engine retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
 provider names. While the Session projection is pending, the mode picker and

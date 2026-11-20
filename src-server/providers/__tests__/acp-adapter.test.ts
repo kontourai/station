@@ -1,5 +1,12 @@
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import {
@@ -51,6 +58,7 @@ import {
   sessionTempRoot,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
+import { UntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers — required for `station-control_*` auto-approval to be
@@ -163,6 +171,7 @@ function createAdapter(
     loadSessionError?: unknown;
     onProcess?: (process: FakeAcpProcess, index: number) => void;
     resolvePreToolPolicy?: AcpAdapterOptions['resolvePreToolPolicy'];
+    untrustedContentLedger?: UntrustedContentLedger;
     sendTurnStartWaitMs?: number;
     modelAdvertisementWaitMs?: number;
   } = {},
@@ -184,6 +193,7 @@ function createAdapter(
     mintStationControlMcpAuth: options.mintStationControlMcpAuth,
     revokeStationControlMcpAuth: options.revokeStationControlMcpAuth,
     resolvePreToolPolicy: options.resolvePreToolPolicy,
+    untrustedContentLedger: options.untrustedContentLedger,
     sendTurnStartWaitMs: options.sendTurnStartWaitMs,
     ...(options.modelAdvertisementWaitMs !== undefined
       ? { modelAdvertisementWaitMs: options.modelAdvertisementWaitMs }
@@ -272,6 +282,391 @@ async function nextEvent(
   }
   return result.value;
 }
+
+describe('KAS permission requests', () => {
+  const makeWorkspace = trackTempDirs();
+  const delegation = {
+    mode: 'isolated-child',
+    depth: 1,
+    maxDepth: 2,
+    parentAgentSlug: 'parent',
+    rootAgentSlug: 'parent',
+    denyApprovals: true,
+  };
+
+  async function start(
+    options: {
+      cwd?: string;
+      child?: typeof delegation & {
+        blockedTools?: string[];
+        allowedTools?: string[];
+      };
+      autoApprove?: string[];
+      askBeforeUse?: string[];
+      ledger?: UntrustedContentLedger;
+    } = {},
+  ) {
+    const cwd = options.cwd ?? makeWorkspace('station-kas-permission-');
+    const threadId = 'kas-permissions';
+    const { processes, adapter } = createAdapter({
+      onProcess: (process) => {
+        process.initResult!.agentCapabilities._meta = { kiro: {} };
+      },
+      newSessionModes: {
+        currentModeId: 'station-kas-test',
+        availableModes: [
+          {
+            id: 'station-kas-test',
+            name: 'KAS test',
+            _meta: { kiro: { resource: { source: { origin: 'client' } } } },
+          },
+        ],
+      },
+      untrustedContentLedger: options.ledger,
+      resolvePreToolPolicy: async () =>
+        createStagedPreToolPolicyEvaluator({
+          spec: {
+            name: 'KAS test',
+            prompt: '',
+            tools: {
+              mcpServers: [],
+              autoApprove: options.autoApprove,
+              askBeforeUse: options.askBeforeUse,
+            },
+          },
+          toolNameMapping: new Map(),
+          isGranted: ({ toolName }) =>
+            isAutoApprovedExternalTool(
+              toolName,
+              options.autoApprove,
+              undefined,
+              'self-reported',
+            ),
+          logger: { warn: vi.fn(), info: vi.fn() },
+        }),
+    });
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId,
+      cwd,
+      metadata: { connectionId: 'kiro', delegation: options.child },
+      agent: { slug: 'kas-test' },
+    });
+    await nextEvent(events, 'session.started');
+    await nextEvent(events, 'session.configured');
+    const client = processes[0]!.client;
+    return {
+      adapter,
+      threadId,
+      cwd,
+      events,
+      ask(
+        toolId: string,
+        capability: string,
+        resource: string,
+        extra: {
+          consent?: Record<string, unknown>;
+          kiro?: Record<string, unknown>;
+          kind?: 'switch_mode';
+        } = {},
+      ) {
+        return client.requestPermission({
+          sessionId: processes[0]!.sessionId!,
+          toolCall: {
+            toolCallId: toolId,
+            title: 'KAS tool',
+            kind: extra.kind,
+            status: 'pending',
+          },
+          options: PERMISSION_OPTIONS,
+          _meta: {
+            kiro: {
+              toolId,
+              consent: {
+                capability,
+                resource,
+                askType: 'implicit',
+                workspaceRoot: cwd,
+                ...extra.consent,
+              },
+              ...extra.kiro,
+            },
+          },
+        });
+      },
+    };
+  }
+
+  const allowOnce = {
+    outcome: { outcome: 'selected', optionId: 'allow-once' },
+  };
+  const declineWith = (reason: string) => ({
+    outcome: { outcome: 'selected', optionId: 'reject-once' },
+    _meta: { kiro: { rejectionReason: expect.stringContaining(reason) } },
+  });
+
+  test('allows an interactive KAS workspace read and prompts for sensitive reads and writes', async () => {
+    const cwd = makeWorkspace('station-kas-permission-');
+    writeFileSync(join(cwd, 'note.txt'), 'hello');
+    writeFileSync(join(cwd, '.env'), 'CONFIG=test');
+    const { ask, adapter, events, threadId } = await start({ cwd });
+    try {
+      await expect(ask('read_file', 'fs_read', 'note.txt')).resolves.toEqual(
+        allowOnce,
+      );
+      const sensitiveRead = ask('read_file', 'fs_read', '.env');
+      const readRequest = await nextEvent(events, 'request.opened');
+      expect(readRequest).toMatchObject({
+        method: 'request.opened',
+        payload: { toolName: 'read_file', rawInput: { path: '.env' } },
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(readRequest.requestId),
+        'decline',
+      );
+      await expect(sensitiveRead).resolves.toMatchObject({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+      await nextEvent(events, 'request.resolved');
+
+      const pending = ask('fs_write', 'fs_write', 'note.txt');
+      const opened = await nextEvent(events, 'request.opened');
+      expect(opened).toMatchObject({
+        payload: {
+          toolName: 'fs_write',
+          toolKind: 'edit',
+          rawInput: { path: 'note.txt' },
+        },
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'acceptForSession',
+      );
+      await expect(pending).resolves.toEqual(allowOnce);
+      await nextEvent(events, 'request.resolved');
+      await expect(ask('fs_write', 'fs_write', 'other.txt')).resolves.toEqual(
+        allowOnce,
+      );
+
+      const explicit = ask('fs_write', 'fs_write', 'other.txt', {
+        consent: { askType: 'explicit' },
+      });
+      const explicitRequest = await nextEvent(events, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(explicitRequest.requestId),
+        'decline',
+      );
+      await expect(explicit).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test('askBeforeUse reaches the interactive approval card despite the auto-approve pattern', async () => {
+    const cwd = makeWorkspace('station-kas-permission-');
+    writeFileSync(join(cwd, 'note.txt'), 'hello');
+    const { ask, adapter, events, threadId } = await start({
+      cwd,
+      autoApprove: ['*'],
+      askBeforeUse: ['read_file'],
+    });
+    try {
+      const pending = ask('read_file', 'fs_read', 'note.txt');
+      const opened = await nextEvent(events, 'request.opened');
+      expect(opened).toMatchObject({
+        payload: { toolName: 'read_file', toolKind: 'read' },
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'accept',
+      );
+      await expect(pending).resolves.toEqual(allowOnce);
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test('uses the KAS MCP identity and preserves the remote web search built-in', async () => {
+    const { ask, adapter, events, threadId } = await start({
+      autoApprove: ['remote_web_search'],
+    });
+    try {
+      const identity = (serverName: string) => ({
+        kiro: { mcpTool: { identity: { serverName, toolName: 'web_search' } } },
+      });
+      await expect(
+        ask('remote_web_search', 'web_search', 'query', identity('remote')),
+      ).resolves.toEqual(allowOnce);
+      const pending = ask(
+        'remote_web_search',
+        'mcp',
+        'query',
+        identity('other'),
+      );
+      const opened = await nextEvent(events, 'request.opened');
+      expect(opened).toMatchObject({
+        payload: { toolName: 'mcp__other__web_search' },
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'decline',
+      );
+      await expect(pending).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test('lets a delegated child inspect its workspace through KAS built-ins and declines unsafe requests', async () => {
+    const cwd = makeWorkspace('station-kas-permission-');
+    mkdirSync(join(cwd, 'src'));
+    writeFileSync(join(cwd, 'src', 'note.txt'), 'hello');
+    writeFileSync(join(cwd, '.env'), 'CONFIG=test');
+    mkdirSync(join(cwd, '.ssh'));
+    const outside = join(makeWorkspace('station-kas-permission-'), 'note.txt');
+    writeFileSync(outside, 'outside');
+    if (process.platform !== 'win32')
+      symlinkSync(outside, join(cwd, 'linked.txt'));
+    const { ask, adapter } = await start({ cwd, child: delegation });
+    try {
+      for (const [id, resource] of [
+        ['read_file', 'src/note.txt'],
+        ['list_directory', '.'],
+        ['file_search', '.'],
+        ['grep_search', '.'],
+      ]) {
+        await expect(ask(id!, 'fs_read', resource!)).resolves.toEqual(
+          allowOnce,
+        );
+      }
+      for (const [id, capability, resource] of [
+        ['fs_write', 'fs_write', 'src/note.txt'],
+        ['run_command', 'shell', 'pwd'],
+        ['read_file', 'fs_read', outside],
+        ['read_file', 'fs_read', '.env'],
+        ['file_search', 'fs_read', '.ssh'],
+        ['file_search', 'fs_read', '..'],
+        ['grep_search', 'fs_read', '.ssh'],
+        ['grep_search', 'fs_read', '..'],
+        ['unknown_read', 'fs_read', 'src/note.txt'],
+        ...(process.platform === 'win32'
+          ? []
+          : [['read_file', 'fs_read', 'linked.txt']]),
+      ]) {
+        await expect(ask(id!, capability!, resource!)).resolves.toEqual(
+          declineWith('delegated child sessions cannot grant approvals'),
+        );
+      }
+      await expect(
+        ask('read_file', 'fs_read', 'src/note.txt', { kind: 'switch_mode' }),
+      ).resolves.toEqual(
+        declineWith('delegated child sessions cannot grant approvals'),
+      );
+      await expect(
+        ask('read_file', 'fs_read', 'src/note.txt', {
+          consent: { matchedRule: { effect: 'ask' }, scope: 'organization' },
+        }),
+      ).resolves.toEqual(
+        declineWith('delegated child sessions cannot grant approvals'),
+      );
+      await expect(
+        ask('read_file', 'fs_read', 'src/note.txt', {
+          kiro: {
+            mcpTool: {
+              identity: { serverName: 'other', toolName: 'read_file' },
+            },
+          },
+        }),
+      ).resolves.toEqual(
+        declineWith('delegated child sessions cannot grant approvals'),
+      );
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test('applies a delegated KAS write grant and declines escalations', async () => {
+    const { ask, adapter } = await start({
+      child: delegation,
+      autoApprove: ['fs_write'],
+    });
+    try {
+      await expect(ask('fs_write', 'fs_write', 'note.txt')).resolves.toEqual(
+        allowOnce,
+      );
+      await expect(
+        ask('fs_write', 'fs_write', 'note.txt', {
+          consent: { askType: 'explicit' },
+        }),
+      ).resolves.toEqual(declineWith('cannot grant approvals'));
+      await expect(
+        ask('fs_write', 'fs_write', 'note.txt', { kind: 'switch_mode' }),
+      ).resolves.toEqual(declineWith('cannot grant approvals'));
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test.each([
+    {
+      child: { ...delegation, blockedTools: ['read_file'] },
+      reason: 'is not allowed',
+    },
+    {
+      child: { ...delegation, allowedTools: ['file_search'] },
+      reason: 'is not allowed',
+    },
+    {
+      child: delegation,
+      askBeforeUse: ['read_file'],
+      reason: 'cannot grant approvals',
+    },
+  ])(
+    'applies the staged policy before allowing a safe delegated read ($reason)',
+    async ({ reason, ...options }) => {
+      const cwd = makeWorkspace('station-kas-permission-');
+      writeFileSync(join(cwd, 'note.txt'), 'hello');
+      const { ask, adapter } = await start({
+        ...options,
+        cwd,
+        autoApprove: ['*'],
+      });
+      try {
+        await expect(ask('read_file', 'fs_read', 'note.txt')).resolves.toEqual(
+          declineWith(reason),
+        );
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test('stops a KAS write to agent instructions after an untrusted read despite auto-approval', async () => {
+    const ledger = new UntrustedContentLedger();
+    const { ask, adapter, threadId } = await start({
+      ledger,
+      autoApprove: ['*'],
+    });
+    try {
+      ledger.markConversation(threadId, Promise.resolve(true));
+      await expect(
+        ask('str_replace', 'fs_write', 'AGENTS.md'),
+      ).resolves.toEqual(declineWith('after reading untrusted content'));
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+});
 
 async function requestPermission(
   client: ACPClientCallbacks,

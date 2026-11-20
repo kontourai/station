@@ -158,8 +158,8 @@ the adapter mechanisms below do not by themselves establish the dock capability:
 
 Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 `capabilities` string. The dock currently enables native steering for Claude
-Code, Codex and Muse, and holds Station-owned steering for an observed post-tool
-boundary, otherwise a terminal. ACP reports native channels from the live
+Code, Codex, Muse and the GitHub Copilot (SDK) preview engine. Station-owned
+steering waits for an observed post-tool boundary in the accepted turn. ACP reports native channels from the live
 handshake; otherwise an explicit Steer uses cancel-and-reprompt after waiting
 for cancellation to finish, with a continuation instruction. Queue remains
 the default on that interrupting fallback. A steer fold appends a user row and
@@ -179,6 +179,7 @@ Adapter mappings, same Station event:
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
+| Copilot SDK (preview) | SDK `send({ mode: 'immediate' })`, which joins the running turn (`steerTurn`) |
 | Any ACP declaring a native method | The declared ACP extension **method** (`_session/steer` or `_x.ai/interject`) named in its `initialize` capability `_meta` `extensionMethods` list |
 | Kiro | ACP extension **method** `_session/steer` (additive; not a notification). Kiro does not declare it; matched on its handshake's `agentInfo.name` `Kiro CLI Agent` or its `_meta.kiro` capability namespace, never on the command |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`), undeclared; matched on the handshake's `_meta.grokShell` flag. `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
@@ -192,7 +193,7 @@ Adapter mappings, same Station event:
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The
 Send-mode picker defaults to native Steer for engines whose matrix declares
-native steering (Claude Code, Codex and Muse), and to Queue elsewhere. Other engines hold steering until a supported safe boundary can be
+native steering (Claude Code, Codex, Muse and the GitHub Copilot (SDK) preview engine), and to Queue elsewhere. Other engines hold steering until a supported safe boundary can be
 proven, and currently wait for turn completion. Send now explicitly overrides
 that waiting, stopping immediately and sending after a settled receipt.
 

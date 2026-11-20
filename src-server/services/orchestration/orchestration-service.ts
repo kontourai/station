@@ -121,6 +121,7 @@ import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
+  NATIVE_RESUME_BINDING_METADATA_KEY,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY,
   PROJECT_SESSION_CONTEXT_METADATA_KEY,
@@ -530,6 +531,7 @@ import {
   PEER_PENDING_REQUEST_METADATA_KEY,
   persistReadModelSession,
   type RecoveredSessionStartOptions,
+  recordedResumeBindingForStart,
   recoverOrchestrationSessions,
   resolveOrchestrationAdapterForThread,
   startRecoveredOrchestrationSession,
@@ -4593,12 +4595,23 @@ export class OrchestrationService {
       const persistedMetadata = this.readLatestSessionStartMetadata(
         input.threadId,
       );
+      // The same rule as restart recovery; a retry that names a credential
+      // profile switches to it.
+      const recordedBindingKey = recordedResumeBindingForStart(
+        adapter,
+        existing.resumeCursor,
+        Boolean(input.credentialProfileRef),
+        () => this.readRecordedNativeResumeBindingKey(input.threadId),
+      );
       let startInput: ProviderSessionStartInput = {
         threadId: input.threadId,
         provider: adapter.provider,
         cwd: existing.cwd,
         modelId: input.modelId ?? existing.model,
         resumeCursor: existing.resumeCursor,
+        ...(recordedBindingKey
+          ? { nativeResumeBindingKey: recordedBindingKey }
+          : {}),
         persistSession: existing.persistSession,
         ...(persistedMetadata
           ? { metadata: persistedMetadata }
@@ -17708,6 +17721,8 @@ export class OrchestrationService {
         this.applyAgentCredentialProfileRef(input),
       readSessionStartMetadata: (threadId) =>
         this.readLatestSessionStartMetadata(threadId),
+      readNativeResumeBindingKey: (threadId) =>
+        this.readRecordedNativeResumeBindingKey(threadId),
       prepareModelLaunch: (adapter, input, retainedModelId) =>
         this.withAcceptedModelLaunchPlan(
           adapter,
@@ -18536,6 +18551,25 @@ export class OrchestrationService {
         });
       },
     });
+  }
+
+  /**
+   * The native resume binding key the session's latest start recorded on its
+   * `session.started` (a reserved key `readLatestSessionStartMetadata`
+   * strips), for a restart that resumes the same native session.
+   */
+  private readRecordedNativeResumeBindingKey(
+    threadId: string,
+  ): string | undefined {
+    const start = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.started',
+    )?.payload;
+    const key =
+      start?.method === 'session.started'
+        ? start.metadata?.[NATIVE_RESUME_BINDING_METADATA_KEY]
+        : undefined;
+    return typeof key === 'string' && key.length > 0 ? key : undefined;
   }
 
   private readLatestSessionStartMetadata(

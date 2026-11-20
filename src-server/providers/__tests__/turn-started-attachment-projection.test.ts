@@ -30,6 +30,7 @@ const TURN_STARTED_ADAPTERS = [
   'bedrock-adapter.ts',
   'claude-adapter.ts',
   'codex-adapter.ts',
+  'copilot-sdk-adapter.ts',
   'muse-adapter.ts',
   'ollama-adapter.ts',
   'station-agent-adapter.ts',

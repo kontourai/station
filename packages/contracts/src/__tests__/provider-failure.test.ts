@@ -39,6 +39,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['stage_invalid_upload', 'input_unsupported', false],
     ['stage_capacity', 'busy', true],
     ['continuation_engine_not_ready', 'unavailable', true],
+    ['feature_preview_disabled', 'unavailable', true],
     ['adoption_continuation_in_progress', 'busy', true],
     ['continuation_source_active', 'busy', true],
     ['conversation_handoff_predecessor_busy', 'busy', true],

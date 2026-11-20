@@ -125,6 +125,7 @@ async function bootWith(appConfig: Record<string, unknown>): Promise<{
       claudeAdapter: fakeAdapter('claude'),
       codexAdapter: fakeAdapter('codex'),
       museAdapter: fakeAdapter('muse'),
+      copilotSdkAdapter: fakeAdapter('copilot-sdk'),
       bedrockAdapter: fakeAdapter('bedrock'),
       ollamaAdapter: fakeAdapter('ollama'),
       activeAgents: new Map(),

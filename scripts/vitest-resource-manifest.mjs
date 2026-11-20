@@ -480,8 +480,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // see that seam; under the ordinary four-worker corpus two of its cases
   // timed out at canonical phase load.
   'packages/shared/src/__tests__/plugin-build.test.ts',
-  // #4831: builds the docs server bundle, which starts esbuild's service
-  // child; the file imports no child_process itself.
+  // Builds the docs bundle with esbuild and invokes the verified stdio child
+  // through the Claude SDK server's MCP interface.
   'src-server/tools/__tests__/station-docs-bundle.test.ts',
   // Parses each fixture bundle with esbuild, which starts esbuild's service
   // child; the file imports no child_process itself.

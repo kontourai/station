@@ -26,6 +26,7 @@ import { FakeClaudeChild } from './claude-engine-process-test-utils.js';
 import { loadClaudeProviderTurnFixture } from './claude-provider-turns-fixtures.js';
 import { FakeCodexProcess } from './codex-adapter-wire-harness.js';
 import { CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT } from './codex-collab-fixtures.js';
+import { scriptedCopilotSdkEngine } from './copilot-sdk-fakes.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
 import { FakeMuseProcess } from './fake-muse-process.js';
 import {
@@ -738,6 +739,28 @@ export function createConformanceEngine(
         process?.resolvePrompt('cancelled');
         await adapter.stopAll();
       },
+    };
+  }
+  if (name === 'copilot-sdk') {
+    const engine = scriptedCopilotSdkEngine(cwd);
+    return {
+      adapter: engine.adapter,
+      start: engine.start,
+      // The engine sees a prompt as an enqueued send (steers are `immediate`).
+      inputs: () =>
+        engine.client.created.flatMap((session) =>
+          session.sends.filter((send) => send.mode === 'enqueue'),
+        ),
+      text: engine.text,
+      complete: engine.complete,
+      late: () => engine.text('late-after-stop'),
+      // The fake runtime answers `abort()` with its aborted idle.
+      settleInterrupt: () => {},
+      // Refuses every attachment before it reaches the runtime.
+      receivedImage: () => undefined,
+      stopped: () =>
+        engine.client.created.some((session) => session.aborts > 0),
+      cleanup: () => engine.adapter.stopAll(),
     };
   }
   if (name === 'muse' && museTransport === 'serve') {

@@ -14,6 +14,8 @@ export function engineDisplayLabel(engineId: EngineId): string | null {
       return 'Codex';
     case 'muse':
       return 'Muse Code';
+    case 'copilot-sdk':
+      return 'GitHub Copilot (SDK)';
     // Read-only attached OpenCode sessions (`OpenCodeSessionSource`). An
     // OpenCode connection Station drives itself is an ACP engine instead.
     case 'opencode':
