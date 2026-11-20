@@ -104,6 +104,10 @@ describe('dispatch-scope contract dependencies (#3335)', () => {
 describe('Nightly regressions outside the import graph', () => {
   test.each([
     [
+      'tests/gallery-screen-sources.json',
+      'scripts/__tests__/gallery-screen-coverage.test.ts',
+    ],
+    [
       'src-ui/src/pages/AppearancePage.tsx',
       'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
     ],
