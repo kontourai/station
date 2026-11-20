@@ -949,6 +949,12 @@ which consumers drive its rate (#4992). Each read records:
   thread again or reused it: `projection_refolded`, `projection_reused`,
   `count_refreshed` and `count_reused`.
 
+The projection and count cache keeps up to 2,048 marked threads. A wider
+read holds reusable entries until it assembles its response. It refreshes
+existing cache entries and fills spare slots. Other results from that
+request stay request-local. Expect some refolds for a set larger than the
+cache even when the event log is idle.
+
 A purpose outside the vocabulary is recorded as `invalid`. No session, user or
 thread identity is ever a dimension. Without a collector, the diagnostics
 bundle's `sessionReadModel` field carries the same per-purpose totals since the

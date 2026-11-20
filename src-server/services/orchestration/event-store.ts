@@ -10999,13 +10999,16 @@ export class EventStore {
     // #4992: the read model folds every readable thread on each list, and it
     // is listed several times a second while any session streams. Only the
     // threads whose mark moved are folded again.
-    const stale = uniqueThreadIds.filter(
-      (threadId) =>
-        this.cachedSessionProjection(threadId, marks)?.events === undefined,
-    );
+    const cached = new Map<string, readonly PersistedRuntimeEvent[]>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      const events = this.cachedSessionProjection(threadId, marks)?.events;
+      if (events === undefined) stale.push(threadId);
+      else cached.set(threadId, events);
+    }
     observe?.({
       refreshed: stale.length,
-      reused: uniqueThreadIds.length - stale.length,
+      reused: cached.size,
     });
     let folded = new Map<string, PersistedRuntimeEvent[]>();
     if (stale.length > 0) {
@@ -11015,19 +11018,15 @@ export class EventStore {
       } finally {
         this.deferAttachmentHydration = false;
       }
+      const oversized = marks.size > SESSION_PROJECTION_CACHE_MAX;
       for (const threadId of stale) {
         const events = folded.get(threadId) ?? [];
-        this.storeSessionProjection(threadId, marks, {
-          events: events.map(deepFreezeEvent),
-        });
+        this.storeSessionProjection(threadId, marks, { events }, oversized);
       }
     }
     const result = new Map<string, PersistedRuntimeEvent[]>();
     for (const threadId of uniqueThreadIds) {
-      const events =
-        folded.get(threadId) ??
-        this.cachedSessionProjection(threadId, marks)?.events ??
-        [];
+      const events = folded.get(threadId) ?? cached.get(threadId) ?? [];
       result.set(
         threadId,
         events.map((event) => this.hydrateAttachments(event)),
@@ -11081,13 +11080,27 @@ export class EventStore {
     threadId: string,
     marks: ReadonlyMap<string, number>,
     facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+    oversized: boolean,
   ): void {
     const highWater = marks.get(threadId);
     if (highWater === undefined) return;
     const current = this.sessionProjectionCache.get(threadId);
+    // A scan that cannot fit should refresh entries it already owns and fill
+    // spare slots. Admitting the rest evicts the warm set, including the
+    // projections just populated by the other half of the same read model.
+    if (
+      oversized &&
+      current === undefined &&
+      this.sessionProjectionCache.size >= SESSION_PROJECTION_CACHE_MAX
+    )
+      return;
     const kept = current?.highWater === highWater ? current : { highWater };
     this.sessionProjectionCache.delete(threadId);
-    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    this.sessionProjectionCache.set(threadId, {
+      ...kept,
+      ...facts,
+      ...(facts.events ? { events: facts.events.map(deepFreezeEvent) } : {}),
+    });
     while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
       const oldest = this.sessionProjectionCache.keys().next().value;
       if (oldest === undefined) break;
@@ -12760,9 +12773,10 @@ export class EventStore {
     // A thread without a mark has no events and needs no query: neither.
     observe?.({ refreshed: stale.length, reused: counts.size });
     const counted = this.queryEventCountsByThreads(stale);
+    const oversized = marks.size > SESSION_PROJECTION_CACHE_MAX;
     for (const threadId of stale) {
       const eventCount = counted.get(threadId) ?? 0;
-      this.storeSessionProjection(threadId, marks, { eventCount });
+      this.storeSessionProjection(threadId, marks, { eventCount }, oversized);
       if (eventCount > 0) counts.set(threadId, eventCount);
     }
     return counts;
