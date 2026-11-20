@@ -322,15 +322,10 @@ describe('the two first-run overlays are mutually exclusive', () => {
 });
 
 /**
- * THE THIRD OVERLAY. `OnboardingGate` renders the usage-telemetry disclosure
- * after its children, so wherever it renders it renders on top: on a fresh
- * home it landed over the first-run chapter (reproduced live — two modals on
- * first open) and on `origin/main` it lands over the setup launcher, which is
- * why the first-run E2E specs had to answer it before they could click
- * anything. On a `pending` home it is the chapter's first step instead; on
- * every other home it is what shipped, waiting its turn.
+ * OnboardingGate leaves usage review to the explicit Home action. The mount
+ * marker catches a standalone modal accidentally returning to the shell.
  */
-describe('the usage-telemetry disclosure is the third overlay under the same rule', () => {
+describe('setup leaves standalone usage review to Home', () => {
   test('a pending home shows it as a chapter STEP, never as its own modal', () => {
     disclosureState.outstanding = true;
     const view = renderBoth();
@@ -390,20 +385,18 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
     });
   });
 
-  test('an upgraded home keeps the standalone modal', () => {
-    // No `firstRun` record at all: a home that predates the field, which is
-    // the population the standalone modal was shipped for.
+  test('opening an upgraded home leaves the workspace available', () => {
     configValue.firstRun = undefined;
     renderBoth();
 
     expect(overlayCounts()).toEqual({
       launcher: 0,
       chapter: 0,
-      disclosure: 1,
+      disclosure: 0,
     });
   });
 
-  test('it waits for the setup launcher rather than covering it', () => {
+  test('dismissing the launcher leaves the workspace available', () => {
     configValue.firstRun = undefined;
     currentStatus = status();
     const view = renderBoth();
@@ -413,7 +406,6 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       disclosure: 0,
     });
 
-    // And it takes the screen the moment the launcher is answered.
     onboardingSetupStore.dismiss();
     view.rerender(
       <OnboardingGate>
@@ -423,20 +415,17 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
     expect(overlayCounts()).toEqual({
       launcher: 0,
       chapter: 0,
-      disclosure: 1,
+      disclosure: 0,
     });
   });
 
-  test('a chapter re-opened from Home’s card suppresses it while it is up', () => {
-    // A deferred home carries BOTH: the card offers the run, and the modal is
-    // mounted because the home is no longer `pending`. Opening the run from
-    // the card must not leave the modal stacked on top of it.
+  test('reopening and closing deferred setup leaves privacy review optional', () => {
     configValue.firstRun = { status: 'skipped' };
     const view = renderBoth();
     expect(overlayCounts()).toEqual({
       launcher: 0,
       chapter: 0,
-      disclosure: 1,
+      disclosure: 0,
     });
 
     screen.getByRole('button', { name: 'Open setup' }).click();
@@ -460,7 +449,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
     expect(overlayCounts()).toEqual({
       launcher: 0,
       chapter: 0,
-      disclosure: 1,
+      disclosure: 0,
     });
   });
 });
