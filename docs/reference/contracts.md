@@ -66,7 +66,7 @@ field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
 ### Turn admission policy
 
-`TurnStartedEvent.resourceAdmissionIntent` records Station's engine-start policy
+`TurnStartedEvent.resourceAdmissionIntent` records an explicit Station engine-start policy
 separately from `dispatchOrigin` source attribution. Station replaces an
 adapter-supplied policy when correlating the accepted send. Recovery reads the
 recorded policy and the source turn/submission identifiers; these fields do not

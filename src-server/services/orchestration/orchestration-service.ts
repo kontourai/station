@@ -10856,7 +10856,7 @@ export class OrchestrationService {
                           // approval guardian must not read it as typed.
                           internal?.mcpPromptOrigin ? 'mcp-prompt' : undefined,
                           internal?.personAuthored ? 'person' : undefined,
-                          respawnIntent,
+                          internal?.resourceAdmissionIntent,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -11208,7 +11208,7 @@ export class OrchestrationService {
                           stampedClientKey ?? turnInput.clientTurnId,
                           turnInput.invocationId,
                           dispatchOrigin,
-                          respawnIntent,
+                          internal?.resourceAdmissionIntent,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
