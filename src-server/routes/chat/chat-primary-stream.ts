@@ -38,7 +38,11 @@ import {
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { InjectableStream } from '../../runtime/streaming/InjectableStream.js';
 import type { IStreamResult, RuntimeContext } from '../../runtime/types.js';
-import { assertInheritedDelegationToolPolicy } from '../../services/orchestration/delegation-tool-policy.js';
+import {
+  assertInheritedDelegationToolBinding,
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../../services/orchestration/delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import {
   chatContextInjectionBlocks,
@@ -363,6 +367,11 @@ export function streamPrimaryAgentChat({
     }> = [];
 
     try {
+      const requestedDelegation = captureInheritedDelegationToolContext(
+        restOptions.delegation && typeof restOptions.delegation === 'object'
+          ? (restOptions.delegation as AgentDelegationContext)
+          : undefined,
+      );
       // Flush the response headers carrying the key before creating a
       // conversation or invoking an Agent.
       if (clientTurnId) await streamWriter.write(': turn-key\n\n');
@@ -378,7 +387,11 @@ export function streamPrimaryAgentChat({
         orchestrationThreadId,
       );
 
-      operationContext = { ...restOptions, elicitation };
+      operationContext = {
+        ...restOptions,
+        delegation: requestedDelegation,
+        elicitation,
+      };
 
       if (!operationContext.userId) {
         operationContext.userId = getCachedUser().alias;
@@ -503,11 +516,6 @@ export function streamPrimaryAgentChat({
       // adapter for runtime ones — which were different objects, so the title
       // written here was invisible to the frame below that read the other one.
       conversationStorage = memoryAdapter ?? memory;
-      const requestedDelegation =
-        operationContext.delegation &&
-        typeof operationContext.delegation === 'object'
-          ? operationContext.delegation
-          : undefined;
       assertInheritedDelegationToolPolicy(requestedDelegation);
       await ensureChatConversation({
         conversationStorage,
@@ -529,6 +537,11 @@ export function streamPrimaryAgentChat({
           : null;
       const persistedDelegation = persistedConversation?.metadata?.delegation;
       assertInheritedDelegationToolPolicy(persistedDelegation);
+      if (persistedConversation)
+        assertInheritedDelegationToolBinding(
+          requestedDelegation,
+          persistedDelegation,
+        );
       if (persistedDelegation && typeof persistedDelegation === 'object') {
         operationContext.delegation =
           persistedDelegation as AgentDelegationContext;

@@ -278,7 +278,9 @@ marks, short status labels, and a separate recency timestamp. Search opens
 from its icon without opening the keyboard on Inbox entry. The dock header
 owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
-behind a conversation, retaining its search and list position.
+behind a conversation, retaining its search and list position. While reading a
+chat, **Inbox** in Chat actions opens the same list. **Browse all conversations**
+opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
 header has no project picker, including while empty or showing Inbox. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
@@ -508,9 +510,9 @@ Android device.
 ### Inbox swipe actions
 
 The Sheet gestures device preview also enables a left swipe on touch inbox rows
-in the dock panel and embedded mobile Inbox. The shared row reveals the existing clock
-and × with labels and 72px-wide targets. A swipe only reveals the controls; the
-clock opens Snooze choices and × dismisses with Undo. A right swipe closes the
+in the dock panel and embedded mobile Inbox. The row reveals 72px-wide
+controls, with Snooze before Settle or Dismiss. A swipe only reveals the
+controls. Snooze opens the time choices; Dismiss offers Undo. A right swipe closes the
 rail. Vertical movement stays available to the scroll container, and the swipe’s
 trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
@@ -520,10 +522,11 @@ work, or deleting a draft. Inbox search reveals matching dismissed items and
 their Restore action. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
-adopted into Station. With Open and Settled inbox on, owned rows offer Settle
-instead of Dismiss, and Hide records a third-party Session on the host for the
-person rather than in the browser; the action keeps the same row, tray and
-Details placement.
+adopted into Station. With Open and Settled inbox on, an eligible owned chat
+offers Settle. An owned chat that cannot be settled yet can be dismissed from
+this Inbox. Settled chats also offer Dismiss to put them away from this view.
+Hide records a third-party Session on the host for the person.
+The actions are available in the row, swipe tray and Details.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
 On desktop, move the pointer from an Inbox row into its preview to scroll
 long content such as Basis. The preview stays inside the window as late

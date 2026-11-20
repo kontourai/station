@@ -33,6 +33,7 @@ import type {
   WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import type { StagedConversationHandoff } from '@kontourai/station-contracts/orchestration';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
@@ -7392,6 +7393,7 @@ export async function executeExecutionTargetMessage(
           ...(handoff.modelId ? { modelId: handoff.modelId } : {}),
           idempotencyKey: handoff.idempotencyKey,
           messageDigest: handoff.messageDigest,
+          stagedHandoff: handoff.stagedHandoff,
         },
       );
       return {
@@ -7804,7 +7806,10 @@ export async function executeExecutionTargetMessage(
  * foreground chat has no equivalent field or route.
  */
 export async function handoffExecutionTargetMessage(
-  input: AuthorityBearingForegroundMessageInput & { idempotencyKey: string },
+  input: AuthorityBearingForegroundMessageInput & {
+    idempotencyKey: string;
+    stagedHandoff?: StagedConversationHandoff;
+  },
   orchestrationService?: OrchestrationService,
 ): Promise<ForegroundMessageHandle> {
   if (input.target.environment.kind !== 'current') {
@@ -7815,7 +7820,10 @@ export async function handoffExecutionTargetMessage(
   return executeExecutionTargetMessage(
     {
       ...input,
-      handoffIntent: createConversationHandoffIntent(input.idempotencyKey),
+      handoffIntent: createConversationHandoffIntent(
+        input.idempotencyKey,
+        input.stagedHandoff,
+      ),
     },
     orchestrationService,
   );

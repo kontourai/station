@@ -133,8 +133,10 @@ own allowlist. An empty group permits no tool. Station preserves the groups
 in delegated requests and binds them to the runtime attestation. Station
 refuses execution of requests or recorded sessions carrying inherited groups,
 including managed Station execution and forwarding to a peer or SSH target.
-Enabling that execution requires binding the policy to conversation reuse and
-durable intent, then proving enforcement at the actual tool effect.
+When reusing a Session, Station checks that the recorded policy retains the
+requested tool allowlist, blocked tools, and approval denial before sending a
+turn. Inherited groups still require durable intent binding and proof of
+enforcement at the actual tool effect before execution can be enabled.
 
 Station Control derives the dispatch caller from its verified session.
 A child can start another child only on this Station in the caller's own

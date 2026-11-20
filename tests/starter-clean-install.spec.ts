@@ -59,25 +59,9 @@ test('fresh Station completes real Work', async ({
     ).resolves.toEqual([]);
 
     await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
-    const disclosure = page.getByTestId('first-run-disclosure');
-    await expect(disclosure).toBeVisible({ timeout: 20_000 });
-    await disclosure
-      .getByRole('button', { name: /^(Turn it off|Keep usage telemetry off)$/ })
-      .click();
-    // Intent-first Home (#3082): the usage decision returns to the task and
-    // defers the rest of the run as a resumable snooze, rather than walking
-    // on into the engines chapter.
-    await expect(disclosure).toHaveCount(0);
     await expect(page.getByTestId('first-run-home-card')).toBeVisible();
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await expect
-      .poll(async () => {
-        const config = await readData<{
-          firstRun?: { status?: string };
-        }>('/config/app');
-        return config.firstRun?.status;
-      })
-      .toBe('skipped');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
 
     // Home's start composer is the one way to start a chat (#3371); the
     // Station Agent's own Connect action on its Agent menu leads to setup.

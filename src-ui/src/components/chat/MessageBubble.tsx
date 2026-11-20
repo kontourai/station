@@ -263,6 +263,19 @@ function MessageBubbleComponent({
   owner,
   accountableHuman,
 }: MessageBubbleProps) {
+  const isLastMessage = idx === activeSession.messageCount - 1;
+  const rowIsLiveTurn =
+    (activeSession.liveTurnId !== undefined &&
+      msg.turnId === activeSession.liveTurnId) ||
+    (activeSession.liveTailRow === true && isLastMessage);
+  const rowKey =
+    msg.role === 'assistant' && msg.id && msg.sessionId
+      ? JSON.stringify([activeSession.id, msg.sessionId, msg.id])
+      : undefined;
+  // A row that settles on screen keeps its existing Markdown keys.
+  const [initialHistoryRowKey] = useState(() =>
+    msg.turnEnded && !rowIsLiveTurn ? rowKey : undefined,
+  );
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
   const connection = useOptionalConversationConnection();
@@ -440,7 +453,6 @@ function MessageBubbleComponent({
   if (msg.role === 'assistant' && !hasVisibleContent && !endedEmpty)
     return null;
 
-  const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
 
   const isAssistant = msg.role === 'assistant';
@@ -449,12 +461,6 @@ function MessageBubbleComponent({
   const sender = msg.role === 'user' ? msg.sender : undefined;
   const providerSender =
     msg.sender?.kind === 'provider' ? msg.sender : undefined;
-  // A row is the open turn when it carries the live turn's id, or when the
-  // live turn renders as the last row instead of the streaming shell.
-  const rowIsLiveTurn =
-    (activeSession.liveTurnId !== undefined &&
-      msg.turnId === activeSession.liveTurnId) ||
-    (activeSession.liveTailRow === true && isLastMessage);
   const foldWork =
     isMobile &&
     isAssistant &&
@@ -1312,6 +1318,11 @@ function MessageBubbleComponent({
                   : msg.contentParts
               }
               messageKey={anchorKey}
+              pagedHistoryRowKey={
+                rowKey === initialHistoryRowKey
+                  ? initialHistoryRowKey
+                  : undefined
+              }
               textContent={
                 taskProposal
                   ? textContent.replace(

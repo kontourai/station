@@ -25,14 +25,13 @@ import { createWindowsReleaseSigningReceipt } from '../lib/windows-release-signi
  * that fabricated its observation instead of reporting the real call fails
  * here: the recorded status, signer and hash are checked against the file.
  *
- * Windows only. The throwaway certificate lives in Cert:\CurrentUser\My just
- * long enough to sign one fixture and is removed before any assertion; no
- * trust store is changed, so the self-signed PE is never Valid.
+ * Windows only. The throwaway code-signing key and certificate live in
+ * memory and are disposed after signing. The trust store stays untouched.
  */
 
 const onWindows = process.platform === 'win32';
 const SKIP_REASON =
-  'skipped off Windows: Get-AuthenticodeSignature and New-SelfSignedCertificate exist only on Windows';
+  'skipped off Windows: Windows Installer and Get-AuthenticodeSignature are required';
 const root = resolve(import.meta.dirname, '../..');
 const TAG = 'v1.2.3';
 const SHA = 'a'.repeat(40);
@@ -48,7 +47,7 @@ const observeScript = releaseWorkflow.jobs['desktop-windows'].steps.find(
 )?.run;
 
 /** Builds the fixtures and reports the two signer thumbprints. */
-const FIXTURES = String.raw`
+const FIXTURES = `
 $ErrorActionPreference = 'Stop'
 $clock = [Diagnostics.Stopwatch]::StartNew()
 function Write-FixturePhase([string] $phase) {
@@ -62,28 +61,36 @@ $database = $installer.OpenDatabase($msi, 3)
 $database.Commit()
 [void][Runtime.InteropServices.Marshal]::ReleaseComObject($database)
 [void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
-Write-FixturePhase 'compile-pe'
-$library = Join-Path $dir 'self-signed.dll'
-Add-Type -TypeDefinition 'public static class StationAuthenticodeFixture { public static int Answer() { return 42; } }' -OutputAssembly $library
+Write-FixturePhase 'copy-pe'
+$fixture = Join-Path $dir 'self-signed.exe'
+Copy-Item -LiteralPath (Join-Path $PSHOME 'pwsh.exe') -Destination $fixture
 Write-FixturePhase 'create-certificate'
-$certificate = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Station Authenticode test fixture' -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddHours(1)
+$key = [Security.Cryptography.RSA]::Create(2048)
+$certificate = $null
 try {
+  $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Station Authenticode test fixture', $key, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+  $purposes = [Security.Cryptography.OidCollection]::new()
+  [void]$purposes.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
+  $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($purposes, $false))
+  $now = [DateTimeOffset]::Now
+  $certificate = $request.CreateSelfSigned($now.AddMinutes(-1), $now.AddHours(1))
+  $selfSignedThumbprint = $certificate.Thumbprint
   Write-FixturePhase 'sign-pe'
-  $signed = Set-AuthenticodeSignature -LiteralPath $library -Certificate $certificate -HashAlgorithm SHA256
-  if (-not $signed.SignerCertificate) { throw "Set-AuthenticodeSignature did not sign the fixture: $($signed.Status) $($signed.StatusMessage)" }
+  $signed = Set-AuthenticodeSignature -LiteralPath $fixture -Certificate $certificate -HashAlgorithm SHA256
+  if ($signed.SignerCertificate.Thumbprint -ne $selfSignedThumbprint) { throw "Set-AuthenticodeSignature did not install the fixture signer: $($signed.Status) $($signed.StatusMessage)" }
 } finally {
-  Write-FixturePhase 'remove-certificate'
-  Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
+  if ($certificate) { $certificate.Dispose() }
+  $key.Dispose()
 }
 Write-FixturePhase 'tamper-pe'
-$bytes = [IO.File]::ReadAllBytes($library)
+$bytes = [IO.File]::ReadAllBytes($fixture)
 $bytes[0x300] = $bytes[0x300] -bxor 0xFF
-[IO.File]::WriteAllBytes((Join-Path $dir 'tampered.dll'), $bytes)
+[IO.File]::WriteAllBytes((Join-Path $dir 'tampered.exe'), $bytes)
 Write-FixturePhase 'read-publisher'
 $publisher = Join-Path $dir 'publisher-signed.exe'
 Copy-Item -LiteralPath $env:NODE_EXE -Destination $publisher
 [ordered]@{
-  selfSignedThumbprint = $certificate.Thumbprint
+  selfSignedThumbprint = $selfSignedThumbprint
   publisherThumbprint = [Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($publisher).GetCertHashString()
 } | ConvertTo-Json -Compress
 Write-FixturePhase 'complete'
@@ -241,7 +248,7 @@ describe.skipIf(!onWindows)(
       'refuses a PE signed by an untrusted self-signed certificate in %s mode',
       (mode) => {
         const run = observe(
-          'self-signed.dll',
+          'self-signed.exe',
           mode,
           mode === 'certificate' ? selfSignedThumbprint : '',
         );
@@ -265,7 +272,7 @@ describe.skipIf(!onWindows)(
       'refuses a signed PE tampered after signing as HashMismatch in %s mode',
       (mode) => {
         const run = observe(
-          'tampered.dll',
+          'tampered.exe',
           mode,
           mode === 'certificate' ? selfSignedThumbprint : '',
         );

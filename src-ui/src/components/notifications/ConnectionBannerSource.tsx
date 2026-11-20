@@ -32,6 +32,7 @@ import {
   setStreamConnectionState,
   subscribeStreamConnectionState,
 } from '../../hooks/orchestration/streamConnectionState';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { checkHostCompatibility } from '../../lib/compatibility';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
@@ -81,6 +82,7 @@ function isLoopbackEndpoint(url: string): boolean {
 // Guardrailed by proof:repo-governance.
 export function ConnectionBannerSource() {
   const { activeConnection, apiBase, removeConnection } = useConnections();
+  const activeStationName = useActiveStationName();
   const { isDesktop } = usePlatformProfile();
   const { status, reason, failureStreak, blocked, recheck } =
     useConnectionStatus({
@@ -242,7 +244,7 @@ export function ConnectionBannerSource() {
       failureStreak >= 3 &&
       notice.connected
     ) {
-      const name = activeConnection?.name || 'Station';
+      const name = activeStationName || 'Station';
       const explanation =
         reason === 'authentication-rate-limited' || reason === 'timeout'
           ? connectionFailureCopy(reason, name).summary
@@ -264,7 +266,7 @@ export function ConnectionBannerSource() {
     }
   }, [
     activeConnection?.id,
-    activeConnection?.name,
+    activeStationName,
     showDecision,
     showCompat,
     credentialOwned,

@@ -533,6 +533,13 @@ retry, credential singleton, engine loop, or new Agent definition schema.
 
 ---
 
+Pass `stagedHandoff` to `handoffExecutionMessage` to submit the first message
+of a staged Agent change. Include the source Session ID, the approved
+`continue-from-history` policy and the target's `expectedEngine`. The SDK sends
+this to a separate route. A receiver without that route returns 404, and the
+SDK makes no second request. The [Session API](session-api.md#send-a-staged-agent-change)
+describes admission, context and retry behavior.
+
 ## Setup
 
 The React-free `/client` entry exports

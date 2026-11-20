@@ -59,6 +59,8 @@ const PART_GLYPH: Record<
 interface ContextFacts {
   /** The row's own headline, so a chat title that repeats it is dropped. */
   title: string;
+  body?: string;
+  chatTitle?: string;
   session?: OrchestrationSessionSummary;
   projectSlug?: string;
   /** A paired or SSH Station that runs the work, as the item names it. */
@@ -107,10 +109,9 @@ export function inboxContextParts(facts: ContextFacts): InboxContextPart[] {
     'project',
     facts.projectSlug ?? (session ? sessionProjectLabel(session) : null),
   );
-  if (session) {
-    const chat = sessionTitle(session);
-    if (chat !== facts.title) push('chat', chat);
-  }
+  const chat = facts.chatTitle ?? (session ? sessionTitle(session) : undefined);
+  if (chat && chat !== facts.title && !facts.body?.includes(`“${chat}”`))
+    push('chat', chat);
   const engine = facts.engine ?? session?.provider;
   const agent = facts.agent ?? session?.assignedAgentSlug;
   // An agent named for its engine ("codex" on Codex) says nothing new.
@@ -191,6 +192,8 @@ export function useInboxContext() {
       const threadId = notificationThreadId(notification);
       return inboxContextParts({
         title: notification.title,
+        body: notification.body,
+        chatTitle: metadataString(notification, 'chatTitle'),
         session: threadId ? sessions.get(threadId) : undefined,
         projectSlug: metadataString(notification, 'projectSlug'),
         localStationName,

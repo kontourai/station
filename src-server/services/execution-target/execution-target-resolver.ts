@@ -624,6 +624,7 @@ export function agentExecutionBindingMetadata(
 export async function resolveExecutionTarget(
   target: ExecutionTarget,
   deps: ExecutionTargetResolverDependencies,
+  options?: { stagedAgentChange: true },
 ): Promise<ResolvedExecutionTarget> {
   const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
@@ -672,6 +673,16 @@ export async function resolveExecutionTarget(
     typeof target.agent === 'string'
       ? undefined
       : agentId(executionBindingAgentId(target.agent));
+  if (
+    options?.stagedAgentChange &&
+    executionAgentId &&
+    agent.executionDefault === true &&
+    agent.execution?.agentConnectionId
+  ) {
+    throw new Error(
+      'Choose a different Agent to switch engines for this engine-bound Agent.',
+    );
+  }
   const executionAgent = executionAgentId
     ? await deps.getAgent(access, executionAgentId)
     : agent;

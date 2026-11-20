@@ -453,7 +453,7 @@ test.each(
         ? 'Restart server'
         : 'Update server';
     const confirmationTitle = desktop
-      ? 'Restart Station to install 0.1.12?'
+      ? 'Restart Station to update?'
       : target === 'staged-server'
         ? 'Restart the server into 0.8.0-nightly.2?'
         : 'Update and restart the server?';

@@ -224,6 +224,34 @@ describe('ConversationHandoffDialog', () => {
     });
   });
 
+  test('staging confirms the context disclosure and closes without dispatching', () => {
+    const onStage = vi.fn();
+    const prepareDraft = vi.fn();
+    const dialog = renderDialog(
+      'claude',
+      'http://station.test',
+      [claude, codex],
+      'conversation-a',
+      {
+        onStage,
+        prepareDraft,
+      },
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    expect(
+      screen.getByText(
+        'Send starts a fresh Session with recent conversation text.',
+      ),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use Codex reviewer on Send' }),
+    );
+    expect(onStage).toHaveBeenCalledWith(codex, undefined, undefined, false);
+    expect(dialog.onClose).toHaveBeenCalledTimes(1);
+    expect(prepareDraft).not.toHaveBeenCalled();
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+  });
+
   test('engine selection keeps the authored Agent through handoff, response loss, reload and acceptance', async () => {
     const profile: AgentData = {
       slug: agentId('reviewer'),

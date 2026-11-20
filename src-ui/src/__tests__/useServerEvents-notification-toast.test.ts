@@ -232,6 +232,7 @@ describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', (
       title: 'Tests pass on fix-login',
       body: 'All green.',
       metadata: {
+        chatTitle: 'Fix login',
         envelope: {
           v: 1,
           source: {
@@ -254,7 +255,7 @@ describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', (
     expect(actions?.map((action: { label: string }) => action.label)).toEqual([
       'Open',
     ]);
-    expect(metadata.detail).toBe('from builder · session session-1');
+    expect(metadata.attribution).toBe('from builder · Fix login');
   });
 });
 

@@ -38,6 +38,7 @@ import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { describeStationFailure } from '../utils/stationFailure';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
+import { PageCallout } from './PageCallout';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
@@ -1392,15 +1393,29 @@ export function UsageTelemetryDisclosureStep({
  */
 export function UsageTelemetryDisclosure({
   firstRun = false,
+  offerOnHome = false,
 }: {
   firstRun?: boolean;
+  offerOnHome?: boolean;
 }) {
   const keepRef = useRef<HTMLButtonElement>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const { data, isError, settled, outstanding, dismissalRevision } =
     useUsageTelemetryDisclosureState();
   const decision = useUsageTelemetryDecision(data);
   if (!settled || !data?.events || (!firstRun && isError)) return null;
   if (firstRun && !outstanding) return null;
+  if (offerOnHome && !reviewOpen)
+    return (
+      <PageCallout
+        calloutId="review-usage-sharing"
+        ariaLabel="Usage sharing"
+        title="Usage sharing"
+        action={
+          <Button onClick={() => setReviewOpen(true)}>Review choices</Button>
+        }
+      />
+    );
 
   if (data.publishers)
     return firstRun ? (

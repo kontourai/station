@@ -347,7 +347,8 @@ the operator's `coding:exec` grant to name one (one of the owner's own devices
 with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
-`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
+`/conversations/:conversationId/handoff`, `/conversations/:conversationId/staged-handoff`
+and `POST /api/orchestration/delegations`;
 the other routes the rule covers are listed in the [API reference](api.md#choosing-a-working-folder).
 The operator credential is unaffected, and so is the roundtrip script at the end
 of this page when it runs with the operator credential (a paired device's
@@ -843,6 +844,29 @@ binding and expected fingerprint. Continuation reconstructs them from persisted
 session metadata. Changing the engine on a bound conversation requires an
 explicit handoff; omitting the override on that handoff restores the authored
 binding and model default.
+
+### Send a staged Agent change
+
+With **Stage chat Agent changes** enabled, submit the first message with
+`POST /api/orchestration/conversations/:conversationId/staged-handoff`. Supply
+the ordinary handoff target and idempotency key, `target.expectedEngine`, and
+`stagedHandoff: { expectedCurrentSessionId, contextPolicy: "continue-from-history" }`.
+A selected model travels as `target.model.override` on that exact connection.
+A receiver-owned engine default with its own engine connection uses the Agent
+selector for engine changes. General-purpose profiles can use a compatible
+execution override under the same profile checks as other handoffs.
+
+Station requires an idle, current source Session and refuses while a follow-up
+is queued. A successful Send starts a fresh Session with bounded authorized
+conversation text and the submitted first message. Prior attachment bytes,
+engine-native cursors and engine-local tool state stay with the source.
+The message can include attachments supported by the selected engine. If the
+response is lost, check the handoff status using the same key before trying
+another Send. A same-key retry must identify the same request.
+A conversation owner can withdraw a request that has no reservation with
+`DELETE /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey`.
+The withdrawal is durable. A late request under the same key cannot reserve
+a successor. Station refuses withdrawal after the reservation exists.
 
 The optional conversation-open `execution.environment: { kind: "current" }`
 requires the authorized current child's persisted start Environment identity to

@@ -159,7 +159,7 @@ describe('Desktop app updates settings card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Restart to update…' }));
     expect(
       screen.getByRole('dialog', {
-        name: 'Restart Station to install 0.1.12?',
+        name: 'Restart Station to update?',
       }),
     ).not.toBeNull();
     expect(fake.commands()).toEqual(['desktop_update_download']);
@@ -184,7 +184,7 @@ describe('Desktop app updates settings card', () => {
     ).not.toBeNull();
     act(() => fake.emit(desktopUpdateFixture('installFailed')));
     expect(screen.getByRole('alert').textContent).toBe(
-      'The update did not install, and Station did not restart.',
+      'The update could not install. Station is still running.',
     );
   });
 
@@ -241,9 +241,9 @@ describe('Desktop app updates settings card', () => {
     expect(await screen.findByText('Try again in a moment.')).not.toBeNull();
     expect(screen.queryByText('installer access denied')).toBeNull();
     expect(screen.getByRole('dialog').textContent).toContain(
-      'The update did not install, and Station did not restart.',
+      'The update could not install. Station is still running.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry install' }));
     await waitFor(() =>
       expect(fake.commands()).toEqual([
         'desktop_update_install',

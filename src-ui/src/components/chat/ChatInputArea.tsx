@@ -331,6 +331,12 @@ interface ChatInputAreaProps {
   sendFailureNotice?: string;
   /** A quiet line above the draft about what the next send also does. */
   composerNotice?: string;
+  stagedAgentNotice?: {
+    label: string;
+    onUndo?: () => void;
+    onCheck?: () => void;
+    checkLabel?: string;
+  };
   /**
    * A send queued to retry by itself, with its Discard. The controls row shows
    * the button only when the dock is too short to show the transcript that
@@ -562,6 +568,7 @@ export function ChatInputArea({
   attachmentNotice,
   sendFailureNotice,
   composerNotice,
+  stagedAgentNotice,
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
@@ -1251,7 +1258,7 @@ export function ChatInputArea({
 
       {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
-        {agentEngineMove?.nextTurn && (
+        {!stagedAgentNotice && agentEngineMove?.nextTurn && (
           // The closed Run setup trigger has no room for a destination name,
           // so the one fact that changes what the next send does gets its own
           // line at every width (the open panel's caption repeats it).
@@ -1260,6 +1267,19 @@ export function ChatInputArea({
             <span className="chat-input__next-turn-destination">
               {agentEngineMove.to}
             </span>
+          </p>
+        )}
+        {stagedAgentNotice && (
+          <p className="chat-input__next-turn-notice">
+            {stagedAgentNotice.label}{' '}
+            {stagedAgentNotice.onCheck && (
+              <Button onClick={stagedAgentNotice.onCheck}>
+                {stagedAgentNotice.checkLabel}
+              </Button>
+            )}
+            {stagedAgentNotice.onUndo && (
+              <Button onClick={stagedAgentNotice.onUndo}>Undo</Button>
+            )}
           </p>
         )}
         {composerNotice && (

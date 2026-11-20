@@ -736,11 +736,10 @@ export function InboxRow({
   const beside = (action: InboxRowAction) =>
     direct === 'all' || direct === action.id;
   const trayActions = actions.filter(
-    (action) =>
-      action.id === 'resolution' ||
-      action.id === 'snooze' ||
-      (action.id === 'close' && onDismiss),
+    (action) => action.id === 'snooze' || (action.id === 'close' && onDismiss),
   );
+  const resolutionAction = actions.find((action) => action.id === 'resolution');
+  if (resolutionAction) trayActions.push(resolutionAction);
   const canSwipe = Boolean(
     details && swipeActions && !isDismissed && trayActions.length,
   );
@@ -1466,8 +1465,18 @@ export function InboxGroupList({
   useEffect(() => {
     if (swipedFor !== null && !swipedRowRendered) setSwipedFor(null);
   }, [swipedFor, swipedRowRendered]);
-  const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) =>
-    item.kind === 'task' ? (
+  const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) => {
+    const facts = workFacts?.get(item.id);
+    const conversationId =
+      resolutionState.supported &&
+      facts?.hostDetails !== false &&
+      !item.environmentId &&
+      item.kind !== 'remote-session' &&
+      item.controlMode !== 'read-only-attached' &&
+      !['Running', 'Needs attention', 'Draft'].includes(item.lifecycleLabel)
+        ? item.conversationId
+        : undefined;
+    return item.kind === 'task' ? (
       <InboxTaskRow
         item={item}
         now={now}
@@ -1496,41 +1505,26 @@ export function InboxGroupList({
         // With Open and Settled, Settle is how owned conversations are put
         // away; a third-party Session is hidden on the host instead.
         onDismiss={
-          resolutionState.supported &&
-          workFacts?.get(item.id)?.hostDetails !== false &&
-          item.kind !== 'remote-session' &&
-          item.controlMode !== 'read-only-attached' &&
-          item.conversationId
-            ? undefined
-            : onDismiss
+          conversationId && group.id !== 'settled' ? undefined : onDismiss
         }
         dismissVerb={
-          resolutionState.hideSupported &&
-          inboxHideTarget(item, workFacts?.get(item.id))
+          resolutionState.hideSupported && inboxHideTarget(item, facts)
             ? 'hide'
             : 'dismiss'
         }
         onRestore={onRestore}
         isDismissed={group.id === 'dismissed'}
         resolution={
-          resolutionState.supported &&
-          workFacts?.get(item.id)?.hostDetails !== false &&
-          item.kind !== 'remote-session' &&
-          item.controlMode !== 'read-only-attached' &&
-          item.conversationId &&
-          !['Running', 'Needs attention', 'Draft'].includes(item.lifecycleLabel)
+          conversationId && group.id !== 'dismissed'
             ? {
-                settled: Object.hasOwn(
-                  resolutionState.settled,
-                  item.conversationId,
-                ),
+                settled: Object.hasOwn(resolutionState.settled, conversationId),
                 pending: resolutionState.change.isPending,
                 onChange: () =>
                   resolutionState.change.mutate({
-                    conversationId: item.conversationId!,
+                    conversationId,
                     settled: !Object.hasOwn(
                       resolutionState.settled,
-                      item.conversationId!,
+                      conversationId,
                     ),
                   }),
               }
@@ -1561,6 +1555,7 @@ export function InboxGroupList({
           : rowProjectMarks(item, projectAccentBySlug, projectIconBySlug))}
       />
     );
+  };
   const renderRow = (group: MobileActivityGroup, item: HomeWorkItem) => (
     <WorkItemFamily
       key={item.id}

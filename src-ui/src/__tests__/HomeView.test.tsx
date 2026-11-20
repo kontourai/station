@@ -406,6 +406,7 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
     outstanding: false,
   }),
   UsageTelemetryDisclosureStep: () => null,
+  UsageTelemetryDisclosure: () => null,
   dismissUsageTelemetryDisclosure: vi.fn(),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
@@ -1928,7 +1929,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
 
-      const earlier = screen.getByRole('region', { name: 'Earlier' });
+      const earlier = screen.getByRole('region', {
+        name: 'Earlier in Station',
+      });
       for (let index = 1; index <= 5; index += 1) {
         expect(within(earlier).getByText(`Completed ${index}`)).toBeTruthy();
       }
@@ -1949,7 +1952,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         within(earlier)
           .getAllByRole('heading')
           .map((heading) => heading.textContent),
-      ).toEqual(['Earlier']);
+      ).toEqual(['Earlier in Station']);
       expect(
         within(earlier)
           .getAllByText(/^Completed \d$/)
@@ -1983,7 +1986,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
 
-      const earlier = screen.getByRole('region', { name: 'Earlier' });
+      const earlier = screen.getByRole('region', {
+        name: 'Earlier in Station',
+      });
       expect(
         within(earlier).getByText('Repair the settled failure'),
       ).toBeTruthy();
