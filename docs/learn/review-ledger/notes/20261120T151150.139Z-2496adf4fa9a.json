@@ -1,0 +1,7 @@
+{
+  "revision": "69a2335ab2fa340eca9c22b4b7f89a395f327f8d",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Reviewed the matched delegated measurement and command against source 69a2335ab2f. Real macOS loopback completed with the same model and engine version, arm-specific request history, the original seeded engine exiting and the warm engine cohort staying stable. A new engine appeared on resume. Both follow-up orders were exercised across pilots. Report-only saved replay passed. The baseline-recording negative control failed as expected and the focused suite passed on restored source. Scope is dispatch through the stub reply and a pre-exit process footprint snapshot. Packaged ADEMark, live-provider timing and total app memory savings are unverified.","inputs":["docs/reference/station-weight.md","scripts/__tests__/station-weight.test.ts","scripts/bench/station-weight.mjs"]}
+  ]
+}
