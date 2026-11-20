@@ -343,26 +343,30 @@ const server = createServer(async (request, response) => {
             }
           });
         });
+      let cwd: string | null;
       try {
         terminal.resize(101, 37);
         const ready = waitFor('__PROOF_READY__');
+        // A shell that ignores hangup still has to close through group termination.
         terminal.write(
-          'stty size; cat /proc/self/cgroup; cd /; /bin/sh -c \'printf "__PROOF_%s__\\n" READY; exec sleep 30\'\r',
+          'trap "" HUP; stty size; cat /proc/self/cgroup; cd /; /bin/sh -c \'printf "__PROOF_%s__\\n" READY; exec sleep 30\'\r',
         );
         await ready;
         if (!terminal.getCwd)
           throw new Error('Terminal cwd inspection unavailable');
-        const cwd = await terminal.getCwd();
+        cwd = await terminal.getCwd();
         const interrupted = waitFor('station-proof> ');
         terminal.write('\x03');
         await interrupted;
         const resumed = waitFor('__PROOF_RESUMED__');
         terminal.write("printf '__PROOF_%s__\\n' RESUMED\r");
         await resumed;
-        response.end(JSON.stringify({ pid: terminal.pid, cwd, output }));
       } finally {
-        terminal.kill();
+        if (!terminal.terminate)
+          throw new Error('Terminal process-group termination unavailable');
+        await terminal.terminate();
       }
+      response.end(JSON.stringify({ pid: terminal.pid, cwd, output }));
       return;
     }
     if (url.pathname === '/terminal-grace') {
