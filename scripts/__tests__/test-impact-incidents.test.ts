@@ -159,6 +159,15 @@ describe('Nightly regressions outside the import graph', () => {
       'src-server/services/infra/workload-resources.ts',
       'src-server/services/infra/__tests__/workload-resources.process.test.ts',
     ],
+    ['docs/learn/atlas.js', 'scripts/__tests__/learning-atlas.browser.test.ts'],
+    [
+      'docs/learn/index.html',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
+    [
+      'scripts/lib/learning-markdown.mjs',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
     [
       'tests/interactive-workspace-performance-bridge.spec.ts',
       'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',

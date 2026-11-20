@@ -686,6 +686,17 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     reason:
       'the workload proof launches a separate fixture server that imports these runtime owners',
   })),
+  ...[
+    'docs/learn/atlas.js',
+    'docs/learn/index.html',
+    'scripts/lib/learning-markdown.mjs',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/learning-atlas.browser.test.ts'],
+    reason:
+      'the Atlas browser fixture serves these runtime assets and generates the search data across a dynamic renderer boundary',
+  })),
   {
     pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
     supplemental: true,
