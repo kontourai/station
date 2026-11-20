@@ -5,6 +5,7 @@ import { runtimeEventLoopLag } from '../../telemetry/metrics.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 
 const EVENT_LOOP_LAG_SAMPLE_INTERVAL_MS = 10_000;
+const EVENT_LOOP_DELAY_RESOLUTION_MS = 100;
 /** A stall this long makes a request miss the desktop transport's budgets
  * and read as a disconnect (#2327), so it belongs in the durable log. */
 export const EVENT_LOOP_STALL_WARN_MS = 1_000;
@@ -207,10 +208,10 @@ export async function startRuntimeHealthChecks(context: {
  * dead listener. The timer belongs to the runtime's existing teardown list.
  *
  * The sampled lag only sees a stall that overlaps a tick, and the metric is
- * exported only when an OTel endpoint is configured. A delay histogram covers
- * the whole window, and a stall of `EVENT_LOOP_STALL_WARN_MS` or more is
- * written to the durable log so it can be read, and lined up against the
- * request lines around it, on any install (#2327).
+ * exported only when an OTel endpoint is configured. A separate delay
+ * histogram samples the window at 100 ms. A sampled delay of
+ * `EVENT_LOOP_STALL_WARN_MS` or more is written to the durable log so it can
+ * be lined up against the request lines around it on any install (#2327).
  *
  * The delay alone does not say what held the loop, so a stall line also
  * carries what this process did during that window: CPU time, major page
@@ -255,7 +256,8 @@ export function startRuntimeEventLoopLagMonitoring(context: {
     context.recordLag ?? ((lagMs) => runtimeEventLoopLag.record(lagMs));
   const scheduleInterval = context.scheduleInterval ?? setInterval;
   const delayHistogram =
-    context.delayHistogram ?? monitorEventLoopDelay({ resolution: 20 });
+    context.delayHistogram ??
+    monitorEventLoopDelay({ resolution: EVENT_LOOP_DELAY_RESOLUTION_MS });
   const sampleResources = context.sampleResources ?? sampleRuntimeResources;
   const observeGc = context.observeGc ?? observeGarbageCollection;
   const scheduleReport =
@@ -302,6 +304,7 @@ export function startRuntimeEventLoopLagMonitoring(context: {
       const stall = {
         maxDelayMs: Math.round(maxDelayMs),
         p99DelayMs: Math.round(delayHistogram.percentile(99) / NS_PER_MS),
+        sampleResolutionMs: EVENT_LOOP_DELAY_RESOLUTION_MS,
         windowMs: interval,
         // The span the counters below cover: a stall stretches it past
         // `windowMs`.
