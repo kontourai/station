@@ -170,7 +170,11 @@ afterAll(async () => {
   expect(serverErrors).toEqual([]);
 });
 
-async function pageAt(width: number, suffix = '') {
+async function pageAt(
+  width: number,
+  suffix = '',
+  configure?: (context: BrowserContext) => Promise<void>,
+) {
   const context = await browser.newContext({
     viewport: { width, height: 900 },
   });
@@ -180,6 +184,7 @@ async function pageAt(width: number, suffix = '') {
       await route.continue();
     else await route.abort();
   });
+  await configure?.(context);
   const page = await context.newPage();
   await page.goto(`${origin}/${suffix}`);
   return page;
@@ -405,15 +410,26 @@ test.each([390, 1440])(
 );
 
 test('skill metadata stays searchable while the browser uses the body title and outline', async () => {
-  const page = await pageAt(1440);
-  await page.getByRole('searchbox').fill('name: deslop');
-  await page
+  const manifest = Promise.withResolvers<void>();
+  const page = await pageAt(1440, '', (context) =>
+    context.route(`${origin}/atlas-data.json`, async (route) => {
+      await manifest.promise;
+      await route.continue();
+    }),
+  );
+  try {
+    await page.getByRole('searchbox').fill('name: deslop');
+  } finally {
+    manifest.resolve();
+  }
+  const result = page
     .getByRole('navigation', { name: 'Search results' })
     .getByRole('link', {
       name: 'Deslop .agents/skills/deslop/SKILL.md',
       exact: true,
-    })
-    .click();
+    });
+  await browserExpect(result).toBeVisible();
+  await result.click();
   const article = page.getByRole('article');
   await browserExpect(article.getByRole('heading').first()).toHaveText(
     'Deslop',
