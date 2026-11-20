@@ -58,6 +58,10 @@ test.afterAll(async () => {
 
 const CONNECTION_ENTRY_TIMEOUT_MS = 15_000;
 
+function isDeviceSessionCookie({ name }: { name: string }): boolean {
+  return /^(?:__Host-)?station-device(?:-[a-f0-9]{16})?$/.test(name);
+}
+
 async function openConnections(page: Page): Promise<Locator> {
   const dialog = page.getByRole('dialog');
   const setupLauncher = page.getByTestId('setup-launcher');
@@ -454,9 +458,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await phone.goto(baseURL);
   const phoneSessionCookiesBeforeRequest = (
     await phoneContext.storageState()
-  ).cookies.filter((cookie) =>
-    ['__Host-station-device', 'station-device'].includes(cookie.name),
-  );
+  ).cookies.filter(isDeviceSessionCookie);
   expect(
     phoneSessionCookiesBeforeRequest,
     'the phone must reach this Station with no device session at all — see the note at the top of this test',
@@ -479,9 +481,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await denyButton.click();
   await expectPhoneDeclined(phone);
   expect(
-    (await phoneContext.storageState()).cookies.filter((cookie) =>
-      ['__Host-station-device', 'station-device'].includes(cookie.name),
-    ),
+    (await phoneContext.storageState()).cookies.filter(isDeviceSessionCookie),
   ).toEqual(phoneSessionCookiesBeforeRequest);
 
   await expectPhoneCanRequestAgain(phone);
@@ -535,14 +535,15 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
     )
     .toEqual({ hasPhoneStoredCredential: false, hasDeviceSession: true });
   const persisted = await phoneContext.storageState();
-  const deviceCookie = persisted.cookies.find((cookie) =>
-    ['__Host-station-device', 'station-device'].includes(cookie.name),
-  );
+  const deviceCookies = persisted.cookies.filter(isDeviceSessionCookie);
+  expect(deviceCookies).toHaveLength(1);
+  const [deviceCookie] = deviceCookies;
   expect(deviceCookie).toMatchObject({
+    name: expect.stringMatching(/^(?:__Host-)?station-device-[a-f0-9]{16}$/),
     httpOnly: true,
     sameSite: 'Strict',
   });
-  expect(deviceCookie!.expires).toBeGreaterThan(Date.now() / 1_000);
+  expect(deviceCookie.expires).toBeGreaterThan(Date.now() / 1_000);
   const replayStatus = await phone.evaluate(
     async ({ offerId, requestId, proof }) =>
       fetch('/.well-known/station/v1/pairing/exchange', {
