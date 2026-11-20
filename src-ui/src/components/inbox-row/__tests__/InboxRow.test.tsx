@@ -938,7 +938,7 @@ it('owned running chats can be dismissed while idle chats can be settled', () =>
   }
 });
 
-test('swipe actions place Settle to the right of Snooze', () => {
+it('swipe actions place Settle to the right of Snooze', () => {
   const row = rowFor({ hasActiveTurn: false });
   renderRow(row, {
     chrome: 'touch',
