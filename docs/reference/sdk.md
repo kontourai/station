@@ -593,6 +593,11 @@ The first snapshot uses cached server status as its baseline when available;
 an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
 authority have no effect. All status fields are compared.
 
+An ACP connection can report `stationApprovalRequests: true` when the host
+supports applying chat approval modes to the engine's ACP permission requests.
+This covers Antigravity and other ACP engines using the standard permission
+callback. Older hosts omit the field.
+
 `useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
 per API base and authority. SSE invalidates it promptly, while a 60-second
 safety poll remains active even after the stream catches up. Peer delegation

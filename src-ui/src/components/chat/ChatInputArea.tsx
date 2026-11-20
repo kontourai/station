@@ -28,6 +28,7 @@ import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
+  nonAcpApprovalEngine,
   type SessionApprovalOverride,
 } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
@@ -644,7 +645,7 @@ export function ChatInputArea({
   // command, never the connection id.
   const approvalEngineId = acpApproval
     ? acpApproval.engineId
-    : (agentConnectionId ?? null);
+    : nonAcpApprovalEngine(agentConnectionId);
   // Steering takes text only (`steerTurn` carries an input string). A host
   // with `followUpAttachments` queues a draft's files with it; on any other
   // the mid-turn queue holds text only, so a draft with files cannot join a
@@ -2074,7 +2075,10 @@ export function ChatInputArea({
                 />
               ) : (
                 executionMode === EXECUTION_MODE.EXTERNAL &&
-                approvalModeKnobSupported(approvalEngineId) && (
+                approvalModeKnobSupported(
+                  approvalEngineId,
+                  acpApproval?.control,
+                ) && (
                   <ApprovalModeChip
                     // Structural reset (not blur-dependent) for the chip's local
                     // confirm state when the active session changes — this
@@ -2082,6 +2086,7 @@ export function ChatInputArea({
                     // remount otherwise (archive#727 3).
                     key={sessionId}
                     engineConnectionId={approvalEngineId}
+                    acpControl={acpApproval?.control}
                     toolPolicyDelivery={toolPolicyDelivery}
                     sessionOverride={approvalModeOverride?.mode}
                     sessionOverrideState={approvalModeOverride?.state}

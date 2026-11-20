@@ -22,6 +22,7 @@ import {
   useApplyCredentialProfileMutation,
   useClearAppHomeProfileMutation,
   useCredentialRecoveryQuery,
+  useDeleteACPConnectionMutation,
   useDeleteAgentConnectionMutation,
   useDeleteCredentialProfileMutation,
   useEngineConnectionsQuery,
@@ -36,7 +37,15 @@ import {
   useTestAgentConnectionMutation,
   useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { ActionOverflowMenu } from '../components/ActionOverflowMenu';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { EngineStationTools } from '../components/acp-connections/EngineStationTools';
@@ -198,7 +207,9 @@ export function AgentConnectionView({
     () =>
       unregistered.map((connection) => ({
         connection,
-        custom: !acpRegistryEntries.some((entry) => entry.id === connection.id),
+        custom: !acpRegistryEntries.some(
+          (entry) => entry.id === (connection.registryId ?? connection.id),
+        ),
       })),
     [unregistered, acpRegistryEntries],
   );
@@ -292,6 +303,33 @@ export function AgentConnectionView({
     },
   });
 
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(
+    null,
+  );
+  const removeAcp = useDeleteACPConnectionMutation({
+    onSuccess: (_data, id) => {
+      setRemoving(null);
+      if (selectedRuntimeId === id) {
+        setDirty(false);
+        onNavigate({ type: 'connections-engines' });
+      }
+    },
+  });
+  const resetRemoveAcp = removeAcp.reset;
+  const openRemove = useCallback(
+    (id: string, name: string) => {
+      guard(() => {
+        resetRemoveAcp();
+        setRemoving({ id, name });
+      });
+    },
+    [guard, resetRemoveAcp],
+  );
+  const affectedAgents = removing
+    ? (agents
+        ?.filter((agent) => agent.execution?.agentConnectionId === removing.id)
+        .map((agent) => agent.name) ?? [])
+    : [];
   const testMutation = useSmokeAgentConnectionMutation();
   const refreshMutation = useTestAgentConnectionMutation();
 
@@ -360,7 +398,7 @@ export function AgentConnectionView({
         })
         .map((connection) => {
           const managed = managedStateFor(connection);
-          return resourceRow({
+          const row = resourceRow({
             id: connection.id,
             name:
               connection.config.modelRoute &&
@@ -393,6 +431,19 @@ export function AgentConnectionView({
               />
             ),
           });
+          if (
+            acpBridgeConnections.some(
+              (entry) =>
+                entry.id === connection.id && entry.source !== 'plugin',
+            ) &&
+            !managed?.pin?.locked
+          ) {
+            row.swipeAction = {
+              label: 'Remove',
+              onSelect: () => openRemove(connection.id, connection.name),
+            };
+          }
+          return row;
         }),
       // A failed first add is listed beside the engines, never as one: its
       // row says so, and its page offers only the repairs.
@@ -416,7 +467,14 @@ export function AgentConnectionView({
           ),
         })),
     ],
-    [addedEngines, notConnected, search, managedStateFor],
+    [
+      addedEngines,
+      notConnected,
+      search,
+      managedStateFor,
+      acpBridgeConnections,
+      openRemove,
+    ],
   );
   const selectedNotConnected =
     repair && repair.engine.connection.id === selectedRuntimeId
@@ -573,6 +631,11 @@ export function AgentConnectionView({
                 name={form.name}
                 id={form.id}
                 engineId={connectionEngineId(form)}
+                icon={
+                  typeof form.config.icon === 'string'
+                    ? form.config.icon
+                    : undefined
+                }
                 size={28}
               />
             }
@@ -593,6 +656,21 @@ export function AgentConnectionView({
                 >
                   {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
                 </button>
+              )}
+            {selectedAcpConnection &&
+              selectedAcpConnection.source !== 'plugin' &&
+              !selectedManagedState?.pin?.locked && (
+                <ActionOverflowMenu
+                  label={`Manage ${form.name}`}
+                  actions={[
+                    {
+                      key: 'remove-engine',
+                      label: 'Remove engine',
+                      tone: 'danger',
+                      onSelect: () => openRemove(form.id, form.name),
+                    },
+                  ]}
+                />
               )}
           </DetailHeader>
           <div className="agent-editor__section">
@@ -678,7 +756,9 @@ export function AgentConnectionView({
               )}
             <PublicRegistryUpdateNotice
               entry={acpRegistryEntries.find(
-                (entry) => entry.installed && entry.id === form.id,
+                (entry) =>
+                  entry.installed &&
+                  entry.id === (selectedAcpConnection?.registryId ?? form.id),
               )}
             />
             {selectedAcpConnectionId && (
@@ -1176,6 +1256,36 @@ export function AgentConnectionView({
           label="Select an engine to review its status and setup."
         />
       )}
+      <ConfirmModal
+        isOpen={removing !== null}
+        title="Remove engine"
+        message={
+          removing
+            ? [
+                `Remove ${removing.name} from this Station?`,
+                'Its saved setup and Station credentials will be removed. Existing chats stay readable.',
+                ...(affectedAgents.length
+                  ? [`Agents using this engine: ${affectedAgents.join(', ')}.`]
+                  : []),
+              ].join('\n\n')
+            : ''
+        }
+        confirmLabel="Remove"
+        pending={removeAcp.isPending}
+        error={
+          removeAcp.error
+            ? describeStationFailure(removeAcp.error).body
+            : undefined
+        }
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          if (removing && !removeAcp.isPending) removeAcp.mutate(removing.id);
+        }}
+        onCancel={() => {
+          if (!removeAcp.isPending) setRemoving(null);
+        }}
+      />
       <DiscardModal />
     </SplitPaneLayout>
   );

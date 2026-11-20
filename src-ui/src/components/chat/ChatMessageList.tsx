@@ -2042,9 +2042,10 @@ function ChatMessageListComponent({
         fontSize={fontSize}
         show={showReasoning}
         hasAnswerText={hasAnswerText}
+        autoExpand={!isMobile}
       />
     ),
-    [fontSize, showReasoning],
+    [fontSize, isMobile, showReasoning],
   );
 
   const renderToolCall = useCallback(

@@ -170,6 +170,7 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
@@ -883,6 +884,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
+  appearanceProposal: z.boolean().optional(),
   clientTurnId: z.string().min(1).max(200),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
@@ -1328,6 +1330,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
   /** Human-authored room title, before the provider brief is appended. */
@@ -4674,6 +4677,41 @@ export function createOrchestrationRoutes(
           );
         }
       }
+      const authority = stationControlRequestAuthority(c.req.raw);
+      const caller =
+        authority?.kind === 'caller' ? authority.caller : undefined;
+      let delegatedAppearance: DelegateTaskRequest['delegatedAppearance'];
+      if (body.appearanceProposal) {
+        if (
+          !caller?.principal?.elevationEligible ||
+          caller.assurance === 'bearer-exposed' ||
+          caller.principal.id !== userId ||
+          !connectedAccountOwnerIdForTurnAccount(caller.principal.id) ||
+          tenantExecutionContextForRequest(c.req.raw) ||
+          resolvedDelegation?.provenance !== 'caller-derived' ||
+          delegation?.depth !== 1 ||
+          delegation.parentSessionId !== caller.sessionId ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind === 'project-portable' ||
+          body.target.workspace?.kind === 'project-portable-prepared' ||
+          body.sessionId ||
+          body.taskRoomRequest
+        ) {
+          return c.json(
+            {
+              success: false,
+              code: 'delegation_appearance_scope_required',
+              error:
+                'An appearance proposal needs a new task on this Station, started by a chat acting for the person.',
+            },
+            403,
+          );
+        }
+        delegatedAppearance = {
+          ownerId: caller.principal.id,
+          parentSessionId: caller.sessionId,
+        };
+      }
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       if (roomRequest && body.clientTurnId !== roomRequest.operationId)
@@ -4701,6 +4739,7 @@ export function createOrchestrationRoutes(
         return delegate({
           ...request,
           createRequestIntent: body,
+          ...(delegatedAppearance ? { delegatedAppearance } : {}),
           createRequestCallerSessionId: await createRequestCallerSession(
             c.req.raw,
           ),

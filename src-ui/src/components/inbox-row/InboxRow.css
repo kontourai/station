@@ -769,7 +769,7 @@
 }
 .inbox-row--swipe > .inbox-row__open,
 .inbox-row--swipe > .inbox-row__actions {
-  transform: translateX(var(--inbox-swipe-offset, 0px));
+  transform: translateX(var(--swipe-action-offset, 0px));
   transition: transform var(--motion-base) var(--ease-spring);
 }
 .inbox-row--dragging > .inbox-row__open,
@@ -786,7 +786,7 @@
   position: absolute;
   inset: 0 0 0 auto;
   display: flex;
-  width: var(--inbox-swipe-width, 144px);
+  width: var(--swipe-action-width, 144px);
   background: var(--k-panel-raised);
 }
 .inbox-row__swipe-actions[hidden] {

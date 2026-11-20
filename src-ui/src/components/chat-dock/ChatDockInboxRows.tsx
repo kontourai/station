@@ -19,7 +19,7 @@ import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { useTranscriptWindowPrefetch } from '../../hooks/orchestration/useTranscriptWindowPrefetch';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
-import { useInboxSwipe } from '../../hooks/useInboxSwipe';
+import { useSwipeActions } from '../../hooks/useSwipeActions';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
@@ -743,7 +743,8 @@ export function InboxRow({
   const canSwipe = Boolean(
     details && swipeActions && !isDismissed && trayActions.length,
   );
-  const swipe = useInboxSwipe(canSwipe, {
+  const swipe = useSwipeActions(canSwipe, {
+    triggerSelector: '.inbox-row__open',
     open: swipeOpen,
     onOpenChange: onSwipeOpenChange,
     actionWidth: trayActions.length * 72,
@@ -873,6 +874,7 @@ export function InboxRow({
       ]
         .filter(Boolean)
         .join(' ')}
+      ref={swipe.ref}
       style={swipe.style}
       data-testid="inbox-row"
       data-unread={unread ? '' : undefined}
