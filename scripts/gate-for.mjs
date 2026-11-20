@@ -44,6 +44,10 @@ function resolveBaseSha(base) {
 /** Unscoped commands in the hook's normal source-edit push path. */
 export const EVERY_PUSH_CHECKS = Object.freeze([
   Object.freeze({
+    command: 'node scripts/prepush-main-conflict.mjs',
+    note: 'warns (never refuses) when the pushed commit conflicts with origin/main',
+  }),
+  Object.freeze({
     command: 'npm run lint:check',
     note: 'biome lint/format/imports',
   }),
@@ -56,10 +60,30 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
     note: 'classifies actual pushed refs against remote main (#3101)',
   }),
   Object.freeze({
+    command: 'node scripts/check-prepush-push-range.mjs',
+    note: 'on the pushed commit: refuses whitespace and raw mkdtemp; warns about new exports no other file names (1-5s)',
+  }),
+  Object.freeze({
+    command: 'node scripts/check-prepush-docs-freshness.mjs',
+    note: 'docs:freshness:check; refuses only for a clean checkout of the pushed commit on a branch that records reviews, else warns (~7s)',
+  }),
+  Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',
     note: 'commit subjects in the push range',
   }),
 ]);
+
+/**
+ * CI's exact unused-export verdict. The hook checks only the narrow case (a
+ * new export no other file names); this is the full fallow audit CI's
+ * statics job runs, 25-50s, against the same base. The gate queues for the
+ * host-wide heavy-check slot itself (#5080), so the command needs no wrapper.
+ */
+export const CODE_HEALTH_VERDICT = Object.freeze({
+  command:
+    'node scripts/code-health-gate.mjs --base=$(git merge-base origin/main HEAD)',
+  note: "CI's full unused-export verdict; the hook checks only new exports no other file names. It waits for the host-wide heavy-check slot",
+});
 
 /** The verification ladder, cheapest first; `command` is null off-host. */
 export const LANE_LADDER = Object.freeze([
@@ -138,6 +162,7 @@ export function gatePlan({ changedPaths, baseSha }) {
     fixtureCommands: fixturePolicyCommands(changedPaths),
     conversationBoundaryCommands: conversationBoundaryCommands(changedPaths),
     gallery: galleryCoverage({ changedPaths }),
+    codeHealth: CODE_HEALTH_VERDICT,
     ladder: LANE_LADDER,
   };
 }
@@ -167,6 +192,11 @@ export function gateReport({ changedPaths, baseSha }) {
       'Fixture and test-effectiveness route:',
       ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
+  lines.push(
+    '',
+    `Code health (not run by the hook):  ${plan.codeHealth.command}`,
+    `          ${plan.codeHealth.note}`,
+  );
   if (plan.gallery) lines.push('', ...formatGalleryCoverage(plan.gallery));
   if (plan.conversationBoundaryCommands.length)
     lines.push(

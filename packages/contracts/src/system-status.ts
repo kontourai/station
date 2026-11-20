@@ -73,6 +73,14 @@ export interface DevicePresentation {
   hostName: string;
 }
 
+/** Last measured CLI presence, separate from permission to launch an engine. */
+export interface CliPresenceEvidence {
+  state: 'present' | 'absent' | 'unknown';
+  freshness: 'observed' | 'retained' | 'unknown';
+  observedAt: string | null;
+  source: 'path' | null;
+}
+
 /**
  * The answering server's process/build identity: which Station instance, which
  * boot of it, built from which commit. All three fields are required for the
@@ -240,13 +248,19 @@ export type ServiceUpdateProgress =
  * a check finds it. Downloading never restarts the server; only an explicit
  * apply (or apply-when-idle) does.
  */
-export type ServerUpdateDownloadPolicy = 'never' | 'after-24h' | 'immediately';
+export const UPDATE_DOWNLOAD_POLICIES = [
+  'never',
+  'after-24h',
+  'immediately',
+] as const;
+export type UpdateDownloadPolicy = (typeof UPDATE_DOWNLOAD_POLICIES)[number];
+export const DEFAULT_UPDATE_DOWNLOAD_POLICY: UpdateDownloadPolicy = 'after-24h';
 
+export type ServerUpdateDownloadPolicy = UpdateDownloadPolicy;
 export const SERVER_UPDATE_DOWNLOAD_POLICIES: readonly ServerUpdateDownloadPolicy[] =
-  ['never', 'after-24h', 'immediately'];
-
-export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY: ServerUpdateDownloadPolicy =
-  'after-24h';
+  UPDATE_DOWNLOAD_POLICIES;
+export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY =
+  DEFAULT_UPDATE_DOWNLOAD_POLICY;
 
 /**
  * The server's own view of its update (#3851 slice 4), served by
@@ -376,7 +390,55 @@ export interface WorkloadBudgetStatus {
     holder?: 'placed' | 'unplaced';
     /** Why an engine scope's holder is unplaced. */
     holderReason?: WorkloadHolderUnplacedReason;
+    /**
+     * The scope's largest processes when Station saw its latest kill: the
+     * survivors, since the killed process is already gone.
+     */
+    lastOomKillProcesses?: WorkloadScopeProcess[];
+    /** Present while the scope is under memory pressure. */
+    pressure?: WorkloadScopePressure;
   }>;
+  /** Scopes whose cleanup failed and has not settled. Absent from older hosts. */
+  cleanup?: WorkloadScopeCleanupStatus;
+}
+
+/**
+ * Why a workload scope's cleanup failed: `bus_unavailable` when systemctl
+ * could not reach the user manager's bus (retried rarely, since it does not
+ * heal within seconds), `command_failed` when systemctl ran and failed, and
+ * `other` for anything else.
+ */
+export type WorkloadScopeCleanupErrorKind =
+  | 'bus_unavailable'
+  | 'command_failed'
+  | 'other';
+
+/** One scope whose cleanup has failed at least once and not settled. */
+export interface WorkloadScopeCleanupFailure {
+  unit: string;
+  sessionId?: string;
+  /** Failed cleanup attempts so far. */
+  attempts: number;
+  errorKind: WorkloadScopeCleanupErrorKind;
+  /** The last failure's final line, truncated. */
+  lastError: string;
+  firstFailedAt: string;
+  /** A pending scope: the earliest time Station retries it on its own. */
+  nextAttemptAt?: string;
+  /** An abandoned scope: when Station stopped retrying it. */
+  abandonedAt?: string;
+}
+
+/**
+ * Cleanup that has not settled. A `pending` scope is retried with
+ * exponential backoff; an `abandoned` one is no longer retried until
+ * shutdown, which tries every scope once more. At most 256 abandoned scopes
+ * are kept; `abandonedDropped` counts those dropped beyond that.
+ */
+export interface WorkloadScopeCleanupStatus {
+  pending: WorkloadScopeCleanupFailure[];
+  abandoned: WorkloadScopeCleanupFailure[];
+  abandonedDropped: number;
 }
 
 /**
@@ -384,6 +446,32 @@ export interface WorkloadBudgetStatus {
  * sleep(1) to start one, the scope's processes do not include it, or the
  * holder that was found has since gone.
  */
+/** One process in a workload scope, as `/proc/<pid>/status` reports it. */
+export interface WorkloadScopeProcess {
+  pid: number;
+  /** The kernel's command name (`comm`, at most 15 characters). */
+  name: string;
+  /** Resident set size (`VmRSS`). */
+  rssBytes: number;
+}
+
+/**
+ * A workload scope whose working set (`memory.current` less inactive file
+ * cache) reached the configured share of its `memory.max`. It leaves
+ * pressure once the working set falls 5 points below that share.
+ */
+export interface WorkloadScopePressure {
+  /** When Station saw the scope enter pressure. */
+  since: string;
+  thresholdPercent: number;
+  workingSetBytes: number;
+  memoryMaxBytes: number;
+  /** `memory.events` `max` when it entered: allocations that hit the limit. */
+  limitEvents?: number;
+  /** The scope's largest processes when it entered, at most three. */
+  largestProcesses?: WorkloadScopeProcess[];
+}
+
 export type WorkloadHolderUnplacedReason =
   | 'holder-unavailable'
   | 'not-in-scope'

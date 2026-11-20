@@ -1,0 +1,7 @@
+{
+  "revision": "1e06f3885ee72949eb3078f4c471825944d9d51c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Idle-weight paragraph now says the run also fails when the fixture CLAUDE.md or AGENTS.md marker misses the first request, matching gateOutcome/repoRulesGap in station-weight-budgets.mjs. The resource-manifest change only adds the new Claude instruction-files process test to the process-heavy list; worker-policy prose unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

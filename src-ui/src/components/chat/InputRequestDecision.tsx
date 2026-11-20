@@ -5,6 +5,7 @@ import type {
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import './InputRequestDecision.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * #3390: the renderer for a `decision` body — an approval's choices. It reads
@@ -36,17 +37,23 @@ function approvalActionForOption(
 export function DecisionButtons({
   body,
   busy,
+  inFlight = false,
+  chosen,
   onChoose,
 }: {
   body: InputRequestDecisionBody;
   busy: boolean;
+  inFlight?: boolean;
+  chosen?: ApprovalAction;
   onChoose: (action: ApprovalAction) => void;
 }) {
+  useDecisionSurface('tool-approval-decision');
   return (
     <DecisionActionRow
       body={body}
       busy={busy}
-      inFlight={false}
+      inFlight={inFlight}
+      chosen={chosen}
       onChoose={onChoose}
       overflowLabel="More ways to allow this request"
     />
@@ -72,6 +79,7 @@ export function DecisionActionRow({
   overflowLabel?: string;
   onChoose: (action: ApprovalAction) => void;
 }) {
+  useDecisionSurface('tool-approval-decision');
   const deny = body.options.find((option) => option.effect === 'deny');
   const once = body.options.find(
     (option) => option.effect === 'allow' && option.scope === 'once',

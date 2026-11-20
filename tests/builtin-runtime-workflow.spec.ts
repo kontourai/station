@@ -469,7 +469,18 @@ async function openRuntimeSession(
     .getByRole('complementary', { name: 'Inbox chats' })
     .locator('button[aria-current="true"]');
   await expect(selectedChat).toBeVisible();
-  await expect(selectedChat).toContainText(runtimeName);
+  // A hover row draws the runtime as its mark, named in the mark's tooltip;
+  // a row with no mark names it in words.
+  await expect
+    .poll(async () => {
+      const marks = selectedChat.locator('[data-testid="identity-marks"]');
+      const title =
+        (await marks.count()) > 0
+          ? await marks.first().getAttribute('title')
+          : null;
+      return `${title ?? ''} ${(await selectedChat.textContent()) ?? ''}`;
+    })
+    .toContain(runtimeName);
 }
 
 async function waitForExecutionThread(

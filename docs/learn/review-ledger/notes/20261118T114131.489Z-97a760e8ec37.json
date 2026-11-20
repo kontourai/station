@@ -1,0 +1,139 @@
+{
+  "revision": "292b20c6c93e6b484a26cff6fa1ee80792553f0a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The live preview and selected Station still own the provider registration. The async provider import is scoped to that effect and cleanup fences a late import. Media resolution and admitted recognition are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/providers/voice/useLocalSpeechProvider.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only provider-settings and Project Settings selector families moved from index.css. Chat, approvals, composer and input selectors remain in their prior owners.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/motion.md","note":"Moved selectors retain the original motion durations, easing tokens and transition rules. Motion foundations and global reduction rules stay eager.","inputs":["docs/design/motion.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"The CSS split only relocates model-connection and Project Settings selector families. Region model and placement styles retain their order and owners.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Transcript and replay selectors and their cascade are untouched. Only settings-specific rules were removed from index.css.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the Models and Project Settings route entry points and verified their moved CSS uses the existing lazy imports. Device settings and shared controls keep their existing global foundations.","inputs":["docs/design/settings-architecture.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"The theming guide still describes the same boot and app asset closure. Settings-owned CSS is scoped to routes without changing plugin mount or theme capability.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/design/walkthroughs.md","note":"The local-speech guide now explains the gated browser provider load. The shared Local speech and Walkthroughs media consent and recognizer contracts are unchanged.","inputs":["docs/design/walkthroughs.md","docs/guides/local-speech.md"]},
+
+    {"path":"docs/guides/connections.md","note":"The live Models route keeps the provider overview and picker styles. Shared filter-field rules stay global; connection destinations, requests and setup are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/index.css","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"The moved Project Settings Knowledge rules load with that existing route, with the upload and list behavior unchanged. Project-page Knowledge and library views retain their own presentation.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Verified the preview-dependent import and stale registration guard in the app registry path. Live preview disable and a Station switch still unregister and destroy old provider work.","inputs":["docs/guides/local-speech.md","src-ui/src/providers/voice/__tests__/local-speech-registration.test.tsx","src-ui/src/providers/voice/useLocalSpeechProvider.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Confirmed the Project layout modal and Knowledge style declarations retain the same geometry and responsive rules after moving into the lazy Project Settings stylesheet.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css","src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Project creation and starter controls do not use the moved Project Settings or Models selector families. Their shared controls remain in the eager sheet.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"The app static closure is still counted. The two settings groups move to existing route entry points; the shared filter control and startup, theme and shell cascade remain eager.","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Connections scenarios still use the Models route. Its provider overview and picker rules now load in its route CSS with the same declarations and shared input styles.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"The changed CSS only affects where route styles load. Backend ownership, error handling and shared input controls cited by the patterns remain unchanged.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed use of existing route-owned stylesheets and unchanged shell primitives. No new independent styling system or alternate control was added.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The Models view and its shared setup controls retain the same content and behavior. The move changes build asset ownership without reclassifying any smoke evidence.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Project room collaboration and Tasks do not consume the moved selector families. No runtime or capture evidence was rerun for those paths.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Main navigation, Home, Inbox and first-run shared controls retain their styles. Models and Project Settings still render the same controls when opened.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/settings.md","note":"Confirmed Project Settings styles stay with the route and the local speech option registers only after its selected Station enables the preview. Existing settings pages and controls are unchanged.","inputs":["docs/user/settings.md","src-ui/src/providers/voice/useLocalSpeechProvider.ts","src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"The example uses its own library surfaces. Moved Project settings-only Knowledge styles do not affect the example or its setup.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Only settings-route CSS rules moved. Startup icon rules, shared branding and captured artifacts are unchanged.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the Models route against the styles moved from index.css. Existing provider picker and overview declarations load with the view and shared filter controls retain their eager rules. This records a review of the CSS move and retains the original capture.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the Models route against the styles moved from index.css. Existing provider picker and overview declarations load with the view and shared filter controls retain their eager rules. This records a review of the CSS move and retains the original capture.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-before-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-before-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-after-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-after-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/session-goals-after-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-learning-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-learning-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-learning-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-learning-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-working-configuration.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-compaction.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-supervision.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/agent-efficiency-usage.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/updates-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/updates-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/updates-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/updates-after-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/updates-history-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/updates-notes-after-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/child-tool-text-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/child-tool-text-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/child-tool-text-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Reviewed the capture scope against the moved CSS selectors and their production consumers. The removed declarations belong only to the Models connection picker and Project Settings Knowledge or Layouts. The original capture and its revision are retained.","inputs":["docs/learn/media/child-tool-text-after-1440-light.png","src-ui/src/index.css"]}
+  ]
+}

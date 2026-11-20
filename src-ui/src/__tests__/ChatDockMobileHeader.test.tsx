@@ -46,6 +46,27 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
 // The sheet's project picker and connection control mount inside this bar's
 // tree; `useIsMobile`/`useNavigation` are mocked so neither needs a real
 // `matchMedia` breakpoint or router.
+const actionSheetFailure = vi.hoisted(() => ({ active: false }));
+vi.mock(
+  '../components/chat-dock/ChatDockMobileOverflowSheet',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/chat-dock/ChatDockMobileOverflowSheet')
+      >();
+    return {
+      ...actual,
+      ChatDockMobileOverflowSheet: (
+        props: React.ComponentProps<typeof actual.ChatDockMobileOverflowSheet>,
+      ) => {
+        if (actionSheetFailure.active)
+          throw new Error('Action sheet fixture render failure');
+        return <actual.ChatDockMobileOverflowSheet {...props} />;
+      },
+    };
+  },
+);
+
 const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
@@ -67,6 +88,7 @@ vi.mock('../contexts/NavigationContext', async (importOriginal) => ({
 // from reaching the network.
 beforeEach(() => {
   mobileFlag.isMobile = false;
+  actionSheetFailure.active = false;
   pathnameFlag.pathname = '/';
   vi.stubGlobal(
     'matchMedia',
@@ -106,6 +128,7 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    panelActions?: DockMoreAction[];
     conversationStats?: {
       liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
       onOpen: () => void;
@@ -116,6 +139,7 @@ function renderHeader(
     hasConversation?: boolean;
     inboxActive?: boolean;
     childTrail?: string;
+    reportedStart?: string;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -134,6 +158,7 @@ function renderHeader(
         showDrawerToggle={false}
         showConnection={overrides.showConnection ?? true}
         sessionTitle="New chat"
+        reportedStart={overrides.reportedStart}
         sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
         projectScope={
           overrides.projectScope === null
@@ -166,7 +191,7 @@ function renderHeader(
           onTurnIntoTask: overrides.onTurnIntoTask,
           onOpenInventory: overrides.onOpenInventory,
           onOpenConversation: vi.fn(),
-          onToggleHistory: vi.fn(),
+          onOpenInbox: vi.fn(),
           onOpenChatSettings: vi.fn(),
           onOpenProject: overrides.onOpenProject ?? null,
           openProjectName: overrides.openProjectName ?? null,
@@ -181,6 +206,7 @@ function renderHeader(
           onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
           backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
           copyActions: overrides.copyActions,
+          panelActions: overrides.panelActions,
           conversationStats: overrides.conversationStats && {
             agentSlug: 'codex',
             conversationId: 'c-1',
@@ -208,6 +234,21 @@ async function openActions() {
   await screen.findByRole('menu');
   return screen.getByRole('dialog', { name: 'Chat actions' });
 }
+
+test.each([
+  [undefined, true],
+  ['Child conversation', false],
+] as const)(
+  'reports the working chat origin only on its own mobile title (%s)',
+  (childTrail, visible) => {
+    renderHeader({
+      agentIdentity: { name: 'Lifecycle Probe', slug: 'lifecycle-probe' },
+      reportedStart: 'CLI (reported) · ',
+      childTrail,
+    });
+    expect(Boolean(screen.queryByText(/CLI \(reported\)/))).toBe(visible);
+  },
+);
 
 describe('mobile conversation focus', () => {
   test('keeps project choice out of the unresolved header', () => {
@@ -292,6 +333,60 @@ describe('mobile conversation focus', () => {
     const trigger = screen.getByRole('button', { name: 'Chat actions' });
     expect(trigger.getAttribute('aria-describedby')).toBeNull();
     expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
+  });
+
+  test('reports and retries the failure of the actual Chat actions surface', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      actionSheetFailure.active = true;
+      renderHeader();
+      fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+      const failure = await screen.findByRole('alert');
+      expect(failure.getAttribute('data-lazy-surface')).toBe('chat-actions');
+      expect(failure.textContent).toContain('Unable to load Chat actions.');
+      actionSheetFailure.active = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(
+        await screen.findByRole('menu', { name: 'Chat actions' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  test('the sheet carries the panel toggles the composer menu no longer holds', async () => {
+    const onFiles = vi.fn();
+    renderHeader({
+      panelActions: [
+        {
+          key: 'panel-files',
+          label: 'Changed files',
+          checked: true,
+          onSelect: onFiles,
+        },
+        {
+          key: 'panel-context',
+          label: 'Task context',
+          checked: false,
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    await openActions();
+    const files = screen.getByRole('menuitemcheckbox', {
+      name: 'Changed files',
+    });
+    expect(files.getAttribute('aria-checked')).toBe('true');
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Task context' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+    fireEvent.click(files);
+    expect(onFiles).toHaveBeenCalledOnce();
   });
 
   test('keeps New chat callable from the actions sheet', async () => {

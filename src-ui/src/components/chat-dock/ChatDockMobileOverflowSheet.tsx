@@ -64,6 +64,7 @@ export function ChatDockMobileOverflowSheet({
   returnFocusTarget?: HTMLElement | null;
   onClose: () => void;
 }) {
+  const { onOpenInbox, onBrowseConversations } = overflow;
   const run = (action: () => void) => {
     onClose();
     action();
@@ -151,6 +152,21 @@ export function ChatDockMobileOverflowSheet({
             onSelect={() => run(overflow.conversationStats!.onOpen)}
           />
         )}
+        {(overflow.panelActions ?? []).map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={Boolean(action.checked)}
+            className="composer-actions-menu__item"
+            onClick={(event) => {
+              const trigger = event.currentTarget;
+              run(() => action.onSelect(trigger));
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
         {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:
             identities are occasionally needed for paste, never read
@@ -170,14 +186,26 @@ export function ChatDockMobileOverflowSheet({
             {action.label}
           </button>
         ))}
-        <button
-          type="button"
-          role="menuitem"
-          className="composer-actions-menu__item"
-          onClick={() => run(overflow.onToggleHistory)}
-        >
-          Inbox
-        </button>
+        {onOpenInbox && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(onOpenInbox)}
+          >
+            Inbox
+          </button>
+        )}
+        {onBrowseConversations && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(onBrowseConversations)}
+          >
+            Browse all conversations
+          </button>
+        )}
         {overflow.onTurnIntoTask && (
           <button
             type="button"

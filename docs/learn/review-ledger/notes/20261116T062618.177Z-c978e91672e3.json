@@ -1,0 +1,7 @@
+{
+  "revision": "9ffc9c2f9f03c50ca170fa8e808e06eb3c87c4bb",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Checked its links into docs/guides/testing.md (lanes, verification, gallery product assertions, test-effectiveness anchors): the edited section only describes the Gallery error-state capture, and every cited anchor and claim still holds.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

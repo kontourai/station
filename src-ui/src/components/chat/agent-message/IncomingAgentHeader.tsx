@@ -21,13 +21,19 @@ function senderAgentLabel(sender: ClientOriginSender): string | undefined {
   );
 }
 
+const PULL_REQUEST_FEEDBACK_LABEL = 'Pull request feedback from Station';
+
 /** The accessible name of the whole incoming message. */
 export function incomingMessageLabel(sender: ClientOriginSender): string {
   if (sender.kind === 'unattributed')
     return 'Automated message: sender unknown';
   if (sender.kind === 'provider') return 'The engine replied on its own';
   if (sender.kind === 'coordinator') return 'Update from Station';
+  if (sender.kind === 'pull-request-feedback')
+    return `${PULL_REQUEST_FEEDBACK_LABEL}, not from you`;
   const agent = senderAgentLabel(sender);
+  const source = agent ?? senderSessionLabel(sender);
+  if (sender.kind === 'delegation-result') return `Task result from ${source}`;
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
 
@@ -62,6 +68,15 @@ export function IncomingAgentHeader({
         Update from Station
       </p>
     );
+  // Station composed it from the pull request's checks and reviews: not a
+  // link, since no Session sent it.
+  if (sender.kind === 'pull-request-feedback')
+    return (
+      <p className="agent-cause">
+        <InboxGlyph />
+        {PULL_REQUEST_FEEDBACK_LABEL}
+      </p>
+    );
   const session = senderSessionLabel(sender);
   const agent = senderAgentLabel(sender);
   return (
@@ -76,7 +91,9 @@ export function IncomingAgentHeader({
         className="agent-incoming__link"
         label={`Open ${session}, the Session that sent this message`}
       >
-        <span className="agent-incoming__from">From</span>{' '}
+        <span className="agent-incoming__from">
+          {sender.kind === 'delegation-result' ? 'Task result from' : 'From'}
+        </span>{' '}
         <span className="agent-incoming__session">{session}</span>
         {agent ? (
           <>
@@ -108,9 +125,16 @@ export function IncomingAgentCause({
         ? 'The engine replied on its own'
         : sender.kind === 'coordinator'
           ? 'Update from Station'
-          : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
+          : sender.kind === 'pull-request-feedback'
+            ? PULL_REQUEST_FEEDBACK_LABEL
+            : sender.kind === 'delegation-result'
+              ? incomingMessageLabel(sender)
+              : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
   return (
-    <details className="agent-cause-disclosure">
+    <details
+      className="agent-cause-disclosure"
+      open={sender.kind === 'delegation-result' || undefined}
+    >
       <summary className="agent-cause">
         <InboxGlyph />
         <span>{label}</span>

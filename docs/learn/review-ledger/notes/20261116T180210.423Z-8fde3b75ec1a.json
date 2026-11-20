@@ -1,0 +1,9 @@
+{
+  "revision": "b723ed81529944af9b790bfbd456ffdea9b8bfa9",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Only the Repeated warnings paragraph gained one sentence about the shutdown flush; claims citing config.md elsewhere are unaffected.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Only the Repeated warnings paragraph gained one sentence about the shutdown flush; claims citing config.md elsewhere are unaffected.","inputs":["docs/reference/config.md"]}
+  ]
+}

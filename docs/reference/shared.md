@@ -87,8 +87,10 @@ retention and operator-only counts belong to the
 [Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
 
 
-`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
-returns undefined for unmapped labels. Full omits that field; Lite supplies
+`mapRuntimeChannelToTelemetryChannel` preserves labels admitted by the telemetry
+contract and returns undefined for unmapped labels, including retired runtime
+`beta`. The historical `preview` wire dimension remains readable; current RCs
+report Stable identity. Full omits an unmapped field; Lite supplies
 `unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
 release list by default; the sender selects `semver` to admit valid versions
 or `custom` without claiming catalog membership.
@@ -342,14 +344,8 @@ interface AgentSpec {
   project?: string;
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
-  maxSteps?: number;
+  maxSteps?: number | null;
   guardrails?: AgentGuardrails;
-  /** @deprecated Ignored; accepted so existing agent files load (#3879). */
-  streaming?: {
-    useNewPipeline?: boolean;
-    enableThinking?: boolean;
-    debugStreaming?: boolean;
-  };
   tools?: AgentTools;
   commands?: Record<string, SlashCommand>;
   ui?: AgentUIConfig;
@@ -360,7 +356,6 @@ interface AgentGuardrails {
   temperature?: number;
   topP?: number;
   stopSequences?: string[];
-  maxSteps?: number;
 }
 
 interface AgentTools {
@@ -388,7 +383,6 @@ interface SlashCommandParam {
 
 interface AgentUIConfig {
   component?: string;
-  quickPrompts?: AgentQuickPrompt[];
   workflowShortcuts?: string[];
 }
 
@@ -730,6 +724,7 @@ interface ProjectMetadata {
   hasKnowledge: boolean;
   defaultProviderId?: string;
   position?: number;
+  lifecycle?: ProjectLifecycle; // paused or archived; absent is active
 }
 ```
 
@@ -825,9 +820,10 @@ Re-exported from `@kontourai/station-contracts/notification` for compatibility.
 `delivered` is the notification service's record state, not a receipt that a
 browser or phone displayed it. For example, an immediate record receives
 `deliveredAt` when it is stored, before downstream surface delivery.
-Scheduling more than about 24.9 days ahead currently exceeds the service's
-native timer range and can leave a pending row without a live wakeup. This
-known limit is tracked in [#2810](https://github.com/kontourai/station/issues/2810).
+The service preserves scheduled delivery and expiry beyond Node's
+approximately 24.9-day timer range by waking in bounded intervals and
+rechecking the persisted deadline. Replacing a record's schedule retires
+the earlier wakeup.
 
 ```ts
 type NotificationStatus =

@@ -4,6 +4,7 @@ import {
   type AuthorityObservation,
   isAuthorityObservation,
 } from '@kontourai/station-contracts/authority-observation';
+import type { CustomAppearanceDocument } from '@kontourai/station-contracts/custom-appearance';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import type {
   BrowserPaneAccessView,
@@ -20,6 +21,16 @@ const READS: Readonly<Record<string, unknown>> = {
       values: {},
       revision: 'shell-fixture',
     } satisfies AccountPreferencesView,
+  },
+  // Nobody in these fixtures has a custom appearance or a pending proposal.
+  '/api/me/appearance': {
+    success: true,
+    data: {
+      revision: 'shell-fixture',
+      active: null,
+      proposal: null,
+      renderReport: null,
+    } satisfies CustomAppearanceDocument,
   },
   '/api/agents': { success: true, data: [] },
   '/api/connections/agents': { success: true, data: [] },

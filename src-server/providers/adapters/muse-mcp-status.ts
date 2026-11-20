@@ -56,7 +56,7 @@ export const runMuseMcpList: MuseMcpListRunner = ({
 // Control, bidi-override and zero-width characters: a name is rendered.
 const UNSAFE_NAME_CHARACTERS =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting these is the point
-  /[\u0000-\u001f\u007f-\u009f؜​-‏‪-‮⁠⁦-⁩﻿]/;
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/;
 
 function museMcpServer(entry: unknown): EngineMcpServerStatus | undefined {
   if (!isRecord(entry)) return undefined;

@@ -331,6 +331,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
   const summary = async () =>
     (
       await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
         threadIds: [THREAD],
       })
     ).find((session) => session.threadId === THREAD);

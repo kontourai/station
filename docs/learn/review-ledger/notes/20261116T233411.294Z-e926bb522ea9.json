@@ -1,0 +1,7 @@
+{
+  "revision": "3afec36bb999e09105c317e05f2388d30cefb2bd",
+
+  "notes": [
+    {"path":"docs/guides/store-listing.md","note":"Workflow delta is only the Nightly base-guard step in nightly.yml, nightly-native-cohort.yml and portable-nightly-publish.yml: the gh --slurp/--jq listing line is removed and scripts/nightly-release-base.mjs now reads the paginated listing itself via --repository. Searched this page for release-history, product-base and listing claims; nothing here describes that step, so no prose change.","inputs":["docs/guides/store-listing.md",".github/workflows/nightly-native-cohort.yml",".github/workflows/nightly.yml"]}
+  ]
+}

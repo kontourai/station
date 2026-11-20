@@ -24,6 +24,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   attentionProjectionLoads: { add: vi.fn() },
   attentionProjectionResults: { record: vi.fn() },
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
 }));
 
 const logger = {
@@ -648,7 +649,33 @@ describe('approval inbox notifications', () => {
     ]);
   });
 
-  test('#2915: a Claude read with nothing to forward is persisted without a session-grant action', async () => {
+  // Owner decision (2026-11-16): a session answer is offered on every tool
+  // approval; a built-in tool that changes authority is the exception.
+  test('a built-in tool that changes authority is persisted without a session-grant action', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: {
+          toolName: 'mcp__station-control__update_config',
+          toolInput: {},
+        },
+        provider: 'claude',
+        requestId: 'req-authority',
+        requestType: 'approval',
+        threadId: 'thread-authority',
+        title: 'Allow update_config',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
+      'accept',
+      'decline',
+    ]);
+  });
+
+  test('#2915: a Claude read with nothing to forward still offers the session grant', async () => {
     await emit('orchestration:event', {
       event: {
         createdAt: new Date().toISOString(),
@@ -665,6 +692,7 @@ describe('approval inbox notifications', () => {
     const notifications = await notificationService.list();
     expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
       'accept',
+      'acceptForSession',
       'decline',
     ]);
   });
@@ -955,14 +983,9 @@ describe('approval inbox notifications', () => {
     await expect(approvalPromise).resolves.toBe(true);
   });
 
-  // #2589: one tool approval in a Station-agent session is written twice:
-  // the /chat relay registers it (the registry notification) and the adapter
-  // republishes it as the thread's `request.opened` (the orchestration
-  // notification, and the agent-activity card). Both are on the card, so
-  // neither may raise a phone alert; a plain chat's approval must. An
-  // ephemeral (webhook) session is left out of the session read model the
-  // card is built from, so both of its records must alert, and so must they
-  // when the ephemeral lookup throws (fail-soft: unmarked still alerts).
+  // The plain registry path and the Station Agent relay share the usual
+  // Activity card eligibility. The relay reuses one durable notification
+  // while handing its decision to the exact orchestration request.
   test.each<[string, string | undefined, boolean | 'throws', boolean]>([
     ['a Station-agent relay turn', 'thread-7', false, true],
     ['an ephemeral Station-agent relay turn', 'thread-7', true, false],
@@ -1003,21 +1026,40 @@ describe('approval inbox notifications', () => {
       expect(isCardAlerted(registry!)).toBe(cardAlerted);
 
       if (orchestrationThreadId) {
+        const requestId = registry?.metadata?.approvalId as string;
         await emit('orchestration:event', {
           event: {
+            eventId: 'approval-opened',
             createdAt: new Date().toISOString(),
             method: 'request.opened',
             provider: 'station-agent',
-            requestId: registry?.metadata?.approvalId,
+            requestId,
             requestType: 'approval',
             threadId: orchestrationThreadId,
             title: 'fs.write',
           },
         });
-        const twin = (await notificationService.list()).find(
-          (n) => n.metadata?.requestKind === 'orchestration',
+        const rows = await notificationService.list();
+        expect(rows).toHaveLength(1);
+        const [row] = rows;
+        expect(row.id).toBe(registry.id);
+        expect(row.metadata).toMatchObject({
+          requestKind: 'orchestration',
+          requestEventId: 'approval-opened',
+        });
+        expect(isCardAlerted(row)).toBe(cardAlerted);
+        vi.mocked(orchestrationService.dispatch).mockImplementationOnce(
+          async (command) => {
+            expect(command).toMatchObject({
+              type: 'respondToRequest',
+              threadId: orchestrationThreadId,
+              requestId,
+              expectedRequestEventId: 'approval-opened',
+              decision: 'accept',
+            });
+            expect(approvalRegistry.resolve(requestId, true)).toBe(true);
+          },
         );
-        expect(isCardAlerted(twin!)).toBe(cardAlerted);
       }
 
       await notificationService.action(registry!.id, 'accept');
@@ -1143,6 +1185,131 @@ describe('approval inbox notifications', () => {
       },
     });
   }
+
+  test.each([
+    [
+      'the exact open event',
+      'thread-relayed',
+      'approval-opened',
+      undefined,
+      'dismissed',
+    ],
+    [
+      'a different event',
+      'thread-relayed',
+      'other-event',
+      undefined,
+      'delivered',
+    ],
+    [
+      'a persisted key naming a different pair',
+      'thread-other',
+      'approval-opened',
+      undefined,
+      'delivered',
+    ],
+    [
+      'a concurrently answered twin',
+      'thread-relayed',
+      'approval-opened',
+      'actioned',
+      'actioned',
+    ],
+    [
+      'a concurrently expired twin',
+      'thread-relayed',
+      'approval-opened',
+      'expired',
+      'expired',
+    ],
+    [
+      'a concurrently revised twin',
+      'thread-relayed',
+      'approval-opened',
+      'updated',
+      'delivered',
+    ],
+  ] as const)(
+    'reconciles a legacy registry twin against %s',
+    async (_label, threadId, eventId, concurrent, status) => {
+      const metadata = {
+        approvalId: 'legacy-approval',
+        conversationId: 'thread-relayed',
+        orchestrationThreadId: 'thread-relayed',
+        requestKey: 'approval:legacy-approval',
+        requestKind: 'registry',
+      };
+      const legacy = await notificationService.schedule('approval-inbox', {
+        category: 'approval-request',
+        title: 'Old relay notification',
+        dedupeTag: metadata.requestKey,
+        metadata,
+      });
+      const canonical = await notificationService.schedule('approval-inbox', {
+        category: 'approval-request',
+        title: 'Exact relay notification',
+        dedupeTag: 'orchestration:thread-relayed:legacy-approval',
+        metadata: {
+          provider: 'station-agent',
+          requestId: metadata.approvalId,
+          threadId,
+          requestEventId: 'approval-opened',
+          requestKind: 'orchestration',
+          requestKey: 'orchestration:thread-relayed:legacy-approval',
+        },
+      });
+      vi.mocked(orchestrationService.readRequestOutcome).mockReturnValue({
+        state: 'open',
+        request: {
+          method: 'request.opened',
+          provider: 'station-agent',
+          requestType: 'approval',
+          requestId: metadata.approvalId,
+          threadId,
+          eventId,
+          title: 'Allow write',
+          createdAt: new Date().toISOString(),
+        },
+      });
+      if (concurrent) {
+        const markStatus =
+          notificationService.markStatus.bind(notificationService);
+        vi.spyOn(notificationService, 'markStatus').mockImplementationOnce(
+          async (id, next, observed) => {
+            expect(id).toBe(legacy.id);
+            if (concurrent === 'updated') {
+              await notificationService.schedule('approval-inbox', {
+                category: 'approval-request',
+                title: 'Revised relay notification',
+                dedupeTag: metadata.requestKey,
+                metadata,
+              });
+            } else {
+              await markStatus(id, concurrent);
+            }
+            await markStatus(id, next, observed);
+          },
+        );
+      }
+      wireApprovalInboxNotifications(
+        bus,
+        provider,
+        notificationService,
+        logger,
+      );
+      await notificationService.drainAsyncDispatch();
+
+      const notifications = await notificationService.list();
+      const observedLegacy = notifications.find((row) => row.id === legacy.id);
+      expect(observedLegacy?.status).toBe(status);
+      if (concurrent === 'updated') {
+        expect(observedLegacy?.title).toBe('Revised relay notification');
+      }
+      expect(notifications.find((row) => row.id === canonical.id)?.status).toBe(
+        'delivered',
+      );
+    },
+  );
 
   /**
    * THE `undetermined` SKIP ARM (round-3 verification: injection 2).

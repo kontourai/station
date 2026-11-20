@@ -1,0 +1,7 @@
+{
+  "revision": "ee02a1d9f5ebb74c32525b8cb8bd83d76b4fda9e",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Cites theming.md; only its startup paragraph changed (switching Stations now reuses the splash mark/animation via StationPreparingSurface). This design's references are to white-label branding and a prospective Brand/Splash slot (row 1029, still 'new'); no claim here is affected.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

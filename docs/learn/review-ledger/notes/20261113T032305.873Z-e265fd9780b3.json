@@ -1,0 +1,15 @@
+{
+  "revision": "015033be29ce37a3737a452d208fa4051a92141d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Commit 015033be29ce only adds className=\"editor-disclosure\" to the newly added <details> in this file so its summary meets the 44px mobile target; no copy, behavior or contract changed, so this document's claims are unaffected.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Commit 015033be29ce only adds className=\"editor-disclosure\" to the newly added <details> in this file so its summary meets the 44px mobile target; no copy, behavior or contract changed, so this document's claims are unaffected.","inputs":["docs/design/portable-project-identity.md","src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Commit 015033be29ce only adds className=\"editor-disclosure\" to the newly added <details> in this file so its summary meets the 44px mobile target; no copy, behavior or contract changed, so this document's claims are unaffected.","inputs":["docs/guides/connections.md","src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Commit 015033be29ce only adds className=\"editor-disclosure\" to the newly added <details> in this file so its summary meets the 44px mobile target; no copy, behavior or contract changed, so this document's claims are unaffected.","inputs":["docs/reference/api.md","src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Commit 015033be29ce only adds className=\"editor-disclosure\" to the newly added <details> in this file so its summary meets the 44px mobile target; no copy, behavior or contract changed, so this document's claims are unaffected.","inputs":["docs/user/getting-started.md","src-ui/src/views/settings/OfflineReadingSection.tsx"]}
+  ]
+}

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { main as fallowCeiling } from './fallow-ceiling.mjs';
+import { holdHeavyCheckSlotForProcess } from './lib/heavy-check-slots.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Each baseline fallow writes: the subcommand and its checked-in file. */
@@ -85,9 +86,13 @@ export function runFallowBaselines({
 
 // One command regenerates every recorded allowance: the three fallow
 // baselines the code-health gate reads, then the dead-code ceiling
-// (scripts/fallow-ceiling.mjs) from a fresh whole-tree analysis.
+// (scripts/fallow-ceiling.mjs) from a fresh whole-tree analysis. Those are
+// four whole-tree fallow analyses, so it queues for the host-wide heavy-check
+// slot first (#5080); the ceiling runs in this process, under the same slot.
 if (invokedDirectly(import.meta.url)) {
-  process.exitCode = runFallowBaselines();
+  process.exitCode = (await holdHeavyCheckSlotForProcess('fallow:baseline'))
+    ? runFallowBaselines()
+    : 1;
   if (!process.exitCode) {
     try {
       process.exitCode = fallowCeiling(['--write']);

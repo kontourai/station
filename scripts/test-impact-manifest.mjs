@@ -9,6 +9,7 @@ import {
 } from './lib/dependency-change-scan.mjs';
 import {
   invertPathReadPins,
+  scanNativeLiteralPins,
   scanPathReadPins,
 } from './lib/path-read-pin-scan.mjs';
 import { spawnedScriptDependents } from './lib/spawned-script-scan.mjs';
@@ -247,6 +248,18 @@ export const FALLOW_BASELINE_FILES = Object.freeze([
 ]);
 
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
+  ...[
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts',
+    ],
+    reason:
+      'shared execution schema changes can add dispatch posture fields outside the bounded importer set (#3335)',
+  })),
   {
     // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
     // matrix is imported by `contracts/agent.ts`, `config.ts` and `tool.ts`,
@@ -615,6 +628,94 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  {
+    pattern: 'tests/gallery-screen-sources.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/gallery-screen-coverage.test.ts'],
+    reason: 'the Gallery source module reads this JSON at runtime',
+  },
+  ...[
+    'src-ui/src/pages/AppearancePage.tsx',
+    'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/appearance-page-keyboard.test.ts'],
+    reason:
+      'the keyboard fixture bundles AppearancePage from a string outside the import graph',
+  })),
+  ...[
+    'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+    'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/check-required-tests-ran.test.ts'],
+    reason:
+      'the profile audit collects kernel test registrations through a child process',
+  })),
+  ...[
+    'src-ui/src/views/ProjectSettingsView.tsx',
+    'src-ui/src/views/project-settings/**',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/project-settings.browser.test.tsx'],
+    reason:
+      'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
+  })),
+  ...[
+    'src-ui/src/components/refresh/ListRefresh.css',
+    'src-ui/src/components/refresh/ListRefresh.tsx',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/inbox-swipe.browser.test.tsx'],
+    reason:
+      'the Inbox browser fixture loads refresh styles and bundles the component outside the import graph',
+  })),
+  ...[
+    'src-server/adapters/node-pty-adapter.ts',
+    'src-server/services/infra/workload-resources.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    reason:
+      'the workload proof launches a separate fixture server that imports these runtime owners',
+  })),
+  ...[
+    'docs/learn/atlas.js',
+    'docs/learn/index.html',
+    'scripts/lib/learning-markdown.mjs',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/learning-atlas.browser.test.ts'],
+    reason:
+      'the Atlas browser fixture serves these runtime assets and generates the search data across a dynamic renderer boundary',
+  })),
+  {
+    pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+    reason:
+      'the non-reference host guard executes this Playwright spec through a child process',
+  },
+  ...[
+    'docs/reference/play-data-safety.md',
+    'docs/privacy-policy.md',
+    'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-server/services/__tests__/privacy-inventory.test.ts'],
+    reason: 'privacy inventory tests compare generated artifacts read by path',
+  })),
   // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
   // reaches them only through that CLI as a child process, which the import
   // graph cannot see. (The vectors test imports them directly.)
@@ -722,6 +823,12 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
       'examples/smart-routing/**',
       'src-server/routes/__tests__/smart-routing-plugin.test.ts',
     ],
+    // Pins the tap-retry calls and the bounded alert wait in the XCUITest
+    // source by text; a rename there (#4891) otherwise reaches main unseen.
+    [
+      'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+      'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+    ],
   ].map(([pattern, test]) =>
     Object.freeze({
       pattern,
@@ -796,6 +903,43 @@ const COMPOSITION_EDGES = Object.freeze([
       'Agent audience enforcement through the production route composition; ' +
       'kept explicit so an escalated diff still runs its caller suite (#3149)',
   }),
+  // The seed must decide every root this registry declares. The suite imports
+  // the registry, but `packages/shared/` escalates and an escalated diff
+  // drops related discovery: #4935 and #4999 each added a root and reached
+  // main with the suite failing.
+  Object.freeze({
+    pattern: 'packages/shared/src/station-home-store-registry.ts',
+    supplemental: true,
+    tests: Object.freeze(['scripts/__tests__/seed-dev-home.test.ts']),
+    reason:
+      'the dev-home seed decides every root this registry declares; ' +
+      'kept explicit so an escalated diff still runs it (#3149)',
+  }),
+  // These suites boot the server entry point as a child process and assert
+  // the status it exits with, and the line it prints, when it refuses to
+  // start. #4752 changed that status in the first two files below and two of
+  // the suites failed first on main; the rest are the modules that raise
+  // the refusals, which none of the suites imports.
+  ...[
+    'src-server/index.ts',
+    'packages/supervisor/src/protocol.ts',
+    'src-server/runtime/bootstrap/managed-policy-boot.ts',
+    'src-server/security/managed-approval-ceiling.ts',
+    'src-server/security/managed-network-exposure.ts',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([
+        'src-server/__tests__/managed-approval-ceiling.process.test.ts',
+        'src-server/__tests__/managed-policy-startup.process.test.ts',
+        'src-server/__tests__/managed-remote-clients.process.test.ts',
+      ]),
+      reason:
+        'boots the server entry point as a child process and asserts its ' +
+        'startup-refused exit status; kept explicit so the diff runs it (#3149)',
+    }),
+  ),
 ]);
 
 /**
@@ -1676,11 +1820,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'native hidden-window documentation source seam',
   },
   {
-    pattern: 'src-desktop/tauri.beta.conf.json',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'Beta hidden-window documentation source seam',
-  },
-  {
     pattern: 'src-desktop/tauri.nightly.conf.json',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'Nightly hidden-window documentation source seam',
@@ -2152,6 +2291,38 @@ const UNIQUE_IMPACT_PATTERNS = Object.freeze(
  */
 const VITEST_INELIGIBLE_TEST = /^tests\//;
 
+/**
+ * Supplemental edges from a pin scan: one per pinned path, naming every
+ * schedulable pinning test (plus `alsoTests`). A pattern the validator
+ * requires to be unique gets no edge, and a spec Vitest cannot run is
+ * filtered out before the edge is built.
+ *
+ * @param {readonly { test: string, pins: readonly string[] }[]} scanned
+ * @param {{ reason: string, alsoTests: readonly string[] }} options
+ * @returns {readonly ImpactEdge[]}
+ */
+function supplementalPinEdges(scanned, { reason, alsoTests }) {
+  return Object.freeze(
+    invertPathReadPins(scanned).flatMap(({ pin, tests }) => {
+      if (UNIQUE_IMPACT_PATTERNS.has(pin)) return [];
+      const schedulable = tests.filter(
+        (test) => !VITEST_INELIGIBLE_TEST.test(test),
+      );
+      if (!schedulable.length) return [];
+      return [
+        Object.freeze({
+          pattern: pin,
+          supplemental: true,
+          tests: Object.freeze(
+            [...new Set([...schedulable, ...alsoTests])].sort(),
+          ),
+          reason,
+        }),
+      ];
+    }),
+  );
+}
+
 // Keyed by root and never invalidated within a process: the scan is a
 // snapshot of the working tree at first call. Correct for the one-shot CLI,
 // wrong for any long-lived caller that expects to see later edits.
@@ -2191,26 +2362,63 @@ export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
   const cached = cacheable ? pathReadPinEdgeCache.get(root) : undefined;
   if (cached) return cached;
   const scanned = entries ?? scanPathReadPins({ root });
-  const edges = Object.freeze(
-    invertPathReadPins(scanned).flatMap(({ pin, tests }) => {
-      if (UNIQUE_IMPACT_PATTERNS.has(pin)) return [];
-      const schedulable = tests.filter(
-        (test) => !VITEST_INELIGIBLE_TEST.test(test),
-      );
-      if (!schedulable.length) return [];
-      return [
-        Object.freeze({
-          pattern: pin,
-          supplemental: true,
-          tests: Object.freeze(
-            [...new Set([...schedulable, PATH_READ_PIN_BOUNDARY_TEST])].sort(),
-          ),
-          reason: PATH_READ_PIN_REASON,
-        }),
-      ];
-    }),
-  );
+  const edges = supplementalPinEdges(scanned, {
+    reason: PATH_READ_PIN_REASON,
+    alsoTests: [PATH_READ_PIN_BOUNDARY_TEST],
+  });
   if (cacheable) pathReadPinEdgeCache.set(root, edges);
+  return edges;
+}
+
+/**
+ * Reason recorded on every derived native-literal edge. Exported so the
+ * local selection can tell a test only these edges selected from the rest.
+ */
+export const NATIVE_LITERAL_PIN_REASON =
+  'a test names this file by a literal repository path, outside the import ' +
+  'graph, and a pull request otherwise runs nothing for it (#4891)';
+
+const nativeLiteralPinEdgeCache = new Map();
+
+/**
+ * Impact edges for native files that a scripts test names by literal path.
+ *
+ * A change under `src-desktop/**` matches a boundary edge that only names the
+ * deferred `verify-local` lane, so no test runs for it in a pull request, yet
+ * many suites assert on the text of those files (Rust, Kotlin, Swift, plists,
+ * manifests, Tauri config) through a cwd-relative literal. The path-read scan
+ * refuses such a literal by design, so these pins were unscheduled.
+ *
+ * Same contract as `pathReadPinEdges`: every edge is `supplemental`, so it
+ * only ADDS tests and never changes a path's boundary, escalation, related
+ * paths, or lanes (#1563, #1613). Derived at gate time so a deleted pin
+ * cannot linger and a new one cannot be forgotten. The same two skips apply:
+ * a pattern the validator requires to be unique gets no edge, and a test
+ * Vitest cannot run is filtered out (the scan only reads `scripts/__tests__`,
+ * so the second is a guard, not a live case).
+ *
+ * What it does not see: paths built from several segments, template literals
+ * with substitutions, and tests outside `scripts/__tests__`.
+ *
+ * @param {{
+ *   root?: string,
+ *   nativeEntries?: readonly { test: string, pins: readonly string[] }[],
+ * }} [options] `nativeEntries` substitutes a scan result, for tests.
+ * @returns {readonly ImpactEdge[]}
+ */
+export function nativeLiteralPinEdges({
+  root = process.cwd(),
+  nativeEntries,
+} = {}) {
+  const cacheable = nativeEntries === undefined;
+  const cached = cacheable ? nativeLiteralPinEdgeCache.get(root) : undefined;
+  if (cached) return cached;
+  const scanned = nativeEntries ?? scanNativeLiteralPins({ root });
+  const edges = supplementalPinEdges(scanned, {
+    reason: NATIVE_LITERAL_PIN_REASON,
+    alsoTests: [],
+  });
+  if (cacheable) nativeLiteralPinEdgeCache.set(root, edges);
   return edges;
 }
 
@@ -2416,6 +2624,7 @@ export function buildTestImpactManifest(options) {
   return Object.freeze([
     ...TEST_IMPACT_MANIFEST,
     ...pathReadPinEdges(options),
+    ...nativeLiteralPinEdges({ root: options?.root }),
     ...spawnedScriptEdges({ root: options?.root }),
   ]);
 }

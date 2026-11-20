@@ -1,0 +1,7 @@
+{
+  "revision": "8873be981a8af6229df5fa137b184e6fc95c0420",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-checked the easing section against the ratchet. A fallback var(--ease-in, var(--ease-out)) and the keyword EASE-IN now fail with no ceiling, including when that literal sits under the hard-coded ceiling. var(--EASE-IN) and EASE-IN-OUT do not count as ease-in. Injected the previous pattern: the new test failed because the fallback was not classified as ease-in, then restored, and all 17 tests passed. The duration steps and the hover query are unchanged. No fresh screenshot or computed timing.","inputs":["docs/design/motion.md","scripts/motion-contract-ratchet.mjs"]}
+  ]
+}

@@ -1,9 +1,11 @@
+import { useMemo, useRef } from 'react';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { triggerHaptic } from '../../platform/native/haptics';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 
 /**
- * The dock header's two clipboard rows (#1536 F).
+ * The chat's clipboard commands (#1536 F): rows of the This chat card, and of
+ * the More menu while the card is not on screen.
  *
  * Both facts used to be chrome in the header bar: "Copy ID" as a 44px labelled
  * button inside the identity row, and the project's full path as a
@@ -36,49 +38,58 @@ export function useDockCopyActions(input: {
   workingDirectory?: string | null;
 }): DockMoreAction[] {
   const copyWithToast = useCopyToClipboardToast();
-  const copy = async (value: string) => {
-    if (await copyWithToast(value)) triggerHaptic('light');
-  };
-  const sessionCopyable =
-    input.sessionId != null &&
-    input.sessionId !== '' &&
-    input.sessionId !== input.conversationId;
-  return [
-    ...(input.conversationId
-      ? [
-          {
-            key: 'copy-thread-id',
-            label: 'Copy chat ID',
-            onSelect: () => {
-              void copy(input.conversationId as string);
+  // Read through a ref: the rows change only when what they copy does.
+  const copyRef = useRef(copyWithToast);
+  copyRef.current = copyWithToast;
+  const { conversationId, sessionId, workingDirectory } = input;
+  // Stable for unchanged facts: the This chat card is memoised against the
+  // dock's per-frame re-renders, and takes these rows as a prop.
+  return useMemo(() => {
+    const copy = async (value: string) => {
+      if (await copyRef.current(value)) triggerHaptic('light');
+    };
+    const input = { conversationId, sessionId, workingDirectory };
+    const sessionCopyable =
+      input.sessionId != null &&
+      input.sessionId !== '' &&
+      input.sessionId !== input.conversationId;
+    return [
+      ...(input.conversationId
+        ? [
+            {
+              key: 'copy-thread-id',
+              label: 'Copy chat ID',
+              onSelect: () => {
+                void copy(input.conversationId as string);
+              },
             },
-          },
-        ]
-      : []),
-    ...(sessionCopyable
-      ? [
-          {
-            key: 'copy-session-id',
-            label: 'Copy session ID',
-            onSelect: () => {
-              void copy(input.sessionId as string);
+          ]
+        : []),
+      ...(sessionCopyable
+        ? [
+            {
+              key: 'copy-session-id',
+              label: 'Copy session ID',
+              onSelect: () => {
+                void copy(input.sessionId as string);
+              },
             },
-          },
-        ]
-      : []),
-    ...(input.workingDirectory
-      ? [
-          {
-            key: 'copy-project-path',
-            // #4405 (A27): the working folder, which is the home folder for a
-            // chat with no project — "project path" promised a project that
-            // was not there.
-            label: 'Copy folder path',
-            onSelect: () => {
-              void copy(input.workingDirectory as string);
+          ]
+        : []),
+      ...(input.workingDirectory
+        ? [
+            {
+              key: 'copy-project-path',
+              // #4405 (A27): the working folder, which is the home folder for a
+              // chat with no project — "project path" promised a project that
+              // was not there.
+              label: 'Copy folder path',
+              onSelect: () => {
+                void copy(input.workingDirectory as string);
+              },
             },
-          },
-        ]
-      : []),
-  ];
+          ]
+        : []),
+    ];
+  }, [conversationId, sessionId, workingDirectory]);
 }

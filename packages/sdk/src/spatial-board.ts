@@ -5,7 +5,12 @@ import type {
 } from '@kontourai/station-contracts';
 import { apiErrorMessage } from './client/api-error-message';
 import { authenticatedFetch } from './client/http';
-import { resolveApiBase, useApiMutation, useApiQuery } from './query-core';
+import {
+  resolveApiBase,
+  useApiMutation,
+  useApiQuery,
+  useInvalidateQuery,
+} from './query-core';
 import {
   SpatialBoardRequestError,
   spatialBoardQueries,
@@ -140,6 +145,7 @@ export const undoSpatialBoard = (input: {
 export function useSpatialBoardQuery() {
   return useApiQuery(spatialBoardKeys.all, () => getSpatialBoard(), {
     staleTime: 15_000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -148,39 +154,40 @@ export function useResolvedSpatialBoardQuery() {
   const query = spatialBoardQueries.resolved();
   return useApiQuery(query.queryKey, query.queryFn, {
     staleTime: query.staleTime,
+    refetchOnMount: 'always',
   });
 }
 
-const mutationOptions = {
-  invalidateKeys: [
-    spatialBoardKeys.all,
-    spatialBoardQueries.resolved().queryKey,
-  ],
-};
+function useSpatialBoardMutation<T>(mutation: (input: T) => Promise<unknown>) {
+  const invalidate = useInvalidateQuery();
+  return useApiMutation(mutation, {
+    invalidateKeys: [spatialBoardKeys.all],
+    onError: (error) => {
+      if (error instanceof SpatialBoardRequestError && error.conflict) {
+        void invalidate(spatialBoardKeys.all);
+      }
+    },
+  });
+}
 
 export function useCreateSpatialBoardPinMutation() {
-  return useApiMutation(createSpatialBoardPin, mutationOptions);
+  return useSpatialBoardMutation(createSpatialBoardPin);
 }
 export function useReplaceSpatialBoardPinMutation() {
-  return useApiMutation(replaceSpatialBoardPin, mutationOptions);
+  return useSpatialBoardMutation(replaceSpatialBoardPin);
 }
 export function useRemoveSpatialBoardPinMutation() {
-  return useApiMutation(removeSpatialBoardPin, mutationOptions);
+  return useSpatialBoardMutation(removeSpatialBoardPin);
 }
 export function useSetSpatialBoardTitleMutation() {
-  return useApiMutation(setSpatialBoardTitle, mutationOptions);
+  return useSpatialBoardMutation(setSpatialBoardTitle);
 }
 export function useSetSpatialBoardCameraMutation() {
-  return useApiMutation(setSpatialBoardCamera, mutationOptions);
+  return useSpatialBoardMutation(setSpatialBoardCamera);
 }
 export function useCleanupSpatialBoardPinsMutation() {
-  return useApiMutation(cleanupSpatialBoardPins, mutationOptions);
+  return useSpatialBoardMutation(cleanupSpatialBoardPins);
 }
 export function useUndoSpatialBoardMutation() {
-  return useApiMutation(undoSpatialBoard, {
-    invalidateKeys: [
-      spatialBoardKeys.all,
-      spatialBoardQueries.resolved().queryKey,
-    ],
-  });
+  return useSpatialBoardMutation(undoSpatialBoard);
 }

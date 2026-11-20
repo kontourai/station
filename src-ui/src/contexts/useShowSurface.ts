@@ -6,7 +6,11 @@ import {
 } from '../app-shell/chat-placement';
 import { surfaceMayOccupy } from '../regions/region-model';
 import { navigationStore } from './navigation-store';
-import { type SurfaceIntent, useRegionModel } from './RegionModelContext';
+import {
+  type OpenInRegionOptions,
+  type SurfaceIntent,
+  useRegionModel,
+} from './RegionModelContext';
 
 /**
  * "Reveal this surface" for renderers that must not read region state
@@ -30,12 +34,22 @@ import { type SurfaceIntent, useRegionModel } from './RegionModelContext';
 export function useShowSurface(): (
   surfaceId: string,
   intent?: SurfaceIntent,
+  /**
+   * A dock region to open it in rather than the surface's own rule (the
+   * composer's Open terminal asks for `bottom`, beside Chat). Not carried by
+   * the deep-link fallback, which reveals by the surface's rule.
+   */
+  options?: Pick<OpenInRegionOptions, 'region'>,
 ) => void {
   const { canRenderRegionSurfaces, showSurface, deliverSurfaceIntent } =
     useRegionModel();
   const centerOwnsChat = useLayoutChatPlacement() === 'center';
   return useCallback(
-    (surfaceId: string, intent?: SurfaceIntent) => {
+    (
+      surfaceId: string,
+      intent?: SurfaceIntent,
+      options?: Pick<OpenInRegionOptions, 'region'>,
+    ) => {
       // While the Coding layout's centre owns Chat, "show Chat" is its Chat
       // page: revealing Chat's dock region would reveal a region the shells
       // render without Chat. The intent (a session to open) still goes
@@ -49,7 +63,7 @@ export function useShowSurface(): (
         return;
       }
       if (canRenderRegionSurfaces) {
-        showSurface(surfaceId, intent);
+        showSurface(surfaceId, intent, options);
         return;
       }
       navigationStore.navigate(

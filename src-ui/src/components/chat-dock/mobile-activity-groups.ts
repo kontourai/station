@@ -61,6 +61,11 @@ export interface MobileActivityGroup {
   id: MobileActivityGroupId;
   label: string;
   items: HomeWorkItem[];
+  /**
+   * Rows past the shelf's recency window (`INBOX_SHELF_WINDOW_MS`), shown
+   * behind a "Show older" row. Search leaves every row in `items`.
+   */
+  older?: HomeWorkItem[];
   childrenById?: ReadonlyMap<string, readonly HomeWorkItem[]>;
 }
 

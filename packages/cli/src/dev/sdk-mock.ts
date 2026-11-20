@@ -1,3 +1,5 @@
+import { STATION_AGENT_ID } from '@kontourai/station-contracts/agent-identity';
+
 export interface SDKMockConfig {
   layoutSlug: string;
 }
@@ -16,6 +18,18 @@ var __p={},__pc={};
 // SDK mock: every SDK value a shipped example imports (dev-sdk-mock-parity.test.ts)
 // Standalone functions (not hooks) — also exposed on the mock object for the shim
 var __devApiBase='';
+async function __previewAuthenticatedFetch(input,init){
+  var isRequest=input instanceof Request;
+  var url=new URL(isRequest?input.url:input,window.location.href);
+  if(url.origin!==window.location.origin||url.protocol!==window.location.protocol||url.username||url.password){
+    throw new Error('station dev authenticatedFetch only accepts preview URLs');
+  }
+  var request=new Request(isRequest?input:url,init);
+  request.headers.delete('authorization');
+  request.headers.delete('cookie');
+  request.headers.delete('proxy-authorization');
+  return fetch(request,{credentials:'omit',mode:'same-origin',redirect:'error'});
+}
 function __callTool(slug,tool,args){return fetch('/agents/'+encodeURIComponent(slug)+'/tools/'+encodeURIComponent(tool),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args||{})}).then(function(r){return r.json()}).then(function(d){if(!d.success)throw new Error(d.error||'Tool call failed');return d.response})}
 function __invokeAgent(slug,prompt){window.__devToast&&window.__devToast('→ agent('+slug+'): '+prompt.slice(0,100));return Promise.resolve({text:'[mock]',toolCalls:[]})}
 function __invoke(opts){window.__devToast&&window.__devToast('invoke: '+JSON.stringify(opts).slice(0,120));return Promise.resolve({})}
@@ -98,6 +112,7 @@ window.__station_ai_sdk_mock={
   useShortcutScope:__useShortcutScope,
   useServerFetch:function(){return __serverFetch},
   // Standalone functions
+  authenticatedFetch:__previewAuthenticatedFetch,
   callTool:__callTool,
   invokeAgent:__invokeAgent,
   invoke:__invoke,
@@ -142,6 +157,9 @@ window.__station_ai_sdk_mock={
 window.__station_ai_sdk_mock_subpaths={
   '@kontourai/station-sdk/client':{createKnowledgeRecord:__fetcher('createKnowledgeRecord')},
   '@kontourai/station-sdk/voice':{voiceRegistry:__voiceRegistry,voiceSessionAdapterRegistry:__voiceSessionAdapterRegistry,registerRealtimeVoiceProvider:function(registry,provider){window.__devToast&&window.__devToast('Realtime voice is unavailable in station dev');return{adapter:provider,dispose:noop}}},
-  '@kontourai/station-sdk/agent':{}
+  '@kontourai/station-sdk/agent':{
+    STATION_AGENT_ID:${JSON.stringify(STATION_AGENT_ID)},
+    agentId:function(value){return window.__station_sdk.agentId(value)}
+  }
 };`;
 }

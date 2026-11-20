@@ -173,6 +173,56 @@ function scanMountedRouteBases(): string[] {
   return bases;
 }
 
+test.each([
+  ['GET', '/acp/setup', 'orchestration:read'],
+  ['GET', '/acp/registry/antigravity/install-terminal', 'orchestration:read'],
+  [
+    'POST',
+    '/acp/registry/antigravity/install-terminal',
+    'orchestration:operate',
+  ],
+  [
+    'DELETE',
+    '/acp/registry/antigravity/install-terminal',
+    'orchestration:operate',
+  ],
+  ['GET', '/acp/connections/antigravity/station-tools', 'orchestration:read'],
+  [
+    'POST',
+    '/acp/connections/antigravity/station-tools',
+    'orchestration:operate',
+  ],
+  [
+    'POST',
+    '/acp/connections/antigravity/recommended-setup',
+    'orchestration:operate',
+  ],
+] as const)(
+  'engine setup %s %s requires its declared scope %s',
+  (method, path, scope) => {
+    expect(matchPairingScopeRule(method, path)).toMatchObject({
+      scope,
+      origin: 'explicit',
+      exact: true,
+    });
+    expect(pairingScopeSatisfiesHttpRoute('', scope, { method, path })).toBe(
+      false,
+    );
+    expect(pairingScopeSatisfiesHttpRoute(scope, scope, { method, path })).toBe(
+      true,
+    );
+    if (scope === 'orchestration:operate') {
+      expect(
+        pairingScopeSatisfiesHttpRoute(
+          'orchestration:read terminal:operate coding:exec',
+          scope,
+          { method, path },
+        ),
+      ).toBe(false);
+    }
+  },
+);
+
 test('terminal socket HTTP classification refuses personal tokens explicitly', () => {
   expect(matchPairingScopeRule('GET', '/api/terminal/socket')).toMatchObject({
     scope: 'terminal:operate',
@@ -1103,6 +1153,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     // remote-access-threat-model.md`'s "Cross-station reads" section.
     ['GET', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['HEAD', '/api/environments/ssh/sessions', 'orchestration:operate'],
+    // A remote session's relayed history: full transcripts of another
+    // Station, under the same leaf on purpose.
+    [
+      'GET',
+      '/api/environments/ssh/sessions/env-id/external:claude:thread/history',
+      'orchestration:operate',
+    ],
     ['GET', '/api/pairing/devices', 'access:manage'],
     ['GET', '/api/pairing/native-relay-surfaces', 'access:manage'],
     ['POST', '/api/pairing/native-relay-surfaces', 'access:manage'],
@@ -1294,6 +1351,8 @@ describe('pairing-route-scopes: table-driven lookups', () => {
 
   test('classifies local conversation handoff mutation and read leaves at the orchestration family split', () => {
     const handoff = '/api/orchestration/conversations/:conversationId/handoff';
+    const stagedHandoff =
+      '/api/orchestration/conversations/:conversationId/staged-handoff';
     const handoffReceipt =
       '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey';
     const eventWindow =
@@ -1301,7 +1360,9 @@ describe('pairing-route-scopes: table-driven lookups', () => {
 
     for (const [method, path, scope] of [
       ['POST', handoff, 'orchestration:operate'],
+      ['POST', stagedHandoff, 'orchestration:operate'],
       ['GET', handoffReceipt, 'orchestration:read'],
+      ['DELETE', handoffReceipt, 'orchestration:operate'],
       ['GET', eventWindow, 'orchestration:read'],
     ] as const) {
       expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
@@ -1323,11 +1384,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     const handoffLeaves = leaves.filter((leaf) =>
       [
         'POST /api/orchestration/conversations/:conversationId/handoff',
+        'POST /api/orchestration/conversations/:conversationId/staged-handoff',
         'GET /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
+        'DELETE /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
         'GET /api/orchestration/conversations/:conversationId/event-window',
       ].includes(`${leaf.method} ${leaf.path}`),
     );
-    expect(handoffLeaves).toHaveLength(3);
+    expect(handoffLeaves).toHaveLength(5);
     expect(
       handoffLeaves.filter(
         (leaf) => !isLeafScopeDeclared(leaf.method, leaf.path),
@@ -1633,6 +1696,10 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         'POST',
         '/api/connections/agent/codex/credential-recovery/profiles/profile-a/apply',
       ],
+      // "Continue on <label>" lists and switches the same accounts from a
+      // usage-limit stop, so it is not the Session family's operate tier.
+      ['GET', '/api/orchestration/sessions/thread-1/usage-limit/continue-on'],
+      ['POST', '/api/orchestration/sessions/thread-1/usage-limit/continue-on'],
     ] as const;
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),

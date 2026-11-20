@@ -283,13 +283,13 @@ describe('NewChatModal engine chips', () => {
     ).toBe('true');
     expect(
       screen
-        .getByRole('option', { name: /Shared model · Provider two/ })
-        .getAttribute('aria-selected'),
+        .getByRole('button', { name: /^Shared model · Provider two/ })
+        .getAttribute('aria-current'),
     ).toBe('true');
     expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
-      screen.getByRole('option', { name: /Shared model · Provider one/ }),
+      screen.getByRole('button', { name: /^Shared model · Provider one/ }),
     );
     // Choosing a Model finishes the picker, as it does in a chat's composer.
     await waitFor(() =>
@@ -312,7 +312,7 @@ describe('NewChatModal engine chips', () => {
     expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
     fireEvent.click(
-      screen.getByRole('option', { name: /Shared model · Provider two/ }),
+      screen.getByRole('button', { name: /^Shared model · Provider two/ }),
     );
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull(),
@@ -351,7 +351,7 @@ describe('NewChatModal engine chips', () => {
     await screen.findByRole('dialog', { name: 'Model' });
     fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
-      screen.getByRole('option', { name: /Shared model · Provider one/ }),
+      screen.getByRole('button', { name: /^Shared model · Provider one/ }),
     );
     await waitFor(() => expect(dialog()).toBeNull());
 

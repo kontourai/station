@@ -1,0 +1,7 @@
+{
+  "revision": "2906096e8c2d8a52d45298a2698728401c670bc4",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"2906096e8c lists opencode-next.db sessions created after OpenCode's completed v1-v2 migration instead of skipping the file. Re-read the external transcript import and source-home lines citing the source: ordering, observation-only source root and no continuation are unchanged. No prose change needed.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]}
+  ]
+}

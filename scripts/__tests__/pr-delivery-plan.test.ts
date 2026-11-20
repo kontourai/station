@@ -120,6 +120,8 @@ async function run(
 describe('delivery planning through the real Git CLI', () => {
   test.each([
     ['install.sh', ['install', 'portable', 'ecosystem']],
+    ['scripts/lib/server-bundle-ascii.mjs', ['portable', 'desktop']],
+    ['scripts/lib/biome-cli.mjs', ['portable']],
     ['src-desktop/src/lib.rs', ['native', 'desktop']],
     ['pnpm-lock.yaml', ['portable', 'desktop']],
     ['docs/unrelated.md', []],

@@ -243,19 +243,19 @@ describe('runCli', () => {
       serverPort: process.env.STATION_SERVER_PORT,
       uiPort: process.env.STATION_UI_PORT,
     };
-    process.env.STATION_CHANNEL = 'beta';
+    process.env.STATION_CHANNEL = 'nightly';
     try {
       const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
       await runCli(['upgrade']);
       expect(lifecycle.validateLifecyclePorts).toHaveBeenCalledWith(
-        28141,
-        28000,
+        38141,
+        38000,
       );
       expect(lifecycle.upgrade).toHaveBeenCalledWith(
         expect.objectContaining({
-          baseDir: expect.stringMatching(/instances\/beta$/),
-          serverPort: 28141,
-          uiPort: 28000,
+          baseDir: expect.stringMatching(/instances\/nightly$/),
+          serverPort: 38141,
+          uiPort: 38000,
         }),
       );
 
@@ -276,7 +276,7 @@ describe('runCli', () => {
       );
       expect(lifecycle.upgrade).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          baseDir: expect.stringMatching(/instances\/beta$/),
+          baseDir: expect.stringMatching(/instances\/nightly$/),
           serverPort: 29141,
           uiPort: 29000,
         }),

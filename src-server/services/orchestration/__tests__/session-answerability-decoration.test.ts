@@ -274,6 +274,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
     // 1. GET /sessions/read-model
     const readModel = await service.listSessionReadModel(
       INTERNAL_SESSION_READ_SCOPE,
+      { purpose: 'session-list' },
     );
     expect(readModel).toHaveLength(2);
     expect(
@@ -391,7 +392,9 @@ describe('session-summary answerability decoration (station#1778)', () => {
       ),
     );
 
-    await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE);
+    await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+      purpose: 'session-list',
+    });
     await service.readSession('thread-stranded', INTERNAL_SESSION_READ_SCOPE);
     await service.listProjectSessionBoard(PROJECT, INTERNAL_SESSION_READ_SCOPE);
     await service.listAllSessionConversations(INTERNAL_SESSION_READ_SCOPE);
@@ -455,9 +458,11 @@ describe('session-summary answerability decoration (station#1778)', () => {
 
     const service = await settledService();
     const summaries = new Map(
-      (await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)).map(
-        (session) => [session.threadId, session],
-      ),
+      (
+        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+          purpose: 'session-list',
+        })
+      ).map((session) => [session.threadId, session]),
     );
     const board = await service.listProjectSessionBoard(
       PROJECT,
@@ -510,7 +515,9 @@ describe('session-summary answerability decoration (station#1778)', () => {
     const service = await settledService();
     const readStamp = async () => {
       const answerability = (
-        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+          purpose: 'session-list',
+        })
       ).find(
         (session) => session.threadId === 'thread-stranded',
       )?.answerability;
@@ -549,7 +556,9 @@ describe('session-summary answerability decoration (station#1778)', () => {
     const service = await settledService();
 
     const stamps = (
-      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
+      })
     )
       .map((session) => session.answerability)
       .filter((answerability) => !answerability.answerable);

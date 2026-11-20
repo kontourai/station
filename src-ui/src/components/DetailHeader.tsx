@@ -18,6 +18,8 @@ interface DetailHeaderProps {
   badge?: { label: string; variant?: 'success' | 'warning' | 'info' | 'muted' };
   statusDot?: 'connected' | 'disconnected';
   icon?: React.ReactNode;
+  /** A leading navigation control for detail routes with a return path. */
+  navigation?: React.ReactNode;
   /** Inline identity/status content rendered beside the item title. */
   titleAccessory?: React.ReactNode;
   children?: React.ReactNode; // Action buttons go here
@@ -34,14 +36,22 @@ export function DetailHeader({
   badge,
   statusDot,
   icon,
+  navigation,
   titleAccessory,
   children,
   mobileFooter,
 }: DetailHeaderProps) {
   const Title = useSubjectHeadingLevel() === 'item' ? 'h3' : 'h2';
   return (
-    <header className="detail-header">
+    <header
+      className={
+        navigation ? 'detail-header detail-header--navigable' : 'detail-header'
+      }
+    >
       <div className="detail-header__left">
+        {navigation && (
+          <div className="detail-header__navigation">{navigation}</div>
+        )}
         {icon && <div className="detail-header__icon">{icon}</div>}
         <div className="detail-header__identity">
           <div className="detail-header__title-row">

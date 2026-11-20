@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
+import { PRESENCE_FALLBACK_MS } from '../hooks/usePresenceList';
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),
@@ -84,6 +85,7 @@ test('overflow waits to become visible before its expiration starts', () => {
   advance(999);
   expect(screen.getByText('Waiting')).toBeTruthy();
   advance(1);
+  advance(PRESENCE_FALLBACK_MS);
   expect(screen.queryByText('Waiting')).toBeNull();
 });
 
@@ -119,6 +121,7 @@ test('hover, focus, open details and a hidden app pause the remaining reading ti
   advance(599);
   expect(screen.getByText('Read me')).toBeTruthy();
   advance(1);
+  advance(PRESENCE_FALLBACK_MS);
   expect(screen.queryByText('Read me')).toBeNull();
 });
 
@@ -161,6 +164,7 @@ test('async actions are pending once, survive failure and retry with adequate re
     fireEvent.click(screen.getByRole('button', { name: 'Retry' })),
   );
   expect(retry).toHaveBeenCalledTimes(2);
+  advance(PRESENCE_FALLBACK_MS);
   expect(screen.queryByText('Reconnect')).toBeNull();
 });
 
@@ -300,6 +304,7 @@ test('keyboard activation of a nested action cannot navigate the card behind it'
   expect(navigate).not.toHaveBeenCalled();
   fireEvent.click(open);
   expect(navigate).toHaveBeenCalledTimes(1);
+  advance(PRESENCE_FALLBACK_MS);
   expect(screen.queryByText('Needs attention')).toBeNull();
 });
 
@@ -342,6 +347,7 @@ test.each(['hover', 'focus', 'details'] as const)(
     advance(599);
     expect(screen.getByText('Read after promotion')).toBeTruthy();
     advance(1);
+    advance(PRESENCE_FALLBACK_MS);
     expect(screen.queryByText('Read after promotion')).toBeNull();
   },
 );

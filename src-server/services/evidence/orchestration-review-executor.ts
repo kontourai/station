@@ -12,7 +12,10 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
-import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import {
+  OrchestrationCommandDispatchError,
+  type OrchestrationService,
+} from '../orchestration/orchestration-service.js';
 import type {
   ReadOnlyReviewExecutor,
   ReviewExecutionInput,
@@ -97,9 +100,14 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
       reviewerId: input.reviewer.reviewerId,
     };
     let started = false;
+    let startAttempted = false;
     let outcome: ReviewExecutionOutcome | undefined;
     let workspaceRelease: 'safe' | 'retain' = 'safe';
     try {
+      input.context.assertCurrent?.();
+      const admission = input.context.assertCurrent
+        ? { recheck: async () => input.context.assertCurrent!() }
+        : undefined;
       const startInput: ProviderSessionStartInput = {
         threadId,
         provider: this.#provider,
@@ -115,16 +123,20 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
         },
         signal: input.signal,
       };
+      startAttempted = true;
       const start = await this.#orchestration.dispatchWithReceipt(
         { type: 'startSession', input: startInput },
         orchestrationContext(input),
-        { reviewIsolation: isolation },
+        {
+          reviewIsolation: isolation,
+          ...(admission ? { receiverExecutionAdmission: admission } : {}),
+        },
       );
       if (!isProviderSession(start.result, threadId)) {
         outcome = {
           kind: 'failed',
           reason: 'Reviewer session did not start.',
-          workspaceRelease: 'safe',
+          workspaceRelease: 'retain',
         };
         return outcome;
       }
@@ -139,7 +151,10 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
       const sent = await this.#orchestration.dispatchWithReceipt(
         { type: 'sendTurn', input: turnInput },
         orchestrationContext(input),
-        { reviewIsolation: isolation },
+        {
+          reviewIsolation: isolation,
+          ...(admission ? { receiverExecutionAdmission: admission } : {}),
+        },
       );
       if (!isTurnStart(sent.result, threadId)) {
         outcome = {
@@ -155,13 +170,35 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
         sent.result.turnId,
       );
       return outcome;
-    } catch {
+    } catch (error) {
+      const startFailure =
+        startAttempted &&
+        !started &&
+        error instanceof OrchestrationCommandDispatchError &&
+        error.receipt.commandType === 'startSession' &&
+        error.receipt.threadId === threadId
+          ? error
+          : undefined;
+      const refused =
+        startFailure?.receipt.status === 'rejected' &&
+        startFailure.receiptStatus === 'persisted' &&
+        startFailure.failurePhase === 'refused';
+      // The dispatch port can confirm a Session even when its accepted
+      // receipt was lost. Only that exact Session goes through owner Stop.
+      if (
+        startFailure?.outcome === 'indeterminate' &&
+        startFailure.receipt.status === 'accepted' &&
+        startFailure.receiptStatus === 'unavailable' &&
+        isProviderSession(startFailure.indeterminateSession, threadId) &&
+        startFailure.indeterminateSession.provider === this.#provider
+      )
+        started = true;
       outcome = {
         kind: input.signal.aborted ? 'timed-out' : 'failed',
         reason: input.signal.aborted
           ? 'Reviewer execution timed out.'
           : 'Reviewer execution failed.',
-        workspaceRelease: started ? 'retain' : 'safe',
+        workspaceRelease: startAttempted && !refused ? 'retain' : 'safe',
       };
       return outcome;
     } finally {

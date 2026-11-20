@@ -1,0 +1,9 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#4995 adds Repeated warnings and stdout log file paragraphs plus four env rows to Logging; settings-architecture and abstraction-review claims do not depend on these.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#4995 adds Repeated warnings and stdout log file paragraphs plus four env rows to Logging; settings-architecture and abstraction-review claims do not depend on these.","inputs":["docs/reference/config.md"]}
+  ]
+}

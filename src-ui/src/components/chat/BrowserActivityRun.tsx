@@ -1,11 +1,17 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useContext } from 'react';
 import { LazyBoundary } from '../LazyBoundary';
 import { useBrowserActivityScope } from './BrowserActivityContext';
+import {
+  browserCallIdentity,
+  browserTurnKey,
+  useBrowserTurnActivities,
+} from './BrowserTurnActivity';
 import {
   browserCallSessionId,
   stationBrowserTool,
 } from './browser-activity-calls';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
+import { TranscriptTurnContext } from './transcript-child-work';
 
 const loadBrowserActivityContent = () =>
   import('../browser-activity/BrowserActivityContent');
@@ -26,35 +32,67 @@ export function isBrowserActivityRun<P extends ToolCallLike>(
 /** Render a browser-only run as one activity; mixed runs retain their normal renderer. */
 export function BrowserActivityRun<P extends ToolCallLike>({
   run,
-  active,
   renderCall,
 }: {
   run: ToolCallRun<P>;
-  active: boolean;
   renderCall: (part: P, index: number) => ReactNode;
 }) {
   const scope = useBrowserActivityScope();
-  if (!scope || !isBrowserActivityRun(run)) return null;
-  const ids = run.calls.map(({ part }) => browserCallSessionId(part));
-  const known = [...new Set(ids.filter((id): id is string => Boolean(id)))];
-  if (known.length > 1) return null;
+  const activities = useBrowserTurnActivities();
+  const turn = useContext(TranscriptTurnContext);
   const rows = run.calls.map(({ part, index }) => renderCall(part, index));
+  if (
+    !scope ||
+    !activities ||
+    !turn?.threadId ||
+    !turn.turnId ||
+    !isBrowserActivityRun(run)
+  )
+    return <>{rows}</>;
+  const session = browserCallSessionId(run.calls[0]!.part);
+  const group =
+    session &&
+    activities.get(browserTurnKey(turn.threadId, turn.turnId, session));
+  if (
+    !group ||
+    !turn.browserOwner ||
+    run.calls.some(({ part }) => !part.toolCallId)
+  )
+    return <>{rows}</>;
+  const ownedRows = rows.map((row, index) => {
+    const identity = browserCallIdentity(run.calls[index]!.part);
+    return group.ambiguous ||
+      !identity ||
+      group.owners.get(identity) === turn.browserOwner
+      ? row
+      : null;
+  });
+  if (group.active) return <>{ownedRows}</>;
+  const first =
+    group.owner === turn.browserOwner
+      ? run.calls.findIndex(
+          ({ part }) => browserCallIdentity(part) === group.firstId,
+        )
+      : -1;
+  if (first < 0) return <>{ownedRows}</>;
   return (
-    <LazyBoundary
-      load={loadBrowserActivityContent}
-      componentProps={{
-        scope,
-        browserSessionId: known[0] ?? null,
-        run,
-        active,
-        renderRow: (index: number) => {
-          const call = run.calls.find((item) => item.index === index);
-          return call ? renderCall(call.part, index) : null;
-        },
-      }}
-      pending={rows}
-      unavailable={() => rows}
-      shareAcrossMounts
-    />
+    <>
+      {ownedRows.slice(0, first + 1)}
+      <LazyBoundary
+        load={loadBrowserActivityContent}
+        componentProps={{
+          scope,
+          browserSessionId: session ?? null,
+          run: { type: 'tool-call-run' as const, key: run.key, calls: [] },
+          summaryCalls: group.calls,
+          active: false,
+          renderRow: () => null,
+        }}
+        pending={null}
+        unavailable={() => null}
+        shareAcrossMounts
+      />
+      {ownedRows.slice(first + 1)}
+    </>
   );
 }

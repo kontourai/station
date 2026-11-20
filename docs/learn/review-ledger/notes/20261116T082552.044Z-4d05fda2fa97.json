@@ -1,0 +1,7 @@
+{
+  "revision": "332a602da2a61ebad4f58add4a26b52d05e5f073",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Change keeps focus remembered when a card action goes busy (disabled); starter-work's board description (lanes, filing by facts, Backlog/History) is unaffected.","inputs":["src-ui/src/components/ProjectTaskBoard.tsx"]}
+  ]
+}

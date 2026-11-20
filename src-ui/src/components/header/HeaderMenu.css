@@ -48,6 +48,13 @@
 .menu-row.station-switcher__row {
   padding-block: var(--k-space-2);
 }
+/* A Station that would fail if chosen. Drawn like `.menu-row:disabled`
+   (whose `--text-muted` is this faint token), but the row stays focusable so
+   Delete on it can still forget the Station. */
+.menu-row.station-switcher__row[aria-disabled="true"] {
+  color: var(--k-text-faint);
+  cursor: default;
+}
 .station-switcher__status {
   line-height: 1.3;
 }

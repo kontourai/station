@@ -1,0 +1,37 @@
+/* Shares the splash's surface, canvas and mark (`startup-screen.css`); this
+   only lays out the status below them. The animation sets
+   `--startup-stage-top` to just under the mark it draws. */
+.station-preparing {
+  z-index: var(--layer-navigation);
+}
+.station-preparing__stage {
+  position: absolute;
+  top: var(--startup-stage-top, calc(50% + var(--k-space-6) * 2));
+  left: max(var(--k-space-4), env(safe-area-inset-left));
+  right: max(var(--k-space-4), env(safe-area-inset-right));
+  display: grid;
+  justify-items: center;
+  gap: var(--k-space-2);
+  margin-inline: auto;
+  max-width: 420px;
+  text-align: center;
+}
+.station-preparing__title {
+  margin: 0;
+  font-size: var(--k-text-lg);
+  font-weight: 600;
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+}
+.station-preparing__host {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+.station-preparing__message {
+  margin: 0;
+  font-size: var(--k-text-md);
+  color: var(--k-text-muted);
+  animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
+}

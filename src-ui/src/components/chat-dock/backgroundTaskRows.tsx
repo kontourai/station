@@ -5,6 +5,7 @@ import type { StationConnection } from '../../connections/station-connection';
 // sheet's — the row is the same row, and renaming its styling would have been
 // the only change a reader could see.
 
+import type { ChildWorkDisplayStatus } from '@kontourai/station-contracts/child-work';
 import {
   useInterruptDelegatedTaskMutation,
   useOrchestrationSessionActivityQuery,
@@ -15,6 +16,7 @@ import {
   cacheInclusiveTotalTokens,
   foldUsageEvents,
 } from '@kontourai/station-shared/usage-fold';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { useMemo, useState } from 'react';
 import type {
   BackgroundTaskEntry,
@@ -37,6 +39,7 @@ import './BackgroundTasksSheet.css';
 export { backgroundTaskElapsedMs } from '../chat/BackgroundTaskActivity';
 
 const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
+  running: 'Running',
   completed: 'Completed',
   stopped: 'Stopped',
   // station#1558: not "Stopped" and not "Failed" — the session ended before
@@ -47,6 +50,61 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   interrupted: CHILD_WORK_STATUS_LABEL.interrupted,
   failed: 'Failed',
 };
+
+/**
+ * A card's status words. A tool call that completed reported success, so it
+ * reads "Completed". An agent card's "completed" is only its turn ending,
+ * which says nothing about whether the work succeeded: it reads like a
+ * child-work row ("Run finished"), so one word keeps one meaning in a list
+ * that shows both.
+ */
+function outcomeLabel(
+  kind: BackgroundTaskEntry['kind'],
+  state: BackgroundTaskState,
+): string {
+  if (kind === 'agent' && state === 'completed')
+    return CHILD_WORK_STATUS_LABEL.completed;
+  return OUTCOME_LABEL[state] ?? state;
+}
+
+/** Every status a background-task card or a child-work row can show. */
+export type WorkStatus = BackgroundTaskState | ChildWorkDisplayStatus;
+
+/**
+ * One tone per status, so every successful end reads alike whichever row
+ * shows it. An unconfirmed stop and a missing result are neutral: neither is
+ * an outcome anyone observed.
+ */
+const WORK_STATUS_TONE: Record<WorkStatus, SemanticTone> = {
+  running: 'active',
+  completed: 'positive',
+  failed: 'negative',
+  interrupted: 'caution',
+  stopped: 'neutral',
+  cancelled: 'neutral',
+  unresolved: 'neutral',
+  'stopped-unconfirmed': 'neutral',
+};
+
+/**
+ * The status pill the background-tasks sheet, `TaskRow` and the Agents
+ * pane's `ChildWorkRow` share: one shape, sentence case, one tone per status.
+ */
+export function WorkStatusPill({
+  status,
+  label,
+}: {
+  status: WorkStatus;
+  label: string;
+}) {
+  return (
+    <Badge
+      value={label}
+      tone={WORK_STATUS_TONE[status] ?? 'neutral'}
+      className={`work-status-pill work-status-pill--${status}`}
+    />
+  );
+}
 
 function TaskGlyph({ kind }: { kind: BackgroundTaskEntry['kind'] }) {
   return kind === 'tool' ? <TerminalGlyph /> : <AgentGlyph />;
@@ -193,11 +251,10 @@ export function TaskRow({
           />
         </span>
         {outcomeChip && (
-          <span
-            className={`background-tasks-sheet__chip background-tasks-sheet__chip--${outcomeChip}`}
-          >
-            {OUTCOME_LABEL[outcomeChip] ?? outcomeChip}
-          </span>
+          <WorkStatusPill
+            status={outcomeChip}
+            label={outcomeLabel(entry.kind, outcomeChip)}
+          />
         )}
         <span className="background-tasks-sheet__chevron" aria-hidden="true">
           {expanded ? '▾' : '▸'}
@@ -233,7 +290,7 @@ export function TaskRow({
                 <dd>
                   {entry.state === 'running'
                     ? 'Running'
-                    : (OUTCOME_LABEL[entry.state] ?? entry.state)}
+                    : outcomeLabel(entry.kind, entry.state)}
                 </dd>
               </>
             )}

@@ -260,7 +260,15 @@
 
     "packages/sdk/src/client/delegations.ts",
 
-    "packages/cli/src/__tests__/telemetry-command.test.ts"
+    "packages/cli/src/__tests__/telemetry-command.test.ts",
+
+    "packages/sdk/src/client/request-inspection.ts",
+
+    "packages/cli/src/commands/board.ts",
+
+    "packages/cli/src/commands/conversation.ts",
+
+    "packages/cli/src/commands/import-progress.ts"
   ],
 
   "checks": [

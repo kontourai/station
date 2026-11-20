@@ -1,0 +1,7 @@
+{
+  "revision": "572666760da6daef16a0af319c75c969e10b25e3",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock now opens the existing coding:terminal surface in the bottom region via openSurfaceInRegion; the one-Terminal-owner and Project-bound terminal claims (lines 95-97) still hold. No relation/related-pane behavior changed.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

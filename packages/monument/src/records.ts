@@ -30,6 +30,8 @@ export interface TurnDedupRecord {
   readonly settlement?: PreparedTurnSettlement;
   /** Versioned submission digest; absent means the original input is unknown. */
   readonly inputDigest?: string;
+  /** Additional submission proof recorded by the owner that can invoke. */
+  readonly inputWitness?: string;
 }
 
 export type TurnBoundaryState =

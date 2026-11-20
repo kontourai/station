@@ -1047,7 +1047,7 @@ async function selectProductPath(page: Page, path: ProductPath) {
   const activeChat = chatList.locator('button[aria-current="true"]');
   const projectContext = activeChat.locator('.inbox-row__project');
   await expect(activeChat).toBeVisible();
-  await expect(activeChat).toContainText(path.runtimeName);
+  await expectActiveRowRuntime(chatList, path.runtimeName);
   // Authoritative open resolves the current Session before its event window
   // finishes hydrating. Establish the known one-row historical baseline
   // before a submitted turn is measured, or that restored row is miscounted
@@ -1056,16 +1056,33 @@ async function selectProductPath(page: Page, path: ProductPath) {
   return { activeChat, projectContext };
 }
 
+/**
+ * The active Inbox row names this runtime: a hover row draws it as its mark,
+ * named in the mark's tooltip; a row with no mark names it in words.
+ */
+async function expectActiveRowRuntime(
+  chatList: ReturnType<Page['getByRole']>,
+  runtimeName: string,
+) {
+  const row = chatList.locator('button[aria-current="true"]');
+  await expect
+    .poll(async () => {
+      const marks = row.locator('[data-testid="identity-marks"]');
+      const title =
+        (await marks.count()) > 0
+          ? await marks.first().getAttribute('title')
+          : null;
+      return `${title ?? ''} ${(await row.textContent()) ?? ''}`;
+    })
+    .toContain(runtimeName);
+}
+
 async function openConversationHistoryFromInbox(
-  page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
+  // The end of the Inbox list, not a menu (#5029).
   await chatList
-    .getByRole('button', { name: 'Inbox actions', exact: true })
-    .click();
-  await page
-    .getByRole('menu', { name: 'Inbox actions', exact: true })
-    .getByRole('menuitem', { name: 'Browse all conversations', exact: true })
+    .getByRole('button', { name: 'Browse all conversations', exact: true })
     .click();
 }
 
@@ -1092,15 +1109,13 @@ async function selectInventoryConversation(
   await chatList
     .getByRole('combobox', { name: 'Inbox scope' })
     .selectOption({ label: 'All work' });
-  await openConversationHistoryFromInbox(page, chatList);
+  await openConversationHistoryFromInbox(chatList);
   await page
     .locator('.conversation-history .session-item__content', {
       hasText: title,
     })
     .click();
-  await expect(chatList.locator('button[aria-current="true"]')).toContainText(
-    runtimeName,
-  );
+  await expectActiveRowRuntime(chatList, runtimeName);
   if (project) await expectChatProject(page, project);
 }
 
@@ -1376,7 +1391,7 @@ async function assertConversationHistory(
   page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
-  await openConversationHistoryFromInbox(page, chatList);
+  await openConversationHistoryFromInbox(chatList);
   const history = page.locator('.conversation-history');
   await expect(history).toContainText('Claude Alpha Chat');
   await expect(history).toContainText('Codex Beta Chat');
@@ -1384,9 +1399,7 @@ async function assertConversationHistory(
     .locator('.session-item__content', { hasText: 'Claude Alpha Chat' })
     .click();
   await expectChatProject(page, 'Alpha Project');
-  await expect(chatList.locator('button[aria-current="true"]')).toContainText(
-    'Claude Code',
-  );
+  await expectActiveRowRuntime(chatList, 'Claude Code');
   await expect(
     page
       .locator('.chat-messages .message.assistant p')
@@ -1916,7 +1929,18 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
           .getByRole('log')
           .getByText('Claude Alpha transcript loaded.', { exact: true }),
       ).toBeVisible();
-      await header.getByRole('button', { name: 'Inbox', exact: true }).click();
+      // Escape restores the earlier dock height. During that transition
+      // the header can move between the pointer action's hit test and click.
+      await page
+        .getByRole('region', { name: 'Dock', exact: true })
+        .evaluate(async (dock) => {
+          await Promise.allSettled(
+            dock.getAnimations().map((animation) => animation.finished),
+          );
+        });
+      await inboxToggle.click();
+      await expect(chats).toBeVisible();
+      await expect(selected).toContainText('Claude Alpha Chat');
       await expect(selected.locator('.inbox-row__project')).toHaveText('alpha');
       expect(executionRequests).toHaveLength(0);
     });

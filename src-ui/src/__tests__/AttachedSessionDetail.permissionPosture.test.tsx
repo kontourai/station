@@ -64,6 +64,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 import { AdoptSessionError } from '@kontourai/station-sdk';
 import * as conversationClient from '@kontourai/station-sdk/client';
+import { ConversationHeaderActionSlot } from '../components/conversation/ConversationHeaderActionSlot';
 import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import {
@@ -190,12 +191,19 @@ async function renderAttached({
   return view;
 }
 
-/** Type a message and press Send; the one-time confirmation opens. */
+/** Type a message and press Send: that continues at once, with the draft. */
 function sendFromComposer(message = 'carry on') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: message },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+}
+
+/** The one Continue action, pinned above the conversation; needs no message. */
+function continueButton() {
+  return screen.getByRole('button', {
+    name: 'Continue in Station',
+  }) as HTMLButtonElement;
 }
 
 test('a read-only attached composer continues in Station and cannot issue a direct reply', async () => {
@@ -206,13 +214,14 @@ test('a read-only attached composer continues in Station and cannot issue a dire
   );
   try {
     await renderAttached();
-    expect(screen.queryByRole('button', { name: /^Send$/ })).toBeNull();
-    expect(
-      screen.getByPlaceholderText('Continue in Station from this history…'),
-    ).toBeTruthy();
+    // Send is the ordinary Send: it continues in Station, never replies to
+    // the source directly.
+    expect(screen.getByRole('button', { name: /^Send$/ })).toBeTruthy();
+    expect(screen.getByPlaceholderText('Message…')).toBeTruthy();
+    adoptOrchestrationSession.mockResolvedValueOnce({ threadId: 'continued' });
     sendFromComposer('A new owned continuation');
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    await waitFor(() => expect(adoptOrchestrationSession).toHaveBeenCalled());
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(directReply).not.toHaveBeenCalled();
     expect(directSend).not.toHaveBeenCalled();
   } finally {
@@ -221,7 +230,7 @@ test('a read-only attached composer continues in Station and cannot issue a dire
   }
 });
 
-test('reply intent offers continuation in the normal composer without changing the conversation automatically', async () => {
+test('typing a draft changes nothing; Continue is one visible action that needs no message', async () => {
   adoptOrchestrationSession.mockClear();
   await renderAttached({ presentation: 'chat' });
   const composer = screen.getByRole('textbox', {
@@ -240,17 +249,44 @@ test('reply intent offers continuation in the normal composer without changing t
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.change(composer, { target: { value: 'Keep my draft' } });
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Continue in Station' }));
-  expect(
-    screen.getByRole('button', { name: 'Continue and send' }),
-  ).toBeTruthy();
-  expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
-  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(composer.value).toBe('Keep my draft');
-  expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   expect(screen.getByText('Sure.')).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+});
+
+test('Continue in Station adopts at once with no message and opens no confirmation', async () => {
+  adoptOrchestrationSession.mockClear();
+  const child = { threadId: 'continued' };
+  adoptOrchestrationSession.mockResolvedValue(child);
+  const onAdopted = vi.fn();
+  await renderAttached({ presentation: 'chat', onAdopted });
+  const action = continueButton();
+  expect(action.disabled).toBe(false);
+  fireEvent.click(action);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await waitFor(() =>
+    expect(onAdopted).toHaveBeenCalledWith(child, expect.any(Number), ''),
+  );
+  expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+});
+
+test('Continue in Station carries a typed draft to the continuation', async () => {
+  adoptOrchestrationSession.mockClear();
+  const child = { threadId: 'continued' };
+  adoptOrchestrationSession.mockResolvedValue(child);
+  const onAdopted = vi.fn();
+  await renderAttached({ presentation: 'chat', onAdopted });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: 'Typed first' },
+  });
+  fireEvent.click(continueButton());
+  await waitFor(() =>
+    expect(onAdopted).toHaveBeenCalledWith(
+      child,
+      expect.any(Number),
+      'Typed first',
+    ),
+  );
 });
 
 // On a plain http:// origin `navigator.clipboard` does not exist. The copy
@@ -267,7 +303,7 @@ test('copying a message where no clipboard exists says it was not copied', async
     fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
     await waitFor(() =>
       expect(toastStore.getSnapshot().map((toast) => toast.message)).toContain(
-        "Couldn't copy — this browser refused clipboard access",
+        "Couldn't copy to the clipboard",
       ),
     );
   } finally {
@@ -277,7 +313,7 @@ test('copying a message where no clipboard exists says it was not copied', async
   }
 });
 
-test('Enter confirms the exact draft only after consent; Shift+Enter and IME do not', async () => {
+test('Enter continues with the exact draft; Shift+Enter and IME do not', async () => {
   adoptOrchestrationSession.mockClear();
   const child = { threadId: 'continued' };
   adoptOrchestrationSession.mockResolvedValue(child);
@@ -290,9 +326,8 @@ test('Enter confirms the exact draft only after consent; Shift+Enter and IME do 
   fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
   fireEvent.keyDown(composer, { key: 'Enter', isComposing: true });
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.keyDown(composer, { key: 'Enter' });
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+  fireEvent.keyDown(composer, { key: 'Enter' });
   await waitFor(() =>
     expect(onAdopted).toHaveBeenCalledWith(
       child,
@@ -314,7 +349,7 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
   });
 
-  test('the dock reader opens with the handed-over draft awaiting one confirmation', async () => {
+  test('the dock reader continues the handed-over draft at once', async () => {
     adoptOrchestrationSession.mockClear();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     const onAdopted = vi.fn();
@@ -327,9 +362,7 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
       (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
         .value,
     ).toBe('From Activity');
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
-    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(onAdopted).toHaveBeenCalledWith(
         { threadId: 'continued' },
@@ -340,6 +373,8 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
   });
 
   test('a dock reader already open on the conversation receives the hand-off', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     await renderAttached({ presentation: 'chat' });
     expect(screen.queryByRole('dialog')).toBeNull();
     act(() =>
@@ -352,11 +387,15 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
       (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
         .value,
     ).toBe('While open');
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
   });
 
-  test('with Activity and the dock open together, Send lands in the dock reader, never Activity’s', async () => {
+  test('with Activity and the dock open together, Continue lands in the dock reader, never Activity’s', async () => {
     adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const dockAdopted = vi.fn();
     const activity = await renderAttached({
       onContinueInChat: (draft) =>
         handOffAttachedContinuation({
@@ -364,7 +403,10 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
           draft,
         }),
     });
-    const dock = await renderAttached({ presentation: 'chat' });
+    const dock = await renderAttached({
+      presentation: 'chat',
+      onAdopted: dockAdopted,
+    });
     const activityView = within(activity.container);
     const dockView = within(dock.container);
     fireEvent.change(activityView.getByRole('textbox', { name: 'Message' }), {
@@ -373,8 +415,7 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
     fireEvent.click(
       activityView.getByRole('button', { name: 'Continue in Station' }),
     );
-    const dialogs = screen.getAllByRole('dialog', { name: 'Continue here?' });
-    expect(dialogs).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(
       (
         dockView.getByRole('textbox', {
@@ -389,13 +430,22 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
         }) as HTMLTextAreaElement
       ).value,
     ).toBe('');
-    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    // Only the dock's reader continues, once, with Activity's exact draft.
+    await waitFor(() =>
+      expect(dockAdopted).toHaveBeenCalledWith(
+        { threadId: 'continued' },
+        expect.any(Number),
+        'Typed in Activity',
+      ),
+    );
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
     expect(
       takeAttachedContinuationHandoff('external:claude:raw-thread-id'),
     ).toBe(null);
   });
 
-  test('a dock reader that cannot continue keeps the draft but opens no dead confirmation', async () => {
+  test('a dock reader that cannot continue keeps the draft and continues nothing', async () => {
+    adoptOrchestrationSession.mockClear();
     handOffAttachedContinuation({
       threadId: 'external:claude:raw-thread-id',
       draft: 'Waiting',
@@ -408,7 +458,8 @@ describe('a message typed in Activity is continued by the chat dock (#3552, #345
       (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
         .value,
     ).toBe('Waiting');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(continueButton().disabled).toBe(true);
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
   });
 
   test('a hand-off for another conversation is left for its own reader', async () => {
@@ -735,8 +786,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe(
         "Couldn't start the continuation. Technical detail is under Details.",
@@ -763,8 +813,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() =>
       expect(
         screen.getByText(
@@ -777,11 +826,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     ).toBeTruthy();
     // Nothing was sent, so there is no outcome to be unsure about.
     expect(screen.queryByText(/continue it twice/)).toBeNull();
-    expect(
-      screen
-        .getByRole('button', { name: 'Continue and send' })
-        .getAttribute('disabled'),
-    ).toBeNull();
+    expect(continueButton().getAttribute('disabled')).toBeNull();
     vi.restoreAllMocks();
   });
 
@@ -796,17 +841,12 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await screen.findByText(
       "Couldn't start the continuation. Station isn't responding.",
     );
     expect(screen.getByText("Retrying won't continue it twice.")).toBeTruthy();
-    expect(
-      screen
-        .getByRole('button', { name: 'Continue and send' })
-        .getAttribute('disabled'),
-    ).toBeNull();
+    expect(continueButton().getAttribute('disabled')).toBeNull();
     vi.restoreAllMocks();
   });
 
@@ -821,8 +861,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     );
     await renderAttached();
 
-    sendFromComposer();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await screen.findByText(
       "Couldn't start the continuation. Station isn't responding.",
     );
@@ -944,11 +983,8 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
     expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() =>
       expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
     );
@@ -962,30 +998,40 @@ describe('a conversation no project claims (#3386)', () => {
     await renderAttached({
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
-    // Reading carries no prose about it; the choice is explained in the
-    // one-time confirmation, and nothing is requested before it.
-    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
-    sendFromComposer();
-    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
-    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    // The choice is stated beside the one Continue action, before anything
+    // is requested; there is no confirmation to read it in.
+    // The inspector's header carries the action; the choice sits right
+    // under it, in the one notice line.
+    const note = screen.getByTestId('attached-continuation-no-project');
     expect(
-      within(dialog).getByTestId('attached-continuation-no-project')
-        .textContent,
-    ).toBe('Not in a Project. The agent will work only in /work/scratch/app.');
+      within(screen.getByTestId('attached-continue-notice')).getByTestId(
+        'attached-continuation-no-project',
+      ),
+    ).toBe(note);
+    expect(
+      within(
+        document.querySelector('.sessions-detail__chat-header') as HTMLElement,
+      ).getByRole('button', { name: 'Continue in Station' }),
+    ).toBeTruthy();
+    expect(note.textContent).toContain(
+      'No project: the agent works only in /work/scratch/app.',
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
   });
 
-  test('the No project confirmation offers a Project for that folder as an action', async () => {
+  test('the No project note offers a Project for that folder as an action', async () => {
     adoptOrchestrationSession.mockClear();
     window.history.replaceState(null, '', '/');
     await renderAttached({
       presentation: 'chat',
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
-    sendFromComposer('keep me');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'keep me' },
+    });
     fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Add a project for this folder instead',
-      }),
+      screen.getByRole('button', { name: 'Add a project instead' }),
     );
     expect(window.location.pathname).toBe('/projects/new');
     expect(new URLSearchParams(window.location.search).get('directory')).toBe(
@@ -1001,7 +1047,7 @@ describe('a conversation no project claims (#3386)', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  test('confirming continues it as a No project chat in its own folder, and nothing before that', async () => {
+  test('Continue continues it as a No project chat in its own folder, and nothing before that', async () => {
     adoptOrchestrationSession.mockClear();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     const onAdopted = vi.fn();
@@ -1013,15 +1059,11 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
-    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
-    expect(dialog.textContent).toContain(
-      'The agent will work only in /work/scratch/app.',
-    );
+    expect(
+      screen.getByTestId('attached-continue-notice').textContent,
+    ).toContain('the agent works only in /work/scratch/app.');
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     await waitFor(() => expect(onAdopted).toHaveBeenCalled());
     expect(adoptOrchestrationSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1031,7 +1073,7 @@ describe('a conversation no project claims (#3386)', () => {
     );
   });
 
-  test('a confirmed continuation closes its dialog and cannot be requested twice', async () => {
+  test('a started continuation cannot be requested twice', async () => {
     adoptOrchestrationSession.mockClear();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
     const onAdopted = vi.fn();
@@ -1042,10 +1084,6 @@ describe('a conversation no project claims (#3386)', () => {
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
     sendFromComposer('carry on');
-    const dialog = screen.getByRole('dialog', { name: 'Continue here?' });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Continue and send' }),
-    );
     await waitFor(() => expect(onAdopted).toHaveBeenCalledTimes(1));
     expect(onAdopted).toHaveBeenCalledWith(
       { threadId: 'continued' },
@@ -1055,16 +1093,16 @@ describe('a conversation no project claims (#3386)', () => {
     expect(adoptOrchestrationSession).toHaveBeenCalledWith(
       expect.objectContaining({ target: { kind: 'own-folder' } }),
     );
-    expect(screen.queryByRole('dialog')).toBeNull();
     const composer = screen.getByRole('textbox', {
       name: 'Message',
     }) as HTMLTextAreaElement;
     expect(composer.disabled).toBe(true);
     fireEvent.keyDown(composer, { key: 'Enter' });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // Continued: the action is gone until the host swaps this reader out.
+    expect(
+      screen.queryByRole('button', { name: 'Continue in Station' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
   });
 
@@ -1075,8 +1113,7 @@ describe('a conversation no project claims (#3386)', () => {
         projectAttribution: { state: 'ambiguous', candidates: ['a', 'b'] },
       },
     });
-    sendFromComposer();
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    expect(continueButton().disabled).toBe(false);
     expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
   });
 
@@ -1100,15 +1137,10 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+    fireEvent.click(continueButton());
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe(refusal);
-    const action = screen.getByRole('button', {
-      name: 'Continue and send',
-    }) as HTMLButtonElement;
+    const action = continueButton();
     expect(action.disabled).toBe(true);
     fireEvent.click(action);
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
@@ -1147,25 +1179,14 @@ describe('a continuation Station settled as not created', () => {
       fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
         target: { value: 'carry on' },
       });
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Continue in Station' }),
-      );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Continue and send' }),
-      );
+      fireEvent.click(continueButton());
       const alert = await screen.findByRole('alert');
       expect(alert.textContent).toBe(
         `Couldn't start the continuation. ${reason}`,
       );
       expect(screen.queryByText(/isn't responding/)).toBeNull();
       expect(screen.queryByText(/continue it twice/)).toBeNull();
-      expect(
-        (
-          screen.getByRole('button', {
-            name: 'Continue and send',
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false);
+      expect(continueButton().disabled).toBe(false);
       expect(starter.launch).toHaveBeenCalledOnce();
     } finally {
       starter.unbound = false;
@@ -1177,6 +1198,11 @@ describe('a continuation Station settled as not created', () => {
 test('attached continuation uses the shared newline preference and IME guard', async () => {
   const previous = deviceSettingsStore.get('chatReturnBehavior');
   deviceSettingsStore.set('chatReturnBehavior', 'newline');
+  adoptOrchestrationSession.mockClear();
+  adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+  // The test above leaves its retry-safe reservation behind; this one starts
+  // from no saved continuation request.
+  window.localStorage.clear();
   try {
     await renderAttached();
     const editor = screen.getByRole('textbox', { name: 'Message' });
@@ -1187,10 +1213,516 @@ test('attached continuation uses the shared newline preference and IME guard', a
       ctrlKey: true,
       isComposing: true,
     });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true });
-    expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
   } finally {
     deviceSettingsStore.set('chatReturnBehavior', previous);
   }
+});
+
+// A draft handed over from Activity starts the continuation without a click,
+// so it must meet the same guards the Continue action shows.
+describe('a handed-over draft obeys the Continue guards', () => {
+  test('after a continuation started, a hand-off starts no second one', async () => {
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    window.localStorage.clear();
+    const onAdopted = vi.fn();
+    await renderAttached({ presentation: 'chat', onAdopted });
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(onAdopted).toHaveBeenCalledTimes(1));
+    act(() =>
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'again',
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('after a refusal Station will repeat, a hand-off asks again for nothing', async () => {
+    adoptOrchestrationSession.mockReset();
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockRejectedValue(
+      new AdoptSessionError({
+        failureClass: 'certain-response',
+        message: 'refused',
+        retryable: false,
+        status: 400,
+        refusal: 'Station will not continue this here.',
+      }),
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { projectSlug: undefined, cwd: '/work/app' },
+      });
+      fireEvent.click(continueButton());
+      await screen.findByRole('alert');
+      act(() =>
+        handOffAttachedContinuation({
+          threadId: 'external:claude:raw-thread-id',
+          draft: 'again',
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test('a double hand-off in one tick starts one continuation', async () => {
+    adoptOrchestrationSession.mockReset();
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    await renderAttached({ presentation: 'chat' });
+    act(() => {
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'one',
+      });
+      handOffAttachedContinuation({
+        threadId: 'external:claude:raw-thread-id',
+        draft: 'two',
+      });
+    });
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the Continue action sits with the conversation’s origin', () => {
+  test('a host header slot receives the action; no row of its own is drawn', async () => {
+    const slot = document.createElement('span');
+    document.body.append(slot);
+    try {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <PreviewProvider>
+            <ToastProvider>
+              <ConversationHeaderActionSlot.Provider value={slot}>
+                <AttachedSessionDetail
+                  apiBase="http://station.test"
+                  session={
+                    {
+                      threadId: 'external:claude:raw-thread-id',
+                      provider: 'claude',
+                      controlMode: 'read-only-attached',
+                      attachedSource: {
+                        kind: 'claude-transcript',
+                        externalSessionId: 'fixture-native-source',
+                        affinity: {
+                          kind: 'fixture-home',
+                          ref: 'verified-fixture-home',
+                        },
+                      },
+                      createdAt: '2026-06-27T00:00:00.000Z',
+                      updatedAt: '2026-06-27T00:00:00.000Z',
+                      projectSlug: 'station',
+                    } as any
+                  }
+                  onAdopted={vi.fn()}
+                  getSelectionIntent={() => 0}
+                  events={[]}
+                  connected
+                  historyLoaded
+                  visualViewport={{ style: {} } as any}
+                />
+              </ConversationHeaderActionSlot.Provider>
+            </ToastProvider>
+          </PreviewProvider>
+        </QueryClientProvider>,
+      );
+      await waitFor(() =>
+        expect(
+          within(slot).getByRole('button', { name: 'Continue in Station' }),
+        ).toBeTruthy(),
+      );
+      expect(screen.queryByTestId('attached-continue-bar')).toBeNull();
+    } finally {
+      slot.remove();
+    }
+  });
+
+  // The still-running caution is a sentence and two choices: it takes a
+  // full row of the content area, never the header's narrow action slot.
+  test('with the action in a header slot, the still-running caution sits in the content area', async () => {
+    const slot = document.createElement('span');
+    document.body.append(slot);
+    adoptOrchestrationSession.mockReset();
+    try {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const view = render(
+        <QueryClientProvider client={queryClient}>
+          <PreviewProvider>
+            <ToastProvider>
+              <ConversationHeaderActionSlot.Provider value={slot}>
+                <AttachedSessionDetail
+                  apiBase="http://station.test"
+                  session={
+                    {
+                      threadId: 'external:claude:raw-thread-id',
+                      provider: 'claude',
+                      controlMode: 'read-only-attached',
+                      attachedSource: {
+                        kind: 'claude-transcript',
+                        externalSessionId: 'fixture-native-source',
+                        affinity: {
+                          kind: 'fixture-home',
+                          ref: 'verified-fixture-home',
+                        },
+                      },
+                      attachedSourceActivity: { state: 'active' },
+                      createdAt: '2026-06-27T00:00:00.000Z',
+                      updatedAt: '2026-06-27T00:00:00.000Z',
+                      projectSlug: 'station',
+                    } as any
+                  }
+                  onAdopted={vi.fn()}
+                  getSelectionIntent={() => 0}
+                  events={[]}
+                  connected
+                  historyLoaded
+                  visualViewport={{ style: {} } as any}
+                />
+              </ConversationHeaderActionSlot.Provider>
+            </ToastProvider>
+          </PreviewProvider>
+        </QueryClientProvider>,
+      );
+      const action = await within(slot).findByRole('button', {
+        name: 'Continue in Station',
+      });
+      fireEvent.click(action);
+      const warning = await within(view.container).findByTestId(
+        'attached-source-active',
+      );
+      expect(slot.contains(warning)).toBe(false);
+      expect(
+        within(slot).queryByRole('button', { name: 'Not now' }),
+      ).toBeNull();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          within(warning).getByRole('button', { name: 'Continue anyway' }),
+        ),
+      );
+      fireEvent.click(within(warning).getByRole('button', { name: 'Not now' }));
+      await waitFor(() => expect(document.activeElement).toBe(action));
+      expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    } finally {
+      slot.remove();
+    }
+  });
+
+  test('a disabled Continue names its reason beside it', async () => {
+    await renderAttached({ session: { provider: 'bedrock' } });
+    const action = continueButton();
+    expect(action.disabled).toBe(true);
+    const reason = document.getElementById(
+      action.getAttribute('aria-describedby') ?? '',
+    );
+    expect(reason?.textContent).toBe(
+      'Station has not established independent continuation support for this engine.',
+    );
+    expect(
+      within(screen.getByTestId('attached-continue-notice')).getByText(
+        'Station has not established independent continuation support for this engine.',
+      ),
+    ).toBe(reason);
+  });
+});
+
+describe('a source still running in its own harness', () => {
+  const sourceActiveRefusal = () =>
+    new AdoptSessionError({
+      failureClass: 'certain-response',
+      message:
+        'Still running in Claude Code, so no continuation was created. Continuing now forks it.',
+      retryable: true,
+      status: 409,
+      code: 'continuation_source_active',
+    });
+
+  test('an idle source continues in one click, without the override', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    await renderAttached({
+      presentation: 'chat',
+      session: { attachedSourceActivity: { state: 'idle' } },
+    });
+    fireEvent.click(continueButton());
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledOnce(),
+    );
+    expect(adoptOrchestrationSession.mock.calls[0][0]).not.toHaveProperty(
+      'continueWhileSourceActive',
+    );
+    expect(screen.queryByTestId('attached-source-active')).toBeNull();
+  });
+
+  test('an active source warns inline; Not now continues nothing and Continue anyway sends the override', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const onAdopted = vi.fn();
+    await renderAttached({
+      presentation: 'chat',
+      onAdopted,
+      session: { attachedSourceActivity: { state: 'active' } },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(continueButton());
+    const warning = await screen.findByTestId('attached-source-active');
+    expect(warning.textContent).toContain(
+      'Still running in Claude Code. Continuing now forks it',
+    );
+    // Inline, not a modal.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+
+    fireEvent.click(within(warning).getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByTestId('attached-source-active')).toBeNull();
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+
+    fireEvent.click(continueButton());
+    fireEvent.click(
+      within(await screen.findByTestId('attached-source-active')).getByRole(
+        'button',
+        { name: 'Continue anyway' },
+      ),
+    );
+    await waitFor(() =>
+      expect(adoptOrchestrationSession).toHaveBeenCalledOnce(),
+    );
+    expect(adoptOrchestrationSession.mock.calls[0][0]).toMatchObject({
+      continueWhileSourceActive: true,
+    });
+    await waitFor(() =>
+      expect(onAdopted).toHaveBeenCalledWith(
+        { threadId: 'continued' },
+        expect.any(Number),
+        'carry on',
+      ),
+    );
+  });
+
+  // Review item 3: the caution replaces the button that had focus, so focus
+  // moves to its first action and comes back to Continue when dismissed; the
+  // caution is announced, including when a stale read is refused.
+  test('focus moves into the caution and back, and the caution is announced', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    await renderAttached({
+      presentation: 'chat',
+      session: { attachedSourceActivity: { state: 'active' } },
+    });
+    continueButton().focus();
+    fireEvent.click(continueButton());
+    const warning = await screen.findByTestId('attached-source-active');
+    const status = within(warning).getByRole('status');
+    expect(status.textContent).toContain('Still running in Claude Code');
+    const anyway = within(warning).getByRole('button', {
+      name: 'Continue anyway',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(anyway));
+    expect(anyway.getAttribute('aria-describedby')).toBe(status.id);
+
+    fireEvent.click(within(warning).getByRole('button', { name: 'Not now' }));
+    await waitFor(() => expect(document.activeElement).toBe(continueButton()));
+  });
+
+  // Delta review item 5: Continue anyway removes the caution that had focus;
+  // when that request then fails, focus lands on the retry, not the page.
+  test('a failed Continue anyway leaves focus on Continue in Station', async () => {
+    window.localStorage.clear();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockRejectedValueOnce(
+      new AdoptSessionError({
+        failureClass: 'certain-response',
+        message: 'Station rejected the continuation request (HTTP 500).',
+        retryable: true,
+        status: 500,
+      }),
+    );
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { attachedSourceActivity: { state: 'active' } },
+      });
+      fireEvent.click(continueButton());
+      const warning = await screen.findByTestId('attached-source-active');
+      const anyway = within(warning).getByRole('button', {
+        name: 'Continue anyway',
+      });
+      await waitFor(() => expect(document.activeElement).toBe(anyway));
+      fireEvent.click(anyway);
+      await screen.findByRole('alert');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(continueButton()),
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  // Review: with the caution already showing, Continue again moves focus
+  // back into it rather than doing nothing visible.
+  test('pressing Continue again while the caution shows moves focus into it', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    await renderAttached({
+      presentation: 'chat',
+      session: { attachedSourceActivity: { state: 'active' } },
+    });
+    fireEvent.click(continueButton());
+    const warning = await screen.findByTestId('attached-source-active');
+    const anyway = within(warning).getByRole('button', {
+      name: 'Continue anyway',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(anyway));
+    continueButton().focus();
+    expect(document.activeElement).toBe(continueButton());
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(document.activeElement).toBe(anyway));
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  });
+
+  test('a refusal of a stale read is announced and takes focus', async () => {
+    window.localStorage.clear();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockRejectedValueOnce(sourceActiveRefusal());
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { attachedSourceActivity: { state: 'idle' } },
+      });
+      fireEvent.click(continueButton());
+      const warning = await screen.findByTestId('attached-source-active');
+      expect(within(warning).getByRole('status')).toBeTruthy();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          within(warning).getByRole('button', { name: 'Continue anyway' }),
+        ),
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test("Station's own re-check opens the same warning when this read said idle", async () => {
+    window.localStorage.clear();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession
+      .mockRejectedValueOnce(sourceActiveRefusal())
+      .mockResolvedValueOnce({ threadId: 'continued' });
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { attachedSourceActivity: { state: 'idle' } },
+      });
+      fireEvent.click(continueButton());
+      const warning = await screen.findByTestId('attached-source-active');
+      // The refusal is the warning, not a failure.
+      expect(screen.queryByRole('alert')).toBeNull();
+      fireEvent.click(
+        within(warning).getByRole('button', { name: 'Continue anyway' }),
+      );
+      await waitFor(() =>
+        expect(adoptOrchestrationSession).toHaveBeenCalledTimes(2),
+      );
+      expect(adoptOrchestrationSession.mock.calls[1][0]).toMatchObject({
+        continueWhileSourceActive: true,
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  test('a first continuation through Starter Work carries the refusal and the override the same way', async () => {
+    window.localStorage.clear();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    Object.defineProperty(window.navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: async (
+          _name: string,
+          _options: unknown,
+          callback: () => Promise<unknown>,
+        ) => callback(),
+      },
+    });
+    starter.unbound = true;
+    starter.launch.mockReset();
+    starter.launch
+      .mockResolvedValueOnce({
+        state: 'failed',
+        source: { kind: 'session', id: 'external:claude:raw-thread-id' },
+        reason:
+          'Still running in Claude Code, so no continuation was created. Continuing now forks it.',
+        retrySafe: true,
+        code: 'continuation_source_active',
+      })
+      .mockResolvedValueOnce({
+        state: 'continued',
+        source: { kind: 'session', id: 'external:claude:raw-thread-id' },
+        session: { threadId: 'continued' },
+        correlation: { state: 'not_verified', reason: 'fixture' },
+        evidence: { state: 'NOT_VERIFIED', reason: 'fixture' },
+      });
+    try {
+      await renderAttached({ presentation: 'chat' });
+      fireEvent.click(continueButton());
+      const warning = await screen.findByTestId('attached-source-active');
+      expect(screen.queryByRole('alert')).toBeNull();
+      fireEvent.click(
+        within(warning).getByRole('button', { name: 'Continue anyway' }),
+      );
+      await waitFor(() => expect(starter.launch).toHaveBeenCalledTimes(2));
+      expect(starter.launch.mock.calls[0][0]).not.toHaveProperty(
+        'continueWhileSourceActive',
+      );
+      expect(starter.launch.mock.calls[1][0]).toMatchObject({
+        continueWhileSourceActive: true,
+        operationId: starter.launch.mock.calls[0][0].operationId,
+      });
+    } finally {
+      starter.unbound = false;
+      vi.restoreAllMocks();
+    }
+  });
+
+  test('a draft handed over from Activity waits at the warning instead of continuing', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    handOffAttachedContinuation({
+      threadId: 'external:claude:raw-thread-id',
+      draft: 'From Activity',
+    });
+    await renderAttached({
+      presentation: 'chat',
+      session: { attachedSourceActivity: { state: 'active' } },
+    });
+    await screen.findByTestId('attached-source-active');
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  });
 });

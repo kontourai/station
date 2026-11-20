@@ -1,0 +1,7 @@
+{
+  "revision": "f753be457d3138060de5591340e49559b212d9ad",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Narrowed the 2026-11-16 note: the four named subpaths are the former root imports; Station already imported other flow-agents subpaths. Checked against the bundle's static flow-agents imports (subpaths only) and scripts/lib/server-static-imports.mjs.","inputs":["docs/strategy/kontour-integration-surface.md"]}
+  ]
+}

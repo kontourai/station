@@ -219,7 +219,7 @@ test('a desktop alert click: the app navigates to the link and reads the record 
   const view = renderHook(() => useTurnNotificationReads());
   await vi.dynamicImportSettled();
   const unsubscribe = subscribeToNotificationOpen(
-    (pathname, params) => navigationStore.navigate(pathname, params),
+    ({ pathname, params }) => navigationStore.navigate(pathname, params),
     Promise.resolve({
       listen: async () => () => {},
       take: async () =>

@@ -1,0 +1,9 @@
+{
+  "revision": "33a564892674adaeb268e07e72cbd3ef99476dd6",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"settings.md only adds the pull-request-head-review Feature Preview row; the feature previews guide and agent efficiency guide make no claim about that table's rows.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"settings.md only adds the pull-request-head-review Feature Preview row; the feature previews guide and agent efficiency guide make no claim about that table's rows.","inputs":["docs/user/settings.md"]}
+  ]
+}

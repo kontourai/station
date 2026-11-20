@@ -1,0 +1,9 @@
+{
+  "revision": "1e06f3885ee72949eb3078f4c471825944d9d51c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Adds one process-heavy entry for the new Claude instruction-files test (bundled engine against a loopback stub); no group, worker or policy changes, so citing pages stay accurate.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Adds one process-heavy entry for the new Claude instruction-files test (bundled engine against a loopback stub); no group, worker or policy changes, so citing pages stay accurate.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

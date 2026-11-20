@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"config.md changed only to say attachedSessionsOutsideProjects also covers opt-in listed ACP sessions; the settings ownership and placement described here are unchanged.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}

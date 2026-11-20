@@ -41,6 +41,12 @@ type Access = {
     conversationId: string,
   ) => Promise<ConversationPullRequestLink[]>;
   /**
+   * Pull requests Station found opened from the chat's Task's own branch
+   * (`branch-derived`), after the declared ones: a pull request also linked
+   * or kept shows that row first.
+   */
+  derived?: (conversationId: string) => ConversationPullRequestLink[];
+  /**
    * The Session ids a conversation spans (its lineage). A link stored
    * earlier under a successor Session's own id — the session-detail pane
    * keyed links by thread before it keyed them by conversation — still
@@ -99,6 +105,7 @@ export function createConversationPullRequestLinkRoutes(
       ...(access.declared
         ? await access.declared(c.req.raw, conversationId)
         : []),
+      ...(access.derived?.(conversationId) ?? []),
     ];
     const observedAt = new Date().toISOString();
     const observations: ConversationPullRequestLinkObservation[] = [];

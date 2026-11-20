@@ -443,6 +443,14 @@ export function createSqliteAgentScheduleStore(
       });
     },
     wakeUp: readWakeUp,
+    nextArmedWakeUps(): Map<string, string> {
+      const rows = db
+        .prepare(
+          "SELECT conversation_id, MIN(due_at) AS due_at FROM agent_wake_ups WHERE state = 'pending' GROUP BY conversation_id",
+        )
+        .all() as { conversation_id: string; due_at: number }[];
+      return new Map(rows.map((row) => [row.conversation_id, iso(row.due_at)]));
+    },
     /**
      * A conversation's wake-ups still waiting (armed, or waiting for a
      * person's approval), soonest first.

@@ -12,6 +12,13 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+// The coordinator (#5063) has its own tests; these rooms run with its
+// preview off, as a Station that never turned it on.
+vi.mock('../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set<string>(),
+}));
+
 import { setClientCredentialResolver } from '../../../../packages/sdk/src/client/http';
 import { ProjectRoom } from './ProjectRoom';
 

@@ -756,10 +756,20 @@ function pureExpression(node, imported = new Set()) {
   return false;
 }
 
-/** Runtime (non-type) bindings a file imports, by local name. */
-function importedBindings(file) {
+/** Bindings whose members or coercion can execute code during evaluation. */
+function observableBindings(file) {
   const names = new Set();
   for (const statement of file.statements) {
+    if (
+      ts.isClassDeclaration(statement) &&
+      statement.name &&
+      statement.members.some(
+        (member) =>
+          ts.isGetAccessorDeclaration(member) &&
+          hasModifier(member, ts.SyntaxKind.StaticKeyword),
+      )
+    )
+      names.add(statement.name.text);
     if (!ts.isImportDeclaration(statement)) continue;
     const clause = statement.importClause;
     if (!clause || clause.isTypeOnly) continue;
@@ -818,7 +828,9 @@ function statementHasSideEffect(statement, imported) {
         )
       )
         imported.add(declaration.name.text);
-    return !pure;
+    return (
+      !pure || Boolean(statement.declarationList.flags & ts.NodeFlags.Using)
+    );
   }
   // A directive such as 'use strict'.
   return !(
@@ -834,7 +846,7 @@ function statementHasSideEffect(statement, imported) {
  */
 export function topLevelSideEffect(path, source) {
   const file = parse(path, source, true);
-  const imported = importedBindings(file);
+  const imported = observableBindings(file);
   for (const statement of file.statements)
     if (statementHasSideEffect(statement, imported)) return statement;
   return null;
@@ -1746,17 +1758,9 @@ function runtimeImportKey(path, source) {
  * as a use of every module. An import cycle is neither provided nor cached;
  * the frame that first entered it explores the sibling branches.
  *
- * Known gaps, not traced:
- * - code a module runs at its own load through a LOCAL class or function
- *   that `topLevelSideEffect` treats as pure (`export const v = L.x` with a
- *   static getter on a local `L`) is a use only when some barrel-loaded
- *   statement consumes the export; with no consumer it is missed, because
- *   local declarations do not join the alias set `pureExpression` checks;
- * - a top-level dynamic `import()`: the module it loads, and what the use
- *   then calls on it, are not followed;
- * - a value assigned into a property, element or mutable binding and later
- *   called or hitting a setter (`reg.x = h`, `let x; x = h; x()`), property-
- *   key coercion (`registry[k]`, computed names), and `using`'s dispose.
+ * Evaluation also follows assignment escapes, property-key coercion, disposal
+ * and dynamic imports encountered while evaluating a statement or running a
+ * value. An opaque dynamic specifier can name any SDK module.
  *
  * The analysis does not depend on the changed module, so it runs once per
  * graph and is shared by every candidate.
@@ -1800,7 +1804,12 @@ const MAX_RUN_DEPTH = 8;
  * anything it names. Positions are honoured only in code evaluated directly
  * at load (initializers, the use-site statement), where they are exact.
  */
-function loadTimeIdentifiers(node, locals, mode = READ) {
+function loadTimeIdentifiers(
+  node,
+  locals,
+  mode = READ,
+  dynamicImports = new Set(),
+) {
   const into = new Map();
   const seen = new Set();
   const note = (name, flags) =>
@@ -1819,7 +1828,18 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
     seen.add(key);
     visit(local, flags);
   };
+  const dynamicImport = (current) =>
+    ts.isCallExpression(current) &&
+    current.expression.kind === ts.SyntaxKind.ImportKeyword;
+  const readDynamicImport = (current) => {
+    dynamicImports.add(stringArgument(current));
+  };
+  const collectDynamicImports = (current) => {
+    if (dynamicImport(current)) readDynamicImport(current);
+    ts.forEachChild(current, collectDynamicImports);
+  };
   const run = (code) => {
+    collectDynamicImports(code);
     for (const name of referencedIdentifiers(code)) {
       note(name, ALL);
       readLocal(name, ALL);
@@ -1842,7 +1862,7 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
       for (const decorator of ts.getDecorators?.(member) ?? [])
         visit(decorator.expression, RUN);
       if (member.name && ts.isComputedPropertyName(member.name))
-        visit(member.name.expression, READ);
+        visit(member.name.expression, ALL);
       if (ts.isClassStaticBlockDeclaration(member)) run(member.body);
       else if (
         ts.isPropertyDeclaration(member) &&
@@ -1871,8 +1891,10 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
       // Destructuring reads members of the value (getters, an iterator).
       const pattern = !ts.isIdentifier(current.name);
       if (pattern) visit(current.name, READ); // defaults evaluated
-      if (current.initializer)
-        visit(current.initializer, pattern ? ALL : flags);
+      if (current.initializer) {
+        const disposing = current.parent?.flags & ts.NodeFlags.Using;
+        visit(current.initializer, pattern || disposing ? ALL : flags);
+      }
       return;
     }
     if (ts.isExportAssignment(current)) {
@@ -1889,8 +1911,11 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
       ts.isGetAccessorDeclaration(current) ||
       ts.isSetAccessorDeclaration(current) ||
       ts.isConstructorDeclaration(current)
-    )
+    ) {
+      if (current.name && ts.isComputedPropertyName(current.name))
+        visit(current.name.expression, ALL);
       return;
+    }
     if (
       ts.isParenthesizedExpression(current) ||
       ts.isAsExpression(current) ||
@@ -1920,12 +1945,10 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
         return;
       }
       if (operator === ts.SyntaxKind.EqualsToken) {
-        // `({ a } = value)` destructures the value; `x = value` yields it.
-        const pattern =
-          ts.isObjectLiteralExpression(current.left) ||
-          ts.isArrayLiteralExpression(current.left);
+        // A setter can consume the RHS immediately. A later read of the
+        // assignment target can also consume it through a mutable alias.
         visit(current.left, READ);
-        visit(current.right, pattern ? ALL : flags);
+        visit(current.right, ALL);
         return;
       }
       if (
@@ -1974,14 +1997,14 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
     }
     if (ts.isElementAccessExpression(current)) {
       visit(current.expression, MEMBER);
-      visit(current.argumentExpression, READ);
+      visit(current.argumentExpression, ALL);
       return;
     }
     if (ts.isObjectLiteralExpression(current) && flags & MEMBER) {
       // Any member may be read or called.
       for (const property of current.properties) {
         if (property.name && ts.isComputedPropertyName(property.name))
-          visit(property.name.expression, READ);
+          visit(property.name.expression, ALL);
         if (ts.isPropertyAssignment(property)) visit(property.initializer, ALL);
         else if (ts.isShorthandPropertyAssignment(property))
           visit(property.name, ALL);
@@ -1995,13 +2018,18 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
       for (const element of current.elements) visit(element, ALL);
       return;
     }
+    if (ts.isComputedPropertyName(current)) {
+      visit(current.expression, ALL);
+      return;
+    }
     if (ts.isPropertyAssignment(current)) {
       if (ts.isComputedPropertyName(current.name))
-        visit(current.name.expression, READ);
+        visit(current.name.expression, ALL);
       visit(current.initializer, READ);
       return;
     }
     if (ts.isCallExpression(current) || ts.isNewExpression(current)) {
+      if (dynamicImport(current)) readDynamicImport(current);
       // The callee runs. It may call, construct, iterate or read members
       // of anything handed to it, nested values included (#2766).
       visit(unwrap(current.expression), RUN);
@@ -2174,6 +2202,27 @@ export function topLevelUseAnalysis(graph) {
       ? namespaceOrigins(target, mode, depth)
       : origins(target, importedName, mode, depth);
   };
+  const mergeDynamicOrigins = (result, importer, specifiers, depth) => {
+    for (const specifier of specifiers) {
+      const target =
+        specifier === null
+          ? UNKNOWN
+          : graph.resolveSpecifier(importer, specifier);
+      if (target === null) continue;
+      merge(result, bindingOrigins(target, null, ALL, depth + 1));
+      if (target === UNKNOWN) continue;
+      const queue = [target];
+      const seen = new Set();
+      while (queue.length) {
+        const module = queue.pop();
+        if (seen.has(module)) continue;
+        seen.add(module);
+        result.mods.add(module);
+        for (const loaded of graph.loads.get(module)?.targets ?? [])
+          queue.push(loaded);
+      }
+    }
+  };
   // What using a local export in `mode` reads: its initializer, or, for a
   // function or class, the code that use runs. Fails closed when the
   // declaration cannot be found (a TS namespace, `export import`).
@@ -2187,13 +2236,16 @@ export function topLevelUseAnalysis(graph) {
       return;
     }
     const reads = new Map();
+    const dynamicImports = new Set();
     for (const declaration of declarations)
       for (const [identifier, flags] of loadTimeIdentifiers(
         declaration,
         moduleInfo.locals,
         mode,
+        dynamicImports,
       ))
         reads.set(identifier, (reads.get(identifier) ?? READ) | flags);
+    mergeDynamicOrigins(result, module, dynamicImports, depth);
     for (const [identifier, flags] of reads) {
       const source = moduleInfo.importedFrom.get(identifier);
       if (source)
@@ -2264,8 +2316,8 @@ export function topLevelUseAnalysis(graph) {
   for (const importer of barrelReachable(graph)) {
     if (!isSdkSourceModule(importer) && !graph.barrels.has(importer)) continue;
     const moduleInfo = info(importer);
-    if (!moduleInfo || moduleInfo.importedFrom.size === 0) continue;
-    const imported = importedBindings(moduleInfo.file);
+    if (!moduleInfo) continue;
+    const imported = observableBindings(moduleInfo.file);
     for (const statement of moduleInfo.file.statements) {
       if (!statementHasSideEffect(statement, imported)) continue;
       const use = fresh(null);
@@ -2279,8 +2331,15 @@ export function topLevelUseAnalysis(graph) {
       }
       // How the statement uses each binding: calling or constructing one,
       // or reading a member of it, runs its code too (#2766).
-      const flags = loadTimeIdentifiers(statement, moduleInfo.locals);
-      for (const identifier of read) {
+      const dynamicImports = new Set();
+      const flags = loadTimeIdentifiers(
+        statement,
+        moduleInfo.locals,
+        READ,
+        dynamicImports,
+      );
+      mergeDynamicOrigins(use, importer, dynamicImports, 0);
+      for (const identifier of new Set([...read, ...flags.keys()])) {
         const source = moduleInfo.importedFrom.get(identifier);
         const mode = flags.get(identifier) ?? READ;
         if (source)

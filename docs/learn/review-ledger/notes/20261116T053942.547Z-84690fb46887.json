@@ -1,0 +1,7 @@
+{
+  "revision": "1e740a35b6ea36904078c928625587be0edad20e",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"chat.css change (#4971) only removes the dead narrow-composer rules for the old short engine-move hint and lets the Engine & model caption's move hint wrap in the Run setup panel; this page makes no claim about the composer chip caption, the move hint or Run setup layout, so it remains accurate.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -2388,7 +2388,7 @@ describe('DevicePairingService', () => {
       expect(service.listPushSubscriptions()).toEqual([]);
 
       service.setPushSubscription(paired.device.id, subscription());
-      expect(service.listPushSubscriptions()).toEqual([
+      expect(service.listPushSubscriptions()).toMatchObject([
         { deviceId: paired.device.id, subscription: subscription() },
       ]);
 

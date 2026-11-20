@@ -1,0 +1,71 @@
+{
+  "revision": "81affb125602f04bd3f9fef11f12b542a9bb2824",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared approval sheet and continued-chat Engine controls. The account only sees supported save-default options. ACP mode is a next-send request until the engine confirms it. The existing composition and capability rules still own model and effort selection.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/useChatInput.engineModelGate.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/useChatInput.ts","src-ui/src/index.css","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The owned ACP adapter fixture now observes the initial mode and the later confirmed mode through its existing lifecycle stream. It does not establish live engine support.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed ACP next-turn mode delivery. The adapter applies the existing advertised mode and publishes its confirmed value through the existing session-configured event. No changes to connection authority, approval rules, capability declarations, or extension ownership.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the mode-staging control against the same chat-state owner as the model capability tests. The fixture observes a pending request beside an unchanged confirmed value.","inputs":["src-ui/src/__tests__/useChatInput.engineModelGate.test.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the personal approval default control. Its visibility now uses the same supported engine IDs and account authority as saving. Existing approval posture, confirmation, and managed ceiling behavior still apply.","inputs":["src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the Agent and model panel mode control. It receives the requested value and confirmed Session value separately and retains the existing approval control and send boundaries.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Agent and model panel mode control. It receives the requested value and confirmed Session value separately and retains the existing approval control and send boundaries.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked continued chat controls against the bound conversation state. The mode chip consumes the pending choice and confirmed Session mode separately. The existing route, transport, and authority owners are unchanged.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked continued chat controls against the bound conversation state. The mode chip consumes the pending choice and confirmed Session mode separately. The existing route, transport, and authority owners are unchanged.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked continued chat controls against the bound conversation state. The mode chip consumes the pending choice and confirmed Session mode separately. The existing route, transport, and authority owners are unchanged.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked continued chat controls against the bound conversation state. The mode chip consumes the pending choice and confirmed Session mode separately. The existing route, transport, and authority owners are unchanged.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked continued chat controls against the bound conversation state. The mode chip consumes the pending choice and confirmed Session mode separately. The existing route, transport, and authority owners are unchanged.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked staged mode and the model picker reason on a continued Session. The pending mode no longer updates the confirmed value. Existing branches that permit model or effort at start remain tied to advertised support.","inputs":["src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked staged mode and the model picker reason on a continued Session. The pending mode no longer updates the confirmed value. Existing branches that permit model or effort at start remain tied to advertised support.","inputs":["src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked staged mode and the model picker reason on a continued Session. The pending mode no longer updates the confirmed value. Existing branches that permit model or effort at start remain tied to advertised support.","inputs":["src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked staged mode and the model picker reason on a continued Session. The pending mode no longer updates the confirmed value. Existing branches that permit model or effort at start remain tied to advertised support.","inputs":["src-ui/src/hooks/useChatInput.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked ordinary Send and Queue against the execution target contract. A caller-requested ACP mode travels without imposing a model override. Model options and approval decisions retain their existing ownership.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked ordinary Send and Queue against the execution target contract. A caller-requested ACP mode travels without imposing a model override. Model options and approval decisions retain their existing ownership.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked ordinary Send and Queue against the execution target contract. A caller-requested ACP mode travels without imposing a model override. Model options and approval decisions retain their existing ownership.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked ordinary Send and Queue against the execution target contract. A caller-requested ACP mode travels without imposing a model override. Model options and approval decisions retain their existing ownership.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked ordinary Send and Queue against the execution target contract. A caller-requested ACP mode travels without imposing a model override. Model options and approval decisions retain their existing ownership.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]}
+  ]
+}

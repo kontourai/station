@@ -246,7 +246,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
-        run: npx tauri build --no-sign --target ${{ matrix.target }} --config ${{ runner.temp }}/tauri.release.conf.json
+        # The sealing step owns the DMG. Tauri only needs to produce the app.
+        run: npx tauri build --no-sign --bundles app --target ${{ matrix.target }} --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Seal, notarize, and derive canonical macOS artifacts
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -380,15 +381,17 @@ jobs:
           $config = @{ bundle = @{ windows = @{ certificateThumbprint = $imported.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 5
           $config | Set-Content -Path "$env:RUNNER_TEMP/tauri.windows.release.conf.json" -Encoding utf8
       - name: Build signed Windows staging candidate
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        shell: bash
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
           STATION_CHANNEL: ${{ needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
-        with:
-          args: --target x86_64-pc-windows-msvc --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+        run: |
+          npm run build:desktop -- --target x86_64-pc-windows-msvc \
+            --config "$RUNNER_TEMP/tauri.windows.release.conf.json" \
+            --config "$RUNNER_TEMP/tauri.release.conf.json"
       # Observation only: this step records what Get-AuthenticodeSignature
       # returned for the MSI. Which status and signer each mode accepts is
       # decided by scripts/lib/windows-release-signing.mjs, here and again when
@@ -524,7 +527,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
-          args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+          args: --target x86_64-unknown-linux-gnu --bundles appimage --config ${{ github.workspace }}/src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Verify emitted Linux package metadata
         run: |
           find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.AppImage" | grep -q .
@@ -554,7 +557,12 @@ jobs:
           mkdir -p "$appimage_root"
           (cd "$appimage_root" && "$appimage" --appimage-extract >/dev/null)
           appimage_manifest=$(find "$appimage_root/squashfs-root" -type f -name station-build.json -print)
-          test "$(printf '%s\n' "$appimage_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          appimage_runtime="$appimage_root/squashfs-root/usr/share/Station"
+          test "$appimage_manifest" = "$appimage_runtime/dist-server/station-build.json"
+          test -f "$appimage_runtime/dist-server/command-station.js"
+          test -f "$appimage_runtime/dist-server/instance-registry-bridge.js"
+          test -d "$appimage_runtime/node_modules"
+          test -d "$appimage_runtime/schemas/agent-plugins"
           node scripts/release-client-build-provenance.mjs verify --source-sha "$sha" --expected "$expected" --actual "$appimage_manifest"
       - name: Stage canonical signed Linux artifacts
         run: |
@@ -610,6 +618,7 @@ jobs:
       GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
       ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+      ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
       # `aapt` and `apksigner` live in build-tools, which setup-android does
       # not put on PATH. Pin the same release nightly-native-stage.yml pins
       # so the verification below resolves them by path.
@@ -740,6 +749,13 @@ jobs:
           secrets: |-
             keystore_base64:kontourai-station-release/station-android-upload-keystore-base64
             keystore_password:kontourai-station-release/station-android-upload-keystore-password
+      - name: Require the registered Android upload certificate fingerprint
+        run: |
+          fingerprint=${ANDROID_UPLOAD_CERT_SHA256//:/}
+          if [[ ! "$fingerprint" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo "::error::Set ANDROID_UPLOAD_CERT_SHA256 to the registered Play upload certificate fingerprint."
+            exit 1
+          fi
       - name: Reclaim disk for four Android Rust targets
         run: bash scripts/reclaim-android-runner-disk.sh
       - name: Report disk headroom before Android build
@@ -784,6 +800,7 @@ jobs:
       - name: Verify Android package version and platform signatures
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"
           apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
           "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
@@ -791,8 +808,8 @@ jobs:
           "$aapt" dump badging "$apk" | grep -F "versionCode='$ANDROID_VERSION_CODE'"
           "$aapt" dump badging "$apk" | grep -F "package: name='$ANDROID_PACKAGE_NAME'"
           "$aapt" dump badging "$apk" | grep -F "application-label:'$ANDROID_PRODUCT_NAME'"
-          "$apksigner" verify --verbose --print-certs "$apk"
-          jarsigner -verify -strict -verbose src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
+          node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
+          node scripts/verify-android-aab-signature.mjs "$aab" "$ANDROID_UPLOAD_CERT_SHA256"
       - name: Audit packaged Android capabilities
         # apkanalyzer cannot read a bundle (its manifest is protobuf, under
         # base/manifest/), so the AAB is printed with bundletool instead.
@@ -830,6 +847,41 @@ jobs:
           releaseFiles: release-assets/station-${{ env.RELEASE_TAG }}-android-universal.aab
           track: internal
           status: completed
+      - name: Authenticate for Play bundle observation
+        id: play_observation_auth
+        if: needs.preflight.outputs.release_kind == 'rc'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: false
+          export_environment_variables: false
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+      - name: Observe exact candidate Play bundle after upload
+        id: play_observation
+        if: needs.preflight.outputs.release_kind == 'rc'
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+          GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.play_observation_auth.outputs.access_token }}
+        run: |
+          mkdir -p provider-receipts
+          node scripts/promote-store-release.mjs observe-android --producer-tag "$RELEASE_TAG" --source-sha "$RELEASE_SHA" --aab "release-assets/station-${RELEASE_TAG}-android-universal.aab" --source-track internal --output provider-receipts/android-store-authority.json
+      - name: Retain failed Play observation journal
+        if: ${{ !cancelled() && steps.play_observation.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: station-android-play-observation-${{ needs.preflight.outputs.android_version_code }}
+          path: provider-receipts/android-store-authority.json.observation.json
+          if-no-files-found: warn
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.preflight.outputs.release_kind == 'rc'
+        with:
+          name: station-android-store-authority-${{ needs.preflight.outputs.android_version_code }}
+          path: provider-receipts/android-store-authority.json
+          if-no-files-found: error
+          retention-days: 30
   ios-simulator:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
@@ -900,6 +952,8 @@ jobs:
       update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
       update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
 
+    secrets: inherit
+
   container:
     needs: [preflight, full-regression]
     if: ${{ needs['full-regression'].result == 'success' }}
@@ -927,7 +981,7 @@ jobs:
             const fs = require("node:fs");
             const metadata = JSON.parse(process.env.METADATA);
             const labels = Object.entries(metadata.labels).map(([key, value]) => `${key}=${value}`).join("\n");
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `staging_tag=${metadata.image}:sha-${metadata.sha}\nlabels<<EOF\n${labels}\nEOF\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `staging_tag=${metadata.image}:staging-${metadata.tag}\nlabels<<EOF\n${labels}\nEOF\n`);
           '
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Authenticate to GHCR with the ephemeral workflow token
@@ -972,7 +1026,7 @@ jobs:
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.amd64 }}
-          format: cyclonedx-json
+          format: cyclonedx-json@1.6
           output-file: ${{ runner.temp }}/station-container-syft-amd64.cdx.json
           syft-version: v1.51.0
           upload-artifact: false
@@ -981,7 +1035,7 @@ jobs:
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.arm64 }}
-          format: cyclonedx-json
+          format: cyclonedx-json@1.6
           output-file: ${{ runner.temp }}/station-container-syft-arm64.cdx.json
           syft-version: v1.51.0
           upload-artifact: false
@@ -1152,6 +1206,10 @@ jobs:
           mkdir release-assets
           node scripts/release-admit-producer-assets.mjs --artifacts-root "$RUNNER_TEMP/station-release-producer-artifacts" --output-dir release-assets --channel "$RELEASE_CHANNEL" --ios-bundle-version "$IOS_BUNDLE_VERSION"
           test ! -e release-assets/station-container-source.json
+      - name: Bind definitive store upload lineage to the candidate bytes
+        if: needs.preflight.outputs.release_kind == 'rc'
+        run: |
+          node scripts/release-promotion.mjs store-authority --producer-tag "$RELEASE_TAG" --source-sha "$RELEASE_SHA" --assets-dir release-assets --android-receipt "$RUNNER_TEMP/station-release-producer-artifacts/station-android-store-authority-${IOS_BUNDLE_VERSION}/android-store-authority.json" --ios-receipt "$RUNNER_TEMP/station-release-producer-artifacts/station-stable-ios-testflight-${IOS_BUNDLE_VERSION}/provider-receipts/testflight-build-receipt.json" --output release-assets/station-release-store-authority.json
       - name: Download the descriptor-bound scanner inventory into scratch
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1191,6 +1249,11 @@ jobs:
             release-assets/station-sbom-mobile.cdx.json
             release-assets/station-sbom-container.spdx.json
             release-assets/station-updater-public-key.txt
+      - name: Attest candidate store promotion authority
+        if: needs.preflight.outputs.release_kind == 'rc'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/station-release-store-authority.json
       - name: Create exactly one draft and upload validated assets
         env:
           GH_TOKEN: ${{ github.token }}

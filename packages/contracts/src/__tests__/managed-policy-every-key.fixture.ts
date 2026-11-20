@@ -33,6 +33,8 @@ export const EVERY_KEY_LIMITS = {
     allowed: ['claude', 'acp'],
     acpRegistryAgents: false,
     engineHostAuth: 'off',
+    // docs/decisions/remote-task-engines.md: one vendor allowed.
+    remoteTasks: ['devin'],
     instances: {
       claude: {
         locked: true,

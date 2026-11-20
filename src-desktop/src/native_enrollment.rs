@@ -252,7 +252,7 @@ impl NativeEnrollmentRecipientOwner {
                 .app_identifier
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
-            || !matches!(self.channel.as_str(), "dev" | "stable" | "beta" | "nightly")
+            || !matches!(self.channel.as_str(), "dev" | "stable" | "nightly")
             || self.profile_name.is_empty()
             || self.profile_name.len() > 256
             || self.profile_revision == 0

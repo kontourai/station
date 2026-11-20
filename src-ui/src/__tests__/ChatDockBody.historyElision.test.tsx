@@ -20,7 +20,12 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
-const transcriptMock = vi.hoisted(() => ({ events: [] as any[] }));
+const transcriptMock = vi.hoisted(() => ({
+  events: [] as any[],
+  hydrated: false,
+  current: true,
+  messages: [] as import('../types').ChatMessage[],
+}));
 const chatInputPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
 }));
@@ -40,7 +45,14 @@ vi.mock('../contexts/AgentsContext', () => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () =>
+    transcriptMock.hydrated
+      ? {
+          apiBase: 'http://localhost:3242',
+          authorityKey: 'host-authority',
+          isCurrent: () => transcriptMock.current,
+        }
+      : undefined,
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -110,8 +122,9 @@ vi.mock('../hooks/useTTS', () => ({
  */
 vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
   useActiveChatTranscript: () => ({
-    enabled: false,
-    messages: [],
+    enabled: transcriptMock.hydrated,
+    settled: transcriptMock.hydrated,
+    messages: transcriptMock.messages,
     events: transcriptMock.events,
     hasMore: false,
     loading: false,
@@ -138,6 +151,8 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import type { ConversationTranscriptSnapshot } from '../components/conversation/ConversationBody';
+import { continuedConversationFromChat } from '../lib/continue-in-project';
 import type { ChatSession } from '../types';
 
 function buildChatInput() {
@@ -209,10 +224,12 @@ function renderDock({
   orchestrationSession = buildOrchestrationSession(),
   session = buildSession(),
   events = [] as any[],
+  transcriptSnapshotRef,
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
   events?: any[];
+  transcriptSnapshotRef?: { current: ConversationTranscriptSnapshot | null };
 } = {}) {
   transcriptMock.events = events;
   agentsMock.current = [{ slug: agentId('codex'), name: 'Codex' }];
@@ -223,6 +240,7 @@ function renderDock({
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
         activeSession={session}
+        transcriptSnapshotRef={transcriptSnapshotRef}
         activeOrchestrationSession={orchestrationSession}
         chatFontSize={14}
         dockHeight={400}
@@ -328,4 +346,61 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
 
     expect(screen.queryByTestId('chat-dock-history-elided')).toBeNull();
   });
+});
+
+test('a reopened dock lends Save to Project its hydrated answer and revokes the snapshot on close', () => {
+  transcriptMock.hydrated = true;
+  transcriptMock.messages = [
+    {
+      id: 'completed',
+      role: 'assistant',
+      content: 'The checks passed.',
+      sessionId: 'execution-that-answered',
+      turnId: 'completed-turn',
+      answerEligible: true,
+    },
+    {
+      id: 'streaming',
+      role: 'assistant',
+      content: 'Starting another check…',
+      sessionId: 'current-execution',
+      turnId: 'unfinished-turn',
+    },
+  ];
+  const session = buildSession({
+    conversationId: 'reopened-conversation',
+    currentSessionId: 'current-execution',
+    orchestrationSessionStarted: true,
+  });
+  const transcriptSnapshotRef: {
+    current: ConversationTranscriptSnapshot | null;
+  } = {
+    current: null,
+  };
+  const view = renderDock({ session, transcriptSnapshotRef });
+  try {
+    const snapshot = transcriptSnapshotRef.current;
+    expect(snapshot).toMatchObject({
+      chatId: session.id,
+      conversationId: 'reopened-conversation',
+    });
+    expect(
+      continuedConversationFromChat({
+        ...session,
+        messages: snapshot?.messages,
+      }),
+    ).toMatchObject({
+      latestAnswer: 'The checks passed.',
+      sessionId: 'execution-that-answered',
+      latestTurnId: 'completed-turn',
+    });
+    transcriptMock.current = false;
+    expect(snapshot?.requestScope.isCurrent()).toBe(false);
+  } finally {
+    view.unmount();
+    transcriptMock.hydrated = false;
+    transcriptMock.current = true;
+    transcriptMock.messages = [];
+  }
+  expect(transcriptSnapshotRef.current).toBeNull();
 });

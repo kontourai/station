@@ -5,7 +5,7 @@ export { TRANSCRIPT_LINE_SKIPPED_CODE } from '@kontourai/station-contracts/provi
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
@@ -31,15 +31,26 @@ import type {
 
 import {
   deriveConfigHomeAffinity,
-  readLeadingLine,
   readWindow,
   resolveConfigHomeAffinity,
+  scanLeadingLines,
 } from './transcript-file-io.js';
 
 const DEFAULT_MAX_CANDIDATES = 128;
 const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_LINE_BYTES = 128 * 1024;
 const DEFAULT_MAX_EVENTS = 512;
+/**
+ * Claude Code 2.1.x opens a transcript with metadata records (`ai-title`,
+ * `custom-title`, `session-owner`, `queue-operation`) that carry a sessionId
+ * but no cwd; the first record with both has been seen as late as the sixth.
+ * Discovery reads at most this many leading records, and at most
+ * `DEFAULT_MAX_LEADING_BYTES` of the file, before refusing it.
+ */
+const DEFAULT_MAX_LEADING_RECORDS = 16;
+// A pasted image makes the first user record megabytes long (1.6 MB seen), and
+// the identity then appears on the attachment record after it.
+const DEFAULT_MAX_LEADING_BYTES = 4 * 1024 * 1024;
 const MAX_RECORD_TURNS = 128;
 const MAX_RECORD_TURN_STATE_BYTES = 16 * 1024;
 /**
@@ -62,6 +73,27 @@ const PROMPT_SOURCE = 'claude-transcript';
  * delta reads (a handful of lines) yield-free.
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
+/**
+ * Subagent transcripts (`<session>/subagents/*.jsonl`) are read for their
+ * newest write only while the session's own transcript was written within
+ * this long, so a poll does not stat every old session's subagents.
+ */
+const SUBAGENT_WRITE_HORIZON_MS = 2 * 60 * 60_000;
+/**
+ * Bounds on one subagents directory. Each subagent writes a transcript and a
+ * `.meta.json` beside it, so transcripts and entries are bounded apart; past
+ * either bound the directory is not read at all (no partial newest).
+ */
+const DEFAULT_MAX_SUBAGENT_TRANSCRIPTS = 1024;
+const DEFAULT_MAX_SUBAGENT_ENTRIES = 4096;
+/**
+ * A scan is reused while its directory's own time is unchanged (no subagent
+ * added) for this long. Appends move only the file, so a reused scan can be
+ * this stale; the attachment records writes in 30-second steps anyway.
+ */
+const SUBAGENT_SCAN_REUSE_MS = 25_000;
+/** Project folders `discover()` lists between event-loop yields. */
+const DISCOVERY_YIELD_EVERY_FOLDERS = 64;
 /** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
@@ -75,12 +107,20 @@ interface ClaudeTranscriptSessionSourceOptions {
   maxBytes?: number;
   maxLineBytes?: number;
   maxEvents?: number;
+  /** Directories opened plus entries lstat'ed in one discovery pass. */
   maxTraversalEntries?: number;
-  maxDepth?: number;
+  /** Leading records discovery reads looking for the session's identity. */
+  maxLeadingRecords?: number;
+  /** Bytes discovery may read from one transcript's head. */
+  maxLeadingBytes?: number;
   /** Lines parsed between event-loop yields in `read()` (archive#1997). */
   readYieldEveryLines?: number;
   /** Test seam: observe/replace the interior yield (archive#1997). */
   yieldFn?: () => Promise<void>;
+  maxSubagentTranscripts?: number;
+  maxSubagentEntries?: number;
+  /** Test seam: the clock for subagent scan horizons and reuse. */
+  now?: () => number;
 }
 
 /**
@@ -98,8 +138,20 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   private readonly maxLineBytes: number;
   private readonly maxEvents: number;
   private readonly maxTraversalEntries: number;
-  private readonly maxDepth: number;
+  private readonly maxSkippedEntries: number;
+  /** Newest transcript mtime per project folder, from the previous pass. */
+  private newestTranscriptByFolder = new Map<string, number>();
+  private readonly maxLeadingRecords: number;
+  private readonly maxLeadingBytes: number;
+  /** The no-session outcome last warned about, so a steady state logs once. */
+  private warnedDiscoveryOutcome: AttachedSessionSourceOutcome | undefined;
   private readonly handles = new Map<string, string>();
+  /**
+   * Leading-record results for the current discovery snapshot's files. A
+   * transcript's head never changes once written, so a scan is repeated only
+   * when the file is replaced, shrinks, or (for a refusal) grows.
+   */
+  private leadingIdentities = new Map<string, CachedLeadingIdentity>();
   private readonly readYieldEveryLines: number;
   private readonly yieldFn: () => Promise<void>;
 
@@ -115,8 +167,11 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     this.maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
     this.maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
     this.maxTraversalEntries =
-      options.maxTraversalEntries ?? this.maxCandidates * 8;
-    this.maxDepth = options.maxDepth ?? 16;
+      options.maxTraversalEntries ?? this.maxCandidates * 32;
+    this.maxSkippedEntries = this.maxTraversalEntries * 4;
+    this.maxLeadingRecords =
+      options.maxLeadingRecords ?? DEFAULT_MAX_LEADING_RECORDS;
+    this.maxLeadingBytes = options.maxLeadingBytes ?? DEFAULT_MAX_LEADING_BYTES;
     this.readYieldEveryLines =
       Number.isInteger(options.readYieldEveryLines) &&
       (options.readYieldEveryLines ?? 0) > 0
@@ -125,7 +180,21 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     this.yieldFn =
       options.yieldFn ??
       (() => new Promise<void>((resolve) => setImmediate(resolve)));
+    this.maxSubagentTranscripts =
+      options.maxSubagentTranscripts ?? DEFAULT_MAX_SUBAGENT_TRANSCRIPTS;
+    this.maxSubagentEntries =
+      options.maxSubagentEntries ?? DEFAULT_MAX_SUBAGENT_ENTRIES;
+    this.now = options.now ?? Date.now;
   }
+
+  private readonly maxSubagentTranscripts: number;
+  private readonly maxSubagentEntries: number;
+  private readonly now: () => number;
+  /** Per subagents directory: its last scan, keyed by the directory's time. */
+  private readonly subagentScans = new Map<
+    string,
+    { directoryMs: number; scannedAt: number; newest: number }
+  >();
 
   async discover(): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
@@ -140,16 +209,31 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     // rather than an append-only record of every transcript ever observed.
     this.handles.clear();
 
+    // Claude lays sessions out as `projects/<project>/<session>.jsonl`. A
+    // session's sibling directory (`<session>/subagents/agent-*.jsonl`,
+    // `<session>/tool-results/`) holds sidechain transcripts that repeat the
+    // parent's sessionId, so discovery never descends below a project folder.
+    //
+    // The traversal bound charges each directory opened and each entry
+    // lstat'ed. Entries rejected by name or dirent type cost no syscall and
+    // count against a separate, larger bound. Either bound, once passed,
+    // stops the traversal as `candidate_limit`.
     const candidates: Array<{ path: string; modifiedAt: number }> = [];
     let rejected = false;
     let candidatesTruncated = false;
-    let visitedEntries = 0;
-    const visit = (directory: string, depth: number): void => {
-      visitedEntries += 1;
-      if (visitedEntries > this.maxTraversalEntries || depth > this.maxDepth) {
-        candidatesTruncated = true;
-        return;
-      }
+    let chargedEntries = 0;
+    let skippedEntries = 0;
+    const charge = (): boolean => {
+      chargedEntries += 1;
+      if (chargedEntries > this.maxTraversalEntries) candidatesTruncated = true;
+      return !candidatesTruncated;
+    };
+    const listDirectory = (
+      directory: string,
+      accept: (path: string, stat: import('node:fs').Stats) => void,
+      wanted: (entry: import('node:fs').Dirent) => boolean,
+    ): void => {
+      if (!charge()) return;
       let directoryHandle: import('node:fs').Dir;
       try {
         directoryHandle = opendirSync(directory);
@@ -158,61 +242,117 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         return;
       }
       try {
-        let entry = directoryHandle.readSync();
-        while (entry) {
-          visitedEntries += 1;
-          if (visitedEntries > this.maxTraversalEntries) {
-            candidatesTruncated = true;
-            return;
+        for (
+          let entry = directoryHandle.readSync();
+          entry;
+          entry = directoryHandle.readSync()
+        ) {
+          if (!wanted(entry)) {
+            skippedEntries += 1;
+            if (skippedEntries > this.maxSkippedEntries) {
+              candidatesTruncated = true;
+              return;
+            }
+            continue;
           }
+          if (!charge()) return;
           const candidate = join(directory, entry.name);
           let stat: import('node:fs').Stats;
           try {
             stat = lstatSync(candidate);
           } catch {
             rejected = true;
-            entry = directoryHandle.readSync();
             continue;
           }
           if (stat.isSymbolicLink()) {
             rejected = true;
-            entry = directoryHandle.readSync();
             continue;
           }
-          if (stat.isDirectory()) {
-            const canonical = this.canonicalInside(root, candidate);
-            if (!canonical) {
-              rejected = true;
-              entry = directoryHandle.readSync();
-              continue;
-            }
-            visit(canonical, depth + 1);
-          } else if (stat.isFile() && entry.name.endsWith('.jsonl')) {
-            const canonical = this.canonicalInside(root, candidate);
-            if (!canonical) {
-              rejected = true;
-              entry = directoryHandle.readSync();
-              continue;
-            }
-            candidates.push({ path: canonical, modifiedAt: stat.mtimeMs });
-          }
-          entry = directoryHandle.readSync();
+          accept(candidate, stat);
         }
       } finally {
         directoryHandle.closeSync();
       }
     };
-    visit(root, 0);
+    // A dirent of unknown type (some filesystems) is lstat'ed to find out.
+    const typeUnknown = (entry: import('node:fs').Dirent) =>
+      !entry.isFile() && !entry.isDirectory() && !entry.isSymbolicLink();
+    // A folder's own mtime moves when a session file is created in it, not
+    // when one is appended to, so a folder ranks by the newer of that and the
+    // newest transcript the previous pass saw in it. Only when the bound is
+    // reached does this order decide which folders go unvisited.
+    const previousNewest = this.newestTranscriptByFolder;
+    this.newestTranscriptByFolder = new Map();
+    const projectDirectories: Array<{ path: string; rank: number }> = [];
+    listDirectory(
+      root,
+      (path, stat) => {
+        if (!stat.isDirectory()) return;
+        const canonical = this.canonicalInside(root, path);
+        if (!canonical) {
+          rejected = true;
+          return;
+        }
+        const seen = previousNewest.get(canonical);
+        if (seen !== undefined)
+          this.newestTranscriptByFolder.set(canonical, seen);
+        projectDirectories.push({
+          path: canonical,
+          rank: Math.max(stat.mtimeMs, seen ?? 0),
+        });
+      },
+      (entry) =>
+        entry.isDirectory() || entry.isSymbolicLink() || typeUnknown(entry),
+    );
+    projectDirectories.sort(
+      (left, right) =>
+        right.rank - left.rank || left.path.localeCompare(right.path),
+    );
+    let foldersListed = 0;
+    for (const project of projectDirectories) {
+      if (candidatesTruncated) break;
+      // A whole large home is a few tens of milliseconds of synchronous
+      // directory work; yield between slices of it (archive#1997).
+      foldersListed += 1;
+      if (foldersListed % DISCOVERY_YIELD_EVERY_FOLDERS === 0)
+        await this.yieldFn();
+      let newest: number | undefined;
+      listDirectory(
+        project.path,
+        (path, stat) => {
+          if (!stat.isFile()) return;
+          candidates.push({ path, modifiedAt: stat.mtimeMs });
+          newest = Math.max(newest ?? 0, stat.mtimeMs);
+        },
+        (entry) => entry.name.endsWith('.jsonl') && !entry.isDirectory(),
+      );
+      if (candidatesTruncated) {
+        // A partial listing only raises what the previous pass knew.
+        const known = this.newestTranscriptByFolder.get(project.path);
+        if (newest !== undefined && newest > (known ?? 0))
+          this.newestTranscriptByFolder.set(project.path, newest);
+      } else if (newest !== undefined) {
+        this.newestTranscriptByFolder.set(project.path, newest);
+      } else {
+        // Every transcript is gone; the folder ranks by its own mtime again.
+        this.newestTranscriptByFolder.delete(project.path);
+      }
+    }
     const candidateLimit =
       candidatesTruncated || candidates.length > this.maxCandidates;
-    const files = candidates
+    // Only the selected files are canonicalized; their folder already is.
+    const files: string[] = [];
+    for (const candidate of candidates
       .sort(
         (left, right) =>
           right.modifiedAt - left.modifiedAt ||
           left.path.localeCompare(right.path),
       )
-      .slice(0, this.maxCandidates)
-      .map((candidate) => candidate.path);
+      .slice(0, this.maxCandidates)) {
+      const canonical = this.canonicalInside(root, candidate.path);
+      if (canonical) files.push(canonical);
+      else rejected = true;
+    }
 
     const sessions: AttachedSessionDescriptor[] = [];
     let outcome: AttachedSessionSourceOutcome = candidateLimit
@@ -220,16 +360,56 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       : rejected
         ? 'rejected_candidate'
         : 'ok';
+    const refusals: Partial<Record<AttachedSessionSourceOutcome, number>> = {};
+    const previousIdentities = this.leadingIdentities;
+    this.leadingIdentities = new Map();
     for (const file of files) {
-      const descriptor = this.discoverFile(file, sourceHome.affinity);
+      const descriptor = this.discoverFile(
+        file,
+        sourceHome.affinity,
+        previousIdentities.get(file),
+      );
       if (!descriptor.session) {
-        if (descriptor.outcome !== 'ok') outcome = descriptor.outcome;
+        // A truncated pass stays `candidate_limit`: the refusals of the files
+        // it did reach are reported by count, not as the pass's outcome.
+        if (descriptor.outcome !== 'ok' && !candidateLimit)
+          outcome = descriptor.outcome;
+        refusals[descriptor.outcome] = (refusals[descriptor.outcome] ?? 0) + 1;
         continue;
       }
       this.handles.set(descriptor.session.sourceHandle, file);
       sessions.push(descriptor.session);
     }
+    this.warnWhenNothingAccepted(
+      files.length,
+      sessions.length,
+      outcome,
+      refusals,
+    );
     return { outcome, sessions };
+  }
+
+  /**
+   * Every candidate refused is otherwise visible only as a metric outcome,
+   * which is how a transcript-format change once hid every Claude session.
+   * Warn once when that state begins or its outcome changes, not every poll.
+   */
+  private warnWhenNothingAccepted(
+    candidates: number,
+    accepted: number,
+    outcome: AttachedSessionSourceOutcome,
+    refusals: Partial<Record<AttachedSessionSourceOutcome, number>>,
+  ): void {
+    if (candidates === 0 || accepted > 0) {
+      this.warnedDiscoveryOutcome = undefined;
+      return;
+    }
+    if (this.warnedDiscoveryOutcome === outcome) return;
+    this.warnedDiscoveryOutcome = outcome;
+    logger.warn(
+      'Claude transcript discovery found transcripts but accepted none of them',
+      { outcome, candidates, refusals },
+    );
   }
 
   async initialCursor(
@@ -260,6 +440,106 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   async read(
     session: AttachedSessionDescriptor,
     previousCursor: AttachedSessionCursor = 0,
+  ): Promise<AttachedSessionReadResult> {
+    const result = await this.readTranscript(session, previousCursor);
+    if (
+      result.outcome === 'unknown_source' ||
+      result.outcome === 'rejected_candidate'
+    )
+      return result;
+    const sourceWriteAt = this.newestWrite(session);
+    return sourceWriteAt ? { ...result, sourceWriteAt } : result;
+  }
+
+  /**
+   * The newest write to the session: its transcript, and while that was
+   * written recently, its subagents' own transcripts, which a running
+   * subagent writes while the session's transcript stays silent. A
+   * subagents directory past its entry bound is not read.
+   */
+  private newestWrite(session: AttachedSessionDescriptor): string | undefined {
+    const file = this.handles.get(session.sourceHandle);
+    const home = this.resolveSourceHome(session.affinity);
+    const root = home ? this.canonicalProjectsRoot(home) : null;
+    const canonical =
+      file && root ? this.canonicalRegularFile(root, file) : null;
+    if (!canonical || !root) return undefined;
+    let newest: number;
+    try {
+      newest = lstatSync(canonical).mtimeMs;
+    } catch {
+      return undefined;
+    }
+    if (this.now() - newest <= SUBAGENT_WRITE_HORIZON_MS) {
+      const subagents = join(
+        dirname(canonical),
+        basename(canonical, '.jsonl'),
+        'subagents',
+      );
+      newest = Math.max(newest, this.newestSubagentWrite(root, subagents));
+    }
+    return new Date(newest).toISOString();
+  }
+
+  private newestSubagentWrite(root: string, directory: string): number {
+    let directoryMs: number;
+    try {
+      const stat = lstatSync(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) return 0;
+      if (!this.canonicalInside(root, directory)) return 0;
+      directoryMs = stat.mtimeMs;
+    } catch {
+      this.subagentScans.delete(directory);
+      return 0;
+    }
+    const now = this.now();
+    const reused = this.subagentScans.get(directory);
+    if (
+      reused &&
+      reused.directoryMs === directoryMs &&
+      now - reused.scannedAt < SUBAGENT_SCAN_REUSE_MS
+    )
+      return reused.newest;
+    const newest = this.scanSubagents(directory);
+    this.subagentScans.delete(directory);
+    this.subagentScans.set(directory, { directoryMs, scannedAt: now, newest });
+    // Bounded by the discovered set, like the source's other per-session state.
+    if (this.subagentScans.size > this.maxCandidates * 2) {
+      const oldest = this.subagentScans.keys().next().value;
+      if (oldest !== undefined) this.subagentScans.delete(oldest);
+    }
+    return newest;
+  }
+
+  /** The newest subagent transcript write, or 0 past either bound. */
+  private scanSubagents(directory: string): number {
+    let newest = 0;
+    try {
+      const dir = opendirSync(directory);
+      try {
+        let entries = 0;
+        let transcripts = 0;
+        for (let entry = dir.readSync(); entry; entry = dir.readSync()) {
+          if (++entries > this.maxSubagentEntries) return 0;
+          if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+          if (++transcripts > this.maxSubagentTranscripts) return 0;
+          newest = Math.max(
+            newest,
+            lstatSync(join(directory, entry.name)).mtimeMs,
+          );
+        }
+      } finally {
+        dir.closeSync();
+      }
+    } catch {
+      return 0;
+    }
+    return newest;
+  }
+
+  private async readTranscript(
+    session: AttachedSessionDescriptor,
+    previousCursor: AttachedSessionCursor,
   ): Promise<AttachedSessionReadResult> {
     const file = this.handles.get(session.sourceHandle);
     if (!file || session.provider !== this.provider) {
@@ -633,6 +913,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   private discoverFile(
     file: string,
     affinity: ProviderSessionSourceAffinity,
+    cached: CachedLeadingIdentity | undefined,
   ): {
     outcome: AttachedSessionSourceOutcome;
     session?: AttachedSessionDescriptor;
@@ -642,14 +923,24 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       if (!stat.isFile() || stat.isSymbolicLink()) {
         return { outcome: 'rejected_candidate' };
       }
-      const first = readLeadingLine(file, this.maxLineBytes);
-      if (first === null) return { outcome: 'line_limit' };
-      if (first === undefined) return { outcome: 'malformed_record' };
-      if (!first) return { outcome: 'malformed_record' };
-      const record = JSON.parse(first) as Record<string, unknown>;
-      const sessionId = text(record.sessionId);
-      const cwd = text(record.cwd);
-      if (!sessionId || !cwd) return { outcome: 'malformed_record' };
+      const reusable =
+        cached &&
+        cached.dev === stat.dev &&
+        cached.ino === stat.ino &&
+        ('outcome' in cached.identity
+          ? cached.size === stat.size
+          : cached.size <= stat.size);
+      const identity = reusable
+        ? cached.identity
+        : this.readLeadingIdentity(file);
+      this.leadingIdentities.set(file, {
+        dev: stat.dev,
+        ino: stat.ino,
+        size: stat.size,
+        identity,
+      });
+      if ('outcome' in identity) return { outcome: identity.outcome };
+      const { sessionId, cwd, createdAt } = identity;
       const sourceHandle = opaqueHandle(file);
       return {
         outcome: 'ok',
@@ -658,7 +949,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
           sessionId,
           threadId: claudeAttachedThreadId(sessionId),
           cwd,
-          createdAt: timestamp(record.timestamp),
+          createdAt,
           sourceHandle,
           affinity,
         },
@@ -667,6 +958,83 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       return { outcome: 'malformed_record' };
     }
   }
+
+  /**
+   * Find the first leading record that names both the session and its cwd.
+   * The session starts at the earliest timestamp among the records read, which
+   * is normally the queue record written before the first user message.
+   */
+  private readLeadingIdentity(file: string): LeadingIdentity {
+    let sessionId: string | undefined;
+    let cwd: string | undefined;
+    let earliest: { at: number; value: string } | undefined;
+    let conflict = false;
+    let sidechain = false;
+    let skippedOversized = false;
+    const end = scanLeadingLines(
+      file,
+      {
+        maxLines: this.maxLeadingRecords,
+        maxLineBytes: this.maxLineBytes,
+        maxBytes: this.maxLeadingBytes,
+      },
+      (line) => {
+        if (line === null) {
+          skippedOversized = true;
+          return false;
+        }
+        let record: unknown;
+        try {
+          record = JSON.parse(line);
+        } catch {
+          return false;
+        }
+        if (!isRecord(record)) return false;
+        const recordSession = text(record.sessionId);
+        if (recordSession && sessionId && recordSession !== sessionId) {
+          conflict = true;
+          return true;
+        }
+        sessionId ??= recordSession;
+        const at =
+          typeof record.timestamp === 'string'
+            ? Date.parse(record.timestamp)
+            : Number.NaN;
+        if (Number.isFinite(at) && (!earliest || at < earliest.at)) {
+          earliest = { at, value: record.timestamp as string };
+        }
+        cwd = recordSession ? text(record.cwd) : undefined;
+        if (!cwd) return false;
+        // A sidechain (subagent) transcript repeats its parent's sessionId;
+        // it is part of that session, not a session of its own.
+        sidechain = record.isSidechain === true;
+        return true;
+      },
+    );
+    if (conflict) return { outcome: 'malformed_record' };
+    if (end === 'stopped' && sidechain)
+      return { outcome: 'rejected_candidate' };
+    if (end === 'stopped' && sessionId && cwd) {
+      return { sessionId, cwd, createdAt: earliest?.value ?? EPOCH };
+    }
+    return {
+      outcome:
+        end === 'byte_budget' || skippedOversized
+          ? 'line_limit'
+          : 'malformed_record',
+    };
+  }
+}
+
+type LeadingIdentity =
+  | { sessionId: string; cwd: string; createdAt: string }
+  | { outcome: AttachedSessionSourceOutcome };
+
+interface CachedLeadingIdentity {
+  dev: number;
+  ino: number;
+  size: number;
+  identity: LeadingIdentity;
 }
 
 function mapClaudeRecord(

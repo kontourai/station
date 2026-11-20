@@ -1,0 +1,7 @@
+{
+  "revision": "bf3cb2ee51b3eb4b2ebb879928e0538153aace9e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added that the combined Run setup button adds Agent moved when the Agent now points at another engine and the Engine & model choice names where (#4971); rest of the Run setup paragraph rechecked against ComposerRunControl and ChatInputArea, unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

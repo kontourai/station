@@ -1,0 +1,7 @@
+{
+  "revision": "c6775beaa2f5024da07fae8b330aa2d193febaac",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Updated for the 2026-11-16 owner decisions: session answer offered on every tool approval with plain/escalation-scoped grants and no forwarded suggestions for a widened grant; untrusted-content ask not raised at full access per engine (Claude bypassPermissions, Codex applied never incl. bound tools, OpenCode/governed ACP never) with the seam approval recorded; new section on built-in authority tools. Checked against pre-tool-policy.ts, tool-request-preview.ts and the four adapters.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","packages/shared/src/tool-request-preview.ts","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/agents/__tests__/pre-tool-policy.test.ts","src-server/runtime/agents/pre-tool-policy.ts","src-ui/src/components/chat/ApprovalSheetProvider.tsx","src-ui/src/components/chat/InputRequestDecision.tsx","src-ui/src/components/chat/ToolCallDisplay.tsx","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

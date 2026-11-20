@@ -95,6 +95,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { NavigationProvider } from '../../../contexts/NavigationContext';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { ReviewLayout } from '../ReviewLayout';
 
 function renderLayout(projectSlug = 'project-a') {
@@ -328,6 +329,8 @@ describe('the review layout kind', () => {
     expect(within(detail).getByText('const value = 1;')).toBeTruthy();
     expect(within(detail).getByText('const value = 2;')).toBeTruthy();
 
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('proposed-change');
     fireEvent.click(within(detail).getByRole('button', { name: 'Approve' }));
     // The recorded reason names the surface that decided, the same way the
     // inbox's own test pins "from notifications" — two surfaces, one payload

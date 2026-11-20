@@ -220,6 +220,7 @@ function announceSettle(
       ? `${label}\n\n${after.result?.source ? `${childWorkSummaryLabel(after.result.source)}: ` : ''}${summary}`
       : label,
     backgroundTaskNotice: {
+      child: after,
       status,
       ...(stationName ? { stationName } : {}),
       ...(title ? { title } : {}),

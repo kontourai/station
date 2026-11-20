@@ -1238,7 +1238,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       ).toBeFocused();
     };
     const bedrockOption = (picker: Locator) =>
-      picker.getByRole('option', { name: /Bedrock · Prod · shared-model/ });
+      picker.getByRole('button', {
+        name: /^Shared model Station · Bedrock · Prod\b/,
+      });
 
     const picker = await openPicker();
     // The draft offers only providers this Agent can use; the provider the
@@ -1247,7 +1249,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       picker.getByRole('button', { name: 'LiteLLM · Local' }),
     ).toHaveCount(0);
     await expect(bedrockOption(picker)).toHaveAttribute(
-      'aria-selected',
+      'aria-current',
       'false',
     );
     await bedrockOption(picker).click();
@@ -1255,10 +1257,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(commands).toEqual([]);
 
     const chosen = await openPicker();
-    await expect(bedrockOption(chosen)).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(bedrockOption(chosen)).toHaveAttribute('aria-current', 'true');
     // The reset names the default it restores, never the choice it clears
     // ("Use session override"): here, the Agent's default.
     await chosen
@@ -1268,7 +1267,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const cleared = await openPicker();
     await expect(bedrockOption(cleared)).toHaveAttribute(
-      'aria-selected',
+      'aria-current',
       'false',
     );
     await bedrockOption(cleared).click();
@@ -1327,8 +1326,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeDisabled();
     await picker.getByRole('button', { name: 'Bedrock · Prod' }).click();
     await picker
-      .getByRole('option', {
-        name: /Bedrock · Prod · shared-model/,
+      .getByRole('button', {
+        name: /^Shared model Station · Bedrock · Prod\b/,
       })
       .click();
 
@@ -1917,6 +1916,165 @@ test.describe('Task-first Home (#332, mocked)', () => {
       devices['Pixel 7'];
     test.use(pixel7);
 
+    for (const portrait of [
+      { width: 375, height: 667 },
+      { width: 412, height: 915 },
+    ]) {
+      test(`phone chat opens full and restores its snap after rotation at ${portrait.width}px`, async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize(portrait);
+        await mockTaskFirstHome(page);
+        const reads: ReadonlyArray<[string, unknown, number?]> = [
+          [
+            '/api/orchestration/agent-schedule/task-first-home',
+            {
+              success: true,
+              data: { wakeUps: [], jobProposals: [], jobs: [] },
+            },
+          ],
+          [
+            '/api/orchestration/conversations/task-first-home/inbox',
+            {
+              success: true,
+              data: { entries: [] },
+            },
+          ],
+          [
+            '/api/orchestration/session-reads/task-first-home/turn-directory',
+            {
+              success: false,
+              code: 'session_not_found',
+              error: 'Session not found',
+            },
+            404,
+          ],
+          [
+            '/api/terminal/runs',
+            {
+              success: true,
+              data: { runs: [] },
+            },
+          ],
+        ];
+        for (const [path, json, status] of reads) {
+          await page.route(
+            (url) => url.pathname === path,
+            (route) => {
+              const request = route.request();
+              if (request.method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              if (
+                path === '/api/terminal/runs' &&
+                new URL(request.url()).searchParams.get('conversationId') !==
+                  'task-first-home'
+              ) {
+                return rejectUnexpectedFixtureRequest(route);
+              }
+              return route.fulfill({ json, status });
+            },
+          );
+        }
+        await page.goto('/');
+        const form = page.getByRole('form', { name: 'Start work' });
+        const prompt = 'Prepare the release summary';
+        await form
+          .getByRole('textbox', { name: 'What would you like done?' })
+          .fill(prompt);
+        await form.getByRole('button', { name: 'Start', exact: true }).click();
+
+        const dock = page.locator('#chat-dock');
+        const transcript = dock.getByRole('log', {
+          name: 'Conversation transcript',
+        });
+        await expect(transcript).toContainText(prompt);
+        await expect(dock).toHaveClass(/is-maximized/);
+        const restore = dock.getByRole('button', { name: 'Restore chat size' });
+        await expect(restore).toBeVisible();
+        const restoreBounds = await restore.boundingBox();
+        expect(restoreBounds?.width ?? 0).toBeGreaterThanOrEqual(
+          MIN_TOUCH_TARGET_PX,
+        );
+        expect(restoreBounds?.height ?? 0).toBeGreaterThanOrEqual(
+          MIN_TOUCH_TARGET_PX,
+        );
+
+        const draft =
+          'Follow up on the checklist.\nKeep these two steps.\nCheck the title.';
+        const composer = dock.getByRole('textbox', {
+          name: 'Message',
+          exact: true,
+        });
+        await composer.fill(draft);
+        await restore.click();
+        await expect(dock).not.toHaveClass(/is-maximized/);
+
+        const geometry = [];
+        for (const viewport of [
+          portrait,
+          { width: 915, height: 412 },
+          { width: 430, height: 932 },
+          { width: 915, height: 412 },
+          { width: 768, height: 1024 },
+          portrait,
+        ]) {
+          await page.setViewportSize(viewport);
+          const expectedHeight =
+            viewport.height <= 540
+              ? viewport.height
+              : Math.round(viewport.height * 0.45);
+          await expect
+            .poll(() =>
+              page.evaluate(() =>
+                localStorage.getItem('station.chatDock.snap'),
+              ),
+            )
+            .toBe('half');
+
+          await expect
+            .poll(async () =>
+              Math.round((await dock.boundingBox())?.height ?? 0),
+            )
+            .toBe(expectedHeight);
+          await expect(composer).toHaveValue(draft);
+          await expect(transcript).toContainText(prompt);
+          const transcriptBox = await transcript.boundingBox();
+          expect(transcriptBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+          const bounds = await dock.boundingBox();
+          expect(bounds?.y ?? -1).toBeGreaterThanOrEqual(0);
+          expect((bounds?.y ?? 0) + (bounds?.height ?? 0)).toBeLessThanOrEqual(
+            viewport.height + 1,
+          );
+          geometry.push({
+            viewport,
+            expectedHeight,
+            transcriptHeight: transcriptBox?.height,
+          });
+        }
+
+        await dock.getByRole('button', { name: 'Full screen chat' }).click();
+        await expect(dock).toHaveClass(/is-maximized/);
+        await expect(composer).toHaveValue(draft);
+        await dock.getByRole('button', { name: 'Toggle menu' }).click();
+        await page
+          .getByRole('navigation', { name: 'Mobile navigation' })
+          .getByRole('button', { name: 'Home', exact: true })
+          .click();
+        await expect(dock).not.toHaveClass(/is-maximized/);
+        const home = page.getByRole('region', { name: 'Home', exact: true });
+        const draftedChat = home.getByRole('button', {
+          name: /Prepare the release summary.*unsent draft/,
+        });
+        await expect(draftedChat).toBeInViewport();
+        await draftedChat.click();
+        await expect(composer).toHaveValue(draft);
+        await testInfo.attach('phone chat geometry', {
+          body: JSON.stringify(geometry),
+          contentType: 'application/json',
+        });
+      });
+    }
+
     test('keeps provider/model selection contained and touch-friendly', async ({
       page,
     }) => {
@@ -2077,7 +2235,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // by scanning one button fewer.
       await expect(page.getByTestId('first-run-home-card')).toBeVisible();
       await expect(
-        page.getByRole('button', { name: 'Personalize Station' }),
+        page.getByRole('button', { name: 'Open setup' }),
       ).toBeVisible();
       await expect(page.locator('.sidebar')).not.toBeVisible();
       await page.getByRole('button', { name: 'Toggle menu' }).click();

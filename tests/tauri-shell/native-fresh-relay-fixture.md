@@ -218,8 +218,9 @@ npm run connector:invite -- /absolute/station-home /absolute/connector.json /abs
 ```
 
 Replace the example dev scheme with the receiver's actual registered declaration;
-dev has no inferred default. Stable, beta and nightly links derive their distinct
+dev has no inferred default. Stable and Nightly links derive their distinct
 scheme from the actual invitation surface channel and do not accept a dev override.
+Retired Beta surfaces and schemes are refused rather than mapped to another channel.
 The producer derives the application routing hint from its validated connector
 configuration. Both output paths must be new files under private owned directories.
 No URL or invitation secret is printed, copied to a clipboard, or automatically

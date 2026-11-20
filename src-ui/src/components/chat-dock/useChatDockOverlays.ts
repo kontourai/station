@@ -22,9 +22,18 @@ import type {
   NewChatClosedOutcome,
   NewChatIntent,
 } from '../../lib/newChatIntent';
-import type { ChatSession } from '../../types';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
+
+/**
+ * The chat the dock is working in, when it runs on this Station: its tab id,
+ * and whether a reporting session belongs to it (`threadInChat`, the Agents
+ * pane's own membership rule).
+ */
+export interface WorkingParent {
+  id: string;
+  owns: (threadId: string | undefined) => boolean;
+}
 
 /**
  * The dock's overlay open flags and the toggles that drive them: history,
@@ -45,6 +54,7 @@ export function useChatDockOverlays({
   hasConversationIntent,
   onReaderIntent,
   hostSessionRef,
+  workingParentPending = false,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -52,10 +62,13 @@ export function useChatDockOverlays({
   setShowNewChatModalState: (open: boolean) => void;
   hasConversationIntent: boolean;
   onReaderIntent: () => void;
-  hostSessionRef?: RefObject<Pick<
-    ChatSession,
-    'id' | 'conversationId' | 'currentSessionId'
-  > | null>;
+  hostSessionRef?: RefObject<WorkingParent | null>;
+  /**
+   * The requested chat is open but not yet the working one (a cold load).
+   * A child request waits for it, so it is not read against a parent that
+   * has not bound yet.
+   */
+  workingParentPending?: boolean;
 }) {
   const [mobileInboxOpen, setMobileInboxOpen] = useState(
     isMobile && !hasConversationIntent,
@@ -71,19 +84,17 @@ export function useChatDockOverlays({
   const consumeIntent = regionModel?.consumeSurfaceIntent;
   useEffect(() => {
     if (!incoming?.session) return;
+    const opensChild = Boolean(
+      (incoming.childId || incoming.childSessionId) &&
+        !incoming.messageAnchor &&
+        !incoming.focus,
+    );
+    if (opensChild && workingParentPending) return;
     onReaderIntent();
     setMobileInboxOpen(false);
     const hostSession = hostSessionRef?.current;
     const reusesWorkingParent = Boolean(
-      (incoming.childId || incoming.childSessionId) &&
-        !incoming.messageAnchor &&
-        !incoming.focus &&
-        hostSession &&
-        [
-          hostSession.id,
-          hostSession.conversationId,
-          hostSession.currentSessionId,
-        ].includes(incoming.session),
+      opensChild && hostSession?.owns(incoming.session),
     );
     setImportedSessionId(reusesWorkingParent ? null : incoming.session);
     setReaderSurfaceIntent({
@@ -91,7 +102,13 @@ export function useChatDockOverlays({
       workingSessionId: reusesWorkingParent ? hostSession!.id : undefined,
     });
     consumeIntent?.('chat', incoming.token);
-  }, [incoming, consumeIntent, onReaderIntent, hostSessionRef]);
+  }, [
+    incoming,
+    consumeIntent,
+    onReaderIntent,
+    hostSessionRef,
+    workingParentPending,
+  ]);
   const consumeChildIntent = useCallback(
     (token: number) =>
       setReaderSurfaceIntent((current) =>
@@ -231,7 +248,6 @@ export function useChatDockOverlays({
   // rAF-coalesced frame while a resize drag is live, and inline arrow props
   // would defeat React.memo by changing identity on every one of those
   // renders even though the callbacks themselves never change behavior.
-  const toggleHistory = useCallback(() => setIsHistoryOpen((v) => !v), []);
   const toggleInbox = useCallback(
     () => setDeviceSetting('inboxOpen', !isInboxOpen),
     [isInboxOpen, setDeviceSetting],
@@ -256,7 +272,6 @@ export function useChatDockOverlays({
     reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
-    toggleHistory,
     openInboxHistory,
     closeHistory,
     isInboxOpen,

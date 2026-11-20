@@ -38,12 +38,24 @@ import {
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
-import { managedEngineRefusalWithReason } from '../../security/managed-engine-limits.js';
+import {
+  managedEngineRefusalFor,
+  managedEngineRefusalWithReason,
+} from '../../security/managed-engine-limits.js';
 import {
   canonicalPath,
   isCanonicalPathWithin,
 } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
+
+export const CATALOG_REFRESHING_REASON =
+  'Agent catalog is refreshing after a configuration change; retrying automatically.';
+
+export class AgentCatalogRefreshingError extends Error {
+  constructor() {
+    super(CATALOG_REFRESHING_REASON);
+  }
+}
 
 /**
  * Private capability for reaching one Environment. It may contain transport
@@ -195,6 +207,15 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   // ConnectionConfig.status `station connections list` shows, read now.
   if (connection.status !== 'ready') {
     const blockers = describeConnectionBlockers(connection);
+    if (
+      !blockers &&
+      connection.type === 'acp' &&
+      connection.config.acpProbeStatus === 'probing'
+    ) {
+      throw new Error(
+        `Engine connection '${connection.id}' is still checking access (status: ${connection.status}). Wait for the engine check to finish, then retry.`,
+      );
+    }
     throw new Error(
       `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
         blockers
@@ -603,6 +624,7 @@ export function agentExecutionBindingMetadata(
 export async function resolveExecutionTarget(
   target: ExecutionTarget,
   deps: ExecutionTargetResolverDependencies,
+  options?: { stagedAgentChange: true },
 ): Promise<ResolvedExecutionTarget> {
   const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
@@ -624,6 +646,11 @@ export async function resolveExecutionTarget(
         agent.unavailableReason ||
           `Agent '${resolvedAgentId}' is unavailable under this machine's managed policy`,
       );
+    if (
+      access.kind === 'current' &&
+      agent.unavailableReason === CATALOG_REFRESHING_REASON
+    )
+      throw new AgentCatalogRefreshingError();
     throw new Error(
       agent.unavailableReason || `Agent '${resolvedAgentId}' is unavailable`,
     );
@@ -646,6 +673,16 @@ export async function resolveExecutionTarget(
     typeof target.agent === 'string'
       ? undefined
       : agentId(executionBindingAgentId(target.agent));
+  if (
+    options?.stagedAgentChange &&
+    executionAgentId &&
+    agent.executionDefault === true &&
+    agent.execution?.agentConnectionId
+  ) {
+    throw new Error(
+      'Choose a different Agent to switch engines for this engine-bound Agent.',
+    );
+  }
   const executionAgent = executionAgentId
     ? await deps.getAgent(access, executionAgentId)
     : agent;
@@ -711,6 +748,10 @@ export async function resolveExecutionTarget(
       access,
       resolvedEngineConnectionId,
     );
+    if (access.kind === 'current' && connection.kind === 'agent') {
+      const refusal = managedEngineRefusalFor(connectionProvider(connection));
+      if (refusal) throw refusal;
+    }
     assertConnectionReady(connection);
     provider = connectionProvider(connection);
   } else {

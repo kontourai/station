@@ -1198,6 +1198,115 @@ function isDirectory(absolute) {
 }
 
 /**
+ * Roots whose non-module files a test names by a literal repository
+ * path. The path-read scan above refuses these on purpose: a cwd-relative
+ * literal is not anchored to this module, so it cannot be told from
+ * `resolve('a/b')`. These are native, template and container files whose
+ * changes otherwise run no test in a pull request: `src-desktop/**` only
+ * names the deferred `verify-local` lane, and `Dockerfile` and `deployment/`
+ * escalate to `ci-fast`, which a pull request defers as well. A root is added
+ * only when it holds such pairs. Each is a path prefix.
+ */
+export const NATIVE_LITERAL_ROOTS = Object.freeze([
+  'src-desktop/',
+  'tests/ios-runtime-smoke/',
+  'scripts/templates/',
+  'Dockerfile',
+  'docker-compose',
+  'deployment/',
+]);
+
+/**
+ * Where the literal scan looks for tests: every suite root the path-read scan
+ * covers. Besides the scripts tests, `src-ui` and `src-server` suites name
+ * `src-desktop/src/lib.rs` and the Android manifest the same way.
+ */
+const NATIVE_LITERAL_TEST_ROOTS = PIN_SCAN_ROOTS;
+
+const MODULE_EXTENSION = /\.[cm]?[jt]sx?$/;
+
+/** Every string literal and substitution-free template literal in `source`,
+ *  comments excluded (the tokenizer drops them). */
+function wholeLiteralValues(source) {
+  const values = new Set();
+  for (const token of tokenize(source)) {
+    if (token.type === 'string') values.add(token.value);
+    else if (token.type === 'template') {
+      const value = literalTokenValue([token]);
+      if (value !== undefined) values.add(value);
+    }
+  }
+  return values;
+}
+
+/**
+ * Pins by literal: a string literal in a test whose WHOLE value is a
+ * repository-relative path to an existing file under one of `roots`, that is
+ * not a JS/TS module (the import graph already sees those) and not under a
+ * generated or vendored location. A literal in a fixture string or an error
+ * message counts too; that over-selection is accepted. Paths built from
+ * several segments and templates with substitutions are not reported.
+ *
+ * Same entry shape as `scanPathReadPins`, so `invertPathReadPins` applies.
+ *
+ * @param {{
+ *   root?: string,
+ *   roots?: readonly string[],
+ *   testRoots?: readonly string[],
+ *   testFiles?: readonly string[],
+ *   readSource?: (absolute: string) => string,
+ * }} [options]
+ * @returns {{ test: string, pins: string[] }[]}
+ */
+export function scanNativeLiteralPins({
+  root = process.cwd(),
+  roots = NATIVE_LITERAL_ROOTS,
+  testRoots = NATIVE_LITERAL_TEST_ROOTS,
+  readSource = (absolute) => readFileSync(absolute, 'utf8'),
+  testFiles,
+} = {}) {
+  const files = testFiles ?? listSuiteFiles(root, testRoots);
+  const known = new Map();
+  const isNativeFile = (candidate) => {
+    if (!known.has(candidate))
+      known.set(
+        candidate,
+        roots.some((prefix) => candidate.startsWith(prefix)) &&
+          !MODULE_EXTENSION.test(candidate) &&
+          !isExcludedPath(candidate) &&
+          !candidate.split('/').includes('..') &&
+          isFile(join(root, candidate)),
+      );
+    return known.get(candidate);
+  };
+  const entries = [];
+  for (const repoPath of files) {
+    let source;
+    try {
+      source = readSource(join(root, repoPath));
+    } catch {
+      continue;
+    }
+    // A cheap pre-filter: a file naming none of the roots has no pin.
+    if (!roots.some((prefix) => source.includes(prefix))) continue;
+    const pins = [...wholeLiteralValues(source)]
+      .filter((value) => roots.some((prefix) => value.startsWith(prefix)))
+      .filter(isNativeFile)
+      .sort();
+    if (pins.length) entries.push({ test: repoPath, pins });
+  }
+  return entries.sort((a, b) => a.test.localeCompare(b.test));
+}
+
+function isFile(absolute) {
+  try {
+    return statSync(absolute).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Inverts the scan into `{ pin, tests }` entries — the shape the impact
  * manifest needs, since selection keys on the CHANGED path.
  */

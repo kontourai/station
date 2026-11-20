@@ -6,6 +6,7 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { CredentialProfileRecoveryAdapter } from '../../../services/orchestration/credential-recovery-module';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service';
@@ -27,7 +28,13 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function fixture(options: { autoResume?: boolean } = {}) {
+async function fixture(
+  options: {
+    autoResume?: boolean;
+    credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
+    hosted?: boolean;
+  } = {},
+) {
   const directory = makeTempDir('station-usage-limit-');
   const store = new EventStore(join(directory, 'events.sqlite'));
   const adapter = new GateTestAdapter();
@@ -38,6 +45,13 @@ async function fixture(options: { autoResume?: boolean } = {}) {
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
     resolveUsageLimitAutoResume: async () => options.autoResume === true,
+    ...(options.credentialProfileRecoveryAdapter
+      ? {
+          credentialProfileRecoveryAdapter:
+            options.credentialProfileRecoveryAdapter,
+        }
+      : {}),
+    ...(options.hosted ? { requireTenantExecutionContext: () => true } : {}),
   });
   service.initialize();
   await awaitSessionAttachmentSettled(service);
@@ -334,5 +348,143 @@ describe('usage-limit banner routes (#3157)', () => {
     expect(f.ledger.latestProjection('session-b')).toMatchObject({
       outcome: 'armed',
     });
+  });
+});
+
+describe('"Continue on <label>" routes', () => {
+  const FINGERPRINT = `${THREAD}:limited-turn:rate-limit:account`;
+  function accounts() {
+    const stage = vi.fn<CredentialProfileRecoveryAdapter['stage']>(
+      async () => ({ kind: 'unavailable' }),
+    );
+    const listContinueOnProfiles = vi.fn(async (provider: string) =>
+      provider === 'claude' ? [{ ref: 'work', label: 'Work' }] : [],
+    );
+    return { stage, listContinueOnProfiles };
+  }
+  const continueOn = (
+    f: Awaited<ReturnType<typeof fixture>>,
+    profileRef: unknown,
+    stopId: unknown = FINGERPRINT,
+  ) =>
+    f.app.request(`${PATH}/continue-on`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ profileRef, stopId }),
+    });
+
+  test('the read lists the accounts the waiting stop may continue on, for its owner only', async () => {
+    const adapter = accounts();
+    const f = await fixture({ credentialProfileRecoveryAdapter: adapter });
+    const response = await f.app.request(`${PATH}/continue-on`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      data: {
+        stopId: FINGERPRINT,
+        profiles: [{ ref: 'work', label: 'Work' }],
+      },
+    });
+    expect(adapter.listContinueOnProfiles).toHaveBeenCalledWith('claude');
+    // The banner's own read does not carry the accounts.
+    const banner = (await (await f.app.request(PATH)).json()) as {
+      data: { recovery: Record<string, unknown> };
+    };
+    expect(JSON.stringify(banner)).not.toContain('work');
+
+    f.setUser('someone-else');
+    expect((await f.app.request(`${PATH}/continue-on`)).status).toBe(404);
+    expect((await continueOn(f, 'work')).status).toBe(404);
+    expect(adapter.stage).not.toHaveBeenCalled();
+  });
+
+  test('choosing an offered account stages exactly it, with consent; a refusal leaves the stop waiting', async () => {
+    const adapter = accounts();
+    const f = await fixture({ credentialProfileRecoveryAdapter: adapter });
+    const response = await continueOn(f, 'work');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { result: unknown; recovery: Record<string, unknown> };
+    };
+    expect(adapter.stage).toHaveBeenCalledOnce();
+    expect(adapter.stage.mock.calls[0]?.[0]).toMatchObject({
+      provider: 'claude',
+      consentedProfileRef: 'work',
+    });
+    expect(body.data.result).toEqual({ kind: 'not-switched' });
+    expect(body.data.recovery).toMatchObject({ outcome: 'armed' });
+    expect(f.ledger.find(FINGERPRINT)?.outcome).toBe('armed');
+  });
+
+  test('an account the stop is not offered is refused before anything is staged', async () => {
+    const adapter = accounts();
+    const f = await fixture({ credentialProfileRecoveryAdapter: adapter });
+    const body = (await (await continueOn(f, 'personal')).json()) as {
+      data: { result: unknown };
+    };
+    expect(body.data.result).toEqual({ kind: 'not-switched' });
+    expect(adapter.stage).not.toHaveBeenCalled();
+    expect((await continueOn(f, '../escape')).status).toBe(400);
+    expect(adapter.stage).not.toHaveBeenCalled();
+  });
+
+  test('a click bound to another stop, or to none, is refused before anything is staged', async () => {
+    const adapter = accounts();
+    const f = await fixture({ credentialProfileRecoveryAdapter: adapter });
+    const stale = (await (
+      await continueOn(f, 'work', `${THREAD}:an-older-turn:rate-limit:account`)
+    ).json()) as {
+      data: { result: unknown; recovery: Record<string, unknown> };
+    };
+    expect(stale.data.result).toEqual({ kind: 'not-waiting' });
+    expect(stale.data.recovery).toMatchObject({ outcome: 'armed' });
+    expect((await continueOn(f, 'work', null)).status).toBe(400);
+    expect(adapter.stage).not.toHaveBeenCalled();
+    expect(f.ledger.find(FINGERPRINT)?.outcome).toBe('armed');
+  });
+
+  test('a hosted Station offers no account and switches none', async () => {
+    const adapter = accounts();
+    const f = await fixture({
+      credentialProfileRecoveryAdapter: adapter,
+      hosted: true,
+    });
+    // A hosted Session's route answers no account (here: not found for a
+    // Session with no tenant binding); the service refuses on its own too.
+    const read = await f.app.request(`${PATH}/continue-on`);
+    const listed =
+      read.status === 200
+        ? ((await read.json()) as { data: { profiles: unknown[] } }).data
+            .profiles
+        : [];
+    expect(listed).toEqual([]);
+    await continueOn(f, 'work');
+    await expect(f.service.readUsageLimitContinueOn(THREAD)).resolves.toEqual({
+      profiles: [],
+    });
+    await expect(
+      f.service.actOnUsageLimitRecovery(THREAD, 'continue-on', {
+        profileRef: 'work',
+        stopId: FINGERPRINT,
+      }),
+    ).resolves.toMatchObject({ result: { kind: 'not-switched' } });
+    expect(adapter.listContinueOnProfiles).not.toHaveBeenCalled();
+    expect(f.ledger.find(FINGERPRINT)?.outcome).toBe('armed');
+    expect(adapter.stage).not.toHaveBeenCalled();
+  });
+
+  test('a stop that is no longer waiting offers nothing and answers not-waiting', async () => {
+    const adapter = accounts();
+    const f = await fixture({ credentialProfileRecoveryAdapter: adapter });
+    f.ledger.cancel(FINGERPRINT, NOW);
+    const read = (await (
+      await f.app.request(`${PATH}/continue-on`)
+    ).json()) as { data: { profiles: unknown[] } };
+    expect(read.data.profiles).toEqual([]);
+    const body = (await (await continueOn(f, 'work')).json()) as {
+      data: { result: unknown };
+    };
+    expect(body.data.result).toEqual({ kind: 'not-waiting' });
+    expect(adapter.stage).not.toHaveBeenCalled();
   });
 });

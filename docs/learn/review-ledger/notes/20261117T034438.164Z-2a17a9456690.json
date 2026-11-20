@@ -1,0 +1,7 @@
+{
+  "revision": "7104ac0d2d2afcb704579e5f22ec614f86a11280",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The guard test gained one classification entry for the version PR probe test (git ls-files in its temporary fixture repository); the guide's description of the guard is unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

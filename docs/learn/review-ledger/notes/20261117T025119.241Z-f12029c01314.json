@@ -1,0 +1,7 @@
+{
+  "revision": "721507c8d06d859579642d51ef1e3792acb9d1d5",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Merged with C2b's by-pull-request route; the Project defaults entry now says stillOn counts open pull requests in chats the reader may read, matching projectDefaultClaimsOn and the route's readerOf.","inputs":["docs/reference/api.md"]}
+  ]
+}

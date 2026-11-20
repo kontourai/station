@@ -1,0 +1,7 @@
+{
+  "revision": "4ae0959a3a98e7c0103e1bab882d9a7a15b0363f",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Reviewed the process and SDK fixture changes against the benchmark reference. Darwin fixture birth checks acquire process start identity within the daemon. The control test verifies all four SDK process handles refuse to forward post-exit signals. The CPU worker still exits inside the fixed sample window and its measured CPU remains in the total. Workload, budgets, and reporting in the reference still match the runner.","inputs":["docs/reference/station-weight.md","scripts/__tests__/helpers/station-weight-daemon.ts","scripts/__tests__/station-weight.end-to-end.process.test.ts"]}
+  ]
+}

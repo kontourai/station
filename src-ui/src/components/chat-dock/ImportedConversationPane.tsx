@@ -3,6 +3,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -12,12 +13,14 @@ import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
+import { useReportedDelegationStart } from '../../hooks/useReportedDelegationStart';
 import {
   attachedContinuationScope,
   discardAttachedContinuationHandoff,
 } from '../../lib/attached-continuation-handoff';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
+import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { useSessionReaderBinding } from '../conversation/SessionReaderBinding';
 import { AgentIcon } from '../icons/AgentIcon';
 import { SessionDetail } from '../session-detail/SessionDetail';
@@ -67,6 +70,12 @@ export default function ImportedConversationPane({
     retry: false,
     cancelWhenInactive: true,
   });
+  const sourceSession = source.data?.session;
+  const reportedStart = useReportedDelegationStart(
+    sourceSession?.threadId === threadId && sourceSession.inputOrigin
+      ? threadId
+      : undefined,
+  );
   const [continuedThreadId, setContinuedThreadId] = useState<string | null>(
     null,
   );
@@ -81,6 +90,12 @@ export default function ImportedConversationPane({
   const [unboundEngine, setUnboundEngine] = useState<EngineId | null>(null);
   const attempted = useRef<string | null>(null);
   const mounted = useRef(true);
+  // The origin row (on a phone) is where this conversation's Continue sits;
+  // elsewhere the host's header offers its own slot.
+  const [originActionSlot, setOriginActionSlot] = useState<HTMLElement | null>(
+    null,
+  );
+  const inheritedActionSlot = useContext(ConversationHeaderActionSlot);
   useLayoutEffect(() => {
     sourceIdentity.current = { scope, threadId };
     intent.current += 1;
@@ -183,10 +198,10 @@ export default function ImportedConversationPane({
   }, [continued.data, continuedThreadId, openContinued]);
   return (
     <section className="imported-conversation-pane" aria-label="Conversation">
-      {showOrigin && (
+      {(showOrigin || reportedStart) && (
         <div className="imported-conversation-pane__origin">
           <span className="imported-conversation-pane__origin-label">
-            {source.data && (
+            {showOrigin && source.data && (
               <AgentIcon
                 agent={{
                   name: displayProvider(source.data.session),
@@ -195,9 +210,15 @@ export default function ImportedConversationPane({
                 size={18}
               />
             )}
-            {originLabel}
+            {reportedStart ? `Started from ${reportedStart}` : originLabel}
           </span>
-          {onDetails && (
+          {showOrigin && (
+            <span
+              className="imported-conversation-pane__origin-action"
+              ref={setOriginActionSlot}
+            />
+          )}
+          {showOrigin && onDetails && (
             <Button size="sm" variant="secondary" onClick={onDetails}>
               Details
             </Button>
@@ -258,41 +279,45 @@ export default function ImportedConversationPane({
         />
       )}
       {source.data && (
-        <SessionDetail
-          key={`${scope}\0${threadId}`}
-          handoffScope={scope}
-          presentation="chat"
-          evidenceReveal={
-            binding?.sessionId === threadId && binding.focus === 'evidence'
-              ? { threadId, token: binding.intentToken ?? 0 }
-              : undefined
-          }
-          chatFontSize={chatFontSize}
-          apiBase={apiBase}
-          session={source.data.session}
-          continuationCreated={Boolean(continuedThreadId)}
-          openingContinuation={
-            Boolean(continuedThreadId) &&
-            !openFailed &&
-            !unboundEngine &&
-            !continued.isError
-          }
-          onTaskChanged={() => void source.refetch()}
-          getSelectionIntent={() => intent.current}
-          onAdopted={(child, adoptedIntent, message) => {
-            if (
-              !mounted.current ||
-              station === null ||
-              sourceIdentity.current.scope !== scope ||
-              sourceIdentity.current.threadId !== threadId ||
-              adoptedIntent !== intent.current
-            )
-              return;
-            continuedIntent.current = adoptedIntent;
-            confirmedMessage.current = message ?? '';
-            setContinuedThreadId(child.threadId);
-          }}
-        />
+        <ConversationHeaderActionSlot.Provider
+          value={showOrigin ? originActionSlot : inheritedActionSlot}
+        >
+          <SessionDetail
+            key={`${scope}\0${threadId}`}
+            handoffScope={scope}
+            presentation="chat"
+            evidenceReveal={
+              binding?.sessionId === threadId && binding.focus === 'evidence'
+                ? { threadId, token: binding.intentToken ?? 0 }
+                : undefined
+            }
+            chatFontSize={chatFontSize}
+            apiBase={apiBase}
+            session={source.data.session}
+            continuationCreated={Boolean(continuedThreadId)}
+            openingContinuation={
+              Boolean(continuedThreadId) &&
+              !openFailed &&
+              !unboundEngine &&
+              !continued.isError
+            }
+            onTaskChanged={() => void source.refetch()}
+            getSelectionIntent={() => intent.current}
+            onAdopted={(child, adoptedIntent, message) => {
+              if (
+                !mounted.current ||
+                station === null ||
+                sourceIdentity.current.scope !== scope ||
+                sourceIdentity.current.threadId !== threadId ||
+                adoptedIntent !== intent.current
+              )
+                return;
+              continuedIntent.current = adoptedIntent;
+              confirmedMessage.current = message ?? '';
+              setContinuedThreadId(child.threadId);
+            }}
+          />
+        </ConversationHeaderActionSlot.Provider>
       )}
     </section>
   );

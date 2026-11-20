@@ -1,5 +1,4 @@
 import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
-
 /**
  * `station operate`'s pure renderer (#168 Wave 1, Task 1A) — `render(state):
  * string[]` returns plain strings, one per terminal line; it makes zero
@@ -36,6 +35,7 @@ import {
   unanswerableRequestNotice,
   unknownAnswerabilityNotice,
 } from '@kontourai/station-contracts/orchestration';
+import { isUnevaluatedFlowGateObservation } from '@kontourai/station-contracts/runtime-events';
 import { OPERATE_KEYBINDINGS } from './keys.js';
 import type {
   OperateApproval,
@@ -514,7 +514,9 @@ function coalesceTranscriptLines(
       lines.push(`[flow bound] ${flowRunDisplayIdentity(definitionId, runId)}`);
     } else if (method === 'flow.gate-verdict') {
       lines.push(
-        `[gate verdict] ${event.verdict}${event.gateId ? ` (${event.gateId})` : ''}`,
+        isUnevaluatedFlowGateObservation(event)
+          ? '[gate observation] no evaluation'
+          : `[gate verdict] ${event.verdict}${event.gateId ? ` (${event.gateId})` : ''}`,
       );
     } else if (method === 'turn.completed') {
       lines.push(`[turn completed] ${event.finishReason ?? ''}`.trimEnd());

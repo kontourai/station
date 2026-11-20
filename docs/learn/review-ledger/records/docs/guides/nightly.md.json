@@ -162,7 +162,9 @@
 
     "src-ui/src/components/updates/PostUpdateChangelog.tsx",
 
-    "src-ui/src/components/updates/usePostUpdateChangelog.ts"
+    "src-ui/src/components/updates/usePostUpdateChangelog.ts",
+
+    "scripts/nightly-qualification-decide.mjs"
   ],
 
   "checks": [

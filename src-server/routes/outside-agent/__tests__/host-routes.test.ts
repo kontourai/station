@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { runOutsideClientsCommand } from '../../../../packages/cli/src/commands/outside-clients.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -17,6 +17,33 @@ import {
 import { DAY } from '../../../services/outside-agent/oauth-records.js';
 import { pkceChallenge } from '../../../services/outside-agent/oauth-registration.js';
 import { registerOutsideAgentHostRoutes } from '../host-routes.js';
+
+// Real randomness, except that inside withLeadingDashEntropy every 32-byte draw
+// starts with bytes that base64url-encode as "--". That is a legitimate random
+// output (1 in 4096) which the CLI argument parser would read as a flag.
+const entropy = vi.hoisted(() => ({ leadingDashes: false }));
+vi.mock('node:crypto', async (importOriginal) => {
+  const crypto = await importOriginal<typeof import('node:crypto')>();
+  const randomBytes = ((...args: unknown[]) => {
+    const bytes = (crypto.randomBytes as (...input: unknown[]) => unknown)(
+      ...args,
+    );
+    if (entropy.leadingDashes && args[0] === 32 && Buffer.isBuffer(bytes)) {
+      bytes[0] = 0xfb;
+      bytes[1] = 0xe0 | (bytes[1]! & 0x0f);
+    }
+    return bytes;
+  }) as typeof crypto.randomBytes;
+  return { ...crypto, randomBytes };
+});
+function withLeadingDashEntropy<T>(run: () => T): T {
+  entropy.leadingDashes = true;
+  try {
+    return run();
+  } finally {
+    entropy.leadingDashes = false;
+  }
+}
 
 const temp = trackTempDirs();
 const opened: OutsideAgentManagementService[] = [];
@@ -601,9 +628,9 @@ test('shared projections retain comparison codes for H only and durable policies
   expect(peer.store.policy('cors')).toEqual(f.service.store.policy('cors'));
 });
 
-test('noninteractive host approval binds exact client/fingerprint and explicit empty supersession without guessing', async () => {
+test('noninteractive host approval binds exact client/fingerprint and explicit empty supersession without guessing, including IDs that encode with a leading --', async () => {
   const f = fixture();
-  const flow = f.start();
+  const flow = withLeadingDashEntropy(() => f.start());
   const row = f.service
     .list(actor)
     .pending.find((row) => row.requestId === flow.request.id)!;
@@ -634,6 +661,16 @@ test('noninteractive host approval binds exact client/fingerprint and explicit e
   );
   expect(output).toContain('approved-awaiting-exchange');
   expect(f.service.store.grants()).toEqual([]);
+  const issued = withLeadingDashEntropy(() => f.exchange(flow));
+  await f.cli(['revoke', issued.grant.id, '--force'], null);
+  expect(
+    f.service.store.grants().find((grant) => grant.id === issued.grant.id)
+      ?.state,
+  ).toBe('revoked');
+  // Checked after the CLI calls, so a missing prefix fails at the caller first,
+  // while a mock that never applied still cannot pass.
+  expect(flow.request.id).toMatch(/^oar_--/);
+  expect(issued.grant.id).toMatch(/^oag_--/);
 });
 
 test('JSON review treats escaped quotes, braces and backslashes in untrusted labels as data', async () => {

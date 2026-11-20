@@ -224,14 +224,14 @@ function OAuthClientSecretBinding({
       </label>
       {unavailable ? (
         <p className="editor-field-hint">
-          Save the integration to choose a secret binding.
+          Save the integration to choose a secret.
         </p>
       ) : bindings.isLoading || configured.isLoading ? (
-        <SkeletonBlock count={1} label="Loading secret bindings" />
+        <SkeletonBlock count={1} label="Loading secrets" />
       ) : bindings.isError || configured.isError ? (
         <ErrorState
           variant="compact"
-          title="Could not load secret bindings"
+          title="Couldn’t load secrets"
           description={userFacingErrorMessage(
             bindings.error ?? configured.error,
           )}
@@ -253,11 +253,11 @@ function OAuthClientSecretBinding({
           <Button
             variant="secondary"
             pending={unbind.isPending}
-            pendingLabel="Removing…"
+            pendingLabel="Unlinking…"
             disabled={pending || !bound}
             onClick={() => void run('unbind')}
           >
-            Remove
+            Unlink
           </Button>
         </div>
       ) : (
@@ -283,23 +283,23 @@ function OAuthClientSecretBinding({
           </select>
           <Button
             pending={bind.isPending}
-            pendingLabel="Binding…"
+            pendingLabel="Linking…"
             disabled={!selected || pending || !issuerDeclared}
             onClick={() => void run('bind')}
           >
-            Bind
+            Link
           </Button>
         </div>
       )}
       {!unavailable && !boundId && !issuerDeclared && (
         <p className="editor-field-hint">
-          Save an authorization server first to bind a secret.
+          Save an authorization server first to link a secret.
         </p>
       )}
       {error && (
         <ErrorState
           variant="compact"
-          title="Secret binding change failed"
+          title="Couldn’t change the linked secret"
           description={error}
         />
       )}

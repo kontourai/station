@@ -1264,11 +1264,6 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
 
     test.each([
       [
-        'a static getter read in an exported initializer',
-        'class L0 { static get x() { return listJobs(); } }\nexport const v = L0.x;',
-        'registry.push(v);',
-      ],
-      [
         'a static getter read at the use site',
         'export class L { static get x() { return listJobs(); } }',
         'registry.push(L.x);',
@@ -1435,6 +1430,65 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       expect(twoHop(mid, registration).decisions[0].disposition).toBe(
         'refined',
       );
+    });
+
+    test.each([
+      ['property assignment', 'registry.value = h;'],
+      ['element assignment', "registry['value'] = h;"],
+      ['mutable binding assignment', 'let local; local = h; local();'],
+      ['element key coercion', 'export const current = registry[key];'],
+      ['computed key coercion', 'export const handlers = { [key]: 1 };'],
+      ['disposal', 'using handle = disposable;'],
+      ['async disposal', 'await using handle = disposable;'],
+    ])('a load-time %s follows the consumed value', (_label, use) => {
+      const result = decide(
+        {
+          'packages/sdk/src/mid.ts': `import { listJobs } from './client/scheduler';
+export const h = () => listJobs();
+export const key = { [Symbol.toPrimitive]() { listJobs(); return 'jobs'; } };
+export const disposable = {
+  [Symbol.dispose]() { listJobs(); },
+  async [Symbol.asyncDispose]() { listJobs(); },
+};`,
+          [REGISTRATION]: `import { h, key, disposable } from './mid';\n${use}`,
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0]).toMatchObject({
+        disposition: 'whole-barrel',
+        reason: expect.stringMatching(USE),
+      });
+    });
+
+    test.each([
+      [
+        'an unconsumed local static getter',
+        `import { listJobs } from './client/scheduler';
+class Local { static get jobs() { return listJobs(); } }
+export const jobs = Local.jobs;`,
+        'whole-barrel',
+      ],
+      [
+        'an unread local static getter',
+        `import { listJobs } from './client/scheduler';
+export class Local { static get jobs() { return listJobs(); } }`,
+        'refined',
+      ],
+      [
+        'an evaluated dynamic import',
+        "export const scheduled = import('./client/scheduler');",
+        'whole-barrel',
+      ],
+      [
+        'a lazy dynamic import',
+        "export const scheduled = () => import('./client/scheduler');",
+        'refined',
+      ],
+    ])('evaluates %s', (_label, source, disposition) => {
+      const result = decide({ [REGISTRATION]: source }, SDK_SOURCES[SCHEDULER]);
+      expect(result.decisions[0].disposition).toBe(disposition);
+      if (disposition === 'whole-barrel')
+        expect(result.decisions[0].reason).toMatch(USE);
     });
 
     test('a call chain through further modules is followed into each', () => {

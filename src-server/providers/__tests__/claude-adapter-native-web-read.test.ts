@@ -81,6 +81,8 @@ async function start(
   session: {
     ledger?: UntrustedContentLedger;
     metadata?: Record<string, unknown>;
+    /** Start at full access on the host (`bypassPermissions`). */
+    fullAccess?: boolean;
   } = {},
 ) {
   mockQuery.mockReset();
@@ -108,6 +110,12 @@ async function start(
     threadId,
     agent: { slug: 'engine-lab' },
     ...(session.metadata ? { metadata: session.metadata } : {}),
+    ...(session.fullAccess
+      ? {
+          confinement: 'host' as const,
+          modelOptions: { approvalMode: 'never' },
+        }
+      : {}),
   });
   const options = mockQuery.mock.calls[0]![0].options;
   const signal = new AbortController().signal;
@@ -195,6 +203,29 @@ describe('Claude native web reads mark the conversation (#4828)', () => {
         permissionDecision: 'ask',
       },
     });
+  });
+
+  // Owner decision (2026-11-16): full access means no prompts, so the mark
+  // no longer turns every later call into a hook ask.
+  test('at full access, a marked conversation is not asked for a sending tool', async () => {
+    const { ledger, postToolUse, preToolUse } = await start(
+      'thread-webfetch-full-access',
+      { fullAccess: true },
+    );
+    expect(mockQuery.mock.calls[0]![0].options.permissionMode).toBe(
+      'bypassPermissions',
+    );
+    await postToolUse('WebFetch');
+    expect(
+      await ledger.conversationHasRead('thread-webfetch-full-access'),
+    ).toBe(true);
+    expect(
+      decision(
+        await preToolUse('mcp__mail__send_reply', {
+          to: 'someone@example.com',
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   test('a WebSearch completion in a subagent marks it too', async () => {

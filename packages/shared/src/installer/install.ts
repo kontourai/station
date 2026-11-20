@@ -41,7 +41,9 @@ import { renamePathSyncRetrying } from '../fs-windows-compat.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
 import {
   decideAgainstAcceptedRelease,
+  packagedReleaseVersion,
   recordAcceptedRelease,
+  validatePackagedReleaseManifest,
 } from '../prebuilt-archive.js';
 import type { ReleaseManifestPayload } from '../release-manifest.mjs';
 import { STATION_RELEASE_MANIFEST_KEYS as PINNED_MANIFEST_SIGNING_KEYS } from '../release-manifest-keys.generated.js';
@@ -664,25 +666,16 @@ function verifyProvenance(
   } catch {
     fail('release provenance is invalid');
   }
-  const ring =
-    typeof value?.releaseChannel === 'string' &&
-    Object.hasOwn(RINGS, value.releaseChannel)
-      ? RINGS[value.releaseChannel]
-      : undefined;
+  const release = validatePackagedReleaseManifest(value);
   if (
-    value?.schemaVersion !== 2 ||
-    !ring ||
-    value.channel !== ring.runtimeChannel ||
-    value.prerelease !== ring.prerelease ||
-    value.sha !== payload.sourceSha ||
-    value.ref !== payload.releaseTag ||
-    value.releaseChannel !== payload.channel ||
-    typeof value.createdAt !== 'string' ||
-    Number.isNaN(new Date(value.createdAt).getTime()) ||
-    new Date(value.createdAt).toISOString() !== value.createdAt
+    !release ||
+    release.sha !== payload.sourceSha ||
+    release.releaseChannel !== payload.channel ||
+    packagedReleaseVersion(release) !== payload.version ||
+    (release.schemaVersion === 2 && release.ref !== payload.releaseTag)
   )
     fail('release provenance is invalid');
-  return { runtimeChannel: ring.runtimeChannel, bytes };
+  return { runtimeChannel: release.channel, bytes };
 }
 
 export function versionPaths(dir: string) {
@@ -773,9 +766,9 @@ export function readChannel(env: InstallerEnv): {
   ring: string;
 } {
   const requested = env.STATION_CHANNEL || 'stable';
-  if (requested === 'preview')
+  if (requested === 'preview' || requested === 'beta')
     fail(
-      'STATION_CHANNEL=preview is a legacy unqualified channel; rerun with STATION_CHANNEL=beta (or install stable with STATION_CHANNEL=stable)',
+      'Beta/preview is retired; choose STATION_CHANNEL=stable or STATION_CHANNEL=nightly',
     );
   const ring = ringOfRuntime(requested);
   if (!ring)
@@ -1286,9 +1279,14 @@ function checkAgainstInstalled(
     (env.STATION_VERSION || 'latest') === tag;
   let installedTag: unknown;
   try {
-    installedTag = JSON.parse(
-      readFileSync(join(paths.current, '.station-release.json'), 'utf8'),
-    )?.ref;
+    const installed = validatePackagedReleaseManifest(
+      JSON.parse(
+        readFileSync(join(paths.current, '.station-release.json'), 'utf8'),
+      ),
+    );
+    installedTag = installed
+      ? `v${packagedReleaseVersion(installed)}`
+      : undefined;
   } catch {
     installedTag = undefined;
   }

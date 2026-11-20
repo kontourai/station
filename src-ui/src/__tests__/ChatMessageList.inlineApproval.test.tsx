@@ -88,6 +88,7 @@ import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { forgetApprovalAnswer } from '../hooks/orchestration/answerRequest';
+import { forgetSettledRequests } from '../hooks/orchestration/heldDuringCatchUp';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
 
@@ -268,6 +269,9 @@ describe('#2316 inline approval card', () => {
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     });
     forgetApprovalAnswer('claude-child-b', 'req-claude-b');
+    // A decision sent in one test must not read as in flight in the next:
+    // the chosen button now carries that state ("Denying…").
+    forgetApprovalAnswer('claude-child-b', 'req-subagent');
     // What the mounted `ApiBaseProvider` does in the app; the registry route
     // resolves its base from here.
     _setApiBase(API_BASE);
@@ -284,6 +288,7 @@ describe('#2316 inline approval card', () => {
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
+    forgetSettledRequests();
   });
 
   test('the fallback live row receives the known input kind before coarse process status', async () => {
@@ -326,23 +331,23 @@ describe('#2316 inline approval card', () => {
     );
     const first = renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
-    await screen.findByText('Decision sent. Waiting for the tool to continue.');
+    // The chosen button carries the in-flight state; no sentence repeats it.
+    await screen.findByRole('button', { name: 'Check status' });
+    expect(screen.getByRole('button', { name: 'Allowing…' })).toBeTruthy();
     first.unmount();
     const second = renderCard(
       chatSession({ answeredApprovals: ['req-claude-b'] }),
     );
     expect(
-      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+      (await screen.findByRole('button', { name: 'Allowing…' })).hasAttribute(
         'disabled',
       ),
     ).toBe(true);
-    expect(
-      screen.getByText('Decision sent. Waiting for the tool to continue.'),
-    ).toBeTruthy();
+    expect(screen.queryByText(/Decision sent/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
     expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
-    await screen.findByText('This request is no longer open.');
+    await screen.findByText('Already answered.');
     expect(calls.filter((call) => call.method === 'GET')).toEqual([
       {
         url: `${API_BASE}/api/orchestration/sessions/claude-child-b/requests/req-claude-b?eventId=evt-3`,
@@ -428,12 +433,13 @@ describe('#2316 inline approval card', () => {
           decision,
         },
       });
-      // A decision that landed is not offered again.
+      // A decision that landed is not offered again; the chosen button says
+      // it is in flight until the request resolves.
       await waitFor(() =>
         expect(
           (
             screen.getByRole('button', {
-              name: label.endsWith('for this session') ? 'Allow Once' : label,
+              name: decision === 'decline' ? 'Denying…' : 'Allowing…',
             }) as HTMLButtonElement
           ).disabled,
         ).toBe(true),
@@ -573,14 +579,25 @@ describe('#2316 inline approval card', () => {
       ],
       'Allow reading this folder for this session',
     ],
-    ['Read', 'nothing can be forwarded (an ask rule)', undefined, undefined],
+    [
+      'Read',
+      'nothing can be forwarded (an ask rule)',
+      undefined,
+      // Owner decision (2026-11-16): offered on every tool approval.
+      'Allow all Read calls for this session',
+    ],
     [
       'Edit',
       'the engine suggests acceptEdits',
       [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
       'Auto-accept file edits for this session',
     ],
-    ['Edit', 'a sensitive file is asked for in acceptEdits', [], undefined],
+    [
+      'Edit',
+      'a sensitive file is asked for in acceptEdits',
+      [],
+      'Allow all Edit calls for this session',
+    ],
   ])(
     '#2915: a %s card when %s',
     async (toolName, _case, suggestions, label) => {
@@ -878,7 +895,7 @@ describe('#2316 inline approval card', () => {
         await screen.findByRole('button', { name: 'Allow Once' }),
       );
 
-      const status = await screen.findByText('This request is no longer open.');
+      const status = await screen.findByText('Already answered.');
       expect(status.getAttribute('role')).toBe('status');
       expect(screen.queryByText(/Your decision was not delivered/)).toBeNull();
       // Settledness is read from the exact request, not guessed from the
@@ -914,7 +931,7 @@ describe('#2316 inline approval card', () => {
 
       const alert = await screen.findByText(/Your decision was not delivered/);
       expect(alert.closest('[role="alert"]')).not.toBeNull();
-      expect(screen.queryByText('This request is no longer open.')).toBeNull();
+      expect(screen.queryByText('Already answered.')).toBeNull();
     });
 
     test('stays a loud failure when the request cannot be verified', async () => {
@@ -942,7 +959,7 @@ describe('#2316 inline approval card', () => {
 
       const alert = await screen.findByText(/Your decision was not delivered/);
       expect(alert.closest('[role="alert"]')).not.toBeNull();
-      expect(screen.queryByText('This request is no longer open.')).toBeNull();
+      expect(screen.queryByText('Already answered.')).toBeNull();
     });
 
     test('a refused session grant on an already-answered request grants nothing locally', async () => {
@@ -972,7 +989,7 @@ describe('#2316 inline approval card', () => {
 
         await pickGrant('Allow all Bash commands for this session');
 
-        await screen.findByText('This request is no longer open.');
+        await screen.findByText('Already answered.');
         // Which decision settled it is not ours to claim: no local grant.
         expect(
           activeChatsStore.getSnapshot()['chat-tab']?.sessionAutoApprove ?? [],

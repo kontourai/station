@@ -1,0 +1,7 @@
+{
+  "revision": "6de4e706ca4d25e73692e6f075d74a2c3b2e1a24",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked after a whitespace-only format of ChildWorkRow.css; no claim changes.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/agents/ChildWorkRow.css"]}
+  ]
+}

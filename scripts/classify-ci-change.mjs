@@ -174,7 +174,6 @@ const DESKTOP_RUST_FILES = new Set([
   'src-ui/src/platform/native/htmlReplyCapability.js',
   'src-ui/src/platform/native/pluginBundleCapability.js',
   'src-ui/public/favicon.png',
-  'src-ui/public/favicon-beta.png',
   'src-ui/public/favicon-dev.png',
   'src-ui/public/favicon-nightly.png',
   'scripts/prepare-desktop-rust-resources.mjs',

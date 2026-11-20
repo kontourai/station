@@ -5,11 +5,6 @@ export const STATION_RELEASE_RINGS = Object.freeze({
     prerelease: false,
     launcher: 'station',
   }),
-  preview: Object.freeze({
-    runtimeChannel: 'beta',
-    prerelease: true,
-    launcher: 'station-beta',
-  }),
   nightly: Object.freeze({
     runtimeChannel: 'nightly',
     prerelease: true,

@@ -136,6 +136,45 @@ test('the install preview renders the claim the preview response carried', () =>
   expect(section().textContent).toContain('Key primary');
 });
 
+test('installation preview scopes each dependency to its own receipt', () => {
+  render(
+    <InstallPreviewModal
+      previewData={{
+        valid: true,
+        components: [],
+        conflicts: [],
+        registryTrust: signed,
+        dependencies: [
+          {
+            id: 'child',
+            status: 'will-install',
+            registryTrust: {
+              ...signed,
+              receipt: { ...receipt, registryId: 'child', signer: null },
+            },
+          },
+          { id: 'local', status: 'installed' },
+        ],
+      }}
+      previewSkips={new Set()}
+      installPending={false}
+      onClose={vi.fn()}
+      onToggleSkip={vi.fn()}
+      onConfirm={vi.fn()}
+    />,
+  );
+  const child = screen.getByRole('region', {
+    name: 'Registry verification for child',
+  });
+  expect(child.textContent).toContain('Registry entry child');
+  expect(child.textContent).toContain('Unsigned. No signer was verified.');
+  expect(section().textContent).toContain('Key primary');
+  expect(
+    screen.getByRole('region', { name: 'Registry verification for local' })
+      .textContent,
+  ).toContain('Treat it as unverified.');
+});
+
 test('a preview with no verified claim says so instead of staying silent', () => {
   render(
     <InstallPreviewModal
@@ -165,7 +204,15 @@ test('the recovery review shows the recovery viewâ€™s receipt, not the list rowâ
     registryTrustRevision: signed.revision,
     registryTrust: signed,
     permissions: { required: [], autoGranted: [], pendingConsent: [] },
-    dependencies: [],
+    dependencies: [
+      {
+        id: 'child',
+        registryTrust: {
+          ...signed,
+          receipt: { ...receipt, registryId: 'child' },
+        },
+      },
+    ],
   };
   render(
     <PluginRecoveryPanel
@@ -186,6 +233,10 @@ test('the recovery review shows the recovery viewâ€™s receipt, not the list rowâ
   ).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
   await waitFor(() => expect(section().textContent).toContain(digest('d')));
+  expect(
+    screen.getByRole('region', { name: 'Registry verification for child' })
+      .textContent,
+  ).toContain('Registry entry child');
   expect(section().textContent).toContain(
     'Recorded when this installation was verified.',
   );

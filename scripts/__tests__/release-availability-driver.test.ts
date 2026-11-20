@@ -1,22 +1,25 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { load } from 'js-yaml';
 import { describe, expect, test, vi } from 'vitest';
+import { canonicalJson } from '../lib/release-sboms.mjs';
 import {
   createReleaseLabelAdapter,
   request,
   runReleaseAvailability,
 } from '../release-availability-driver.mjs';
+import { PROMOTION_RECEIPT_ASSET } from '../release-promotion.mjs';
 
 const previousSha = 'a'.repeat(40);
 const sourceSha = 'b'.repeat(40);
-const tag = 'v1.2.3-preview.2';
+const tag = 'v1.2.3';
 const event = {
   repository: { full_name: 'kontourai/station' },
   workflow: 'publish-release',
   success: true,
   tag,
   sourceSha,
-  channel: 'preview',
+  channel: 'stable',
 };
 const release = (name: string, published_at: string) => ({
   tag_name: name,
@@ -33,7 +36,7 @@ const inventory = () => ({
   tag,
   version: tag.slice(1),
   sourceSha,
-  channel: 'preview',
+  channel: 'stable',
   container: { tag, sha: sourceSha },
 });
 
@@ -41,7 +44,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
   const getIssue = vi
     .fn()
     .mockResolvedValueOnce({ labels: ['stage:source'] })
-    .mockResolvedValueOnce({ labels: ['stage:preview'] });
+    .mockResolvedValueOnce({ labels: ['stage:stable'] });
   return {
     repository: vi.fn().mockResolvedValue({ private: false }),
     releaseForTag: vi
@@ -51,7 +54,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
       .fn()
       .mockResolvedValue([
         release(tag, '2026-08-24T12:00:00.000Z'),
-        release('v1.2.3-preview.1', '2026-08-23T12:00:00.000Z'),
+        release('v1.2.2', '2026-08-23T12:00:00.000Z'),
       ]),
     tagSha: vi
       .fn()
@@ -212,17 +215,176 @@ describe('release availability driver', () => {
     ).resolves.toEqual({ kind: 'unavailable' });
   });
 
+  test.each([
+    'valid',
+    'changed-bytes',
+    'wrong-base',
+    'wrong-source',
+    'untrusted-policy',
+    'untrusted-receipt',
+  ])(
+    'projects unchanged RC inventory only through authenticated promotion lineage: %s',
+    async (mode) => {
+      const producerTag = 'v1.2.3-rc.2';
+      const original = {
+        ...inventory(),
+        tag: producerTag,
+        assets: [],
+        container: { tag: producerTag, sha: sourceSha },
+      };
+      const files = new Map<string, Buffer>([
+        [
+          'station-release-inventory.json',
+          Buffer.from(canonicalJson(original)),
+        ],
+        ['station-release-checksums.txt', Buffer.from('checksums\n')],
+        ['station-release-store-authority.json', Buffer.from('{}')],
+      ]);
+      const assets = [...files].map(([name, bytes]) => ({
+        name,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        size: bytes.length,
+      }));
+      const transfer = {
+        producerTag,
+        publicationTag: tag,
+        sourceSha,
+        version: '1.2.3',
+        assets,
+      };
+      const receipt = {
+        ...transfer,
+        kind: 'station.release-promotion/v1',
+        state: 'assets-verified',
+        policySha: 'c'.repeat(40),
+        workflowSha: 'd'.repeat(40),
+        transferDigest: createHash('sha256')
+          .update(canonicalJson(transfer))
+          .digest('hex'),
+        storeAuthoritySha256: assets.find(
+          (asset) => asset.name === 'station-release-store-authority.json',
+        )?.sha256,
+      };
+      if (mode === 'wrong-base') receipt.version = '1.2.4';
+      if (mode === 'wrong-source') receipt.sourceSha = previousSha;
+      files.set(PROMOTION_RECEIPT_ASSET, Buffer.from(JSON.stringify(receipt)));
+      if (mode === 'changed-bytes')
+        files.set('station-release-checksums.txt', Buffer.from('changed\n'));
+      const entries = [...files];
+      const current = {
+        ...release(tag, '2026-08-24T12:00:00.000Z'),
+        assets: entries.map(([name], index) => ({ id: index + 1, name })),
+      };
+      const api = fixture({
+        repository: vi
+          .fn()
+          .mockResolvedValue({ private: false, default_branch: 'main' }),
+        releaseForTag: vi.fn().mockResolvedValue(current),
+        downloadAsset: vi.fn().mockImplementation((id) => entries[id - 1][1]),
+        tagSha: vi
+          .fn()
+          .mockImplementation((value) =>
+            Promise.resolve(
+              [tag, producerTag].includes(value) ? sourceSha : previousSha,
+            ),
+          ),
+        verifyPolicyCommit: vi
+          .fn()
+          .mockResolvedValue(mode !== 'untrusted-policy'),
+        verifyAttestation: vi.fn().mockImplementation((path) => {
+          if (
+            mode === 'untrusted-receipt' &&
+            path.endsWith(PROMOTION_RECEIPT_ASSET)
+          )
+            throw new Error('untrusted receipt');
+        }),
+      });
+      const opts = options(api);
+      delete (opts as Record<string, unknown>).readInventoryFile;
+      const result = await runReleaseAvailability(event, opts);
+      expect(result).toMatchObject({
+        kind: mode === 'valid' ? 'projected' : 'unavailable',
+      });
+      if (mode === 'valid') {
+        expect(api.addLabel).toHaveBeenCalledWith(9, 'stage:stable');
+        expect(result).toMatchObject({ outcomes: [[9, { kind: 'stable' }]] });
+        expect(api.verifyAttestation).toHaveBeenCalledWith(
+          expect.stringContaining(PROMOTION_RECEIPT_ASSET),
+          {
+            sourceRef: 'refs/heads/main',
+            sourceSha: receipt.workflowSha,
+            workflow: '.github/workflows/publish-release.yml',
+          },
+        );
+      } else expect(api.addLabel).not.toHaveBeenCalled();
+    },
+  );
+
   test('projects no availability for a retired preview release (#4929)', async () => {
-    // No -preview.N tag can be staged any more, so no preview release has
-    // an inventory the release-tag parser recognizes; even with every
-    // provider receipt present, the driver writes no label.
     const api = fixture();
-    await expect(runReleaseAvailability(event, options(api))).resolves.toEqual({
-      kind: 'unavailable',
-    });
+    await expect(
+      runReleaseAvailability(
+        { ...event, tag: 'v1.2.3-preview.2', channel: 'preview' },
+        options(api),
+      ),
+    ).resolves.toEqual({ kind: 'ignored' });
     expect(api.addLabel).not.toHaveBeenCalled();
     expect(api.removeLabel).not.toHaveBeenCalled();
   });
+
+  test('permits an explicit first-Stable baseline bootstrap without writing issue labels', async () => {
+    const api = fixture({
+      listReleases: vi
+        .fn()
+        .mockResolvedValue([release(tag, '2026-08-24T12:00:00.000Z')]),
+    });
+    await expect(
+      runReleaseAvailability(
+        { ...event, allowEmptyBaseline: true },
+        options(api),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'bootstrap-without-labels',
+      projected: 0,
+    });
+    expect(api.getIssue).not.toHaveBeenCalled();
+    expect(api.addLabel).not.toHaveBeenCalled();
+    expect(api.removeLabel).not.toHaveBeenCalled();
+  });
+
+  test.each(['unavailable', 'empty', 'full-page', 'other-stable', 'malformed'])(
+    'never treats %s history as first-Stable bootstrap authority',
+    async (mode) => {
+      const listReleases =
+        mode === 'unavailable'
+          ? vi.fn().mockRejectedValue(new Error('unknown history'))
+          : vi
+              .fn()
+              .mockResolvedValue(
+                mode === 'empty'
+                  ? []
+                  : mode === 'full-page'
+                    ? Array.from({ length: 100 }, () =>
+                        release(tag, '2026-08-24T12:00:00.000Z'),
+                      )
+                    : [
+                        release(tag, '2026-08-24T12:00:00.000Z'),
+                        mode === 'malformed'
+                          ? {}
+                          : release('v1.2.4', '2026-08-25T12:00:00.000Z'),
+                      ],
+              );
+      const api = fixture({ listReleases });
+      await expect(
+        runReleaseAvailability(
+          { ...event, allowEmptyBaseline: true },
+          options(api),
+        ),
+      ).resolves.toMatchObject({ kind: 'unavailable' });
+      expect(api.addLabel).not.toHaveBeenCalled();
+      expect(api.removeLabel).not.toHaveBeenCalled();
+    },
+  );
 
   test('supports stable releases and derives the stable stage from the matching channel', async () => {
     const stableTag = 'v1.2.3';
@@ -269,7 +431,7 @@ describe('release availability driver', () => {
     ['branch', { workflow: 'branch' }],
     ['failed publish', { success: false }],
     ['dry run', { dryRun: true }],
-    ['tag/channel mismatch', { channel: 'stable' }],
+    ['tag/channel mismatch', { channel: 'nightly' }],
     ['wrong repository', { repository: { full_name: 'evil/repo' } }],
   ])('makes zero label calls for %s', async (_name, patch) => {
     const api = fixture();
@@ -350,8 +512,8 @@ describe('release availability driver', () => {
         .fn()
         .mockResolvedValue([
           release(tag, '2026-08-24T12:00:00.000Z'),
-          release('v1.2.3-preview.1', '2026-08-23T12:00:00.000Z'),
-          release('v1.2.2-preview.1', '2026-08-23T12:00:00.000Z'),
+          release('v1.2.2', '2026-08-23T12:00:00.000Z'),
+          release('v1.2.1', '2026-08-23T12:00:00.000Z'),
         ]),
     });
     await expect(
@@ -392,7 +554,7 @@ describe('release availability driver', () => {
       removeLabel: vi.fn(),
     };
     const evidence: any = {
-      channel: 'preview',
+      channel: 'stable',
       success: true,
       sourceSha,
       tag,
@@ -417,7 +579,7 @@ describe('release availability driver', () => {
     await expect(
       createReleaseLabelAdapter(api).project(9, evidence),
     ).resolves.toMatchObject({ kind: 'unavailable' });
-    expect(api.addLabel).toHaveBeenCalledWith(9, 'stage:preview');
+    expect(api.addLabel).toHaveBeenCalledWith(9, 'stage:stable');
     expect(api.removeLabel).toHaveBeenCalledWith(9, 'stage:source');
   });
 
@@ -426,13 +588,13 @@ describe('release availability driver', () => {
       'add applied then response lost',
       'addLabel',
       ['stage:source'],
-      ['stage:preview'],
+      ['stage:stable'],
     ],
     [
       'remove applied then response lost',
       'removeLabel',
       ['stage:source'],
-      ['stage:preview'],
+      ['stage:stable'],
     ],
   ])(
     'repairs only the stage axis when %s',
@@ -450,7 +612,7 @@ describe('release availability driver', () => {
         }),
       };
       const result = await createReleaseLabelAdapter(api).project(9, {
-        channel: 'preview',
+        channel: 'stable',
         success: true,
         sourceSha,
         tag,
@@ -472,7 +634,7 @@ describe('release availability driver', () => {
           container: 'container/image',
         },
       });
-      expect(result.kind).toBe('preview');
+      expect(result.kind).toBe('stable');
       expect(labels.filter((label) => label.startsWith('stage:'))).toEqual(
         final,
       );

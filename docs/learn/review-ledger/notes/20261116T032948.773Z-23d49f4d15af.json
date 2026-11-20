@@ -1,0 +1,7 @@
+{
+  "revision": "92b391b81dbf4ca101c22dc7dee4134074cfcd9e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated the inbox header (one line: search, scope picker, New chat; hidden-attention notice) and replaced 'Refresh lives in overflow' with the end-of-list Browse and failed-read Retry; added title-first card row order. Checked ChatDockInboxPanel.tsx, InboxScopeFilter.tsx, ChatDockInboxRows.tsx; ChatDockInboxPanel, InboxRow and InboxRow.geometry (Chromium) tests ran.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

@@ -14,7 +14,7 @@ Tauri 2.12.1 forwards its `devtools` Cargo feature to Wry 0.57. In a release
 build that makes the default WebView inspectable: Android enables WebView
 remote debugging, iOS enables Safari inspection, and desktop exposes its
 platform inspector. Station's default Cargo dependency no longer enables this
-feature. Stable and Beta release configurations therefore exclude release
+feature. Stable RC/final release configurations therefore exclude release
 inspection; ordinary development/debug builds retain it through Tauri's debug
 configuration.
 
@@ -28,11 +28,11 @@ Android development identity:
 npm run tauri -- android build --apk --target aarch64 --features native-devtools --config tauri.android.dev.conf.json
 ```
 
-The boundary reduces unintended inspection of shipped Stable/Beta WebViews by
+The boundary reduces unintended inspection of shipped Stable WebViews by
 someone with access to the OS/browser debugging connection. It does not defend
 against a hostile device owner, root access, or a separately modified build.
 Cargo/config checks establish feature selection; verify actual inspector
-absence on installed Stable/Beta release artifacts and availability on an
+absence on installed Stable RC/final release artifacts and availability on an
 installed Nightly or debug artifact before claiming packaged-platform proof.
 
 ## Build a development iOS simulator app
@@ -571,23 +571,30 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar starts Node with a home-scoped compile cache. The first
+The desktop sidecar starts the server without a compile cache and removes
+any inherited `NODE_COMPILE_CACHE`
+([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
-after Node has consumed its startup setting, so dotenv cannot restore it for
-generic child launchers.
+after Node has consumed any startup setting, so dotenv cannot restore it for
+generic child launchers. The server gives the home's cache directory only to
+the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
 the setting when launching replacement Station server generations; each enters
 through the same server bootstrap. The
 [process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
 checks Node's active cache across two starts and executes real stdio MCP,
-Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+Strands, Flow Agents, Veritas and login-shell child paths. Through the real
+stdio transport, the built-in station-control environment carries the home's
+cache and a third-party server's does not. Its first-import
 ordering assertion is a source-only wiring guard, separate from packaged-shell
 startup evidence. A second regression builds the real server entry and runs it
 from a working directory whose `.env` contains the cache setting. It verifies
 that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
-real child without that variable, both with and without a startup cache.
-External ESM dependencies evaluate before the bundled bootstrap. The regression
+real child without that variable, both with and without a startup cache. It
+then runs the built station-control bundle: its cache is on disk while it still
+runs, before a signal ends it, and its own environment no longer carries the
+setting. External ESM dependencies evaluate before the bundled bootstrap. The regression
 observes no Node child-process launches during evaluation of the installed
 dependency graph; this evidence is specific to those dependency versions.
 
@@ -806,7 +813,6 @@ has a distinct path:
 | Channel | Tauri identifier | macOS | Linux | Windows |
 | --- | --- | --- | --- | --- |
 | Stable | `io.kontourai.station` | `~/Library/Logs/io.kontourai.station/station.log` | `$XDG_DATA_HOME/io.kontourai.station/logs/station.log`, or `~/.local/share/io.kontourai.station/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station\logs\station.log` |
-| Beta | `io.kontourai.station.beta` | `~/Library/Logs/io.kontourai.station.beta/station.log` | `$XDG_DATA_HOME/io.kontourai.station.beta/logs/station.log`, or `~/.local/share/io.kontourai.station.beta/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station.beta\logs\station.log` |
 | Nightly | `io.kontourai.station.nightly` | `~/Library/Logs/io.kontourai.station.nightly/station.log` | `$XDG_DATA_HOME/io.kontourai.station.nightly/logs/station.log`, or `~/.local/share/io.kontourai.station.nightly/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station.nightly\logs\station.log` |
 
 These are separate from installed service output. macOS LaunchAgents write
@@ -929,7 +935,7 @@ person separately before claiming fresh relay-only acceptance.
 | macOS packaged startup, overdue cover Restart/Quit, Finder/Dock/reopen | Rust/static/UI checks | Installed package, actual native window/cover, and launch-method record | **NOT_VERIFIED** |
 | Windows packaged startup, second launch, tray | Rust/static/UI checks | Installed package, actual shell/tray and service-backend record | **NOT_VERIFIED** |
 | Linux packaged startup and indicator behavior | Rust/static/UI checks | Installed package on a supported desktop shell, indicator result recorded | **NOT_VERIFIED** |
-| Android/iOS startup recovery | No equivalent desktop readiness harness | Real device and a defined mobile recovery contract | **NOT_VERIFIED** |
+| Android/iOS startup recovery | Renderer tests stall saved-Station hydration and the pairing chunk. An installed iOS development simulator build reached the welcome and pairing routes. A simulator-only delay at the profile IPC showed the named stage and Reload started a new attempt. | Physical evidence for release builds and installed Android stall recovery | **NOT_VERIFIED** on physical devices |
 | In-shell hostile plugin IPC denial | Separate browser spec and `plugin-host-security` Tauri-WebView lane | Completed exact-binary WebView lane; separate release-platform qualification | **NOT_VERIFIED** in this review (historical archive#2495) |
 | Renderer death and bounded reload | Window recreation source; no automatic renderer-death recovery proof established here | Native kill/boot-crash evidence and bounded recovery assertions | **NOT_VERIFIED** (archive#2006) |
 | EPIPE/closed stdio | Server stdout guard and synchronous/asynchronous fixture tests | Packaged Desktop-parent disappearance and closed-pipe recovery journey | **NOT_VERIFIED** on native shells (archive#2006) |

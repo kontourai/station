@@ -20,6 +20,7 @@ interface SpatialBoardOwnerResolverDeps {
   sessions: {
     listSessionReadModel(
       authority: SessionReadAuthority,
+      options: { purpose: 'spatial-board'; threadIds: readonly string[] },
     ): Promise<readonly Session[]>;
   };
   /**
@@ -107,13 +108,20 @@ export function createSpatialBoardOwnerResolver(
       },
       session: {
         resolve: async (references) => {
+          const referenced = kind(references, 'session');
+          // Only the Sessions the board names are read (#4992): the same
+          // read model and readability checks, without folding every other
+          // Session the viewer may read.
           const sessions = new Map(
-            (sessionAuthority
-              ? await deps.sessions.listSessionReadModel(sessionAuthority)
+            (sessionAuthority && referenced.length > 0
+              ? await deps.sessions.listSessionReadModel(sessionAuthority, {
+                  purpose: 'spatial-board',
+                  threadIds: referenced.map((reference) => reference.id),
+                })
               : []
             ).map((session) => [session.threadId, session]),
           );
-          return kind(references, 'session').map((reference) => {
+          return referenced.map((reference) => {
             const session = sessions.get(reference.id);
             return session
               ? {

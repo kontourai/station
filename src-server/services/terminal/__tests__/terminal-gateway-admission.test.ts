@@ -102,6 +102,9 @@ describe('terminal gateway admission (#3994)', () => {
         resolveRoot: async () => root,
         legacyProjectSlug: async () => 'alpha-slug',
         resolveLaunch: async (_principal, _scope, profile) => {
+          if (profile.kind === 'repository-sign-in') {
+            return { file: 'gh', args: ['auth', 'login', '--web'] };
+          }
           if (profile.connectionId !== 'claude' || profile.mode !== 'code')
             throw new Error('unknown profile');
           return { file: 'claude-cli', args: ['--mode', profile.mode] };
@@ -395,6 +398,24 @@ describe('terminal gateway admission (#3994)', () => {
     });
     await expect.poll(() => unknown.state).toBe('failed');
     expect(unknown.error?.code).toBe('refused');
+    expect(spawned).toHaveLength(1);
+  });
+
+  test('repository sign-in starts a fresh interactive program and rejects restart', async () => {
+    await start();
+    const store = storeFor('phone');
+    const login = store.open(scope, {
+      cols: 80,
+      rows: 24,
+      launch: { kind: 'repository-sign-in', provider: 'github' },
+    });
+    await expect.poll(() => login.state).toBe('ready');
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.launch).toEqual({
+      file: 'gh',
+      args: ['auth', 'login', '--web'],
+    });
+    await expect(login.restart()).rejects.toThrow();
     expect(spawned).toHaveLength(1);
   });
 

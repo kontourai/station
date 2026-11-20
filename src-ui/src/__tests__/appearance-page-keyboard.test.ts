@@ -56,6 +56,8 @@ const NORD_DARK_BACKGROUND = (
 const HARNESS = `
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ConnectionsProvider } from '@kontourai/station-connect';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { KeyboardShortcutsProvider } from './src-ui/src/contexts/KeyboardShortcutsContext';
 import { bindColorThemeToSettings } from './src-ui/src/lib/color-theme-apply';
 import { deviceSettingsStore } from './src-ui/src/lib/device-settings-store';
@@ -63,7 +65,11 @@ import { AppearancePage } from './src-ui/src/pages/AppearancePage';
 bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 window.store = deviceSettingsStore;
 createRoot(document.getElementById('root')).render(
-  createElement(KeyboardShortcutsProvider, null, createElement(AppearancePage)),
+  createElement(QueryClientProvider, { client: new QueryClient() },
+    createElement(ConnectionsProvider, { seedDefault: false },
+      createElement(KeyboardShortcutsProvider, null, createElement(AppearancePage)),
+    ),
+  ),
 );
 `;
 
@@ -83,6 +89,35 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       platform: 'browser',
       jsx: 'automatic',
       loader: { '.svg': 'dataurl', '.png': 'dataurl' },
+      plugins: [
+        {
+          name: 'connect-from-source',
+          setup(builder) {
+            builder.onResolve(
+              { filter: /^@kontourai\/station-connect$/ },
+              () => ({
+                path: resolve(REPO_ROOT, 'packages/connect/src/index.ts'),
+              }),
+            );
+          },
+        },
+        {
+          // The Custom section reads the person's server document through the
+          // Station connection, which this page-only harness does not seed.
+          name: 'stub-custom-appearance-section',
+          setup(builder) {
+            builder.onResolve({ filter: /CustomAppearanceSection$/ }, () => ({
+              path: 'custom-appearance-section',
+              namespace: 'stub',
+            }));
+            builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+              contents:
+                'export function CustomAppearanceSection() { return null; }',
+              loader: 'js',
+            }));
+          },
+        },
+      ],
       define: {
         'import.meta.env': JSON.stringify({ DEV: false, PROD: true }),
         'process.env.NODE_ENV': '"production"',

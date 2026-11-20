@@ -1,0 +1,9 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Only added the pull-request-agent-feedback preview row; other rows and anchors unchanged.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Only added the pull-request-agent-feedback preview row; other rows and anchors unchanged.","inputs":["docs/user/settings.md"]}
+  ]
+}

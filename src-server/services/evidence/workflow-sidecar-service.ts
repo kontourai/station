@@ -29,15 +29,17 @@
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { bindHostWorkflowSession } from '@kontourai/flow-agents/host-workflow-binding';
 import {
-  bindHostWorkflowSession,
-  phases as flowAgentsWorkflowPhases,
-  statuses as flowAgentsWorkflowStatuses,
   readRunCorrelation,
   validateRunCorrelationEnvelope,
   validateRunCorrelationPresence,
+} from '@kontourai/flow-agents/run-correlation';
+import {
+  phases as flowAgentsWorkflowPhases,
+  statuses as flowAgentsWorkflowStatuses,
   writeJson as writeFlowAgentsJson,
-} from '@kontourai/flow-agents';
+} from '@kontourai/flow-agents/workflow-sidecar-vocabulary';
 import type {
   WorkflowHandoff,
   WorkflowNextAction,

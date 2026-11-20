@@ -58,7 +58,9 @@ import {
   type DigestDelegatedChild,
   DigestTurnTooLargeError,
   decodeDigestCursor,
+  digestRequestPreview,
   digestTurn,
+  digestTurnOutcome,
   encodeDigestCursor,
   fitDigestPage,
   sessionDigestLineage,
@@ -113,6 +115,7 @@ export interface SessionProjectActivityDeps {
     | 'listSessionsNamingParents'
     | 'listThreadIdsStartedIn'
     | 'readTurnDigestFacts'
+    | 'readTurnDirectoryFacts'
   >;
   stationControlDispatchScope?: StationControlDispatchScope;
   resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
@@ -508,7 +511,10 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
     const threadIds = candidates();
     const sessions = await deps.orchestrationService.listSessionReadModel(
       readAuthorityFor(c),
-      threadIds === undefined ? undefined : { threadIds },
+      {
+        purpose: 'project-activity',
+        ...(threadIds === undefined ? {} : { threadIds }),
+      },
     );
     const minutes = parseBoundedInteger(
       c.req.query('activeWithinMinutes'),
@@ -566,6 +572,7 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
       candidates.length === 0
         ? []
         : await deps.orchestrationService.listSessionReadModel(authority, {
+            purpose: 'session-digest',
             threadIds: candidates.map((child) => child.threadId),
           });
     const children: Array<DigestDelegatedChild & { startedAt: string }> = [];
@@ -638,24 +645,29 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
       return undefined;
     const [summary] = await deps.orchestrationService.listSessionReadModel(
       authority,
-      { threadIds: [subjectId] },
+      { purpose: 'session-digest', threadIds: [subjectId] },
     );
     if (!summary || isRemote(summary)) return undefined;
     return { conversationId, lineage, subjectId, summary, authority };
   };
 
-  const digest = async (c: Context, viewer: ActivityViewer) => {
+  const digest = async (
+    c: Context,
+    viewer: ActivityViewer,
+    directoryOnly = false,
+  ) => {
     const requestedId = c.req.param('sessionId');
     if (!requestedId || requestedId.length > 512) return sessionNotFound(c);
+    const maxTurns = directoryOnly ? 100 : SESSION_DIGEST_MAX_TURNS;
     const turnLimit = parseBoundedInteger(
       c.req.query('turnLimit'),
       SESSION_DIGEST_DEFAULT_TURNS,
-      SESSION_DIGEST_MAX_TURNS,
+      maxTurns,
     );
     if (turnLimit === undefined)
       return invalid(
         c,
-        `turnLimit must be a whole number from 1 to ${SESSION_DIGEST_MAX_TURNS}.`,
+        `turnLimit must be a whole number from 1 to ${maxTurns}.`,
         'session_digest_limit_out_of_range',
       );
     const subject = await digestSubject(c, viewer, requestedId);
@@ -675,12 +687,46 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
         'session_digest_cursor_invalid',
       );
 
+    const options = {
+      ...(cursor ? { beforeGlobalSequence: cursor.before } : {}),
+      turnLimit,
+    };
+    if (directoryOnly) {
+      try {
+        const read = deps.eventStore.readTurnDirectoryFacts(lineage, {
+          ...options,
+          includeCount: c.req.query('includeCount') !== 'false',
+        });
+        return c.json({
+          success: true,
+          data: {
+            session: { conversationId, turnCount: read.totalTurns },
+            turns: read.turns.map((facts) => ({
+              turnId: facts.turnId,
+              startedAt: facts.startedAt,
+              request: facts.promptPrefix
+                ? digestRequestPreview(facts.promptPrefix).line
+                : undefined,
+              outcome: digestTurnOutcome(facts.terminal),
+            })),
+            nextCursor:
+              read.hasMore && read.turns.length > 0
+                ? encodeDigestCursor({
+                    conversationId,
+                    before: read.turns.at(-1)!.startSequence,
+                  })
+                : null,
+          },
+        });
+      } catch (error) {
+        if (error instanceof TurnDigestLineageTooLongError)
+          return tooLarge(c, error.code, error.message);
+        throw error;
+      }
+    }
     let read: ReturnType<EventStore['readTurnDigestFacts']>;
     try {
-      read = deps.eventStore.readTurnDigestFacts(lineage, {
-        ...(cursor ? { beforeGlobalSequence: cursor.before } : {}),
-        turnLimit,
-      });
+      read = deps.eventStore.readTurnDigestFacts(lineage, options);
     } catch (error) {
       if (error instanceof TurnDigestLineageTooLongError)
         return tooLarge(c, error.code, error.message);
@@ -978,6 +1024,16 @@ export function createSessionPersonActivityRoutes(
         );
       },
     });
+  });
+
+  app.get('/:sessionId/turn-directory', (c) => {
+    const refused = refuseNonPersonRequest(c);
+    if (refused) return refused;
+    return core.digest(
+      c,
+      personViewer(resolveActorPrincipal(deps, c).userId),
+      true,
+    );
   });
 
   app.get('/:sessionId/digest', (c) => {

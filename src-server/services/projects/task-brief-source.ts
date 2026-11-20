@@ -609,7 +609,10 @@ export function composeTaskBriefSource(input: {
   sessionReadModel?: {
     listSessionReadModel(
       authority: typeof INTERNAL_SESSION_READ_SCOPE,
-      options: { threadIds: readonly string[] },
+      options: {
+        purpose: 'task-brief' | 'work-claims';
+        threadIds: readonly string[];
+      },
     ): Promise<OrchestrationSessionSummary[]>;
     currentConversationSessionId(conversationId: string): string;
     canUserReadSession(
@@ -687,7 +690,7 @@ export function composeTaskBriefSource(input: {
       const summaries = input.sessionReadModel
         ? await input.sessionReadModel.listSessionReadModel(
             INTERNAL_SESSION_READ_SCOPE,
-            { threadIds: sessionIds },
+            { purpose: 'task-brief', threadIds: sessionIds },
           )
         : [];
       const status = new Map(

@@ -212,7 +212,8 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     [
       'a Claude read-only tool with nothing to forward (an ask rule)',
       { toolName: 'Read' },
-      undefined,
+      // Owner decision (2026-11-16): offered on every tool approval.
+      'Allow all Read calls for this session',
     ],
     [
       'a Bash read outside the working directories',
@@ -265,12 +266,12 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
           { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
         ],
       },
-      undefined,
+      'Allow all Edit calls for this session',
     ],
     [
       'a sensitive-file edit with nothing to forward',
       { toolName: 'Edit', suggestions: [] },
-      undefined,
+      'Allow all Edit calls for this session',
     ],
     [
       'a Bash call forced by an ask rule',
@@ -278,7 +279,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
         toolName: 'Bash',
         matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
       },
-      undefined,
+      'Allow all Bash commands for this session',
     ],
   ])('#2915: labels the session grant for %s', (_case, payload, label) => {
     handleRequestOpenedEvent(

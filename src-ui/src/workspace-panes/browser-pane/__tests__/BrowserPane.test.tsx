@@ -723,6 +723,70 @@ describe('BrowserPane honest states', () => {
     });
     await waitFor(() => expect(change).toHaveBeenCalledWith([OTHER], OTHER));
   });
+  test('a session closed elsewhere reads as closed and offers to reopen its last address', async () => {
+    const closed = sessionView({
+      title: 'Google',
+      url: 'https://www.google.com/',
+      state: 'closed',
+    });
+    const station = fakeStation({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      'GET /api/browser/sessions?projectSlug=alpha': ok([closed]),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(closed),
+      'POST /api/browser/sessions': ok(
+        sessionView({
+          browserSessionId: OTHER,
+          url: 'https://www.google.com/',
+        }),
+        201,
+      ),
+    });
+    const attach = vi.fn();
+    const { container } = render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <BrowserPane
+            projectSlug="alpha"
+            target={{ kind: 'session', browserSessionId: SESSION }}
+            browserSessionIds={[SESSION]}
+            onTabsChange={vi.fn()}
+            onAttach={attach}
+            transport={station.transport as never}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await screen.findByText('This session was closed');
+    // The pane, its address bar and its tab say closed, not live.
+    expect(
+      container.querySelector('.browser-pane[data-closed]'),
+    ).not.toBeNull();
+    expect(
+      (screen.getByLabelText('Address') as HTMLInputElement).disabled,
+    ).toBe(true);
+    const tab = await screen.findByRole('tab', { name: 'Google' });
+    await waitFor(() =>
+      expect(
+        tab.closest('.browser-tabs__item')?.hasAttribute('data-closed'),
+      ).toBe(true),
+    );
+    // Reopen goes back to the last address; a blank session is still offered.
+    expect(
+      screen.getByRole('button', { name: 'Open a new session' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reopen www.google.com' }),
+    );
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(OTHER));
+    expect(station.calls.find((call) => call.method === 'POST')?.body).toEqual({
+      projectSlug: 'alpha',
+      url: 'https://www.google.com/',
+    });
+  });
   test('a Station without the browser routes (hosted) says the browser is unavailable here', async () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(404) });
     expect(

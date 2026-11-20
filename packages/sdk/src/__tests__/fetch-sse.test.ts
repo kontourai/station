@@ -154,6 +154,105 @@ describe('fetchSSE', () => {
     expect(stream.signal.aborted).toBe(true);
   });
 
+  it.each(['addEventListener', 'removeEventListener'] as const)(
+    'refuses a present page without %s before resolving request credentials',
+    async (method) => {
+      const page = pagehideTarget();
+      Object.defineProperty(page.target, method, { value: undefined });
+      vi.stubGlobal('window', page.target);
+      const fetchMock = vi.fn(async () => sseResponse('data: unexpected\n\n'));
+      const credential = vi.fn(() => ({
+        origin: 'https://station.example.test',
+        credential: CREDENTIAL,
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      setClientCredentialResolver(credential);
+
+      let stream: ReturnType<typeof fetchSSE> | undefined;
+      try {
+        expect(() => {
+          stream = fetchSSE('https://station.example.test/events', {
+            onMessage: () => undefined,
+            reconnect: false,
+          });
+        }).toThrow('SSE browser window cannot register pagehide');
+        expect(credential).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        stream?.close();
+        await stream?.completed;
+      }
+    },
+  );
+
+  it('does not reopen a stream whose browser window retired between attempts', async () => {
+    vi.useFakeTimers();
+    const page = pagehideTarget();
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('network down');
+    });
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage: () => undefined,
+      timeoutMs: null,
+      retryDelayMs: 100,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      Object.defineProperty(page.target, 'removeEventListener', {
+        value: undefined,
+      });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(stream.signal.aborted).toBe(true);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
+  it('checks the page again before dispatch after asynchronous credential resolution', async () => {
+    vi.useFakeTimers();
+    const page = pagehideTarget();
+    const requestCredential = {
+      origin: 'https://station.example.test',
+      credential: CREDENTIAL,
+    };
+    let finishCredential!: (credential: typeof requestCredential) => void;
+    const credential = vi.fn(
+      () =>
+        new Promise<typeof requestCredential>((resolve) => {
+          finishCredential = resolve;
+        }),
+    );
+    setClientCredentialResolver(credential);
+    vi.stubGlobal('window', page.target);
+    const fetchMock = vi.fn(async () => sseResponse('data: unexpected\n\n'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage: () => undefined,
+      reconnect: false,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(credential).toHaveBeenCalled();
+      Object.defineProperty(page.target, 'removeEventListener', {
+        value: undefined,
+      });
+      finishCredential(requestCredential);
+      await stream.completed;
+      expect(stream.signal.aborted).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  });
+
   it('aborts a browser-owned stream on a non-persisted pagehide', async () => {
     const page = pagehideTarget();
     const requestAborted = vi.fn();
@@ -171,6 +270,83 @@ describe('fetchSSE', () => {
 
     expect(requestAborted).toHaveBeenCalledOnce();
     expect(stream.signal.aborted).toBe(true);
+  });
+
+  it('settles and releases listeners when the registration surface retires before transport cleanup', async () => {
+    const page = pagehideTarget();
+    const removePageListener = vi.spyOn(page.target, 'removeEventListener');
+    const parent = new AbortController();
+    const removeParentListener = vi.spyOn(parent.signal, 'removeEventListener');
+    const requestAborted = vi.fn();
+    const fetchMock = pendingFetchThatRejectsOnAbort(requestAborted);
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      signal: parent.signal,
+      onMessage: () => undefined,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(stream.signal.aborted).toBe(false);
+
+    page.pagehide(false);
+    Object.defineProperty(page.target, 'removeEventListener', {
+      value: undefined,
+    });
+    await expect(stream.completed).resolves.toBeUndefined();
+
+    expect(requestAborted).toHaveBeenCalledOnce();
+    expect(removePageListener).toHaveBeenCalledWith(
+      'pagehide',
+      expect.any(Function),
+    );
+    expect(removeParentListener).toHaveBeenCalledWith(
+      'abort',
+      expect.any(Function),
+    );
+  });
+
+  it('removes retry listeners from their original targets after the host changes', async () => {
+    const page = pagehideTarget();
+    const document = pagehideTarget();
+    const addPageListener = vi.spyOn(page.target, 'addEventListener');
+    const removePageListener = vi.spyOn(page.target, 'removeEventListener');
+    const removeDocumentListener = vi.spyOn(
+      document.target,
+      'removeEventListener',
+    );
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('network down');
+    });
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('document', document.target);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage: () => undefined,
+    });
+    await vi.waitFor(() =>
+      expect(addPageListener).toHaveBeenCalledWith(
+        'online',
+        expect.any(Function),
+      ),
+    );
+
+    vi.stubGlobal('window', pagehideTarget().target);
+    vi.stubGlobal('document', pagehideTarget().target);
+    stream.close();
+    await stream.completed;
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(removePageListener.mock.calls.map(([type]) => type)).toEqual([
+      'focus',
+      'online',
+      'pagehide',
+    ]);
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      'visibilitychange',
+      expect.any(Function),
+    );
   });
 
   it('keeps a browser-owned stream active for BFCache pagehide until closed', async () => {
@@ -1306,6 +1482,67 @@ describe('fetchSSE stall watchdog (station#2301)', () => {
     expect(new Headers(reconnectInit?.headers).get('Last-Event-ID')).toBe('7');
 
     stream.close();
+  });
+
+  it('removes body watchdog listeners when the page API retires during an open read', async () => {
+    const page = pagehideTarget();
+    const pageDocument = pagehideTarget();
+    const removePageListener = vi.spyOn(page.target, 'removeEventListener');
+    const removeDocumentListener = vi.spyOn(
+      pageDocument.target,
+      'removeEventListener',
+    );
+    const onMessage = vi.fn();
+    const onCancel = vi.fn();
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('document', pageDocument.target);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('data: ready\n\n'));
+              },
+              pull: () => new Promise<void>(() => undefined),
+              cancel: onCancel,
+            }),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      ),
+    );
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage,
+      timeoutMs: null,
+    });
+    try {
+      await vi.waitFor(() => expect(onMessage).toHaveBeenCalledOnce());
+      expect(removePageListener).not.toHaveBeenCalled();
+      expect(removeDocumentListener).not.toHaveBeenCalled();
+      Object.defineProperty(page.target, 'removeEventListener', {
+        value: undefined,
+      });
+      Object.defineProperty(pageDocument.target, 'removeEventListener', {
+        value: undefined,
+      });
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+
+    expect(onMessage).toHaveBeenCalledOnce();
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(removePageListener.mock.calls.map(([type]) => type)).toEqual([
+      'focus',
+      'online',
+      'pagehide',
+    ]);
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      'visibilitychange',
+      expect.any(Function),
+    );
   });
 
   it('never trips while the server keeps writing heartbeats', async () => {

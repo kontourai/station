@@ -1,0 +1,7 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Added the in-memory transcript reopen cache paragraph (bounds, key, clear triggers, no write authority) beside offline reading; checked against transcriptWindowCache.ts and its callers.","inputs":["docs/design/offline-outbound-queue.md"]}
+  ]
+}

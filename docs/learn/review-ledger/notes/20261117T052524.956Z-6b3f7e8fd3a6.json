@@ -1,0 +1,7 @@
+{
+  "revision": "f999d60cc925fee3d72f36e9ec0c62b4af05ca1c",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-before.png","note":"Image shows a project Home with a ready Agent and no setup card; the Home change only affects the no-startable-Agent state, so it stays accurate.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

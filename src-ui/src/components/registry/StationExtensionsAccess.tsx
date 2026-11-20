@@ -13,6 +13,7 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import './StationExtensionsAccess.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 export function useStationExtensionsAccess() {
   const { activeConnection, captureSelectionIntent } = useConnections();
@@ -52,6 +53,7 @@ export function useStationExtensionsAccess() {
     selection: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useDecisionSurface('extensions-access-consent', review !== null);
   const openReview = (enable: boolean) => {
     setError(null);
     setReview({

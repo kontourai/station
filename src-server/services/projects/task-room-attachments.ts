@@ -22,7 +22,10 @@ import {
 } from '@kontourai/station-contracts/project-task-room';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { createLogger } from '../../utils/logger.js';
-import { AttachmentBlobStore } from '../orchestration/attachment-blob-store.js';
+import {
+  AttachmentBlobStore,
+  attachmentBlobRefFor,
+} from '../orchestration/attachment-blob-store.js';
 import { publishThroughOwnedFile } from '../orchestration/owned-staging-file.js';
 
 const logger = createLogger({ name: 'project-room-attachments' });
@@ -117,17 +120,23 @@ export class RoomAttachments {
     /** Names the owner in the limit refusal ("This Task has…"). */
     private readonly owner: string,
     /**
-     * `retention: false` turns off the byte store's age and size eviction.
      * `leftovers` names trees an earlier build may have left in the root:
      * absent or empty is fine, anything else is unknown (see `scanReferences`).
      */
-    options: { retention?: false; leftovers?: readonly string[] } = {},
+    private readonly options: {
+      referenceBoundBudget?: boolean;
+      leftovers?: readonly string[];
+    } = {},
   ) {
     this.leftovers = options.leftovers ?? [];
     this.blobs = new AttachmentBlobStore({
       rootDir: join(root, 'blobs'),
-      ...(options.retention === false ? { retention: false } : {}),
+      retention: false,
     });
+  }
+  lock() {
+    mkdirSync(this.root, { recursive: true });
+    return acquireFileMutationLockAsync(join(this.root, 'store.lock'));
   }
   private directory(binding: readonly string[]) {
     const key = createHash('sha256')
@@ -161,10 +170,30 @@ export class RoomAttachments {
     });
     if (stored + inputs.length > FILES_PER_BINDING)
       throw new Error(`This ${this.owner} has reached its attachment limit.`);
-    return inputs.map(({ dataUrl, ...metadata }) => {
-      const blobRef = this.blobs.write(
-        parseChatAttachmentDataUrl(dataUrl)!.base64,
-      );
+    const uploads = inputs.map(({ dataUrl, ...metadata }) => ({
+      metadata,
+      bytes: Buffer.from(parseChatAttachmentDataUrl(dataUrl)!.base64, 'base64'),
+    }));
+    if (
+      this.options.referenceBoundBudget &&
+      !storage(() =>
+        this.blobs.prepareReferencedWrite(
+          new Map(
+            uploads.map(({ bytes }) => [
+              attachmentBlobRefFor(bytes),
+              bytes.length,
+            ]),
+          ),
+          () => {
+            const { byRecord, unknown } = this.scanReferences();
+            if (!unknown.length) return new Set([...byRecord.values()].flat());
+          },
+        ),
+      )
+    )
+      throw new TaskRoomAttachmentCapacityError();
+    return uploads.map(({ bytes, metadata }) => {
+      const blobRef = this.blobs.writeBytes(bytes);
       if (!blobRef)
         throw new RoomStorageFailure('Attachment bytes could not be saved.');
       const attachment = { ...metadata, id: randomUUID() };
@@ -394,10 +423,21 @@ const taskBinding = (scope: Scope) => [
 export class TaskRoomAttachments {
   private readonly files: RoomAttachments;
   constructor(root: string) {
-    this.files = new RoomAttachments(root, 'Task');
+    this.files = new RoomAttachments(root, 'Task', {
+      referenceBoundBudget: true,
+    });
   }
-  store(scope: Scope, inputs: ChatAttachmentInput[]): TaskRoomAttachment[] {
-    return this.files.store(taskBinding(scope), inputs);
+  async store(
+    resolveScope: () => Promise<Scope | undefined>,
+    inputs: ChatAttachmentInput[],
+  ): Promise<TaskRoomAttachment[] | undefined> {
+    const unlock = await this.files.lock();
+    try {
+      const scope = await resolveScope();
+      return scope && this.files.store(taskBinding(scope), inputs);
+    } finally {
+      await unlock();
+    }
   }
   read(scope: Scope, id: string) {
     return this.files.read(taskBinding(scope), id);
@@ -407,6 +447,12 @@ export class TaskRoomAttachments {
     attachments: TaskRoomAttachment[],
   ): ChatAttachmentInput[] {
     return this.files.resolve(taskBinding(scope), attachments);
+  }
+}
+
+export class TaskRoomAttachmentCapacityError extends Error {
+  constructor() {
+    super('The Station Task-room attachment store has reached its size limit.');
   }
 }
 
@@ -454,7 +500,6 @@ export class ProjectRoomAttachments {
   constructor(private readonly root: string) {
     // `repair/` was the live repair inbox of earlier development builds.
     this.files = new RoomAttachments(root, 'room', {
-      retention: false,
       leftovers: ['repair'],
     });
   }
@@ -462,10 +507,7 @@ export class ProjectRoomAttachments {
   async locked<T>(operation: () => Promise<T> | T): Promise<T> {
     let unlock: () => Promise<void>;
     try {
-      mkdirSync(this.root, { recursive: true });
-      unlock = await acquireFileMutationLockAsync(
-        join(this.root, 'store.lock'),
-      );
+      unlock = await this.files.lock();
     } catch (error) {
       // The store root or its lock file could not be written (#4852 review):
       // the files are unavailable. Waiting out another holder is not a

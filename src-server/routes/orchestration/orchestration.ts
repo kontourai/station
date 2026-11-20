@@ -25,6 +25,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import { CHILD_WORK_TRANSCRIPT_PAGE_MAX } from '@kontourai/station-contracts/child-work';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { UsageLimitContinueOnOptions } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -52,6 +53,7 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
+  STAGED_CONVERSATION_HANDOFF_PREVIEW,
 } from '@kontourai/station-contracts/orchestration';
 import {
   humanPrincipal,
@@ -73,6 +75,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -122,7 +125,10 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
-import { personTypedRequest } from '../../security/person-authorship.js';
+import {
+  personCredentialRequest,
+  personTypedRequest,
+} from '../../security/person-authorship.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
@@ -139,6 +145,7 @@ import {
   isCreateRequestHandle,
   runForegroundCreateClaim,
 } from '../../services/orchestration/create-request-claims.js';
+import { assertInheritedDelegationToolPolicy } from '../../services/orchestration/delegation-tool-policy.js';
 
 /** #3483: an authenticated request that is not a station-control (internal) call. */
 function isPersonRequest(request: Request): boolean {
@@ -147,6 +154,7 @@ function isPersonRequest(request: Request): boolean {
 }
 
 import { TurnIdempotencySettledError } from '@kontourai/monument';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -163,6 +171,8 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
@@ -171,7 +181,10 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
-import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
+import {
+  AttachmentStageError,
+  type AttachmentTurnBinding,
+} from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -192,6 +205,7 @@ import type { OrchestrationService } from '../../services/orchestration/orchestr
 import {
   AdoptionContinuationInProgressError,
   AdoptionEngineNotReadyError,
+  AdoptionSourceActiveError,
   OrchestrationCommandDispatchError,
 } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -211,7 +225,10 @@ import {
   type ThreadInboxDelivery,
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
-import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import {
+  foregroundTurnSubmissionDigest,
+  type StagedTurnSubmission,
+} from '../../services/orchestration/turn-submission-digest.js';
 import { verifyMcpPromptOrigin } from '../../services/plugins/mcp-prompt-origin-receipt.js';
 import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
@@ -241,12 +258,18 @@ import {
 } from '../../telemetry/metrics.js';
 import {
   type DelegatedTaskInterruptResult,
-  followUpTargetMatchesBinding,
+  matchFollowUpTargetBinding,
   PeerDelegationAttemptDuplicateError,
 } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
-import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import {
+  errorMessage,
+  getBody,
+  param,
+  usageLimitContinueOnRequestSchema,
+  validate,
+} from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
 import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
@@ -367,8 +390,13 @@ const childWorkTranscriptQuerySchema = z
       .min(1)
       .max(CHILD_WORK_TRANSCRIPT_PAGE_MAX)
       .default(30),
+    // The latest messages; a tail read names no offset.
+    tail: z.literal('1').optional(),
   })
-  .strict();
+  .strict()
+  .refine((query) => !(query.tail && query.offset > 0), {
+    message: 'A tail read names no offset',
+  });
 const sessionInventoryQueryBaseSchema = z
   .object({
     scope: z.enum(['whole-session', 'current-answer']),
@@ -455,6 +483,7 @@ const adoptSessionCommandSchema = z.object({
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
   target: adoptSessionTargetSchema.optional(),
+  continueWhileSourceActive: z.literal(true).optional(),
 });
 
 const interruptTurnCommandSchema = z.object({
@@ -797,6 +826,10 @@ const agentDelegationContextSchema = z.object({
   rootAgentSlug: z.string().min(1).max(64),
   rootConversationId: z.string().min(1).max(512).optional(),
   allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  toolAllowlistConstraints: z
+    .array(z.array(z.string().min(1).max(256)).max(256))
+    .max(64)
+    .optional(),
   blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
   denyApprovals: z.boolean().optional(),
 });
@@ -853,6 +886,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
+  appearanceProposal: z.boolean().optional(),
   clientTurnId: z.string().min(1).max(200),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
@@ -1185,8 +1219,24 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
     attachmentRefs: z.never().optional(),
     mcpPromptOrigin: z.never().optional(),
     idempotencyKey: z.string().min(1).max(200),
+    stagedHandoff: z
+      .object({
+        expectedCurrentSessionId: z.string().min(1).max(512),
+        contextPolicy: z.literal('continue-from-history'),
+      })
+      .strict()
+      .optional(),
   })
-  .superRefine(requireApprovalPickBasis);
+  .superRefine(requireApprovalPickBasis)
+  .superRefine((body, ctx) => {
+    if (body.stagedHandoff && !body.target.expectedEngine) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['target', 'expectedEngine'],
+        message: 'A staged Agent change requires the selected engine binding.',
+      });
+    }
+  });
 
 const conversationContextBoundarySchema = z.object({
   attachmentRefs: z.never().optional(),
@@ -1288,6 +1338,9 @@ const sessionEventPageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+/** The most sessions one `GET /sessions/read-model?limit` asks for. */
+const SESSION_READ_MODEL_MAX_LIMIT = 1_000;
+
 const sessionEventWindowQuerySchema = z.object({
   direction: z.literal('newest').optional(),
   cursor: z.string().min(1).max(512).optional(),
@@ -1295,6 +1348,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
   /** Human-authored room title, before the provider brief is appended. */
@@ -1370,6 +1424,7 @@ interface ForegroundMessageRequest {
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   resolveAttachments?: (binding: {
     threadId: string;
     clientTurnId: string;
@@ -2131,7 +2186,7 @@ export function createOrchestrationRoutes(
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
+      binding: AttachmentTurnBinding,
       options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
@@ -2143,8 +2198,9 @@ export function createOrchestrationRoutes(
     releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
+      binding: AttachmentTurnBinding,
     ) => void;
+    stagedHandoffEnabled?: () => boolean;
     handoffConversation?: (
       input: ConversationHandoffRequest,
     ) => Promise<unknown>;
@@ -2239,6 +2295,7 @@ export function createOrchestrationRoutes(
       | 'deliveryOutcome'
       | 'heldByOther'
       | 'inFlight'
+      | 'keyBindingChanged'
       | 'nudge'
     >;
     /**
@@ -2282,6 +2339,12 @@ export function createOrchestrationRoutes(
     ) => boolean;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
+    /**
+     * Clears the sending person's own settled record for `conversationId`
+     * (Open and Settled inbox). Called only for a send or steer the route
+     * classified as person-authored, once it is admitted or queued.
+     */
+    reopenSettledConversation?: (c: Context, conversationId: string) => void;
     /**
      * #3075: the request's read-marker person key (`readMarkerPersonKey`),
      * `undefined` for a caller that is not a person. A `/events` subscriber
@@ -2436,14 +2499,15 @@ export function createOrchestrationRoutes(
   /**
    * One in-flight peer-delegation reconciliation per caller.
    *
-   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
-   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * `refreshDelegatedTaskActivity` reads the caller's peer delegation
+   * records (only those, never a second full read model: #5051), takes the
+   * last 20 live ones and `Promise.allSettled`s a remote HTTP read per
    * delegation, each with a 1.5s timeout
    * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
    * `GET /sessions/read-model` is polled, so awaiting that in the response
-   * path put up to 1.5s of peer network latency plus a second full read-model
-   * build in front of data the local store already had, and a slow peer
-   * stalled every subsequent poll behind its own predecessor.
+   * path put up to 1.5s of peer network latency in front of data the local
+   * store already had, and a slow peer stalled every subsequent poll behind
+   * its own predecessor.
    *
    * Keyed by userId, never shared: a poll from one caller must not suppress
    * another caller's reconciliation, whose peer set and authority are
@@ -2594,13 +2658,26 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/read-model', async (c) => {
     const authority = readAuthorityFor(c);
+    // `limit`: only the newest N sessions by creation, still oldest first.
+    // Another Station's remote-sessions list asks for its 200; a Station that
+    // predates the parameter ignores it and that caller keeps its newest 200.
+    const limitText = c.req.query('limit');
+    if (
+      limitText !== undefined &&
+      (!/^[1-9][0-9]{0,3}$/u.test(limitText) ||
+        Number(limitText) > SESSION_READ_MODEL_MAX_LIMIT)
+    )
+      return c.json({ success: false, error: 'Invalid session limit' }, 400);
     // Started under the caller's own principal, exactly as before, but no
     // longer awaited: what the refresh learns is written to the local store
     // and published by the NEXT read rather than this one. archive#847 asked
     // that peer evidence reach Activity, not that a poll block on a peer's
     // network round trip to do it.
     startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
-    const data = await orchestrationService.listSessionReadModel(authority);
+    const all = await orchestrationService.listSessionReadModel(authority, {
+      purpose: 'session-list',
+    });
+    const data = limitText === undefined ? all : all.slice(-Number(limitText));
     return c.json({ success: true, data });
   });
 
@@ -2696,21 +2773,37 @@ export function createOrchestrationRoutes(
    * the start). Once the start answers, a retry under the key is answered
    * from the conversation-wide ledger. The same read gate applies.
    */
-  const inboxKeyInFlightRefusal = async (
+  const inboxKeyDeliveryRefusal = async (
     c: Context,
     conversationId: string | undefined,
     clientTurnId: string | undefined,
+    userId: string,
   ): Promise<Response | undefined> => {
+    const inbox = deps.threadInbox;
+    if (!conversationId || !clientTurnId || !inbox) return undefined;
+    const inFlight = inbox.inFlight(conversationId, clientTurnId);
+    const changed = inbox.keyBindingChanged(
+      conversationId,
+      clientTurnId,
+      userId,
+    );
     if (
-      !conversationId ||
-      !clientTurnId ||
-      !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
+      (!inFlight && !changed) ||
       !(await orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
       ))
     )
       return undefined;
+    if (changed)
+      return c.json(
+        {
+          success: false,
+          error: 'The conversation changed while this message was waiting.',
+          code: 'conversation_binding_changed',
+        },
+        409,
+      );
     return c.json(
       {
         success: false,
@@ -2764,6 +2857,23 @@ export function createOrchestrationRoutes(
    * person's own (#4827); `/chat/delegated` and `/chat/background` share the
    * handler and never do.
    */
+  /**
+   * A person's own message reopens the conversation they settled (Open and
+   * Settled inbox), for them only. Any client a person drives counts, the
+   * CLI included (`personCredentialRequest`); a message sent for someone
+   * else (`agentAttributed`) does not.
+   */
+  const reopenForPersonMessage = (
+    c: Context,
+    conversationId: string,
+    agentAttributed = false,
+  ) => {
+    if (
+      !agentAttributed &&
+      personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+    )
+      deps.reopenSettledConversation?.(c, conversationId);
+  };
   const handleForegroundMessage = async (
     c: Context,
     route: { composer?: true } = {},
@@ -2779,9 +2889,7 @@ export function createOrchestrationRoutes(
     let stagedAttachmentsForRelease:
       | readonly StagedAttachmentReference[]
       | undefined;
-    let stagedBindingForRelease:
-      | { threadId: string; clientTurnId: string }
-      | undefined;
+    let stagedBindingForRelease: AttachmentTurnBinding | undefined;
     let releasePrincipal: PrincipalRef | undefined;
     let releaseDeliveryReceipt: (() => void) | undefined;
     // #3568: set once this send may wait in its conversation's inbox; a
@@ -3007,6 +3115,9 @@ export function createOrchestrationRoutes(
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
+      const stagedAttemptId = stagedAttachments?.length
+        ? randomUUID()
+        : undefined;
       if (stagedAttachments?.length && !principal) {
         throw new PrincipalUnresolvedError(
           'Attachment staging requires a resolved request principal.',
@@ -3037,7 +3148,8 @@ export function createOrchestrationRoutes(
         },
       );
       const delegation = resolvedDelegation?.context;
-      let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
+      assertInheritedDelegationToolPolicy(delegation);
+      let stagedBinding: AttachmentTurnBinding | undefined;
       const foregroundRequest = {
         ...body,
         ...(verifiedMcpPromptOrigin
@@ -3065,6 +3177,10 @@ export function createOrchestrationRoutes(
             : undefined,
         ...(stagedAttachments?.length
           ? {
+              stagedSubmission: {
+                ownerId: principal!.id,
+                references: stagedAttachments,
+              },
               resolveAttachments: (
                 binding: { threadId: string; clientTurnId: string },
                 options?: { inspectOnly?: true },
@@ -3077,14 +3193,14 @@ export function createOrchestrationRoutes(
                       binding,
                       options,
                     );
-                  stagedBinding = binding;
-                  stagedBindingForRelease = binding;
+                  stagedBinding = { ...binding, attemptId: stagedAttemptId };
+                  stagedBindingForRelease = stagedBinding;
                   stagedAttachmentsForRelease = stagedAttachments;
                   releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
-                    binding,
+                    stagedBinding,
                   );
                 })(),
             }
@@ -3117,6 +3233,21 @@ export function createOrchestrationRoutes(
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
+      // Not a delegation or an automatic background send.
+      const reopenForSender = () => {
+        if (
+          body.conversationId &&
+          route.composer === true &&
+          !claimedDelegation &&
+          !delegation &&
+          body.automaticBackground !== true
+        )
+          reopenForPersonMessage(
+            c,
+            body.conversationId,
+            ownerAttribution !== undefined,
+          );
+      };
       const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
       if (body.conversationId && body.clientTurnId) {
         const conversationId = body.conversationId;
@@ -3148,28 +3279,28 @@ export function createOrchestrationRoutes(
             ),
           })
         : undefined;
-      if (
+      const followUpBinding =
         followUp &&
         (await orchestrationService.hasReadableSession(
           followUp.conversationId,
           readAuthorityFor(c),
-        )) &&
-        (await followUpTargetMatchesBinding(
-          orchestrationService,
-          followUp.conversationId,
-          body.target as ExecutionTarget,
-          readAuthorityFor(c),
         ))
-      ) {
+          ? await matchFollowUpTargetBinding(
+              orchestrationService,
+              followUp.conversationId,
+              body.target as ExecutionTarget,
+              readAuthorityFor(c),
+            )
+          : undefined;
+      if (followUp && followUpBinding) {
         const inbox = deps.threadInbox!;
-        if (
-          orchestrationService.inspectTurnDelivery(
-            followUp.conversationId,
-            followUp.clientTurnId,
-            readAuthorityFor(c),
-            inputDigest,
-          ) === null
-        )
+        const delivery = orchestrationService.inspectTurnDelivery(
+          followUp.conversationId,
+          followUp.clientTurnId,
+          readAuthorityFor(c),
+          inputDigest,
+        );
+        if (delivery === null)
           throw new Error('The requested conversation is unavailable.');
         queueOnBusyRefusal = () => {
           // Files wait in the blob store, not in the entry. A stage the live
@@ -3180,18 +3311,42 @@ export function createOrchestrationRoutes(
             ? (stagedBinding ?? {
                 threadId: followUp.conversationId,
                 clientTurnId: followUp.clientTurnId,
+                attemptId: stagedAttemptId,
               })
             : undefined;
           const settleStage = (queued: boolean) => {
             if (!filesBinding || !stagedAttachments?.length) return;
-            (queued
-              ? deps.acceptStagedAttachments
-              : deps.releaseStagedAttachments)?.(
-              principal!,
-              stagedAttachments,
-              filesBinding,
-            );
+            if (queued)
+              deps.acceptStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
+            else
+              deps.releaseStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
           };
+          if (stagedAttachments?.length) {
+            const pending =
+              orchestrationService.readPendingConversationSubmission(
+                followUp.conversationId,
+                followUp.clientTurnId,
+                readAuthorityFor(c),
+                userId,
+              );
+            if (pending) {
+              if (pending.inputDigest !== inputDigest)
+                throw new ClientTurnInputConflictError();
+              return queuedFollowUpResponse(
+                c,
+                { outcome: 'queued', entry: pending.entry },
+                followUp,
+              );
+            }
+          }
           let attachments: ThreadInboxAttachment[] | undefined;
           if (body.attachments?.length || stagedAttachments?.length) {
             const inputs = filesBinding
@@ -3222,35 +3377,44 @@ export function createOrchestrationRoutes(
               });
             }
           }
-          const submitted = inbox.submit({
-            conversationId: followUp.conversationId,
-            clientTurnId: followUp.clientTurnId,
-            payload: {
-              message: followUp.message,
-              ...(attachments ? { attachments } : {}),
-              ...(followUp.automaticBackground
-                ? { automaticBackground: true as const }
-                : {}),
-              inputDigest,
-              ...(followUp.ambientContext
-                ? { ambientContext: followUp.ambientContext }
-                : {}),
-              ...(followUp.model ? { model: followUp.model } : {}),
-              actor: {
-                userId,
-                ...(principal ? { principal } : {}),
-                ...(ownerAttribution ? { ownerAttribution } : {}),
+          let submitted: ReturnType<ThreadInboxDelivery['submit']> | undefined;
+          try {
+            submitted = inbox.submit({
+              conversationId: followUp.conversationId,
+              clientTurnId: followUp.clientTurnId,
+              payload: {
+                message: followUp.message,
+                ...followUpBinding,
+                ...(attachments ? { attachments } : {}),
+                ...(followUp.automaticBackground
+                  ? { automaticBackground: true as const }
+                  : {}),
+                inputDigest,
+                ...(followUp.ambientContext
+                  ? { ambientContext: followUp.ambientContext }
+                  : {}),
+                ...(followUp.model ? { model: followUp.model } : {}),
+                actor: {
+                  userId,
+                  ...(principal ? { principal } : {}),
+                  ...(ownerAttribution ? { ownerAttribution } : {}),
+                },
+                clientOrigin: foregroundRequest.clientOrigin,
+                ...(foregroundRequest.personAuthored
+                  ? { authoredBy: 'person' as const }
+                  : {}),
               },
-              clientOrigin: foregroundRequest.clientOrigin,
-              ...(foregroundRequest.personAuthored
-                ? { authoredBy: 'person' as const }
-                : {}),
-            },
-          });
-          settleStage(submitted.outcome === 'queued');
+            });
+          } finally {
+            settleStage(submitted?.outcome === 'queued');
+          }
+          if (submitted.outcome === 'queued') reopenForSender();
           return queuedFollowUpResponse(c, submitted, followUp);
         };
-        if (inbox.mustQueue(followUp.conversationId)) {
+        if (
+          (!stagedAttachments?.length || delivery.outcome === 'not-received') &&
+          inbox.mustQueue(followUp.conversationId)
+        ) {
           const held = queueOnBusyRefusal();
           if (held) return held;
           // Placement would refuse this sender: the live send answers it.
@@ -3259,12 +3423,13 @@ export function createOrchestrationRoutes(
       }
       // Not held, so this send takes the live path: never under a key the
       // inbox is still sending.
-      const keyInFlight = await inboxKeyInFlightRefusal(
+      const keyRefused = await inboxKeyDeliveryRefusal(
         c,
         body.conversationId,
         body.clientTurnId,
+        userId,
       );
-      if (keyInFlight) return keyInFlight;
+      if (keyRefused) return keyRefused;
       // Admitted: from here until the route answers, the delivery lookup says
       // Station has this send (a cold session start can take a long time
       // before the turn ledger holds anything).
@@ -3275,6 +3440,7 @@ export function createOrchestrationRoutes(
           clientTurnId: body.clientTurnId,
           forwarded: resolvedTarget.environment.kind !== 'current',
         });
+      reopenForSender();
       const data = await runForegroundCreateClaim(
         deps.delegationAttemptClaimStore?.createRequests,
         foregroundRequest,
@@ -3311,7 +3477,8 @@ export function createOrchestrationRoutes(
         });
       }
       return c.json({ success: true, data });
-    } catch (error) {
+    } catch (failure) {
+      let error = failure;
       const ceilingFailure = managedApprovalCeilingFailure(c, error);
       if (ceilingFailure) return ceilingFailure;
       if (error instanceof CreateRequestCapacityError)
@@ -3372,7 +3539,9 @@ export function createOrchestrationRoutes(
           } catch (queueError) {
             const closed = settledRefusal(queueError);
             if (closed) return closed;
-            throw queueError;
+            if (!(queueError instanceof ClientTurnInputConflictError))
+              throw queueError;
+            error = queueError;
           }
         }
       }
@@ -3446,11 +3615,11 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
-      // The engine refused these attachments before anything reached it, so
-      // their binding to this turn proves nothing: release it, or a resend
-      // of the same (restored) chips anywhere else is refused as bound.
+      // This attempt provably sent no files. Release only its lease in case
+      // the winner is still sending a shared stage under the same key.
       if (
-        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        (errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE ||
+          errorCode(error) === 'client_turn_input_conflict') &&
         stagedAttachmentsForRelease?.length &&
         stagedBindingForRelease &&
         releasePrincipal
@@ -3521,140 +3690,160 @@ export function createOrchestrationRoutes(
     return await handleForegroundMessage(c);
   });
 
-  app.post(
-    '/conversations/:conversationId/handoff',
-    validateFiles(conversationHandoffSchema),
-    async (c) => {
-      if (!deps.handoffConversation) {
-        return c.json(
-          { success: false, error: 'Agent/engine handoff is unavailable' },
-          503,
-        );
-      }
-      try {
-        const body = getBody(c);
-        // #2377 slice C3b: no station-control tool reaches this route today;
-        // if one ever does, it hands off without an approval posture.
-        const postureRefused = refuseCarriedPosture(c, [
-          {
-            path: 'setApprovalMode',
-            value: (body as { setApprovalMode?: unknown }).setApprovalMode,
-            kind: 'pick',
-          },
-          {
-            path: 'personalApprovalDefault',
-            value: (body as { personalApprovalDefault?: unknown })
-              .personalApprovalDefault,
-            kind: 'pick',
-          },
-          {
-            path: 'target.model.options',
-            value: body.target.model?.options,
-            kind: 'options',
-          },
-        ]);
-        if (postureRefused) return postureRefused;
-        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
-        const ceilingRefused = refuseAboveManagedCeiling(c, [
-          (body as { setApprovalMode?: unknown }).setApprovalMode,
-        ]);
-        if (ceilingRefused) return ceilingRefused;
-        const fullAccessRefused =
-          refuseUngrantedFullAccess(c, [
-            (body as { setApprovalMode?: unknown }).setApprovalMode,
-          ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
-        if (fullAccessRefused) return fullAccessRefused;
-        const directoryRefused = refuseUngrantedDirectoryWorkspace(
-          c,
-          body.target,
-        );
-        if (directoryRefused) return directoryRefused;
-        const { principal, userId, ownerAttribution, fullAccessGrant } =
-          resolveDispatchActor(deps, c);
-        const data = await deps.handoffConversation({
-          ...body,
-          target: normalizeExecutionTarget(body.target),
-          ...(body.attachments
-            ? { attachments: body.attachments as ChatAttachmentInput[] }
-            : {}),
-          conversationId: param(c, 'conversationId'),
-          userId,
-          // archive#4075 stage 2 review round 1 (F1): dropped here originally
-          // — threaded exactly like /chat above, through
-          // executeForegroundMessage/executeExecutionTargetMessage's existing
-          // `input.principal` seam, so an explicit engine/Agent handoff's
-          // turn.started is attributed at emit time too.
-          principal,
-          ownerAttribution,
-          fullAccessGrant,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
-        if (!isCreateRequestHandle(data)) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error:
-                'Agent/engine handoff may have started but did not return a provider turn id',
-              code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-              outcome: 'indeterminate',
-            },
-            409,
-          );
-        }
-        return c.json({ success: true, data });
-      } catch (error) {
-        const fullAccessRefused = fullAccessRefusalFor(c, error);
-        if (fullAccessRefused) return fullAccessRefused;
-        if (error instanceof ForegroundMessageIndeterminateError) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
-              code: error.code,
-              outcome: error.outcome,
-              receipt: error.detail.receipt,
-              receiptStatus: error.detail.receiptStatus,
-              session: error.detail.session,
-            },
-            409,
-          );
-        }
-        if (
-          error instanceof ForegroundMessageTurnIdentityUnavailableError ||
-          isForegroundIndeterminateShape(error)
-        ) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
-              code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-              outcome: 'indeterminate',
-            },
-            409,
-          );
-        }
+  const handleConversationHandoff = async (c: Context, staged: boolean) => {
+    if (staged && !deps.stagedHandoffEnabled?.()) {
+      const { id, label } = STAGED_CONVERSATION_HANDOFF_PREVIEW;
+      return c.json(new FeaturePreviewDisabledError(id, label).refusal, 404);
+    }
+    if (!deps.handoffConversation) {
+      return c.json(
+        { success: false, error: 'Agent/engine handoff is unavailable' },
+        503,
+      );
+    }
+    try {
+      const body = getBody(c);
+      if (staged !== Boolean(body.stagedHandoff)) {
         return c.json(
           {
             success: false,
-            error: errorMessage(error),
-            ...(errorCode(error) ? { code: errorCode(error) } : {}),
-            ...(error instanceof OrchestrationCommandDispatchError &&
-            error.kind !== undefined
-              ? {
-                  kind: error.kind,
-                  retryable: error.retryable,
-                  failurePhase: error.failurePhase,
-                }
-              : {}),
+            error: 'The handoff route and context policy do not match.',
           },
-          // #4520: the managed policy does not allow the engine.
-          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
+          400,
         );
       }
-    },
+      // #2377 slice C3b: no station-control tool reaches this route today;
+      // if one ever does, it hands off without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        {
+          path: 'setApprovalMode',
+          value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+          kind: 'pick',
+        },
+        {
+          path: 'personalApprovalDefault',
+          value: (body as { personalApprovalDefault?: unknown })
+            .personalApprovalDefault,
+          kind: 'pick',
+        },
+        {
+          path: 'target.model.options',
+          value: body.target.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
+      // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+      const ceilingRefused = refuseAboveManagedCeiling(c, [
+        (body as { setApprovalMode?: unknown }).setApprovalMode,
+      ]);
+      if (ceilingRefused) return ceilingRefused;
+      const fullAccessRefused =
+        refuseUngrantedFullAccess(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+        ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
+      if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
+      const conversationId = param(c, 'conversationId');
+      const data = await deps.handoffConversation({
+        ...body,
+        target: normalizeExecutionTarget(body.target),
+        ...(body.attachments
+          ? { attachments: body.attachments as ChatAttachmentInput[] }
+          : {}),
+        conversationId,
+        userId,
+        // archive#4075 stage 2 review round 1 (F1): dropped here originally
+        // — threaded exactly like /chat above, through
+        // executeForegroundMessage/executeExecutionTargetMessage's existing
+        // `input.principal` seam, so an explicit engine/Agent handoff's
+        // turn.started is attributed at emit time too.
+        principal,
+        ownerAttribution,
+        fullAccessGrant,
+        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+      });
+      if (!isCreateRequestHandle(data)) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error:
+              'Agent/engine handoff may have started but did not return a provider turn id',
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+          },
+          409,
+        );
+      }
+      return c.json({ success: true, data });
+    } catch (error) {
+      const fullAccessRefused = fullAccessRefusalFor(c, error);
+      if (fullAccessRefused) return fullAccessRefused;
+      if (error instanceof ForegroundMessageIndeterminateError) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
+            code: error.code,
+            outcome: error.outcome,
+            receipt: error.detail.receipt,
+            receiptStatus: error.detail.receiptStatus,
+            session: error.detail.session,
+          },
+          409,
+        );
+      }
+      if (
+        error instanceof ForegroundMessageTurnIdentityUnavailableError ||
+        isForegroundIndeterminateShape(error)
+      ) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+          },
+          409,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          error: errorMessage(error),
+          ...(errorCode(error) ? { code: errorCode(error) } : {}),
+          ...(error instanceof OrchestrationCommandDispatchError &&
+          error.kind !== undefined
+            ? {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              }
+            : {}),
+        },
+        // #4520: the managed policy does not allow the engine.
+        errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
+      );
+    }
+  };
+  app.post(
+    '/conversations/:conversationId/handoff',
+    validateFiles(conversationHandoffSchema),
+    (c) => handleConversationHandoff(c, false),
+  );
+  app.post(
+    '/conversations/:conversationId/staged-handoff',
+    validateFiles(conversationHandoffSchema),
+    (c) => handleConversationHandoff(c, true),
   );
 
   /**
@@ -3872,6 +4061,11 @@ export function createOrchestrationRoutes(
         return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
       if (result.outcome === 'capacity')
         return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
+      reopenForPersonMessage(
+        c,
+        conversationId,
+        actor.ownerAttribution !== undefined,
+      );
       return c.json({ success: true, data: result.entry }, 202);
     },
   );
@@ -4014,6 +4208,49 @@ export function createOrchestrationRoutes(
         );
       const entry = deps.threadInbox.entry(conversationId, clientTurnId);
       return entry ? c.json({ success: true, data: { entry } }) : notFound();
+    },
+  );
+
+  app.delete(
+    '/conversations/:conversationId/handoffs/:idempotencyKey',
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const idempotencyKey = param(c, 'idempotencyKey');
+      if (conversationId.length > 512 || idempotencyKey.length > 200)
+        return c.json(
+          { success: false, error: 'Invalid conversation or handoff key.' },
+          400,
+        );
+      if (requestMayBeAnAgent(c.req.raw))
+        return c.json(
+          {
+            success: false,
+            error: 'Only the conversation owner can withdraw this request.',
+          },
+          403,
+        );
+      const { userId } = resolveDispatchActor(deps, c);
+      const outcome =
+        await orchestrationService.withdrawUnreservedConversationHandoff(
+          conversationId,
+          idempotencyKey,
+          userId,
+          readAuthorityFor(c),
+        );
+      if (outcome === 'unavailable')
+        return c.json(
+          { success: false, error: 'Conversation handoff not found' },
+          404,
+        );
+      if (outcome === 'reserved')
+        return c.json(
+          {
+            success: false,
+            error: 'Station has already reserved this Agent change.',
+          },
+          409,
+        );
+      return c.json({ success: true, data: { outcome } });
     },
   );
 
@@ -4196,12 +4433,13 @@ export function createOrchestrationRoutes(
           userId,
         );
         if (keyHeld) return keyHeld;
-        const keyInFlight = await inboxKeyInFlightRefusal(
+        const keyRefused = await inboxKeyDeliveryRefusal(
           c,
           param(c, 'conversationId'),
           body.clientTurnId,
+          userId,
         );
-        if (keyInFlight) return keyInFlight;
+        if (keyRefused) return keyRefused;
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment
@@ -4484,6 +4722,78 @@ export function createOrchestrationRoutes(
         },
       );
       const delegation = resolvedDelegation?.context;
+      assertInheritedDelegationToolPolicy(delegation);
+      if (
+        resolvedDelegation?.provenance === 'caller-derived' &&
+        delegation &&
+        delegation.depth > 1
+      ) {
+        const authority = stationControlRequestAuthority(c.req.raw);
+        const projectSlug =
+          authority?.kind === 'caller'
+            ? deps.stationControlDispatchScope?.ownProjectSlug(authority.caller)
+            : undefined;
+        const workspace = body.target.workspace;
+        if (
+          body.target.environment?.kind !== 'current' ||
+          authority?.kind !== 'caller' ||
+          ((authority.caller.localProjectId || authority.caller.projectSlug) &&
+            projectSlug === undefined) ||
+          body.sessionId ||
+          (body.parentTaskId &&
+            body.parentTaskId !== delegation.parentConversationId) ||
+          body.taskRoomRequest ||
+          (workspace !== undefined &&
+            (workspace.kind !== 'project' ||
+              workspace.projectSlug !== projectSlug ||
+              workspace.cwd !== undefined))
+        ) {
+          return c.json(
+            {
+              success: false,
+              code: 'delegation_nested_out_of_scope',
+              error:
+                'A delegated Agent can start a new child only in its current Project on this Station.',
+            },
+            403,
+          );
+        }
+      }
+      const authority = stationControlRequestAuthority(c.req.raw);
+      const caller =
+        authority?.kind === 'caller' ? authority.caller : undefined;
+      let delegatedAppearance: DelegateTaskRequest['delegatedAppearance'];
+      if (body.appearanceProposal) {
+        if (
+          !caller?.principal?.elevationEligible ||
+          caller.assurance === 'bearer-exposed' ||
+          caller.principal.id !== userId ||
+          !connectedAccountOwnerIdForTurnAccount(caller.principal.id) ||
+          tenantExecutionContextForRequest(c.req.raw) ||
+          resolvedDelegation?.provenance !== 'caller-derived' ||
+          delegation?.depth !== 1 ||
+          delegation.parentSessionId !== caller.sessionId ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind === 'project-portable' ||
+          body.target.workspace?.kind === 'project-portable-prepared' ||
+          body.sessionId ||
+          body.taskRoomRequest
+        ) {
+          return c.json(
+            {
+              success: false,
+              code: 'delegation_appearance_scope_required',
+              error:
+                'An appearance proposal needs a new task on this Station, started by a chat acting for the person.',
+            },
+            403,
+          );
+        }
+        delegatedAppearance = {
+          ownerId: caller.principal.id,
+          parentSessionId: caller.sessionId,
+        };
+      }
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       if (roomRequest && body.clientTurnId !== roomRequest.operationId)
@@ -4511,6 +4821,7 @@ export function createOrchestrationRoutes(
         return delegate({
           ...request,
           createRequestIntent: body,
+          ...(delegatedAppearance ? { delegatedAppearance } : {}),
           createRequestCallerSessionId: await createRequestCallerSession(
             c.req.raw,
           ),
@@ -4910,13 +5221,38 @@ export function createOrchestrationRoutes(
       // #2377 slice C2b: a tool's discovery on a saved Environment arrives
       // here; another Station needs a bound operator, decided before the
       // route connects or forwards anything.
+      const body = getBody(c) as z.infer<typeof delegationOptionsSchema>;
       const remoteRefused = refuseRemoteForStationControlCaller(
         c,
-        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+        body.environmentId !== undefined,
       );
       if (remoteRefused) return remoteRefused;
+      const scope = deps.stationControlDispatchScope;
+      const authority = stationControlRequestAuthority(c.req.raw);
+      const projectSlug =
+        body.projectSlug ??
+        (authority?.kind === 'caller' &&
+        body.environmentId === undefined &&
+        body.projectPath === undefined
+          ? scope?.ownProjectSlug(authority.caller)
+          : undefined);
+      const refused = refuseOutOfScopeDispatch(c, scope, (ownerId) =>
+        ownerId
+          ? {
+              kind: 'new',
+              ownerId,
+              projectSlug,
+              directory: body.projectPath,
+              remote: body.environmentId !== undefined,
+            }
+          : undefined,
+      );
+      if (refused) return refused;
       try {
-        const data = await deps.discoverDelegationOptions(getBody(c));
+        const data = await deps.discoverDelegationOptions({
+          ...body,
+          ...(projectSlug ? { projectSlug } : {}),
+        });
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -6001,6 +6337,62 @@ export function createOrchestrationRoutes(
     });
   }
 
+  // "Continue on <label>": the enrolled credential profiles a waiting
+  // usage-limit stop may continue on, and the person's choice of one. These
+  // list and switch this Station's accounts, so their pairing scope is the
+  // credential-management tier, not the Session family's.
+  app.get('/sessions/:threadId/usage-limit/continue-on', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: (await orchestrationService.readUsageLimitContinueOn(
+        threadId,
+      )) satisfies UsageLimitContinueOnOptions,
+    });
+  });
+
+  app.post(
+    '/sessions/:threadId/usage-limit/continue-on',
+    validate(usageLimitContinueOnRequestSchema),
+    async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const { profileRef, stopId } = getBody(c) as {
+        profileRef: string;
+        stopId: string;
+      };
+      return c.json({
+        success: true,
+        data: await orchestrationService.actOnUsageLimitRecovery(
+          threadId,
+          'continue-on',
+          { profileRef, stopId },
+        ),
+      });
+    },
+  );
+
   // Session -> Builder run join (archive#189 S4). A separate route from
   // `/flow-run` on purpose: the two runs have independent lifecycles, and a
   // session commonly has one and not the other. 404 means "no Builder run
@@ -6294,6 +6686,7 @@ export function createOrchestrationRoutes(
     const parsed = childWorkTranscriptQuerySchema.safeParse({
       offset: c.req.query('offset'),
       limit: c.req.query('limit'),
+      tail: c.req.query('tail'),
     });
     if (!parsed.success)
       return c.json({ success: false, error: 'Invalid transcript page' }, 400);
@@ -6306,7 +6699,9 @@ export function createOrchestrationRoutes(
     const outcome = await orchestrationService.childWorkTranscripts.read({
       threadId,
       childId: param(c, 'childId'),
-      ...parsed.data,
+      offset: parsed.data.offset,
+      limit: parsed.data.limit,
+      tail: parsed.data.tail === '1',
       authority,
     });
     if (outcome.status === 'unavailable') return unavailable(503);
@@ -7331,6 +7726,8 @@ export function createOrchestrationRoutes(
             ? ([{ personAuthored: true }] as const)
             : ([] as const)),
         );
+        if (command.type === 'steerTurn')
+          reopenForPersonMessage(c, command.threadId);
         if (actionOperation && command.type === 'adoptSession') {
           const targetSessionId =
             typeof result.result === 'object' &&
@@ -7411,6 +7808,16 @@ export function createOrchestrationRoutes(
             ...(error instanceof ContinuationPlaceRefusedError
               ? { code: error.code, retryable: false }
               : {}),
+            // The source is still running and nothing was created; the
+            // same request with `continueWhileSourceActive` proceeds.
+            ...(error instanceof AdoptionSourceActiveError
+              ? {
+                  code: error.code,
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
+              : {}),
             // #3429: the engine was not ready and nothing was created; the
             // reason is shown and the same request may be retried.
             ...(error instanceof AdoptionEngineNotReadyError
@@ -7448,6 +7855,7 @@ export function createOrchestrationRoutes(
             error.code === MANAGED_POLICY_ENGINE_REFUSED_CODE
             ? 403
             : error instanceof AdoptionContinuationInProgressError ||
+                error instanceof AdoptionSourceActiveError ||
                 indeterminate ||
                 (error instanceof OrchestrationCommandDispatchError &&
                   (error.code === 'client_turn_input_conflict' ||
@@ -7728,7 +8136,10 @@ export function createOrchestrationRoutes(
                     const sessions =
                       await orchestrationService.listSessionReadModel(
                         authority,
-                        threadId ? { threadIds: [threadId] } : undefined,
+                        {
+                          purpose: 'sse-overflow-reconcile',
+                          ...(threadId ? { threadIds: [threadId] } : {}),
+                        },
                       );
                     await writeAuthorized({
                       event: 'orchestration:snapshot',
@@ -7889,9 +8300,7 @@ export function createOrchestrationRoutes(
           if (
             evt.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
           ) {
-            const updatedThreadId = (
-              evt.data as { threadId?: unknown } | undefined
-            )?.threadId;
+            const updatedThreadId = evt.data?.threadId;
             if (
               typeof updatedThreadId !== 'string' ||
               (threadId !== undefined && updatedThreadId !== threadId) ||
@@ -7908,7 +8317,12 @@ export function createOrchestrationRoutes(
             forward({
               event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
               threadId: updatedThreadId,
-              data: JSON.stringify({ threadId: updatedThreadId }),
+              data: JSON.stringify({
+                threadId: updatedThreadId,
+                ...(evt.data?.reason === ATTACHED_SESSION_CONTINUATION_REFRESH
+                  ? { reason: ATTACHED_SESSION_CONTINUATION_REFRESH }
+                  : {}),
+              }),
             });
             return;
           }
@@ -8031,7 +8445,10 @@ export function createOrchestrationRoutes(
           if (!replayBudget.fitsBudget) {
             const sessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-snapshot',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
@@ -8072,13 +8489,19 @@ export function createOrchestrationRoutes(
             // Reconcile present-tense side effects once, after the replay.
             replaySessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-replay-reconcile',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
           }
         } else {
           const sessions = await orchestrationService.listSessionReadModel(
             authority,
-            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            {
+              purpose: 'sse-snapshot',
+              ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+            },
           );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact

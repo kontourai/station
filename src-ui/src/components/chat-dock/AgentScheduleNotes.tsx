@@ -14,12 +14,14 @@ import {
   usePresenceList,
 } from '../../hooks/usePresenceList';
 import { clockTime } from '../../utils/relativeTime';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
 import './AgentScheduleNotes.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const wakeUpKey = (wakeUp: AgentWakeUp) => wakeUp.id;
 const proposalKey = (proposal: AgentJobProposal) => proposal.id;
@@ -50,6 +52,8 @@ export function AgentScheduleNotes({
     declineProposal,
     approveProposal,
     confirmAutomationProposal,
+    automationConfirmation: confirmation,
+    automationConfirmationError,
     declineAutomationProposal,
   } = useAgentSchedule(conversationId, refreshKey);
   const wakeUps = usePresenceList(
@@ -73,45 +77,83 @@ export function AgentScheduleNotes({
   if (
     wakeUps.list.length === 0 &&
     proposals.list.length === 0 &&
-    automationProposals.list.length === 0
+    automationProposals.list.length === 0 &&
+    !confirmation
   )
     return null;
+  const confirmationFailure = automationConfirmationError
+    ? describeStationFailure(automationConfirmationError).body
+    : undefined;
   const now = Date.now();
   const wakeUpBusy = approveWakeUp.isPending || declineWakeUp.isPending;
   const automationBusy =
     confirmAutomationProposal.isPending || declineAutomationProposal.isPending;
   return (
     <ul className="agent-schedule-notes" aria-label="Scheduled in this chat">
-      {automationProposals.list.map(({ item, key, phase }) => (
-        <PresenceRow
-          key={key}
-          phase={phase}
-          onSettled={() => automationProposals.settle(key)}
-        >
-          <AutomationProposalCard
-            proposal={item}
-            busy={automationBusy}
-            confirming={
-              confirmAutomationProposal.isPending &&
-              confirmAutomationProposal.variables?.id === item.id
-            }
-            declining={
-              declineAutomationProposal.isPending &&
-              declineAutomationProposal.variables === item.id
-            }
-            failed={
-              (confirmAutomationProposal.isError &&
-                confirmAutomationProposal.variables?.id === item.id) ||
-              (declineAutomationProposal.isError &&
-                declineAutomationProposal.variables === item.id)
-            }
-            onConfirm={(enable) =>
-              confirmAutomationProposal.mutate({ id: item.id, enable })
-            }
-            onDecline={() => declineAutomationProposal.mutate(item.id)}
-          />
-        </PresenceRow>
-      ))}
+      {confirmation ? (
+        <li>
+          <div className="agent-schedule-card" role="status">
+            <p>
+              {confirmation.kind === 'source' ? 'Source' : 'Rule'} saved
+              {confirmation.enabled
+                ? ' and turned on.'
+                : confirmation.kind === 'source'
+                  ? ' and still disabled.'
+                  : ' and still observing.'}
+            </p>
+            {confirmation.requestedEnable && !confirmation.enabled ? (
+              <>
+                {confirmation.message ? <p>{confirmation.message}</p> : null}
+                <p>
+                  Review the saved {confirmation.kind}{' '}
+                  <code className="agent-schedule-card__verbatim">
+                    {confirmation.createdId}
+                  </code>{' '}
+                  with the Station operator.
+                </p>
+              </>
+            ) : null}
+          </div>
+        </li>
+      ) : null}
+      {automationProposals.list
+        .filter(({ item }) => item.id !== confirmation?.proposalId)
+        .map(({ item, key, phase }) => (
+          <PresenceRow
+            key={key}
+            phase={phase}
+            onSettled={() => automationProposals.settle(key)}
+          >
+            <AutomationProposalCard
+              proposal={item}
+              busy={automationBusy}
+              confirming={
+                confirmAutomationProposal.isPending &&
+                confirmAutomationProposal.variables?.id === item.id
+              }
+              declining={
+                declineAutomationProposal.isPending &&
+                declineAutomationProposal.variables === item.id
+              }
+              errorMessage={
+                confirmAutomationProposal.variables?.id === item.id
+                  ? confirmationFailure
+                  : declineAutomationProposal.isError &&
+                      declineAutomationProposal.variables === item.id
+                    ? "That didn't go through. Try again."
+                    : undefined
+              }
+              onConfirm={(enable) =>
+                confirmAutomationProposal.mutate({
+                  id: item.id,
+                  kind: item.kind,
+                  enable,
+                })
+              }
+              onDecline={() => declineAutomationProposal.mutate(item.id)}
+            />
+          </PresenceRow>
+        ))}
       {proposals.list.map(({ item, key, phase }) => (
         <PresenceRow
           key={key}
@@ -253,6 +295,7 @@ function CheckBackApprovalCard({
   onApprove: () => void;
   onDecline: () => void;
 }) {
+  useDecisionSurface('check-back-approval');
   const at = clockTime(Date.parse(wakeUp.dueAt), now);
   return (
     <section
@@ -322,6 +365,7 @@ function JobProposalCard({
   onApprove: () => void;
   onDecline: () => void;
 }) {
+  useDecisionSurface('job-proposal');
   const { job } = proposal;
   const cron = job.schedule.kind === 'cron' ? job.schedule : null;
   const preview = usePreviewSchedule(cron?.expr ?? null, cron?.timezone);
@@ -421,7 +465,7 @@ function AutomationProposalCard({
   busy,
   confirming,
   declining,
-  failed,
+  errorMessage,
   onConfirm,
   onDecline,
 }: {
@@ -429,10 +473,11 @@ function AutomationProposalCard({
   busy: boolean;
   confirming: boolean;
   declining: boolean;
-  failed: boolean;
+  errorMessage: string | undefined;
   onConfirm: (enable: boolean) => void;
   onDecline: () => void;
 }) {
+  useDecisionSurface('automation-proposal');
   const [enable, setEnable] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const instructionsId = useId();
@@ -558,9 +603,9 @@ function AutomationProposalCard({
           confirmed before this rule.
         </p>
       ) : null}
-      {failed ? (
+      {errorMessage ? (
         <p className="agent-schedule-card__error" role="alert">
-          That didn't go through. Try again.
+          {errorMessage}
         </p>
       ) : null}
       <div className="agent-schedule-card__actions">

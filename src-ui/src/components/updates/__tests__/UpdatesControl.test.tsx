@@ -74,7 +74,7 @@ const profile: PlatformProfile = {
   target: 'macos',
   supervisesBundledServer: true,
   isDevBuild: false,
-  channel: 'beta',
+  channel: 'nightly',
 };
 const identity = {
   instanceId: 'updates-test',
@@ -97,9 +97,9 @@ const context: ConnectedServerUpdateContext = {
 const status: CoreUpdateStatus = {
   installKind: 'archive-service',
   applyMethod: 'service-update',
-  currentVersion: '0.8.0-preview.1',
-  latestVersion: '0.8.0-preview.2',
-  channel: 'beta',
+  currentVersion: '0.8.0-nightly.1',
+  latestVersion: '0.8.0-nightly.2',
+  channel: 'nightly',
   releaseCheck: 'verified',
   updateAvailable: true,
   serverIdentity: { ...identity, shaSource: 'build-stamp' },
@@ -107,7 +107,7 @@ const status: CoreUpdateStatus = {
 };
 const serverState: ServerUpdateState = {
   supported: true,
-  currentVersion: '0.8.0-preview.1',
+  currentVersion: '0.8.0-nightly.1',
   availability: null,
   progress: { state: 'idle' },
   downloadPolicy: 'never',
@@ -175,7 +175,7 @@ beforeEach(() => {
   profile.isDesktop = true;
   profile.isMobile = false;
   profile.isDevBuild = false;
-  profile.channel = 'beta';
+  profile.channel = 'nightly';
   context.kind = 'installed-local-service';
   serverState.progress = { state: 'idle' };
   status.stagedUpdates = true;
@@ -261,7 +261,9 @@ test('one panel offers independently labelled app and server downloads, and open
   expect(
     within(panel).getByRole('heading', { name: 'Server · Test Station' }),
   ).toBeTruthy();
-  expect(within(panel).queryByLabelText('Automatic download')).toBeNull();
+  expect(
+    within(panel).queryByLabelText('Automatic desktop app download'),
+  ).toBeNull();
   fireEvent.click(
     within(panel).getByRole('button', { name: 'Download server update' }),
   );
@@ -373,7 +375,7 @@ test('closing Updates retains the server request follower and rechecks its outco
   serverState.progress = {
     state: 'staged',
     requestId: 'download-request',
-    version: '0.8.0-preview.2',
+    version: '0.8.0-nightly.2',
     stagedAt: '2026-10-22T20:00:00Z',
   };
   render(<UpdatesControl onNavigate={vi.fn()} />);
@@ -391,7 +393,7 @@ test('closing Updates retains the server request follower and rechecks its outco
   fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
   expect(serverAction.mock.calls[0]?.[0]).toEqual({
     action: 'apply',
-    version: '0.8.0-preview.2',
+    version: '0.8.0-nightly.2',
   });
   expect(following).toBe(true);
   await closeUpdates(historyBeforeOpen);
@@ -406,8 +408,8 @@ test('closing Updates retains the server request follower and rechecks its outco
   serviceProgress.data = {
     state: 'committed',
     requestId: 'update-request',
-    fromVersion: '0.8.0-preview.1',
-    targetVersion: '0.8.0-preview.2',
+    fromVersion: '0.8.0-nightly.1',
+    targetVersion: '0.8.0-nightly.2',
     finishedAt: '2026-10-22T20:05:00Z',
   };
   act(() =>
@@ -438,7 +440,7 @@ test.each(
       serverState.progress = {
         state: 'staged',
         requestId: 'download-request',
-        version: '0.8.0-preview.2',
+        version: '0.8.0-nightly.2',
         stagedAt: '2026-10-22T20:00:00Z',
       };
     }
@@ -451,9 +453,9 @@ test.each(
         ? 'Restart server'
         : 'Update server';
     const confirmationTitle = desktop
-      ? 'Restart Station to install 0.1.12?'
+      ? 'Restart Station to update?'
       : target === 'staged-server'
-        ? 'Restart the server into 0.8.0-preview.2?'
+        ? 'Restart the server into 0.8.0-nightly.2?'
         : 'Update and restart the server?';
     const confirmationRole = desktop ? 'dialog' : 'alertdialog';
     const confirmLabel =
@@ -492,7 +494,7 @@ test.each(
       );
     } else if (target === 'staged-server') {
       expect(serverAction).toHaveBeenCalledExactlyOnceWith(
-        { action: 'apply', version: '0.8.0-preview.2' },
+        { action: 'apply', version: '0.8.0-nightly.2' },
         expect.any(Object),
       );
     } else {
@@ -673,7 +675,10 @@ test('mobile keeps its installed version and channel when no app update is avail
     await screen.findByRole('heading', { name: 'Station app · nightly' }),
   ).toBeTruthy();
   const panel = screen.getByRole('dialog', { name: 'Updates' });
-  expect(within(panel).getByText('0.1.11-nightly.20261105.1')).toBeTruthy();
+  expect(
+    within(panel).getByText('Nightly · Nov 5 (build 250001)'),
+  ).toBeTruthy();
+  expect(within(panel).getByTitle('0.1.11-nightly.20261105.1')).toBeTruthy();
   expect(
     within(panel).queryByRole('button', {
       name: 'Check for desktop app updates',
@@ -683,11 +688,11 @@ test('mobile keeps its installed version and channel when no app update is avail
 
 test('server upgrades open the installed server changelog and another server never inherits it', async () => {
   const key = `station.release-notes.last-version.server:${context.apiBase}:${identity.instanceId}`;
-  localStorage.setItem(key, '0.7.0-preview.1');
+  localStorage.setItem(key, '0.7.0-nightly.1');
   installFakeNativeUpdater(native, desktopUpdateFixture('idle'));
   const fetcher = vi.fn(async () =>
     Response.json({
-      tag_name: 'v0.8.0-preview.1',
+      tag_name: 'v0.8.0-nightly.1',
       name: 'Server release',
       body: '- Installed server changes',
       draft: false,
@@ -697,12 +702,12 @@ test('server upgrades open the installed server changelog and another server nev
   const view = render(<UpdatesControl onNavigate={vi.fn()} />);
   expect(
     await screen.findByRole('dialog', {
-      name: 'Updated server 0.8.0-preview.1',
+      name: 'Updated server 0.8.0-nightly.1',
     }),
   ).toBeTruthy();
   expect(await screen.findByText('Installed server changes')).toBeTruthy();
   expect(fetcher).toHaveBeenCalledWith(
-    'https://api.github.com/repos/kontourai/station/releases/tags/v0.8.0-preview.1',
+    'https://api.github.com/repos/kontourai/station/releases/tags/v0.8.0-nightly.1',
     expect.objectContaining({ credentials: 'omit' }),
   );
   const original = context.apiBase;
@@ -713,7 +718,7 @@ test('server upgrades open the installed server changelog and another server nev
     </QueryClientProvider>,
   );
   expect(
-    screen.queryByRole('dialog', { name: 'Updated server 0.8.0-preview.1' }),
+    screen.queryByRole('dialog', { name: 'Updated server 0.8.0-nightly.1' }),
   ).toBeNull();
   context.apiBase = original;
 });
@@ -723,9 +728,9 @@ test('Updates shows the installed server changelog alongside an offered release'
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      const installed = url.endsWith('v0.8.0-preview.1');
+      const installed = url.endsWith('v0.8.0-nightly.1');
       return Response.json({
-        tag_name: installed ? 'v0.8.0-preview.1' : 'v0.8.0-preview.2',
+        tag_name: installed ? 'v0.8.0-nightly.1' : 'v0.8.0-nightly.2',
         body: installed
           ? '- Installed server fixes'
           : '- Available server fixes',
@@ -745,7 +750,7 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
   localStorage.setItem('station.release-notes.last-version', '0.1.10');
   localStorage.setItem(
     `station.release-notes.last-version.server:${context.apiBase}:${identity.instanceId}`,
-    '0.7.0-preview.1',
+    '0.7.0-nightly.1',
   );
   vi.stubGlobal(
     'fetch',
@@ -755,7 +760,7 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
         tag_name: tag,
         draft: false,
         body:
-          tag === 'v0.8.0-preview.1'
+          tag === 'v0.8.0-nightly.1'
             ? '- Queued server changes'
             : '- App changes',
       });
@@ -767,14 +772,14 @@ test('simultaneous app and server upgrades mount one changelog dialog at a time'
     name: `Updated to Station ${app.currentVersion}`,
   });
   expect(
-    screen.queryByRole('dialog', { name: 'Updated server 0.8.0-preview.1' }),
+    screen.queryByRole('dialog', { name: 'Updated server 0.8.0-nightly.1' }),
   ).toBeNull();
   fireEvent.click(
     await within(appDialog).findByRole('button', { name: /^Done$/ }),
   );
   await screen.findByText('Queued server changes');
   const serverDialog = screen.getByRole('dialog', {
-    name: 'Updated server 0.8.0-preview.1',
+    name: 'Updated server 0.8.0-nightly.1',
   });
   expect(within(serverDialog).getByText('Queued server changes')).toBeTruthy();
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
@@ -788,7 +793,7 @@ test.each(['version', 'origin'])(
     const oldVersion = status.currentVersion,
       oldApi = context.apiBase;
     status.currentVersion =
-      seam === 'version' ? '0.1.11-nightly.20261105.1' : '0.8.0-preview.1';
+      seam === 'version' ? '0.1.11-nightly.20261105.1' : '0.8.0-nightly.1';
     if (seam === 'origin') context.apiBase = window.location.origin;
     try {
       localStorage.setItem('station.release-notes.last-version', '0.1.10');

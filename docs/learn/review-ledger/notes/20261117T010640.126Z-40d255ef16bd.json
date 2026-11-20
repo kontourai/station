@@ -1,0 +1,9 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked: the reader no longer restarts when /open names the current child, and can paint a cached window settled while revalidating. Offline reading behavior is unchanged; the in-memory cache is described in offline-outbound-queue.md.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked: the reader no longer restarts when /open names the current child, and can paint a cached window settled while revalidating. Offline reading behavior is unchanged; the in-memory cache is described in offline-outbound-queue.md.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

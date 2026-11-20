@@ -1,0 +1,7 @@
+{
+  "revision": "22ececbcc1ea5d9435524629f8ba1679660bedd4",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"runtime-routes.ts only passes the pull request feedback runtime into the attention route options; sign-in and step-up screens are unaffected, so no recapture is needed.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

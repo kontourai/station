@@ -1,0 +1,7 @@
+{
+  "revision": "59ab3b4f95eb6512e4d59c017a4cd35b521d9e47",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bounded single and batch tests against provider finish authority. Both retain the exact B error and completion rows and require idle for a proven stop. The same evidence without a proven finish remains failed. Main's existing bounded-read fixture assertions passed independently.","inputs":["src-server/services/orchestration/__tests__/conversation-turn-activity.test.ts"]}
+  ]
+}

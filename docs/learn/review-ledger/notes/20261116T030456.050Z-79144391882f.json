@@ -1,0 +1,7 @@
+{
+  "revision": "491a8f90a2032365f573dd05937db853806a7604",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Historical ADR; the session-api.md refusal wording does not touch the managed-chat routing it records.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

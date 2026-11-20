@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md and sdk.md child-transcript paragraphs changed; this guide's routing to them is unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
+  ]
+}

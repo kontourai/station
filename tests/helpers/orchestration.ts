@@ -1,4 +1,7 @@
-import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationOpenExecution,
+  OrchestrationConversationEventWindow,
+} from '@kontourai/station-contracts/orchestration';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { expect, type Page } from '@playwright/test';
 import {
@@ -661,9 +664,29 @@ export function forkMockOrchestrationTranscript(
   return prefix;
 }
 
+export function mockConversationEvents(
+  page: Page,
+  conversationId: string,
+  sessionIds: readonly string[],
+): Record<string, unknown>[] {
+  const sessions = new Set(sessionIds);
+  const historical = historicalOrchestrationEvents.get(page) ?? {};
+  return [
+    ...sessionIds.flatMap((id) => historical[id] ?? []),
+    ...(emittedOrchestrationEvents.get(page) ?? []).filter(
+      (event) =>
+        typeof event.threadId === 'string' &&
+        (sessions.has(event.threadId) || event.threadId === conversationId),
+    ),
+  ];
+}
+
 export async function installMockOrchestrationConversationEventWindow(
   page: Page,
   readSessionIds: (conversationId: string) => string[],
+  readSessionLineage?: (
+    sessionIds: readonly string[],
+  ) => OrchestrationConversationEventWindow['sessionLineage'],
 ): Promise<void> {
   conversationSessionReaders.set(page, readSessionIds);
   await page.route(
@@ -681,17 +704,7 @@ export async function installMockOrchestrationConversationEventWindow(
             error: 'Conversation not found',
           }),
         });
-      const sessionSet = new Set(sessionIds);
-      const historical = historicalOrchestrationEvents.get(page) ?? {};
-      const events = [
-        ...sessionIds.flatMap((sessionId) => historical[sessionId] ?? []),
-        ...(emittedOrchestrationEvents.get(page) ?? []).filter(
-          (event) =>
-            typeof event.threadId === 'string' &&
-            (sessionSet.has(event.threadId) ||
-              event.threadId === conversationId),
-        ),
-      ];
+      const events = mockConversationEvents(page, conversationId, sessionIds);
       return route.fulfill({
         json: {
           success: true,
@@ -699,6 +712,9 @@ export async function installMockOrchestrationConversationEventWindow(
             protocolVersion: 1,
             conversationId,
             currentSessionId: sessionIds.at(-1),
+            ...(readSessionLineage
+              ? { sessionLineage: readSessionLineage(sessionIds) }
+              : {}),
             handoffs: [],
             events: events.map((event, index) => ({
               sequence: index + 1,
@@ -812,7 +828,7 @@ export async function dismissSetupLauncher(page: Page): Promise<void> {
   const launcher = page.getByTestId('setup-launcher');
   if (await launcher.isVisible()) {
     await launcher
-      .getByRole('button', { name: 'Dismiss setup launcher', exact: true })
+      .getByRole('button', { name: 'Dismiss setup reminder', exact: true })
       .click();
     await expect(launcher).toBeHidden();
   }

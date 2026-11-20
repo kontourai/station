@@ -678,3 +678,45 @@ describe('agent notification helpers', () => {
     expect(notificationPriorityForUrgency('info')).toBe('normal');
   });
 });
+
+describe('system source Project (#5072)', () => {
+  const systemEnvelope = (source: Record<string, unknown>) => ({
+    v: 1,
+    source,
+    audience: { kind: 'session-readers', sessionId: 'session-1' },
+    urgency: 'done',
+    target: { kind: 'session', sessionId: 'session-1' },
+    interrupt: 'default',
+  });
+
+  test('a system source keeps its Project on write and read', () => {
+    const source = {
+      kind: 'system',
+      subsystem: 'turn-completion',
+      projectId: 'project-1',
+    };
+    expect(
+      parseNotificationEnvelopeForWrite(systemEnvelope(source))?.source,
+    ).toEqual(source);
+    expect(parseNotificationEnvelope(systemEnvelope(source))?.source).toEqual(
+      source,
+    );
+  });
+
+  test('a system source without a Project still parses, and a malformed one refuses', () => {
+    expect(
+      parseNotificationEnvelopeForWrite(
+        systemEnvelope({ kind: 'system', subsystem: 'turn-completion' }),
+      )?.source,
+    ).toEqual({ kind: 'system', subsystem: 'turn-completion' });
+    expect(
+      parseNotificationEnvelopeForWrite(
+        systemEnvelope({
+          kind: 'system',
+          subsystem: 'turn-completion',
+          projectId: 7,
+        }),
+      ),
+    ).toBeUndefined();
+  });
+});

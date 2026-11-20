@@ -1,0 +1,15 @@
+{
+  "revision": "8ea5e664bdebcf99c6cfebb31884d6e8ca450e2c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ConversationBody only passes apiBase into useChatStatusPill so the pill can count running tool calls from the same live record as the background strip. No ownership, transport, connection or boundary claim changes; conversation-boundary-gate passes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ConversationBody only passes apiBase into useChatStatusPill so the pill can count running tool calls from the same live record as the background strip. No ownership, transport, connection or boundary claim changes; conversation-boundary-gate passes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ConversationBody only passes apiBase into useChatStatusPill so the pill can count running tool calls from the same live record as the background strip. No ownership, transport, connection or boundary claim changes; conversation-boundary-gate passes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"ConversationBody only passes apiBase into useChatStatusPill so the pill can count running tool calls from the same live record as the background strip. No ownership, transport, connection or boundary claim changes; conversation-boundary-gate passes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"ConversationBody only passes apiBase into useChatStatusPill so the pill can count running tool calls from the same live record as the background strip. No ownership, transport, connection or boundary claim changes; conversation-boundary-gate passes.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

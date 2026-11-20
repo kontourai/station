@@ -141,7 +141,7 @@ function namedStep(job: Job, name: string): Step {
  * (scripts/lib/portable-server-archive.mjs describePortableArchive).
  */
 function writeArchiveTree(
-  ring: 'stable' | 'preview',
+  ring: 'stable' | 'nightly',
   version: string,
   dir = freshDir('archives'),
 ) {
@@ -252,10 +252,6 @@ describe('the one BASE_URL every public manifest location derives from', () => {
         rollingTag: 'portable-stable',
         manifestAsset: 'station-portable-stable-manifest.json',
       },
-      preview: {
-        rollingTag: 'portable-preview',
-        manifestAsset: 'station-portable-preview-manifest.json',
-      },
       nightly: {
         rollingTag: 'portable-nightly',
         manifestAsset: 'station-portable-nightly-manifest.json',
@@ -300,31 +296,21 @@ describe('the one BASE_URL every public manifest location derives from', () => {
       manifestAsset: 'station-portable-stable-manifest.json',
       rollingManifestUrl: `${PUBLIC_RELEASE_BASE_URL}portable-stable/station-portable-stable-manifest.json`,
     });
-    expect(
-      publicationLocations('preview', REPOSITORY, '1.2.3-preview.4')
-        .rollingManifestUrl,
-    ).toBe(
-      `${PUBLIC_RELEASE_BASE_URL}portable-preview/station-portable-preview-manifest.json`,
-    );
+    expect(() =>
+      publicationLocations('preview', REPOSITORY, '1.2.3-preview.4'),
+    ).toThrow('preview is not a release ring');
     const cli = runNode('scripts/portable-release-publication.mjs', [
       'locations',
       '--ring',
-      'preview',
+      'stable',
       '--repository',
       REPOSITORY,
       '--version',
-      '1.2.3-preview.4',
+      '1.2.3',
     ]);
     expect(cli.status, cli.stderr).toBe(0);
-    expect(cli.stdout.split('\n')).toEqual([
-      'release_tag=v1.2.3-preview.4',
-      `base_url=${PUBLIC_RELEASE_BASE_URL}v1.2.3-preview.4/`,
-      'rolling_tag=portable-preview',
-      'manifest_asset=station-portable-preview-manifest.json',
-      `versioned_manifest_url=${PUBLIC_RELEASE_BASE_URL}v1.2.3-preview.4/station-portable-preview-manifest.json`,
-      `rolling_manifest_url=${PUBLIC_RELEASE_BASE_URL}portable-preview/station-portable-preview-manifest.json`,
-      '',
-    ]);
+    expect(cli.stdout).toContain('release_tag=v1.2.3\n');
+    expect(cli.stdout).toContain('rolling_tag=portable-stable\n');
   });
 
   it('stages a release candidate under its own tag while naming its base version (#4929)', () => {
@@ -369,12 +355,7 @@ describe('the one BASE_URL every public manifest location derives from', () => {
         'v1.2.3-rc.99',
         'a release candidate is numbered 1-98',
       ],
-      [
-        'preview',
-        '1.2.3-preview.4',
-        'v1.2.3-rc.4',
-        'is not a preview release of version',
-      ],
+      ['preview', '1.2.3-preview.4', 'v1.2.3-rc.4', '--ring must be stable'],
     ] as const) {
       const refused = runNode('scripts/portable-release-publication.mjs', [
         'locations',
@@ -399,10 +380,10 @@ describe('the one BASE_URL every public manifest location derives from', () => {
   });
 });
 
-describe('stable and preview versions under the shared verifier grammar', () => {
+describe('stable and Nightly versions under the shared verifier grammar', () => {
   it('parses each ring only in its own shape', () => {
     expect(parseRingVersion('stable', '1.2.3')).toEqual([1n, 2n, 3n]);
-    expect(parseRingVersion('preview', '1.2.3-preview.4')).toEqual([
+    expect(parseRingVersion('nightly', '1.2.3-nightly.4')).toEqual([
       1n,
       2n,
       3n,
@@ -417,7 +398,9 @@ describe('stable and preview versions under the shared verifier grammar', () => 
       ['stable', 'v1.2.3'],
     ])
       expect(() => parseRingVersion(ring, version), version).toThrow(
-        `is not a ${ring} version`,
+        ring === 'preview'
+          ? 'preview is not a release ring'
+          : `is not a ${ring} version`,
       );
     expect(() => parseRingVersion('beta', '1.2.3')).toThrow(
       'beta is not a release ring',
@@ -429,10 +412,10 @@ describe('stable and preview versions under the shared verifier grammar', () => 
     expect(compareRingVersions('stable', '1.10.0', '1.9.99')).toBe(1);
     expect(compareRingVersions('stable', '1.2.3', '1.2.3')).toBe(0);
     expect(
-      compareRingVersions('preview', '1.2.3-preview.9', '1.2.3-preview.10'),
+      compareRingVersions('nightly', '1.2.3-nightly.9', '1.2.3-nightly.10'),
     ).toBe(-1);
     expect(
-      compareRingVersions('preview', '1.2.4-preview.1', '1.2.3-preview.99'),
+      compareRingVersions('nightly', '1.2.4-nightly.1', '1.2.3-nightly.99'),
     ).toBe(1);
   });
 
@@ -447,15 +430,18 @@ describe('stable and preview versions under the shared verifier grammar', () => 
       '1.2.3-nightly.4',
     ]);
     expect(cli.status).toBe(1);
-    expect(cli.stderr).toContain('--ring must be stable or preview');
+    expect(cli.stderr).toContain('--ring must be stable');
   });
 });
 
 /** Runs the real assembler, as the release workflow does. */
 function runAssemble(
-  ring: 'stable' | 'preview',
+  ring: 'stable' | 'nightly',
   version: string,
-  { locationTag }: { locationTag?: string } = {},
+  {
+    locationTag,
+    requestedChannel = ring,
+  }: { locationTag?: string; requestedChannel?: string } = {},
 ) {
   const archives = writeArchiveTree(ring, version);
   const output = join(freshDir('payload'), 'payload.json');
@@ -466,7 +452,7 @@ function runAssemble(
     '--version',
     version,
     '--channel',
-    ring,
+    requestedChannel,
     '--source-sha',
     SHA,
     '--base-url',
@@ -491,7 +477,7 @@ function runAssemble(
 }
 
 /** Assembles through the real assembler, as the release workflow does. */
-function assemblePayload(ring: 'stable' | 'preview', version: string) {
+function assemblePayload(ring: 'stable' | 'nightly', version: string) {
   const { archives, output, result } = runAssemble(ring, version);
   expect(result.status, result.stderr).toBe(0);
   return {
@@ -502,7 +488,7 @@ function assemblePayload(ring: 'stable' | 'preview', version: string) {
 }
 
 function signWithThrowaway(
-  ring: 'stable' | 'preview',
+  ring: 'stable' | 'nightly',
   payloadPath: string,
   keyId = RELEASE_DRY_RUN_KEY_ID,
 ) {
@@ -533,7 +519,7 @@ function signWithThrowaway(
 }
 
 /** One throwaway key that signs several payloads, and its key table. */
-function keyring(ring: 'stable' | 'preview') {
+function keyring(ring: 'stable' | 'nightly') {
   const dir = freshDir('keyring');
   const { privateKeyPem, keyTable } = createDryRunKeys(
     ring,
@@ -567,11 +553,10 @@ function keyring(ring: 'stable' | 'preview') {
   };
 }
 
-describe('publication checks for stable and preview', () => {
+describe('publication checks for Stable', () => {
   it('plans the rolling pointer: forward, idempotent rerun, never backwards', () => {
     for (const [ring, current, newer, older] of [
       ['stable', '1.2.3', '1.2.4', '1.2.2'],
-      ['preview', '1.2.3-preview.4', '1.2.3-preview.5', '1.2.3-preview.3'],
     ] as const) {
       const keys = keyring(ring);
       const served = readFileSync(
@@ -794,14 +779,14 @@ describe('publication checks for stable and preview', () => {
   });
 
   it('refuses a manifest whose payload is not the expected one', () => {
-    const { output } = assemblePayload('preview', '1.2.3-preview.4');
-    const other = assemblePayload('preview', '1.2.3-preview.5');
-    const { manifest, keysPath } = signWithThrowaway('preview', other.output);
+    const { output } = assemblePayload('stable', '1.2.3');
+    const other = assemblePayload('stable', '1.2.4');
+    const { manifest, keysPath } = signWithThrowaway('stable', other.output);
     const verify = (expected: string) =>
       runNode('scripts/portable-release-publication.mjs', [
         'verify',
         '--ring',
-        'preview',
+        'stable',
         '--manifest',
         manifest,
         '--keys',
@@ -813,19 +798,21 @@ describe('publication checks for stable and preview', () => {
     const wrong = verify(output);
     expect(wrong.status).toBe(1);
     expect(wrong.stderr).toContain(
-      'manifest payload for 1.2.3-preview.5 is not the payload this run signed (1.2.3-preview.4)',
+      'manifest payload for 1.2.4 is not the payload this run signed (1.2.3)',
     );
-    // A validly signed manifest for the other ring is refused too.
+    // A validly signed Nightly manifest cannot enter the Stable publisher.
+    const nightly = assemblePayload('nightly', '1.2.3-nightly.4');
+    const signedNightly = signWithThrowaway('nightly', nightly.output);
     const stable = runNode('scripts/portable-release-publication.mjs', [
       'verify',
       '--ring',
       'stable',
       '--manifest',
-      manifest,
+      signedNightly.manifest,
       '--keys',
-      keysPath,
+      signedNightly.keysPath,
       '--expected-payload',
-      other.output,
+      nightly.output,
     ]);
     expect(stable.status).toBe(1);
   });
@@ -847,9 +834,9 @@ describe('publication checks for stable and preview', () => {
       ).toBe(false);
     expect(
       isStaleRollingManifest(
-        'preview',
-        new ManifestMismatchError('1.2.3-preview.3', '1.2.3-preview.4'),
-        { version: '1.2.3-preview.4' },
+        'nightly',
+        new ManifestMismatchError('1.2.3-nightly.3', '1.2.3-nightly.4'),
+        { version: '1.2.3-nightly.4' },
       ),
     ).toBe(true);
   });
@@ -974,7 +961,7 @@ describe('publication checks for stable and preview', () => {
       }),
     ).toThrow('version 1.2.3 (expected 1.2.4)');
     expect(() => assertReleasePayload('preview', payload, expected)).toThrow(
-      'is not a preview version',
+      '--ring must be stable',
     );
   });
 
@@ -1035,18 +1022,18 @@ describe('publication checks for stable and preview', () => {
         'v1.2.3-preview.4',
         '--location-tag v1.2.3-preview.4 is not a stable release of 1.2.3',
       ],
-      [
-        'preview',
-        '1.2.3-preview.4',
-        'v1.2.3-rc.4',
-        'is not a preview release of 1.2.3-preview.4',
-      ],
     ] as const) {
       const refused = runAssemble(ring, version, { locationTag });
       expect(refused.result.status, locationTag).toBe(1);
       expect(refused.result.stderr, locationTag).toContain(message);
       expect(existsSync(refused.output), locationTag).toBe(false);
     }
+    const retired = runAssemble('stable', '1.2.3', {
+      requestedChannel: 'preview',
+    });
+    expect(retired.result.status).toBe(1);
+    expect(retired.result.stderr).toContain('invalid --channel preview');
+    expect(existsSync(retired.output)).toBe(false);
   });
 });
 
@@ -1146,7 +1133,7 @@ describe('release.yml builds and dry-runs the host stream on every tag', () => {
     }
 
     function runReleaseSteps(
-      ring: 'stable' | 'preview',
+      ring: 'stable' | 'nightly',
       version: string,
       tag: string,
       shim?: string,
@@ -1328,10 +1315,15 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       PLAN,
       'Attach the signed host-stream manifest to the versioned release',
     ]);
-    for (const step of gated) expect(step.if, step.name).toBe(GATE);
+    for (const step of gated)
+      expect(conjuncts(step.if ?? ''), step.name).toContain(
+        `vars.${GATE_VARIABLE} == 'enabled'`,
+      );
     // The pointer job carries the same literal as a top-level conjunct.
     expect(conjuncts(pointerJob.if ?? '')).toEqual([
       '!cancelled()',
+      '!inputs.repair_app_store_feed_only',
+      "needs.resolve.outputs.mode != 'rc'",
       `vars.${GATE_VARIABLE} == 'enabled'`,
       "needs.resolve.result == 'success'",
       "needs.publish.outputs.released == 'true'",
@@ -1344,7 +1336,9 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       REPLACE,
     ]);
     for (const step of steps.filter(isHostEffect))
-      expect(step.if, step.name).toBe(GATE);
+      expect(conjuncts(step.if ?? ''), step.name).toContain(
+        `vars.${GATE_VARIABLE} == 'enabled'`,
+      );
     for (const value of [undefined, '', 'true', 'Enabled', 'enabled ', 'on'])
       expect(
         gateAllows(GATE, value === undefined ? {} : { [GATE_VARIABLE]: value }),
@@ -1381,18 +1375,25 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     resolve: string;
     released: string;
     cancelled?: boolean;
+    feedRepairOnly?: boolean;
+    mode?: string;
   }) {
     return conjuncts(pointerJob.if ?? '').every((part) => {
       if (part === '!cancelled()') return scenario.cancelled !== true;
+      if (part === '!inputs.repair_app_store_feed_only')
+        return scenario.feedRepairOnly !== true;
       const known: Record<string, string> = {
         [`vars.${GATE_VARIABLE}`]: scenario.gate,
         'needs.resolve.result': scenario.resolve,
         'needs.publish.outputs.released': scenario.released,
+        'needs.resolve.outputs.mode': scenario.mode ?? 'stable',
       };
-      const match = part.match(/^(\S+) == '([^']*)'$/);
+      const match = part.match(/^(\S+) (==|!=) '([^']*)'$/);
       if (!match || !(match[1] in known))
         throw new Error(`unrecognised conjunct: ${part}`);
-      return known[match[1]] === match[2];
+      return match[2] === '=='
+        ? known[match[1]] === match[3]
+        : known[match[1]] !== match[3];
     });
   }
 
@@ -1402,6 +1403,8 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     // (publish = failure, released = true) still moves the host pointer.
     expect(pointerJobRuns(enabled)).toBe(true);
     for (const scenario of [
+      { ...enabled, mode: 'rc' },
+      { ...enabled, feedRepairOnly: true },
       { ...enabled, gate: '' },
       { ...enabled, gate: 'true' },
       { ...enabled, resolve: 'failure' },
@@ -1431,9 +1434,8 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         'Publish release and compensate to draft until feed verifies',
       ),
     );
-    expect(released).toBe(
-      index(steps, 'Publish and verify the rolling desktop updater channel') +
-        1,
+    expect(released).toBeGreaterThan(
+      index(steps, 'Publish and verify the rolling desktop updater channel'),
     );
     for (const ledger of [
       'Mint the ledger push token',
@@ -1550,7 +1552,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
 
   describe.skipIf(process.platform === 'win32')('its shell steps', () => {
     /** A publish job workspace: release-policy/ and the staged payload. */
-    function workspace(ring: 'stable' | 'preview', version: string) {
+    function workspace(ring: 'stable' | 'nightly', version: string) {
       const cwd = freshDir('publish');
       symlinkSync(repoRoot, join(cwd, 'release-policy'));
       const { output } = assemblePayload(ring, version);
@@ -1566,6 +1568,8 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         env: {
           RUNNER_TEMP: runnerTemp,
           RELEASE_TAG: `v${version}`,
+          PUBLICATION_TAG: `v${version}`,
+          PRODUCER_TAG: `v${version}`,
           RELEASE_RING: ring,
           RELEASE_VERSION: version,
           GITHUB_REPOSITORY: REPOSITORY,
@@ -1578,11 +1582,11 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
 
     it('dry-runs without any secret and never verifies against the pinned table', () => {
       const dryRun = namedStep(job, dryRunName).run ?? '';
-      const ok = workspace('preview', '1.2.3-preview.4');
+      const ok = workspace('stable', '1.2.3');
       const passed = runStep(dryRun, ok);
       expect(passed.status, passed.stderr).toBe(0);
       expect(passed.stdout).toContain(
-        `verified 1.2.3-preview.4 (${RELEASE_DRY_RUN_KEY_ID})`,
+        `verified 1.2.3 (${RELEASE_DRY_RUN_KEY_ID})`,
       );
       for (const [mode, message] of [
         [

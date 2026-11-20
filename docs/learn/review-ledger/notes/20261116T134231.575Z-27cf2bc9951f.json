@@ -1,0 +1,11 @@
+{
+  "revision": "cc228b56259cc025f6ee1b19c6309359b42313ba",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked each page that cites this source after the Gallery capture round: they link to other sections of the testing guide (lane registry, heavy-check slots, pre-push gates, fixture fidelity) or to the Gallery's screens in general, and state nothing about second captures, failed chunk requests or the capture loop.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked each page that cites this source after the Gallery capture round: they link to other sections of the testing guide (lane registry, heavy-check slots, pre-push gates, fixture fidelity) or to the Gallery's screens in general, and state nothing about second captures, failed chunk requests or the capture loop.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked each page that cites this source after the Gallery capture round: they link to other sections of the testing guide (lane registry, heavy-check slots, pre-push gates, fixture fidelity) or to the Gallery's screens in general, and state nothing about second captures, failed chunk requests or the capture loop.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

@@ -97,3 +97,69 @@ test.skipIf(process.platform === 'win32')(
     expect((await secondExit)[0]).toBe(0);
   },
 );
+
+test.skipIf(process.platform === 'win32')(
+  'Biome keeps blocking stdio after a slot wait, so a lagging capture cannot make it fail with EAGAIN (#5119)',
+  async () => {
+    const { directory, script } = fixture();
+    const holder = start(directory, script);
+    await vi.waitFor(() => expect(holder.output()).toContain('ready:2'), {
+      timeout: 15_000,
+    });
+    // A native writer that, like Biome, treats EAGAIN as fatal: dd floods
+    // stderr (where Biome prints diagnostics) with far more than a pipe or
+    // socket buffers, then reports its own exit status on stdout.
+    const flood = join(directory, 'flood.sh');
+    writeFileSync(
+      flood,
+      '#!/bin/sh\necho flood-start\nexec 3>&2\ndd if=/dev/zero bs=4096 count=1024 2>/dev/null >&3\nstatus=$?\necho "flood-exit=$status"\nexit $status\n',
+      { mode: 0o755 },
+    );
+    const child = spawn(process.execPath, [runner], {
+      env: {
+        ...process.env,
+        BIOME_BINARY: flood,
+        STATION_TYPECHECK_SLOT_HELD: 'inherited-compiler-pool#0',
+        STATION_BIOME_SLOT_DIR: join(directory, 'slots'),
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    children.push(child);
+    let stdout = '';
+    let stderrText = '';
+    let stderrBytes = 0;
+    child.stdout!.on('data', (data) => {
+      stdout += data;
+    });
+    child.stderr!.on('data', (data: Buffer) => {
+      stderrBytes += data.length;
+      if (stderrText.length < 4096)
+        stderrText += data.toString('utf8').replaceAll('\0', '');
+    });
+    // The wait message is the launcher's own stderr write: the write that
+    // used to leave the inherited description non-blocking for Biome.
+    await vi.waitFor(
+      () => expect(stderrText).toContain('waiting for a host Biome slot'),
+      { timeout: 15_000 },
+    );
+    child.stderr!.pause();
+    // Both are subscribed now: 'close' can follow 'exit' in the same tick.
+    const exit = once(child, 'exit');
+    const closed = once(child, 'close');
+    holder.finish();
+    await vi.waitFor(() => expect(stdout).toContain('flood-start'), {
+      timeout: 15_000,
+    });
+    // real-time: the capture must lag while the flood runs; a non-blocking
+    // writer fails within microseconds of filling the buffer.
+    await new Promise((settle) => setTimeout(settle, 500));
+    child.stderr!.resume();
+    const [code] = await exit;
+    await closed;
+    expect(stdout).toContain('flood-exit=0');
+    expect(code).toBe(0);
+    expect(stderrBytes).toBeGreaterThanOrEqual(4096 * 1024);
+  },
+  60_000,
+);

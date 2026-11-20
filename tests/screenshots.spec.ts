@@ -1,13 +1,26 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import {
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  type PublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
+import { DIALOG_HISTORY_KEY } from '../src-ui/src/components/dialog-history';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
-import { phoneChatInventoryControls } from './helpers/chat-inventory';
+import {
+  openDesktopChatInventory,
+  phoneChatInventoryControls,
+} from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
 import {
   agentConnectionFixture,
@@ -17,11 +30,37 @@ import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
+  type AppErrorObservation,
+  type AppErrorSurfaceCounts,
+  type ControlBox,
+  type ControlMovement,
+  type ControlNameDiff,
+  createFailedRequestLog,
+  failedScreenReason,
+  formatControlChangeTable,
+  type GalleryFault,
+  isChunkPath,
+  READ_APP_ERROR_SURFACES,
+  readGalleryFaults,
+} from './helpers/gallery-app-error-state';
+import {
+  assertGalleryAssetScopeCapacity,
   createGalleryAssetDiagnostics,
   inventoryGalleryAssets,
   readGalleryLifecycle,
   retainGalleryAssetDiagnostics,
 } from './helpers/gallery-asset-diagnostics';
+import {
+  createDocumentTracker,
+  observeGalleryRequests,
+} from './helpers/gallery-document-tracker';
+import {
+  captureScreens,
+  failedScreenFields,
+  MAX_SECOND_CAPTURES,
+  readSettleWindow,
+  type SecondCaptureRecord,
+} from './helpers/gallery-screen-attempt';
 import {
   auditGalleryScreen,
   type GalleryUiAudit,
@@ -30,12 +69,14 @@ import {
   emulateKeyboard,
   installKeyboardEmulation,
 } from './helpers/keyboard-emulation';
+import { memberProjectChannelScreens } from './helpers/member-project-channel-gallery';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
   GALLERY_DESIGN_ROOM_ID,
   installProjectConversationsFixture,
   installProjectRoomFixture,
   installTaskRoomFixture,
+  LIVE_ROOM_SCENES,
   NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
@@ -299,6 +340,26 @@ function newProjectOverlay(page: Page) {
  * screen that's actually fine a moment later. */
 async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
   await expect(newProjectOverlay(page)).toHaveCount(0, { timeout: timeoutMs });
+}
+
+/** How long a full navigation may wait for the app shell past the splash. */
+const APP_SHELL_READY_TIMEOUT_MS = 20_000;
+
+/**
+ * Navigates and waits past the "Warming up" splash for the real app shell.
+ * A screen's first navigation and any later full navigation in its own
+ * `afterGoto` use this, so each gets the same budget (run 43671004780 failed
+ * a child-chat reopen that waited 5 s with the splash still up).
+ */
+async function gotoAppShell(page: Page, url: string) {
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () =>
+      !!document.querySelector('.app') &&
+      !document.body.textContent?.includes('Warming up'),
+    undefined,
+    { timeout: APP_SHELL_READY_TIMEOUT_MS },
+  );
 }
 
 /**
@@ -1014,9 +1075,15 @@ function seedActiveChatSession(
     title: string;
     projectSlug?: string;
     projectName?: string;
+    urlScoped?: boolean;
   },
 ) {
   return page.addInitScript((entry) => {
+    if (
+      entry.urlScoped &&
+      new URLSearchParams(location.search).get('chat') !== entry.conversationId
+    )
+      return;
     window.sessionStorage.setItem(
       'activeChats',
       JSON.stringify([
@@ -1367,23 +1434,16 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
           page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeVisible();
         const inbox = page.getByRole('complementary', { name: 'Inbox chats' });
-        await inbox
-          .getByRole('button', { name: 'Inbox actions', exact: true })
-          .click();
-        await page
-          .getByRole('menuitem', { name: 'Refresh inbox', exact: true })
-          .click();
-        await inbox
-          .getByRole('button', { name: 'Inbox actions', exact: true })
-          .click();
-        const refreshing = page.getByRole('menuitem', {
-          name: 'Refreshing…',
+        // The failed read's Retry is the inbox's refresh (#5029).
+        await inbox.getByRole('button', { name: 'Retry', exact: true }).click();
+        const refreshing = inbox.getByRole('button', {
+          name: 'Retrying…',
           exact: true,
         });
         await expect(refreshing).toBeVisible();
         await expect(refreshing).toBeDisabled();
         await expect.poll(() => inventoryReads).toBe(1);
-        // Each attempt reaches the real disabled menu item and must fail
+        // Each attempt reaches the real disabled Retry and must fail
         // actionability for that reason, without issuing another read.
         for (let i = 0; i < 5; i++) {
           await expect(refreshing.click({ timeout: 200 })).rejects.toThrow(
@@ -1395,10 +1455,10 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await expect(
           page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeHidden();
-        await expect(
-          page.getByRole('menuitem', { name: 'Refresh inbox', exact: true }),
-        ).toBeEnabled();
-        await page.keyboard.press('Escape');
+        // A healthy list offers no refresh control at all.
+        await expect(inbox.getByRole('button', { name: /^Retry/ })).toHaveCount(
+          0,
+        );
         const row = page
           .locator('.chat-dock-inbox [data-testid="inbox-row"]')
           .filter({ hasText: 'Mismatch demo chat' });
@@ -1595,7 +1655,10 @@ function overlayDockProjectMismatchHooks(
           await expect(
             page
               .getByRole('complementary', { name: 'Inbox chats' })
-              .getByRole('button', { name: 'Inbox actions', exact: true }),
+              .getByRole('button', {
+                name: 'Browse all conversations',
+                exact: true,
+              }),
           ).toBeVisible();
           await expect(
             page.getByText('Couldn’t refresh the inbox.', { exact: true }),
@@ -1870,6 +1933,11 @@ interface Screen {
    * be captured as the wrong tile).
    */
   afterGoto?: (page: Page) => Promise<void>;
+  /**
+   * Optional checks after the audit has passed its error-surface check (a
+   * post-shot interaction the photo must not show).
+   */
+  afterAudit?: (page: Page) => Promise<void>;
   /** Release screen fixtures after capture and interaction checks, even on failure. */
   cleanup?: () => Promise<void>;
   /**
@@ -1931,13 +1999,16 @@ function telemetryConsentScreens(): Screen[] {
         mode === 'dialog-dnt' ||
         mode === 'settings-dnt-after-fix' ||
         mode === 'settings-detailed-expanded';
+      const additionalEndpoint = endpoint
+        ? new URL('https://counts.example.test/events')
+        : undefined;
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       return {
         name: `telemetry-${mode}-${device}`,
         title: `Usage sharing — ${mode} (${device})`,
-        path: '/settings?view=telemetry',
+        path: dialogVisible ? '/' : '/settings?view=telemetry',
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
@@ -1995,9 +2066,8 @@ function telemetryConsentScreens(): Screen[] {
               async (route) => {
                 const body = structuredClone(configSnapshot);
                 body.data.telemetryTier = choices;
-                body.data.productTelemetryEndpoint = endpoint
-                  ? 'https://counts.example.test/events'
-                  : '';
+                body.data.productTelemetryEndpoint =
+                  additionalEndpoint?.href ?? '';
                 delete body.data.telemetryEnabled;
                 delete body.data.firstRun;
                 await route.fulfill({ json: body });
@@ -2011,6 +2081,7 @@ function telemetryConsentScreens(): Screen[] {
                   acknowledged: !dialogVisible,
                   telemetryEnabled: false,
                   endpointConfigured: endpoint,
+                  additionalHost: additionalEndpoint?.host,
                   publishers,
                 });
                 await route.fulfill({ json: body });
@@ -2086,6 +2157,9 @@ function telemetryConsentScreens(): Screen[] {
         },
         afterGoto: async (page) => {
           if (dialogVisible) {
+            await page
+              .getByRole('button', { name: 'Review choices', exact: true })
+              .click();
             const dialog = page.getByRole('dialog', {
               name: 'Usage sharing',
             });
@@ -2188,15 +2262,6 @@ function telemetryConsentScreens(): Screen[] {
             }
             return;
           }
-          if (dnt && endpoint) {
-            const dialog = page.getByRole('dialog', {
-              name: 'Usage sharing',
-            });
-            await dialog
-              .getByRole('button', { name: 'Not now', exact: true })
-              .click();
-            await expect(dialog).toHaveCount(0);
-          }
           const choice = page
             .getByRole('region', { name: 'Usage sharing choices' })
             .getByRole('radio', {
@@ -2238,11 +2303,28 @@ function telemetryConsentScreens(): Screen[] {
               await main
                 .getByText('Changes wait until you select Save.')
                 .hover();
-              await page.mouse.wheel(0, 180);
+              // Check end-of-page clearance independently of the scroll
+              // position left by radio selection and hover auto-scrolling.
+              const content = page.locator('.content-view');
+              await page.mouse.wheel(
+                0,
+                await content.evaluate((element) => element.scrollHeight),
+              );
+              await expect
+                .poll(() =>
+                  content.evaluate(
+                    (element) =>
+                      element.scrollHeight -
+                      element.clientHeight -
+                      element.scrollTop,
+                  ),
+                )
+                .toBeLessThanOrEqual(1);
               const explanation = main.getByText(
                 'Feature use. Monthly code. No account or content.',
                 { exact: true },
               );
+              await expect(explanation).toBeInViewport({ ratio: 1 });
               await expect
                 .poll(async () => {
                   const [text, bar] = await Promise.all([
@@ -2256,6 +2338,7 @@ function telemetryConsentScreens(): Screen[] {
                   return text.y + text.height <= bar.y - 4;
                 })
                 .toBe(true);
+              await save.click({ trial: true });
             }
             if (mode === 'settings-detailed-expanded') {
               const included = main.getByRole('region', {
@@ -2528,13 +2611,7 @@ function inventoryDrilldownScreens(): Screen[] {
               await chatActions.click();
               await inventoryRow.click();
             } else {
-              await page
-                .locator('#chat-dock')
-                .getByRole('button', { name: 'More dock actions', exact: true })
-                .click();
-              await page
-                .getByRole('menuitem', { name: 'Chat inventory', exact: true })
-                .click();
+              await openDesktopChatInventory(page);
             }
             const reader = page.getByRole('dialog', {
               name: 'Chat inventory',
@@ -2591,9 +2668,12 @@ function inventoryDrilldownScreens(): Screen[] {
  * The Station switcher with a desktop's worth of saved Stations: the active
  * one, two that answer and two whose connections are refused, at 390 and 1440
  * in both themes, plus the inline forget confirmation. Every extra Station is
- * routed here, because the gallery answers the public handshake on any
- * origin. Extra profiles join the gallery's own seed only on this screen's
- * URL, and only once, since init scripts outlive the screen.
+ * routed here. The switcher calls a Station Online only when its public
+ * handshake answers as a Station, so the two that answer serve the gallery's
+ * handshake on that path; an empty 200 there reads as "Not confirmed".
+ * (Playwright adds the CORS headers a cross-origin read needs to a fulfilled
+ * response that has none.) Extra profiles join the gallery's own seed only on
+ * this screen's URL, and only once, since init scripts outlive the screen.
  */
 function stationSwitcherScreens(): Screen[] {
   const online = 'https://online.gallery.test';
@@ -2603,20 +2683,58 @@ function stationSwitcherScreens(): Screen[] {
       viewport,
       theme,
       armed: false,
+      forgotten: undefined as 'keyboard' | 'pointer' | undefined,
+      extra: false,
     })),
   );
-  shots.push({ viewport: DESKTOP, theme: 'dark', armed: true });
-  return shots.map(({ viewport, theme, armed }): Screen => {
+  shots.push({
+    viewport: DESKTOP,
+    theme: 'dark',
+    armed: true,
+    forgotten: undefined,
+    extra: false,
+  });
+  // Forgetting a Station never closes the menu: from exactly five Stations
+  // the filter field unmounts with focus on it; from six it stays. One
+  // screen each for the keyboard, the pointer and the six-Station case.
+  shots.push(
+    {
+      viewport: DESKTOP,
+      theme: 'dark',
+      armed: true,
+      forgotten: 'keyboard',
+      extra: false,
+    },
+    {
+      viewport: MOBILE,
+      theme: 'dark',
+      armed: true,
+      forgotten: 'pointer',
+      extra: false,
+    },
+    {
+      viewport: DESKTOP,
+      theme: 'dark',
+      armed: true,
+      forgotten: 'keyboard',
+      extra: true,
+    },
+  );
+  return shots.map(({ viewport, theme, armed, forgotten, extra }): Screen => {
     const device = viewport === MOBILE ? 'mobile' : 'desktop';
-    const name = `station-switcher${armed ? '-forget' : ''}-${theme}-${device}`;
+    const name = `station-switcher${armed ? '-forget' : ''}${forgotten ? `-after-${forgotten}${extra ? '-six' : ''}` : ''}-${theme}-${device}`;
     let cleanups: (() => Promise<void>)[] = [];
     return {
       name,
-      title: `Station switcher${armed ? ' — forget' : ''}, ${theme} (${device})`,
+      title: `Station switcher${armed ? ' — forget' : ''}${forgotten ? ` — after forgetting by ${forgotten}${extra ? ' from six' : ' from five'}` : ''}, ${theme} (${device})`,
       path: '/?gallery=station-switcher',
       viewport,
       beforeGoto: async (page) => {
-        const answer = (route: Route) => route.fulfill({ status: 200 });
+        const answer = (route: Route) =>
+          new URL(route.request().url()).pathname ===
+          PUBLIC_STATION_HANDSHAKE_PATH
+            ? fulfillGalleryStationHandshake(route)
+            : route.fulfill({ status: 200 });
         const refuse = (route: Route) => route.abort('connectionrefused');
         await page.route(`${online}/**`, answer);
         await page.route(`${offline}/**`, refuse);
@@ -2666,6 +2784,9 @@ function stationSwitcherScreens(): Screen[] {
               ['media', 'Media server', online],
               ['laptop', 'Laptop', offline],
               ['dev', 'Old dev instance', `${offline}/dev`],
+              ...(extra
+                ? ([['spare', 'Spare box', `${online}/spare`]] as const)
+                : []),
             ],
           },
         );
@@ -2686,13 +2807,54 @@ function stationSwitcherScreens(): Screen[] {
         await expect(
           menu.getByRole('menuitem', { name: 'Forget 2 unreachable' }),
         ).toBeVisible();
+        // A Station that would fail if chosen is drawn greyed out. Its row is
+        // `aria-disabled`, not `disabled`, so the shared disabled-row style
+        // does not reach it and only its own rule keeps it apart from a row
+        // that can be chosen.
+        const rowColour = (name: RegExp) =>
+          menu
+            .getByRole('menuitemradio', { name })
+            .evaluate((row) => getComputedStyle(row).color);
+        expect(await rowColour(/^Laptop — Unreachable/)).not.toBe(
+          await rowColour(/^Media server — Online/),
+        );
         if (armed) {
           await menu
             .getByRole('menuitemradio', { name: /^Old dev instance/ })
             .press('Delete');
-          await expect(
-            menu.getByRole('menuitem', { name: 'Forget Old dev instance' }),
-          ).toBeFocused();
+          const confirm = menu.getByRole('menuitem', {
+            name: 'Forget Old dev instance',
+          });
+          await expect(confirm).toBeFocused();
+          if (forgotten) {
+            if (forgotten === 'keyboard') await confirm.press('Enter');
+            else await confirm.click();
+            await expect(
+              menu.getByRole('menuitemradio', { name: /^Old dev instance/ }),
+            ).toHaveCount(0);
+            // The menu stays open and focus sits on a visible item inside it,
+            // not on a removed element or <body>. Asserted after a settle
+            // tick: a menu that closes on focus loss does so asynchronously.
+            await page.waitForTimeout(300);
+            await expect(menu).toBeVisible();
+            const focus = await page.evaluate(() => {
+              const active = document.activeElement;
+              const box = active?.getBoundingClientRect();
+              return {
+                inMenu: Boolean(
+                  active?.closest('.app-toolbar__station-switcher'),
+                ),
+                visible: Boolean(box && box.width > 0 && box.height > 0),
+              };
+            });
+            expect(focus.inMenu).toBe(true);
+            expect(focus.visible).toBe(true);
+            expect(
+              await page
+                .getByRole('searchbox', { name: 'Find a Station' })
+                .count(),
+            ).toBe(extra ? 1 : 0);
+          }
         }
       },
       cleanup: async () => {
@@ -2700,6 +2862,377 @@ function stationSwitcherScreens(): Screen[] {
       },
     };
   });
+}
+
+/**
+ * #5066: a Task's pull request watch on its Overview, and the Project's
+ * Pull requests setting. The Task and Project are real; only the Task's watch
+ * read is routed, to a fixed view a real forge would take a day to produce
+ * (one pull request ready, one out of fix attempts, two refused actions).
+ */
+function pullRequestWatchScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].flatMap((viewport): Screen[] => {
+      const form = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      const preview = (page: Page) => {
+        const request = createAuthenticatedE2ERequest(page.request);
+        let previous: boolean | undefined;
+        return {
+          request,
+          async enable() {
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const entry = (await previews.json()).data.find(
+              (item: { id: string }) =>
+                item.id === 'pull-request-agent-feedback',
+            );
+            expect(entry).toBeDefined();
+            previous = entry.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/pull-request-agent-feedback`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+          },
+          async restore() {
+            if (previous === undefined) return;
+            const restored = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/pull-request-agent-feedback`,
+              { data: { enabled: previous } },
+            );
+            expect(restored.ok()).toBe(true);
+          },
+        };
+      };
+
+      const taskSlug = `gallery-pr-watch-${theme}-${viewport.width}`;
+      let taskFixture: ReturnType<typeof preview> | undefined;
+      let taskProject = false;
+      let pageForTask: Page | undefined;
+      let restoreHandshake: (() => Promise<void>) | undefined;
+      const watchRoute = async (route: Route) => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const taskId = decodeURIComponent(
+          new URL(route.request().url()).pathname.split('/')[3] ?? '',
+        );
+        const identity = (ref: string) => ({
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'widgets' },
+          ref,
+        });
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              taskId,
+              watching: true,
+              source: 'project',
+              mode: 'project',
+              projectEnabled: true,
+              maxFixAttempts: 3,
+              available: true,
+              pullRequests: [
+                {
+                  identity: identity('42'),
+                  url: 'https://github.com/acme/widgets/pull/42',
+                  watch: {
+                    state: 'ready',
+                    headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+                    at: '2026-11-17T09:12:00.000Z',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
+                {
+                  identity: identity('57'),
+                  url: 'https://github.com/acme/widgets/pull/57',
+                  watch: {
+                    state: 'budget-spent',
+                    failing: ['ci / unit-tests', 'ci / lint'],
+                    headSha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890',
+                  },
+                  fixAttempts: 3,
+                  maxFixAttempts: 3,
+                },
+                {
+                  identity: identity('63'),
+                  url: 'https://github.com/acme/widgets/pull/63',
+                  watch: {
+                    state: 'review-needed',
+                    headSha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
+                    detail:
+                      'Required findings were dismissed. Choose Review again.',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
+              ],
+              refusals: [
+                {
+                  id: 'refusal-2',
+                  at: '2026-11-17T09:05:00.000Z',
+                  kind: 'force-push',
+                  outcome: 'refused',
+                  toolName: 'Bash',
+                  detail: 'git push --force-with-lease origin topic',
+                },
+                {
+                  id: 'refusal-1',
+                  at: '2026-11-17T08:40:00.000Z',
+                  kind: 'arm-auto-merge',
+                  outcome: 'refused',
+                  toolName: 'Bash',
+                  detail: 'gh pr merge 42 --auto --squash',
+                },
+              ],
+            },
+          },
+        });
+      };
+      const taskScreen: Screen = {
+        name: `task-pr-watch-${theme}-${form}`,
+        title: `Task pull request watch — ${theme}, ${viewport.width}px`,
+        path: '/',
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          pageForTask = page;
+          taskFixture = preview(page);
+          await taskFixture.enable();
+          const project = await taskFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: taskSlug, slug: taskSlug } },
+          );
+          expect(project.ok()).toBe(true);
+          taskProject = true;
+          const task = await taskFixture.request.post(
+            `${resolveE2EApiBase()}/api/tasks`,
+            {
+              data: {
+                projectId: taskSlug,
+                title: 'Fix the login redirect on Safari',
+                createdBy: 'user',
+              },
+            },
+          );
+          expect(task.ok()).toBe(true);
+          const created = await task.json();
+          taskScreen.path = `/tasks/${encodeURIComponent(created.data.id)}?taskView=overview`;
+          // The gallery's global handshake names no capability; the panel
+          // shows only on a host that serves pull request feedback.
+          restoreHandshake = await withRoute(
+            page,
+            '**/.well-known/station/v1',
+            (route) =>
+              fulfillGalleryStationHandshake(route, false, {
+                pullRequestFeedback: true,
+              }),
+          );
+          await page.route('**/api/tasks/*/pull-request-watch', watchRoute);
+        },
+        async afterGoto(page) {
+          const panel = page.getByRole('region', {
+            name: 'Pull request watch',
+          });
+          await expect(panel).toBeVisible();
+          await expect(panel.getByText('Ready for you')).toBeVisible();
+          await expect(panel.getByText('Review needs you')).toBeVisible();
+          await expect(
+            panel.getByText('Still failing: ci / unit-tests, ci / lint'),
+          ).toBeVisible();
+          await expect(
+            panel.getByRole('button', { name: 'Stop watching' }),
+          ).toBeVisible();
+          await panel
+            .getByRole('button', { name: 'Refused actions · 2' })
+            .click();
+          await expect(panel.getByText('Arm auto-merge')).toBeVisible();
+          await panel.scrollIntoViewIfNeeded();
+        },
+        async cleanup() {
+          try {
+            await pageForTask?.unroute(
+              '**/api/tasks/*/pull-request-watch',
+              watchRoute,
+            );
+            await restoreHandshake?.();
+            if (taskProject) {
+              const deleted = await taskFixture!.request.delete(
+                `${resolveE2EApiBase()}/api/projects/${taskSlug}`,
+              );
+              expect(deleted.ok()).toBe(true);
+            }
+          } finally {
+            await taskFixture?.restore();
+          }
+        },
+      };
+
+      const projectSlug = `gallery-pr-setting-${theme}-${viewport.width}`;
+      let projectFixture: ReturnType<typeof preview> | undefined;
+      let projectCreated = false;
+      let previousHeadReview = false;
+      const projectScreen: Screen = {
+        name: `project-pull-requests-${theme}-${form}`,
+        title: `Project pull request setting — ${theme}, ${viewport.width}px`,
+        path: `/projects/${projectSlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          projectFixture = preview(page);
+          await projectFixture.enable();
+          const flags = await projectFixture.request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          previousHeadReview = (await flags.json()).data.find(
+            (entry: { id: string }) => entry.id === 'pull-request-head-review',
+          ).enabled;
+          expect(
+            (
+              await projectFixture.request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                { data: { enabled: true } },
+              )
+            ).ok(),
+          ).toBe(true);
+          const project = await projectFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            {
+              data: {
+                name: projectSlug,
+                slug: projectSlug,
+                workingDirectory: process.cwd(),
+              },
+            },
+          );
+          expect(project.ok()).toBe(true);
+          projectCreated = true;
+          const set = await projectFixture.request.put(
+            `${resolveE2EApiBase()}/api/projects/${projectSlug}/pull-request-watch`,
+            { data: { enabled: true, maxFixAttempts: 3 } },
+          );
+          expect(set.ok()).toBe(true);
+          const defaults = await projectFixture.request.put(
+            `${resolveE2EApiBase()}/api/pull-request-feedback/projects/${projectSlug}/defaults`,
+            {
+              data: {
+                settings: {
+                  fixFailingChecks: true,
+                  addressReviewComments: true,
+                  reviewEachHead: true,
+                },
+              },
+            },
+          );
+          expect(defaults.ok(), await defaults.text()).toBe(true);
+        },
+        async afterGoto(page) {
+          const toggle = page.getByRole('switch', {
+            name: 'Watch Task pull requests',
+          });
+          await expect(toggle).toBeVisible();
+          await expect(toggle).toBeEnabled();
+          await expect(toggle).toBeChecked();
+          await expect(
+            page.getByRole('combobox', { name: 'Fix attempts' }),
+          ).toHaveValue('3');
+          await expect(
+            page.getByRole('heading', { name: 'Other Task pull requests' }),
+          ).toBeVisible();
+          const groupHeading = page.getByRole('heading', {
+            name: 'Other Task pull requests',
+          });
+          const headingBox = await groupHeading.boundingBox();
+          expect(headingBox).not.toBeNull();
+          const rowBottom = await page
+            .getByRole('combobox', { name: 'Fix attempts' })
+            .evaluate(
+              (element) =>
+                element.closest('.page-row')!.getBoundingClientRect().bottom,
+            );
+          expect(headingBox!.y - rowBottom).toBeGreaterThanOrEqual(16);
+          await expect(
+            page.getByRole('switch', { name: 'Review each new head' }),
+          ).toBeChecked();
+          await expect(
+            page.getByRole('link', { name: 'Agent feedback', exact: true }),
+          ).toHaveCount(0);
+        },
+        async cleanup() {
+          try {
+            if (projectCreated) {
+              const deleted = await projectFixture!.request.delete(
+                `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              );
+              expect(deleted.ok()).toBe(true);
+            }
+          } finally {
+            expect(
+              (
+                await projectFixture!.request.put(
+                  `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                  { data: { enabled: previousHeadReview } },
+                )
+              ).ok(),
+            ).toBe(true);
+            await projectFixture?.restore();
+          }
+        },
+      };
+      const noRepositorySlug = `gallery-pr-no-repo-${theme}-${viewport.width}`;
+      let noRepositoryFixture: ReturnType<typeof preview> | undefined;
+      let noRepositoryCreated = false;
+      const noRepositoryScreen: Screen = {
+        name: `project-pull-requests-no-repository-${theme}-${form}`,
+        title: `Project pull requests setup — ${theme}, ${viewport.width}px`,
+        path: `/projects/${noRepositorySlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          noRepositoryFixture = preview(page);
+          await noRepositoryFixture.enable();
+          const created = await noRepositoryFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Design notes', slug: noRepositorySlug } },
+          );
+          expect(created.ok(), await created.text()).toBe(true);
+          noRepositoryCreated = true;
+        },
+        async afterGoto(page) {
+          await expect(
+            page.getByText('Add a repository to use pull requests'),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Open Sources' }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('switch', { name: 'Watch Task pull requests' }),
+          ).toHaveCount(0);
+          await expect(
+            page.getByRole('button', { name: 'Save', exact: true }),
+          ).toHaveCount(0);
+        },
+        async cleanup() {
+          try {
+            if (noRepositoryCreated)
+              expect(
+                (
+                  await noRepositoryFixture!.request.delete(
+                    `${resolveE2EApiBase()}/api/projects/${noRepositorySlug}`,
+                  )
+                ).ok(),
+              ).toBe(true);
+          } finally {
+            await noRepositoryFixture?.restore();
+          }
+        },
+      };
+      return [taskScreen, projectScreen, noRepositoryScreen];
+    }),
+  );
 }
 
 function taskCapabilityScreens(): Screen[] {
@@ -3161,6 +3694,289 @@ function appsLibraryScreens(details = false): Screen[] {
   );
 }
 
+/**
+ * #5064/#5072: the Project Overview groups and the Overview and notifications
+ * settings section, both behind the `project-overview` Feature Preview. The
+ * Tasks, their runs and their pull request facts are fixtures (no forge is
+ * read), seeded so every group is populated, including the green pull request
+ * nobody armed ("Not queued") and an auto-resolved Task with its Reopen menu.
+ */
+function projectOverviewScreens(): Screen[] {
+  const DAY = 86_400_000;
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].flatMap((viewport) =>
+      (['overview', 'settings'] as const).map((surface): Screen => {
+        const size = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const slug = `gallery-overview-${surface}-${theme}-${viewport.width}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const cleanups: (() => Promise<void>)[] = [];
+        let created = false;
+        let previousPreview = false;
+        return {
+          name: `project-overview-${surface === 'overview' ? 'groups' : 'settings'}-${theme}-${size}`,
+          title:
+            surface === 'overview'
+              ? `Project Overview groups — ${theme}, ${viewport.width}px`
+              : `Project Overview and notifications settings — ${theme}, ${viewport.width}px`,
+          path:
+            surface === 'overview'
+              ? `/projects/${slug}`
+              : `/projects/${slug}/edit?section=overview`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (item: { id: string }) => item.id === 'project-overview',
+            );
+            expect(preview).toBeDefined();
+            previousPreview = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-overview`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            cleanups.push(async () => {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/project-overview`,
+                { data: { enabled: previousPreview } },
+              );
+              expect(restored.ok()).toBe(true);
+            });
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              { data: { name: 'Billing platform', slug } },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            if (surface === 'settings') return;
+
+            const now = Date.now();
+            const at = (msAgo: number) => new Date(now - msAgo).toISOString();
+            const task = (
+              id: string,
+              title: string,
+              overrides: Record<string, unknown> = {},
+            ) => ({
+              id: `${slug}-${id}`,
+              projectId: slug,
+              title,
+              description: '',
+              priority: 'normal',
+              status: 'in_progress',
+              agentId: 'claude',
+              createdBy: 'user',
+              createdAt: at(20 * DAY),
+              updatedAt: at(2 * 3_600_000),
+              sessionId: `${slug}-run-${id}`,
+              ...overrides,
+            });
+            const tasks = [
+              task('ask', 'Choose the invoice numbering scheme'),
+              task('blocked', 'Unblock the tax provider sandbox', {
+                status: 'blocked',
+                sessionId: undefined,
+              }),
+              task('run', 'Refresh the onboarding copy'),
+              task('review', 'Review the export redesign'),
+              task('stall', 'Ship the billing banner'),
+              task('queued', 'Tighten the API rate limits'),
+              task('idle', 'Write the release notes', {
+                latestReport: {
+                  text: 'Drafted notes for 4.2; waiting on the final changelog.',
+                  at: at(3_600_000),
+                },
+              }),
+              task('quiet', 'Audit unused feature flags', {
+                updatedAt: at(10 * DAY),
+              }),
+              task('merged', 'Migrate settings storage'),
+            ];
+            const session = (
+              id: string,
+              overrides: Record<string, unknown> = {},
+            ) => ({
+              provider: 'claude',
+              threadId: `${slug}-run-${id}`,
+              status: 'ready',
+              controlMode: 'station-owned',
+              answerability: { answerable: true },
+              isLoaded: true,
+              isPersisted: true,
+              eventCount: 6,
+              createdAt: at(DAY),
+              updatedAt: at(2 * 3_600_000),
+              ...overrides,
+            });
+            const sessions = [
+              session('ask', {
+                lifecycleState: 'needs_input',
+                transitionReason: 'input_requested',
+              }),
+              session('run', {
+                lifecycleState: 'running',
+                hasActiveTurn: true,
+              }),
+              session('review'),
+              session('stall'),
+              session('queued'),
+              session('idle'),
+              session('quiet', {
+                createdAt: at(11 * DAY),
+                updatedAt: at(10 * DAY),
+              }),
+              session('merged'),
+            ];
+            const pr = (
+              ref: string,
+              status: Record<string, unknown>,
+            ): Record<string, unknown> => ({
+              provider: 'github',
+              host: 'github.com',
+              repository: { owner: 'example', name: 'billing' },
+              ref,
+              url: `https://github.com/example/billing/pull/${ref}`,
+              observedAt: at(60_000),
+              status: {
+                state: 'current',
+                pullRequestState: 'OPEN',
+                mergeability: 'mergeable',
+                ...status,
+              },
+            });
+            const facts: Record<string, Record<string, unknown>[]> = {
+              review: [
+                pr('412', {
+                  readiness: 'blocked',
+                  reviewDecision: 'review_required',
+                }),
+              ],
+              stall: [pr('415', { readiness: 'clean', landing: 'not-queued' })],
+              queued: [
+                pr('418', { readiness: 'clean', landing: 'merge-queue' }),
+              ],
+              merged: [pr('409', { pullRequestState: 'MERGED' })],
+            };
+            const tasksRoute = (url: URL) => url.pathname === '/api/tasks';
+            const tasksHandler = (route: Route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({ json: { success: true, data: tasks } });
+            };
+            await page.route(tasksRoute, tasksHandler);
+            cleanups.push(() => page.unroute(tasksRoute, tasksHandler));
+            cleanups.push(
+              await withRoute(
+                page,
+                '**/api/tasks/pull-request-facts*',
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        observedAt: at(60_000),
+                        tasks: Object.fromEntries(
+                          tasks.map((item) => [
+                            item.id,
+                            {
+                              taskCreatedAt: item.createdAt,
+                              pullRequests:
+                                facts[item.id.slice(slug.length + 1)] ?? [],
+                            },
+                          ]),
+                        ),
+                      },
+                    },
+                  });
+                },
+              ),
+            );
+            cleanups.push(
+              await withRoute(
+                page,
+                '**/api/orchestration/sessions/read-model',
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: { success: true, data: sessions },
+                  });
+                },
+              ),
+            );
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            if (surface === 'settings') {
+              const section = page.locator('#section-overview');
+              await expect(
+                section.getByRole('combobox', { name: 'Resolve idle Tasks' }),
+              ).toHaveValue('7');
+              await expect(
+                section.getByRole('combobox', { name: 'Notify me' }),
+              ).toBeEnabled();
+              await section.scrollIntoViewIfNeeded();
+              return;
+            }
+            const overview = page.locator('.project-overview');
+            for (const label of [
+              'Waiting on you',
+              'Ready for review',
+              'Working',
+              'Landing',
+              'Idle',
+            ])
+              await expect(
+                overview.getByRole('heading', {
+                  name: new RegExp(`^${label}`),
+                }),
+              ).toBeVisible();
+            await expect(overview.getByText(/Not queued/)).toBeVisible();
+            await overview
+              .getByRole('button', { name: /^Resolved · 2$/ })
+              .click();
+            await expect(
+              overview.getByText('Auto-resolved', { exact: true }),
+            ).toBeVisible();
+            // The last row can be scrolled clear of the collapsed dock: the
+            // page reserves room for it below the list. Shown that way, and
+            // asserted, so the capture proves it is reachable.
+            const last = overview.locator('.project-overview__row').last();
+            await last.evaluate((row) =>
+              row.scrollIntoView({ block: 'center' }),
+            );
+            const dock = await page
+              .locator('.chat-dock.is-collapsed')
+              .boundingBox();
+            const lastBox = await last.boundingBox();
+            expect(lastBox).not.toBeNull();
+            if (dock)
+              expect(lastBox!.y + lastBox!.height).toBeLessThanOrEqual(dock.y);
+          },
+          async cleanup() {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+      }),
+    ),
+  );
+}
+
 function projectRepositorySourceScreens(): Screen[] {
   return (['dark', 'light'] as const).flatMap((theme) =>
     [false, true].flatMap((accessDetails) =>
@@ -3373,7 +4189,7 @@ function projectRepositorySourceScreens(): Screen[] {
               ]) {
                 const summary = section
                   .locator('summary')
-                  .filter({ hasText: new RegExp(`^${label}$`) });
+                  .and(section.getByText(label, { exact: true }));
                 await summary.click();
                 await expect(
                   section
@@ -3381,6 +4197,20 @@ function projectRepositorySourceScreens(): Screen[] {
                     .filter({ hasText: label }),
                 ).toHaveCount(1);
                 await expect(summary).toBeInViewport({ ratio: 1 });
+                if (label === 'Add a repository') {
+                  await expect(
+                    section.getByRole('button', {
+                      name: 'GitHub',
+                      exact: true,
+                    }),
+                  ).toBeVisible();
+                  await expect(
+                    section.getByRole('button', {
+                      name: 'Git URL',
+                      exact: true,
+                    }),
+                  ).toBeVisible();
+                }
                 await summary.click();
               }
               await sources
@@ -3400,7 +4230,7 @@ function projectRepositorySourceScreens(): Screen[] {
             const target = accessDetails
               ? first.locator('.project-repositories__access')
               : sources.getByRole('heading', {
-                  name: 'Repositories and folders',
+                  name: 'Repositories',
                   exact: true,
                 });
             const header = await page.locator('.detail-header').boundingBox();
@@ -3509,6 +4339,9 @@ const ROOM_SCENES = [
   { scene: 'edited', room: 'project' },
   { scene: 'deleted', room: 'project' },
   { scene: 'attachment', room: 'project' },
+  { scene: 'live-mention', room: 'project' },
+  { scene: 'agent-working', room: 'project' },
+  { scene: 'agent-outcome', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3548,6 +4381,7 @@ function roomConversationScreens(): Screen[] {
           | undefined;
         let cleanupTask: (() => Promise<void>) | undefined;
         let restoreHandshake: (() => Promise<void>) | undefined;
+        let closeChannelDialogs: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `room-${room === 'task' ? 'task-' : ''}${scene}-${theme}-${width}`,
           title: `${room === 'task' ? 'Task' : 'Project'} room, ${scene} — ${theme}, ${viewport.width}px`,
@@ -3576,6 +4410,10 @@ function roomConversationScreens(): Screen[] {
                 (route) =>
                   fulfillGalleryStationHandshake(route, false, {
                     projectRoomMessageActions: true,
+                    // The shared live stream, typing and members (#4798).
+                    ...(LIVE_ROOM_SCENES.includes(scene)
+                      ? { projectRoomLive: true }
+                      : {}),
                   }),
               );
               fixture = await installProjectRoomFixture(page, {
@@ -3596,6 +4434,35 @@ function roomConversationScreens(): Screen[] {
             screen.path = `/tasks/${encodeURIComponent(installed.taskId)}?taskView=conversation`;
           },
           async afterGoto(page) {
+            if (scene === 'channels') {
+              await expect(page).toHaveURL(
+                (url) => url.pathname === `/projects/${slug}`,
+              );
+              closeChannelDialogs = async () => {
+                for (const name of [
+                  'Close channels',
+                  'Close channel options',
+                ]) {
+                  const close = page.getByRole('dialog').getByRole('button', {
+                    name,
+                    exact: true,
+                  });
+                  if (await close.isVisible()) {
+                    await close.click({ timeout: 5000 });
+                    await expect(close).toBeHidden();
+                  }
+                }
+                // A drawer can disappear before its cleanup Back commits.
+                await expect
+                  .poll(() =>
+                    page.evaluate(
+                      (key) => window.history.state?.[key] ?? null,
+                      DIALOG_HISTORY_KEY,
+                    ),
+                  )
+                  .toBeNull();
+              };
+            }
             await page.evaluate(
               (selected) =>
                 document.documentElement.setAttribute('data-theme', selected),
@@ -3690,6 +4557,42 @@ function roomConversationScreens(): Screen[] {
             if (scene === 'mention') {
               await composer.click();
               await composer.pressSequentially('@');
+            }
+            if (scene === 'live-mention') {
+              // The reader's own mention stands out; someone is typing.
+              await expect(
+                conversation.locator('.room-mention--self'),
+              ).toHaveText('@Maya Chen');
+              await expect(
+                roomRegion.getByText('Jonas Berg is typing…'),
+              ).toBeVisible();
+              // A narrowed search, so the list leaves the room above it in view.
+              await composer.click();
+              await composer.pressSequentially('@Pri');
+              await expect(
+                roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
+              ).toBeVisible();
+              if (viewport.width === MOBILE.width)
+                await expectTouchTarget(
+                  roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
+                  'Mention option',
+                );
+            }
+            if (scene === 'agent-working') {
+              await expect(
+                conversation.getByText('Working on it…'),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText('Scout is working…'),
+              ).toBeVisible();
+            }
+            if (scene === 'agent-outcome') {
+              await expect(
+                conversation.getByText('Couldn’t finish'),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText('Stopped', { exact: true }),
+              ).toBeVisible();
             }
             if (scene === 'keyboard') {
               await composer.click();
@@ -4096,8 +4999,12 @@ function roomConversationScreens(): Screen[] {
                   ),
                 ),
               });
+              // The staged image's thumbnail is its Preview button (the image
+              // inside is decorative).
               await expect(
-                roomRegion.getByRole('img', { name: 'checkout-flow.png' }),
+                roomRegion.getByRole('button', {
+                  name: 'Preview checkout-flow.png',
+                }),
               ).toBeVisible();
               await expect(
                 roomRegion.getByRole('button', { name: 'Send message' }),
@@ -4182,7 +5089,24 @@ function roomConversationScreens(): Screen[] {
             }
             await expectSeparateFaces();
           },
+          async afterAudit() {
+            const close = closeChannelDialogs;
+            closeChannelDialogs = undefined;
+            await close?.();
+          },
           async cleanup() {
+            const close = closeChannelDialogs;
+            closeChannelDialogs = undefined;
+            if (close) {
+              // A failed capture still has its original error. Record a
+              // secondary dialog cleanup failure with the test artifacts.
+              await close().catch((error: unknown) =>
+                test.info().attach('Channel dialog cleanup failure', {
+                  body: String(error),
+                  contentType: 'text/plain',
+                }),
+              );
+            }
             await fixture?.cleanup();
             await restoreHandshake?.();
             await cleanupTask?.();
@@ -4201,58 +5125,199 @@ function roomConversationScreens(): Screen[] {
 }
 
 /**
+ * #5063: `#general` with its coordinator, at 1440 and 390 in both themes: a
+ * routed reply with its suggested-Tasks card (one Task done, two to start,
+ * so Start all shows), a settled Task's result and the coordinator bar. The
+ * `project-room-coordinator` preview is turned on on the e2e Station and the
+ * handshake advertises `projectRoomCoordinator`; the room and its card come
+ * from the room fixture.
+ */
+function roomCoordinatorScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      const slug = `gallery-coordinator-${theme}-${viewport.width}`;
+      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+      let created = false;
+      let previousPreview: boolean | undefined;
+      let fixture:
+        | Awaited<ReturnType<typeof installProjectRoomFixture>>
+        | undefined;
+      let restoreHandshake: (() => Promise<void>) | undefined;
+      return {
+        name: `room-coordinator-${theme}-${width}`,
+        title: `Project room coordinator — ${theme}, ${viewport.width}px`,
+        path: `/projects/${slug}?section=room`,
+        viewport,
+        async beforeGoto(page) {
+          request = createAuthenticatedE2ERequest(page.request);
+          const previews = await request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          expect(previews.ok()).toBe(true);
+          const preview = (await previews.json()).data.find(
+            (item: { id: string }) => item.id === 'project-room-coordinator',
+          );
+          expect(preview).toBeDefined();
+          previousPreview = preview.enabled;
+          const enabled = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+            { data: { enabled: true } },
+          );
+          expect(enabled.ok()).toBe(true);
+          const response = await request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Onboarding revamp', slug } },
+          );
+          expect(response.ok()).toBe(true);
+          created = true;
+          const project = (await response.json()).data;
+          restoreHandshake = await withRoute(
+            page,
+            '**/.well-known/station/v1',
+            (route) =>
+              fulfillGalleryStationHandshake(route, false, {
+                projectRoomMessageActions: true,
+                projectRoomCoordinator: true,
+              }),
+          );
+          fixture = await installProjectRoomFixture(page, {
+            slug,
+            projectId: project.id,
+            scene: 'coordinator',
+          });
+        },
+        async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const roomRegion = page.getByRole('region', {
+            name: 'Project room',
+            exact: true,
+          });
+          await expect(roomRegion).toBeVisible();
+          const card = roomRegion.getByRole('region', {
+            name: 'Suggested Tasks, 3',
+          });
+          await expect(card).toBeVisible();
+          await expect(card.getByText('Done')).toBeVisible();
+          await expect(
+            card.getByRole('button', {
+              name: 'Start Document the redirect flag',
+            }),
+          ).toBeVisible();
+          const startAll = card.getByRole('button', { name: 'Start all 2' });
+          await expect(startAll).toBeVisible();
+          await expect(
+            roomRegion.getByText('0 working · 0 waiting · up to 2 at once'),
+          ).toBeVisible();
+          const sweep = roomRegion.getByRole('button', {
+            name: 'Status sweep',
+          });
+          await expect(sweep).toBeVisible();
+          await expect(
+            roomRegion.getByText('Task finished:', { exact: false }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width) {
+            await expectTouchTarget(startAll, 'Start all');
+            await expectTouchTarget(sweep, 'Status sweep');
+          }
+          // The card's own row sits in view for the shot.
+          await card.scrollIntoViewIfNeeded();
+          await page.mouse.move(0, 0);
+        },
+        async cleanup() {
+          await fixture?.cleanup();
+          await restoreHandshake?.();
+          if (created) {
+            const removed = await request.delete(
+              `${resolveE2EApiBase()}/api/projects/${slug}`,
+            );
+            expect(removed.ok()).toBe(true);
+          }
+          if (previousPreview !== undefined) {
+            const restored = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+              { data: { enabled: previousPreview } },
+            );
+            expect(restored.ok()).toBe(true);
+          }
+        },
+      };
+    }),
+  );
+}
+
+/**
  * Channel navigation (#4794, #4795): the Project's channel list (the phone's
  * Project page; at 1440 the sidebar with one Project expanded and one
  * collapsed), a channel opened by its address, and a thread. Unread state
  * comes from the read-marker fixture.
  *
- * The phone list is shot in a tall phone frame, the whole page at once: the
- * collapsed dock overlays the bottom band of the page's scrollport, and in
- * a 844px frame some control of this page always sits behind it.
+ * The channel list is captured in a frame tall enough to show the Project's
+ * overview and its Room preview above the collapsed dock.
  */
-const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
+const CHANNEL_NAV_SCENES = [
+  'list',
+  'conversation',
+  'thread',
+  'rail',
+  'attention',
+] as const;
 const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
+const DESKTOP_CHANNEL_LIST_PAGE = {
+  width: DESKTOP.width,
+  height: 1500,
+} as const;
 
 function channelNavigationScreens(): Screen[] {
   return CHANNEL_NAV_SCENES.flatMap((scene) =>
     (['dark', 'light'] as const).flatMap((theme) =>
-      [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE].map(
-        (viewport): Screen => {
-          const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
-          const phone = viewport.width === MOBILE.width;
-          const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
-          const other = `${slug}-site`;
-          let request: ReturnType<typeof createAuthenticatedE2ERequest>;
-          const created: string[] = [];
-          const cleanups: (() => Promise<void>)[] = [];
-          const query =
-            scene === 'conversation'
-              ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
-              : scene === 'thread'
-                ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
-                : '';
-          const screen: Screen = {
-            name: `channel-nav-${scene}-${theme}-${width}`,
-            title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
-            path: `/projects/${slug}${query}`,
-            viewport,
-            async beforeGoto(page) {
-              request = createAuthenticatedE2ERequest(page.request);
-              const createProject = async (
-                name: string,
-                projectSlug: string,
-              ) => {
-                const response = await request.post(
-                  `${resolveE2EApiBase()}/api/projects`,
-                  { data: { name, slug: projectSlug } },
-                );
-                expect(response.ok()).toBe(true);
-                created.push(projectSlug);
-                return (await response.json()).data as { id: string };
-              };
-              const project = await createProject('Onboarding revamp', slug);
-              // A second Project stays collapsed in the sidebar.
-              await createProject('Kontour site', other);
+      (scene === 'rail'
+        ? [DESKTOP]
+        : [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE]
+      ).map((viewport): Screen => {
+        const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const phone = viewport.width === MOBILE.width;
+        const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
+        const other = `${slug}-site`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const created: string[] = [];
+        const cleanups: (() => Promise<void>)[] = [];
+        const query =
+          scene === 'conversation'
+            ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
+            : scene === 'thread'
+              ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
+              : '';
+        const screen: Screen = {
+          name: `channel-nav-${scene}-${theme}-${width}`,
+          title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
+          path: scene === 'attention' ? '/' : `/projects/${slug}${query}`,
+          viewport:
+            !phone && (scene === 'list' || scene === 'rail')
+              ? DESKTOP_CHANNEL_LIST_PAGE
+              : viewport,
+          ...(scene === 'rail' || scene === 'attention'
+            ? { captureTheme: theme }
+            : {}),
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const createProject = async (name: string, projectSlug: string) => {
+              const response = await request.post(
+                `${resolveE2EApiBase()}/api/projects`,
+                { data: { name, slug: projectSlug } },
+              );
+              expect(response.ok()).toBe(true);
+              created.push(projectSlug);
+              return (await response.json()).data as { id: string };
+            };
+            const project = await createProject('Onboarding revamp', slug);
+            // A second Project stays collapsed in the sidebar.
+            await createProject('Kontour site', other);
+            if (scene !== 'attention') {
               const room = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -4264,120 +5329,490 @@ function channelNavigationScreens(): Screen[] {
                 { slug, projectId: project.id },
               );
               cleanups.push(conversations.cleanup);
-            },
-            async afterGoto(page) {
-              await page.evaluate(
-                (selected) =>
-                  document.documentElement.setAttribute('data-theme', selected),
-                theme,
-              );
-              const sidebar = page.getByRole('navigation', {
-                name: 'Primary navigation',
-              });
-              // Unread and working come from the read-marker and session
-              // fixtures; the rows below are the server's answer.
-              const expectProjectList = async (list: Locator) => {
-                await expect(
-                  list.getByRole('button', { name: 'general, 3 unread' }),
-                ).toHaveClass(/conversation-list__row--unread/);
-                await expect(
-                  list.getByRole('button', { name: 'design', exact: true }),
-                ).toBeVisible();
-                await expect(
-                  list.getByRole('button', {
-                    name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
-                  }),
-                ).toBeVisible();
-                // A Task whose room never opened is not a Task room.
-                await expect(
-                  list.getByRole('button', { name: /Rename the onboarding/ }),
-                ).toHaveCount(0);
-              };
-              const room = page.getByRole('region', {
-                name: 'Project room',
-                exact: true,
-              });
-              if (scene === 'conversation' || scene === 'thread') {
-                await expect(room).toBeVisible();
-                if (scene === 'conversation') {
-                  await expect(
-                    room.getByText('New checkout screens are up for review.'),
-                  ).toBeVisible();
-                  if (phone) {
-                    await expect(
-                      room.getByRole('heading', { level: 2, name: 'design' }),
-                    ).toBeVisible();
-                    await expectTouchTarget(
-                      room.getByRole('button', {
-                        name: 'Back to Onboarding revamp',
-                      }),
-                      'Back',
-                    );
-                    await expectTouchTarget(
-                      room.getByRole('button', { name: 'Channel options' }),
-                      'Channel options',
-                    );
-                  } else {
-                    // Opening #design marked it read: the sidebar's row is
-                    // current and plain.
-                    const row = sidebar.getByRole('button', {
-                      name: 'design',
-                      exact: true,
+            }
+            if (scene === 'rail' || scene === 'attention') {
+              const pattern = '**/api/attention';
+              const handler = (route: Route) =>
+                route.request().method() !== 'GET'
+                  ? rejectUnexpectedFixtureRequest(route)
+                  : route.fulfill({
+                      json: {
+                        success: true,
+                        data: {
+                          pendingCount: 1,
+                          items: [
+                            {
+                              id: 'approval:gallery-sidebar',
+                              kind: 'approval',
+                              title: 'Approve workspace check',
+                              projectSlug: slug,
+                              createdAt: '2026-10-20T12:00:00Z',
+                              updatedAt: '2026-10-20T12:00:00Z',
+                              source: {
+                                notificationId: 'gallery-sidebar',
+                                notificationSource: 'approval-inbox',
+                              },
+                              actions: [],
+                            },
+                          ],
+                        },
+                      },
                     });
-                    await expect(row).toHaveAttribute('aria-current', 'page');
-                    await expect(row).not.toHaveClass(
-                      /conversation-list__row--unread/,
-                    );
-                  }
-                } else {
-                  await expect(
-                    room.getByText('Both numbers are fixed in the draft now.'),
-                  ).toBeVisible();
-                  await expect(
-                    room.getByRole('heading', { name: 'Thread' }),
-                  ).toBeVisible();
-                  await expect(
-                    room.getByRole('textbox', { name: 'Reply in thread' }),
-                  ).toBeVisible();
-                }
-                await page.mouse.move(0, 0);
-                return;
-              }
-              if (phone) {
-                const list = page.getByRole('main');
-                await expectProjectList(list);
-                await expectTouchTarget(
-                  list.getByRole('button', { name: 'design', exact: true }),
-                  'Channel row',
-                );
-              } else {
-                await expectProjectList(sidebar);
-                // The other Project stays collapsed: no rows of its own.
+              await page.route(pattern, handler);
+              cleanups.push(() => page.unroute(pattern, handler));
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const sidebar = page.getByRole('navigation', {
+              name: phone ? 'Mobile navigation' : 'Primary navigation',
+            });
+            // Unread and working come from the read-marker and session
+            // fixtures; the rows below are the server's answer.
+            const expectProjectList = async (list: Locator) => {
+              await expect(
+                list.getByRole('button', { name: 'general, 3 unread' }),
+              ).toHaveClass(/conversation-list__row--unread/);
+              await expect(
+                list.getByRole('button', { name: 'design', exact: true }),
+              ).toBeVisible();
+              await expect(
+                list.getByRole('button', {
+                  name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
+                }),
+              ).toBeVisible();
+              // A Task whose room never opened is not a Task room.
+              await expect(
+                list.getByRole('button', { name: /Rename the onboarding/ }),
+              ).toHaveCount(0);
+            };
+            const room = page.getByRole('region', {
+              name: 'Project room',
+              exact: true,
+            });
+            if (scene === 'conversation' || scene === 'thread') {
+              await expect(room).toBeVisible();
+              if (scene === 'conversation') {
                 await expect(
-                  sidebar.getByRole('button', {
-                    name: 'Kontour site',
+                  room.getByText('New checkout screens are up for review.'),
+                ).toBeVisible();
+                if (phone) {
+                  await expect(
+                    room.getByRole('heading', { level: 2, name: 'design' }),
+                  ).toBeVisible();
+                  await expectTouchTarget(
+                    room.getByRole('button', {
+                      name: 'Back to Onboarding revamp',
+                    }),
+                    'Back',
+                  );
+                  await expectTouchTarget(
+                    room.getByRole('button', { name: 'Channel options' }),
+                    'Channel options',
+                  );
+                } else {
+                  // Opening #design marked it read: the sidebar's row is
+                  // current and plain.
+                  const row = sidebar.getByRole('button', {
+                    name: 'design',
                     exact: true,
-                  }),
+                  });
+                  await expect(row).toHaveAttribute('aria-current', 'page');
+                  await expect(row).not.toHaveClass(
+                    /conversation-list__row--unread/,
+                  );
+                }
+              } else {
+                await expect(
+                  room.getByText('Both fixes are in the branch now.'),
                 ).toBeVisible();
                 await expect(
-                  sidebar.getByRole('list', { name: 'Channels' }),
-                ).toHaveCount(1);
+                  room.getByRole('heading', { name: 'Thread' }),
+                ).toBeVisible();
+                await expect(
+                  room.getByRole('textbox', { name: 'Reply in thread' }),
+                ).toBeVisible();
               }
               await page.mouse.move(0, 0);
-            },
-            async cleanup() {
-              for (const release of cleanups.splice(0)) await release();
-              for (const projectSlug of created.splice(0)) {
-                const removed = await request.delete(
-                  `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              return;
+            }
+            if (scene === 'rail' || scene === 'attention') {
+              if (scene === 'rail') {
+                const collapse = page.getByRole('button', {
+                  name: 'Collapse workspace map',
+                });
+                const expand = page.getByRole('button', {
+                  name: 'Expand workspace map',
+                });
+                if (await collapse.isVisible()) {
+                  await collapse.click();
+                  cleanups.push(() => expand.click());
+                }
+                await expect(expand).toBeVisible();
+                const project = sidebar.getByRole('button', {
+                  name: /^Onboarding revamp views/,
+                });
+                await expect(project).toHaveAccessibleName(
+                  /Needs attention: 1/,
                 );
-                expect(removed.ok()).toBe(true);
+                await project.click();
+                const views = page.getByRole('dialog', {
+                  name: 'Onboarding revamp views',
+                });
+                await expectProjectList(views);
+                await expect(
+                  views.locator('[data-conversation-row][tabindex="0"]'),
+                ).toHaveCount(1);
+              } else {
+                if (phone)
+                  await page
+                    .getByRole('button', { name: 'Toggle menu' })
+                    .click();
+                const project = sidebar.getByRole('button', {
+                  name: /^Onboarding revamp/,
+                });
+                await expect(project).toHaveAccessibleName(
+                  /Needs attention: 1/,
+                );
+                await expect(
+                  project.locator('[title="Needs attention: 1"]'),
+                ).toBeVisible();
+                await expect(
+                  sidebar.getByRole('button', { name: /^Kontour site/ }),
+                ).not.toHaveAccessibleName(/Needs attention/);
               }
-            },
-          };
-          return screen;
-        },
+              await page.mouse.move(0, 0);
+              return;
+            }
+            if (phone) {
+              const list = page.getByRole('main');
+              await expectProjectList(list);
+              await expectTouchTarget(
+                list.getByRole('button', { name: 'design', exact: true }),
+                'Channel row',
+              );
+            } else {
+              await expectProjectList(sidebar);
+              // The other Project stays collapsed: no rows of its own.
+              await expect(
+                sidebar.getByRole('button', {
+                  name: 'Kontour site',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(
+                sidebar.getByRole('list', { name: 'Channels' }),
+              ).toHaveCount(1);
+            }
+            await page.mouse.move(0, 0);
+          },
+          async cleanup() {
+            for (const release of cleanups.splice(0)) await release();
+            for (const projectSlug of created.splice(0)) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+        return screen;
+      }),
+    ),
+  );
+}
+
+/**
+ * #5067 / #5071: the Project Library on Files & connections and a new
+ * Project's Setup recommendations, both behind their Feature Previews. Each
+ * screen turns its preview on for the shot and restores the operator's
+ * previous choice afterwards. The Library's answer is a fixed fixture (an
+ * upload, a kept file and an orphaned one) so the shot is deterministic; the
+ * Setup card is the real card on a real new Project, with a chat
+ * continuation pending in this tab.
+ */
+const PROJECT_LIBRARY_SCENES = ['library', 'setup'] as const;
+const PROJECT_LIBRARY_DESKTOP_PAGE = {
+  width: DESKTOP.width,
+  height: 3000,
+} as const;
+const PROJECT_SETUP_DESKTOP_PAGE = {
+  width: DESKTOP.width,
+  height: 1350,
+} as const;
+const PROJECT_SETUP_PHONE_PAGE = { width: MOBILE.width, height: 1520 } as const;
+
+async function createGalleryProjectFromChat(
+  page: Page,
+  conversationId: string,
+  onCreated: (slug: string) => void,
+) {
+  const title = 'Quarterly research plan';
+  const answer = 'Start by reviewing the customer interviews.';
+  const viewport = page.viewportSize();
+  // The Save to Project action is in the desktop dock menu.
+  await page.setViewportSize(DESKTOP);
+  const restoreSession = await withRoute(
+    page,
+    '**/api/orchestration/sessions/read-model',
+    orchestrationSessionFixture({ threadId: conversationId }),
+  );
+  try {
+    await seedActiveChatSession(page, {
+      conversationId,
+      agentSlug: 'demo-agent',
+      title,
+      urlScoped: true,
+    });
+    await mockRuntimeConversation(page, {
+      id: conversationId,
+      agentSlug: 'demo-agent',
+      title,
+      provider: 'claude',
+      model: 'test-model',
+      canContinue: true,
+      turns: () =>
+        buildLongSessionTurns({
+          threadId: conversationId,
+          provider: 'claude',
+          turnCount: 1,
+          replyText: () => answer,
+        }),
+    });
+    await gotoAppShell(page, `/?dock=open&chat=${conversationId}`);
+    const dock = page.locator('#chat-dock');
+    await expect(dock.getByText(answer, { exact: true })).toBeVisible();
+    await dock.getByRole('button', { name: /^More dock actions/ }).click();
+    await page
+      .getByRole('menuitem', { name: 'Save to Project…', exact: true })
+      .click();
+    const save = page.getByRole('dialog', { name: 'Save to Project' });
+    await save.getByLabel('Project', { exact: true }).selectOption({
+      label: 'New Project…',
+    });
+    await save.getByRole('button', { name: 'Review new Project' }).click();
+
+    const form = page.getByRole('dialog', { name: 'New Project' });
+    const name = form.getByRole('textbox', { name: 'Project name' });
+    await expect(name).toHaveValue(title);
+    await name.fill('Quarterly research');
+    await expect(
+      form.getByRole('radio', { name: /^Blank workspace/ }),
+    ).toBeChecked();
+    await form.getByText('More options', { exact: true }).click();
+    await form.getByRole('textbox', { name: /^Description/ }).clear();
+
+    const [created] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === '/api/projects',
       ),
+      form.getByRole('button', { name: 'Create', exact: true }).click(),
+    ]);
+    expect(created.ok()).toBe(true);
+    const { slug } = (await created.json()).data as { slug: string };
+    onCreated(slug);
+    await expect(page).toHaveURL(/\/projects\/quarterly-research(?:[?#]|$)/);
+    await expect(form).toBeHidden();
+  } finally {
+    await restoreSession();
+    if (viewport) await page.setViewportSize(viewport);
+  }
+}
+
+function projectLibraryScreens(): Screen[] {
+  return PROJECT_LIBRARY_SCENES.flatMap((scene) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [DESKTOP, MOBILE].map((device): Screen => {
+        const width = device.width === DESKTOP.width ? 'desktop' : 'mobile';
+        // Like the channel list's PHONE_PAGE: the collapsed dock overlays the
+        // bottom band of the page's scrollport, so in a 900px or 844px frame
+        // some control of these pages always sits behind it. Each frame is
+        // tall enough for the whole page, whose end carries the shell's dock
+        // clearance. The Library on a phone already ends clear of the dock.
+        const viewport =
+          scene === 'library'
+            ? device === DESKTOP
+              ? PROJECT_LIBRARY_DESKTOP_PAGE
+              : device
+            : device === DESKTOP
+              ? PROJECT_SETUP_DESKTOP_PAGE
+              : PROJECT_SETUP_PHONE_PAGE;
+        const fixtureId = `gallery-${scene}-${theme}-${device.width}`;
+        const slug = scene === 'library' ? fixtureId : 'quarterly-research';
+        const previewId =
+          scene === 'library' ? 'project-library' : 'continue-in-project';
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        let previousEnabled: boolean | undefined;
+        let createdProjectSlug: string | undefined;
+        let restoreHandshake: (() => Promise<void>) | undefined;
+        const screen: Screen = {
+          name: `project-${scene}-${theme}-${width}`,
+          title:
+            scene === 'library'
+              ? `Project Library — ${theme}, ${viewport.width}px`
+              : `Setup recommendations — ${theme}, ${viewport.width}px`,
+          path:
+            scene === 'library'
+              ? `/projects/${slug}?section=sources`
+              : `/projects/${slug}`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (entry: { id: string }) => entry.id === previewId,
+            );
+            expect(preview).toBeDefined();
+            previousEnabled = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/${previewId}`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            if (scene === 'library') {
+              const project = await request.post(
+                `${resolveE2EApiBase()}/api/projects`,
+                { data: { name: 'Quarterly research', slug } },
+              );
+              expect(project.ok()).toBe(true);
+              createdProjectSlug = slug;
+              const projectId = (await project.json()).data.id as string;
+              // The Library mounts only when the host advertises it; the
+              // gallery's shared handshake advertises nothing by default.
+              restoreHandshake = await withRoute(
+                page,
+                '**/.well-known/station/v1',
+                (route) =>
+                  fulfillGalleryStationHandshake(route, false, {
+                    projectLibrary: true,
+                  }),
+              );
+              await page.route(
+                `**/api/projects/${slug}/library`,
+                async (route) => {
+                  if (route.request().method() !== 'GET')
+                    return route.continue();
+                  await route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        version: 'project-library/v1',
+                        projectId,
+                        partial: false,
+                        truncated: false,
+                        items: [
+                          {
+                            kind: 'upload',
+                            relativePath: 'sources/interview-notes.md',
+                            byteLength: 18_432,
+                            mediaType: 'text/markdown',
+                            modifiedAt: '2026-11-14T16:20:00.000Z',
+                          },
+                          {
+                            kind: 'task-output',
+                            outputId: 'gallery-output-report',
+                            taskId: 'gallery-task-report',
+                            title: 'Findings report',
+                            fileName: 'findings-report.md',
+                            sourcePath: 'out/findings-report.md',
+                            mediaType: 'text/markdown',
+                            byteLength: 9_216,
+                            contentAvailable: true,
+                            createdAt: '2026-11-13T11:05:00.000Z',
+                            task: {
+                              state: 'present',
+                              title: 'Summarize the customer interviews',
+                            },
+                          },
+                          {
+                            kind: 'task-output',
+                            outputId: 'gallery-output-draft',
+                            taskId: 'gallery-task-deleted',
+                            title: 'Early draft',
+                            fileName: 'early-draft.txt',
+                            sourcePath: 'early-draft.txt',
+                            mediaType: 'text/plain',
+                            byteLength: 2_048,
+                            contentAvailable: true,
+                            createdAt: '2026-11-02T09:40:00.000Z',
+                            task: { state: 'orphaned' },
+                          },
+                        ],
+                      },
+                    },
+                  });
+                },
+              );
+            } else {
+              await createGalleryProjectFromChat(page, fixtureId, (slug) => {
+                createdProjectSlug = slug;
+              });
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            if (scene === 'library') {
+              const list = page.getByRole('list', { name: 'Library files' });
+              await expect(list).toBeVisible();
+              await expect(list.getByText('Orphaned')).toBeVisible();
+              await expect(
+                list.getByRole('button', {
+                  name: 'From Summarize the customer interviews',
+                }),
+              ).toBeVisible();
+              await list.scrollIntoViewIfNeeded();
+            } else {
+              const card = page.getByRole('region', {
+                name: 'Setup recommendations',
+              });
+              await expect(card).toBeVisible();
+              await expect(
+                card.getByRole('checkbox', {
+                  name: /New Task: Continue: Quarterly research plan/,
+                }),
+              ).toBeChecked();
+              await expect(
+                card.getByRole('button', { name: 'Apply', exact: true }),
+              ).toBeVisible();
+              await card.scrollIntoViewIfNeeded();
+            }
+            await page.mouse.move(0, 0);
+          },
+          async cleanup() {
+            await restoreHandshake?.();
+            restoreHandshake = undefined;
+            if (createdProjectSlug) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${createdProjectSlug}`,
+              );
+              expect(removed.ok()).toBe(true);
+              createdProjectSlug = undefined;
+            }
+            if (previousEnabled !== undefined) {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/${previewId}`,
+                { data: { enabled: previousEnabled } },
+              );
+              expect(restored.ok()).toBe(true);
+              previousEnabled = undefined;
+            }
+          },
+        };
+        return screen;
+      }),
     ),
   );
 }
@@ -4586,16 +6021,19 @@ function childChatScreens(): Screen[] {
           await expect(
             dock.getByText('The review is ready.', { exact: true }),
           ).toBeVisible();
-          await page.goto(reopen.toString());
+          // A full navigation: the same splash wait and breadcrumb budget as
+          // this screen's first load, not the 5 s default.
+          await gotoAppShell(page, reopen.toString());
           await expect(
             dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
-          ).toBeVisible();
-          // Real pointer actions prove both controls survive header clipping,
-          // including a long ancestor title at desktop and phone widths.
-          for (const name of [
-            'Back to parent chat',
-            'Plan the change across the workspace and review every navigation boundary',
-          ]) {
+          ).toBeVisible({ timeout: 20000 });
+          // Real pointer actions prove the way back survives header
+          // clipping: ‹ on a phone, the long ancestor crumb on a wider bar.
+          for (const name of viewport.width < 600
+            ? ['Back to parent chat']
+            : [
+                'Plan the change across the workspace and review every navigation boundary',
+              ]) {
             const control = dock
               .getByRole('navigation', { name: 'Chat breadcrumb' })
               .getByRole('button', { name, exact: true });
@@ -4709,12 +6147,346 @@ function childChatScreens(): Screen[] {
   );
 }
 
+/**
+ * #4799: the reader's own mentions on the attention page, from their private
+ * feed in the exact record shape `GET /api/me/notifications` serves.
+ */
+function personMentionScreens(): Screen[] {
+  const mention = (
+    id: string,
+    title: string,
+    body: string,
+    createdAt: string,
+    read: boolean,
+  ) => ({
+    id,
+    source: 'project-room',
+    category: 'room-mention',
+    title,
+    body,
+    priority: 'normal',
+    status: 'delivered',
+    scheduledAt: null,
+    deliveredAt: createdAt,
+    metadata: {
+      envelope: {
+        v: 1,
+        source: { kind: 'system', subsystem: 'project-room' },
+        audience: {
+          kind: 'principal',
+          principalId: 'human:local:operator',
+          projectId: 'gallery-project',
+        },
+        urgency: 'attention',
+        target: {
+          kind: 'path',
+          path: `/projects/gallery-onboarding?section=room&message=${id}`,
+        },
+        interrupt: 'default',
+        ...(read ? { readAt: createdAt, readBy: 'web:gallery' } : {}),
+      },
+    },
+    createdAt,
+    updatedAt: createdAt,
+  });
+  const feed = [
+    mention(
+      'c1000000-0000-4000-8000-000000000001',
+      'Priya Natarajan mentioned you in #general',
+      '@Maya Chen can you sign off on the copy today? @Jonas Berg has the numbers.',
+      new Date(Date.now() - 5 * 60_000).toISOString(),
+      false,
+    ),
+    mention(
+      'c1000000-0000-4000-8000-000000000002',
+      'Jonas Berg mentioned you in #design',
+      'Updated both screens, @Maya Chen. Ready when you are.',
+      new Date(Date.now() - 95 * 60_000).toISOString(),
+      true,
+    ),
+  ];
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      let restore: (() => Promise<void>) | undefined;
+      return {
+        name: `notifications-for-you-${theme}-${width}`,
+        title: `For you mentions — ${theme}, ${viewport.width}px`,
+        path: '/notifications',
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          restore = await withRoute(page, '**/api/me/notifications', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({ json: { success: true, data: feed } })
+              : rejectUnexpectedFixtureRequest(route),
+          );
+        },
+        async afterGoto(page) {
+          const section = page.getByRole('region', { name: 'For you' });
+          await expect(section).toBeVisible();
+          await expect(
+            section.getByRole('button', {
+              // The visually hidden ", unread" is its own box, so the
+              // accessible name may carry a space before its comma.
+              name: /Priya Natarajan mentioned you in #general\s*, unread/,
+            }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width)
+            await expectTouchTarget(
+              section.getByRole('button').first(),
+              'Mention row',
+            );
+        },
+        async cleanup() {
+          await restore?.();
+        },
+      };
+    }),
+  );
+}
+
+/**
+ * #5062/#5065/#5068: Project settings › Brief, Memory, Models and effort,
+ * and Usage, with the `project-coordination` preview on. The Project and its
+ * notes are real records on the e2e Station; usage is a fixed rollup, since
+ * no engine reports usage here.
+ */
+/**
+ * Project settings are shot as whole pages. Measured in the real page at
+ * 1440×900 and 390×844: the section rail and the form are inside the page's
+ * scrolling content view, and that scrollport ends at the collapsed dock, so
+ * scrolling brings the last rail tabs (Schedules, Danger zone), the Brief
+ * Instructions field and the Task model field fully clear of it. In a fixed
+ * frame some of them always sit at the dock edge, so the frame, not the page,
+ * is what the shot has to change.
+ */
+const PROJECT_SETTINGS_DESKTOP_PAGE = { width: 1440, height: 2500 } as const;
+const PROJECT_SETTINGS_PHONE_PAGE = { width: 390, height: 1200 } as const;
+
+function projectCoordinationScreens(): Screen[] {
+  const sections = ['brief', 'memory', 'models', 'usage'] as const;
+  return sections.flatMap((section) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [
+        PROJECT_SETTINGS_DESKTOP_PAGE,
+        section === 'brief' || section === 'models'
+          ? PROJECT_SETTINGS_PHONE_PAGE
+          : MOBILE,
+      ].map((viewport): Screen => {
+        const size = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const slug = `gallery-brief-${section}-${theme}-${size}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const cleanups: (() => Promise<void>)[] = [];
+        let created = false;
+        let previousPreview = false;
+        return {
+          name: `project-${section}-${theme}-${size}`,
+          title: `Project settings ${section} — ${theme}, ${viewport.width}px`,
+          path: `/projects/${slug}/edit?section=${section}`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (item: { id: string }) => item.id === 'project-coordination',
+            );
+            expect(preview).toBeDefined();
+            previousPreview = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-coordination`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            cleanups.push(async () => {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/project-coordination`,
+                { data: { enabled: previousPreview } },
+              );
+              expect(restored.ok()).toBe(true);
+            });
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              {
+                data: {
+                  name: 'Export redesign',
+                  slug,
+                  goal: 'Ship the new export flow by Friday',
+                  instructions: [
+                    'This Project rebuilds CSV and PDF export.',
+                    'Work in example/export on main; name pull requests "export: …".',
+                    'Run npm test and the export smoke test before saying done.',
+                    'If a fixture or credential is missing, say what is missing and stop.',
+                    'Ask before changing billing or deleting data.',
+                  ].join('\n\n'),
+                  taskProviderId: 'claude',
+                  taskModel: 'claude-sonnet-5-5',
+                  taskEffort: 'medium',
+                },
+              },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            if (section === 'memory') {
+              for (const note of [
+                {
+                  title: 'The release moved to Friday',
+                  body: 'Product asked on Tuesday; QA needs Thursday.',
+                },
+                {
+                  title: 'PDF export was dropped from v1',
+                  body: 'Rendering cost; revisit after the CSV launch.',
+                },
+                {
+                  title: 'Check with Dana before touching billing',
+                  body: 'Billing exports feed the finance close.',
+                },
+              ]) {
+                const saved = await request.post(
+                  `${resolveE2EApiBase()}/api/projects/${slug}/memory`,
+                  { data: note },
+                );
+                expect(saved.ok()).toBe(true);
+              }
+            }
+            if (section === 'usage') {
+              const row = (
+                key: string,
+                fields: Record<string, unknown>,
+                tokens: [number, number],
+              ) => ({
+                key,
+                stationId: 'local',
+                provider: 'claude',
+                inputTokens: tokens[0],
+                outputTokens: tokens[1],
+                pricingStatus: 'unpriced',
+                receiptCount: 3,
+                ...fields,
+              });
+              cleanups.push(
+                await withRoute(
+                  page,
+                  '**/api/analytics/usage-rollup?*',
+                  (route) => {
+                    const url = new URL(route.request().url());
+                    if (
+                      route.request().method() !== 'GET' ||
+                      url.searchParams.get('projectSlug') !== slug
+                    )
+                      return rejectUnexpectedFixtureRequest(route);
+                    const byTask = url.searchParams.get('groupBy') === 'task';
+                    return route.fulfill({
+                      json: {
+                        success: true,
+                        data: {
+                          window: { from: '2026-10-19', to: '2026-11-17' },
+                          coverage: [
+                            {
+                              stationId: 'local',
+                              state: 'complete',
+                              window: { from: '2026-10-19', to: '2026-11-17' },
+                            },
+                          ],
+                          receipts: [],
+                          rows: byTask
+                            ? [
+                                row('task:unattributed', {}, [182_000, 9_400]),
+                                row(
+                                  'task:3f2c9a1e',
+                                  { taskId: '3f2c9a1e-csv' },
+                                  [412_500, 31_200],
+                                ),
+                                row(
+                                  'task:8b17d044',
+                                  { taskId: '8b17d044-pdf' },
+                                  [96_300, 7_800],
+                                ),
+                              ]
+                            : [
+                                row(
+                                  'model:claude-opus-5-5',
+                                  { model: 'claude-opus-5-5' },
+                                  [182_000, 9_400],
+                                ),
+                                row(
+                                  'model:claude-sonnet-5-5',
+                                  { model: 'claude-sonnet-5-5' },
+                                  [508_800, 39_000],
+                                ),
+                              ],
+                        },
+                      },
+                    });
+                  },
+                ),
+              );
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const body = page.locator('.project-settings__body');
+            if (section === 'brief') {
+              await expect(
+                body.getByRole('textbox', { name: 'Goal', exact: true }),
+              ).toHaveValue('Ship the new export flow by Friday');
+            } else if (section === 'memory') {
+              await expect(
+                body.getByText('The release moved to Friday', { exact: true }),
+              ).toBeVisible();
+            } else if (section === 'models') {
+              await expect(
+                body.getByRole('combobox', {
+                  name: 'Project chat effort',
+                  exact: true,
+                }),
+              ).toHaveValue('medium');
+            } else {
+              await expect(
+                body.getByRole('table', { name: 'By Task' }),
+              ).toBeVisible();
+            }
+            expect(
+              await page.evaluate(
+                () => document.documentElement.scrollWidth <= innerWidth,
+              ),
+            ).toBe(true);
+          },
+          async cleanup() {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+              created = false;
+            }
+          },
+        };
+      }),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...projectCoordinationScreens(),
   ...roomConversationScreens(),
+  ...roomCoordinatorScreens(),
+  ...personMentionScreens(),
   ...channelNavigationScreens(),
+  ...projectLibraryScreens(),
+  ...memberProjectChannelScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
+  ...projectOverviewScreens(),
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {
     const slug = 'gallery-project-retry-board';
@@ -5668,6 +7440,7 @@ const SCREENS: Screen[] = [
       await assertNoStrayProjectModal(page);
       await page.locator('[data-new-project-trigger]').click();
       await expect(newProjectOverlay(page)).toBeVisible();
+      await page.getByText('More options', { exact: true }).click();
       await page.mouse.move(700, 650);
       await page.mouse.wheel(0, 700);
       const starter = page.getByRole('button', {
@@ -5695,7 +7468,7 @@ const SCREENS: Screen[] = [
             return;
           }
         }
-        throw new Error('New Project layout choices have no scroll container');
+        // On a tall viewport the open form can fit without scrolling.
       });
       await expect
         .poll(
@@ -6035,6 +7808,16 @@ const SCREENS: Screen[] = [
                 .getByRole('textbox', { name: 'Message', exact: true })
                 .fill('Follow up on this');
             }
+            // The Inbox row learns about the draft after the fill settles; the
+            // audit reads its name, so capture only once the row says so.
+            await expect(
+              page
+                .getByTestId('inbox-row')
+                .getByRole('button', {
+                  name: /^Toolbar layout.*Waiting on you.*No project.*unsent draft$/,
+                })
+                .first(),
+            ).toBeAttached();
           },
           true,
           false,
@@ -6212,7 +7995,10 @@ const SCREENS: Screen[] = [
             ).toHaveCount(1);
             await expect(trigger).toBeInViewport();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup', exact: true }),
+              page.getByRole('dialog', {
+                name: 'Agent & model',
+                exact: true,
+              }),
             ).toBeHidden();
           },
           true,
@@ -6244,7 +8030,7 @@ const SCREENS: Screen[] = [
             expect(bounds!.width).toBeLessThan(viewport.width);
             await trigger.click();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup' }),
+              page.getByRole('dialog', { name: 'Agent & model' }),
             ).toBeVisible();
             await expect(
               page.getByRole('button', { name: /^Agent:/ }),
@@ -6279,7 +8065,7 @@ const SCREENS: Screen[] = [
             expect(bounds!.width).toBeLessThan(viewport.width);
             await trigger.click();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup' }),
+              page.getByRole('dialog', { name: 'Agent & model' }),
             ).toBeVisible();
             await expect(
               page.getByRole('button', { name: /^Agent:/ }),
@@ -6288,7 +8074,10 @@ const SCREENS: Screen[] = [
               page.getByRole('button', { name: /^Model:/ }),
             ).toBeVisible();
             await page
-              .getByRole('dialog', { name: 'Run setup', exact: true })
+              .getByRole('dialog', {
+                name: 'Agent & model',
+                exact: true,
+              })
               .getByRole('button', { name: /^Model:/ })
               .click();
             const picker = page.getByRole('dialog', {
@@ -6345,6 +8134,7 @@ const SCREENS: Screen[] = [
     path: '/?dock=open&chat=gallery-mismatch-conversation',
     viewport,
     ...overlayDockProjectMismatchHooks(true),
+    afterAudit: verifyConversationRecovery,
   })),
   ...[DESKTOP, { width: 412, height: 915 }].map(
     (viewport): Screen => ({
@@ -6602,6 +8392,7 @@ const SCREENS: Screen[] = [
   ...childChatScreens(),
   ...stationSwitcherScreens(),
   ...taskCapabilityScreens(),
+  ...pullRequestWatchScreens(),
 ];
 
 async function statusRasterState(page: Page) {
@@ -6663,6 +8454,7 @@ interface Shot {
   file: string;
   ok: boolean;
   error?: string;
+  browserErrors?: string[];
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
   rasterDiagnostic?: {
@@ -6686,6 +8478,61 @@ interface Shot {
    * which that judge fails rather than reading as "no findings".
    */
   uiAudit?: GalleryUiAudit | { error: string };
+  /** 2 when an app error surface earned this screen its single second capture. */
+  attempts?: 1 | 2;
+  /** The final attempt's app error surface, when that is why the screen failed. */
+  appError?: AppErrorObservation;
+  /**
+   * Report only. Between the controls read just before the screenshot and
+   * those read after the audit: which names changed, and how far
+   * same-identity controls moved.
+   */
+  controlsAfterPhoto?: ControlNameDiff;
+  controlMovement?: ControlMovement;
+}
+
+/** Visible controls, as the capture records them for a screen. */
+async function readVisibleControls(page: Page) {
+  return page
+    .locator('button, [role="button"], input[type="submit"]')
+    .evaluateAll((elements) =>
+      elements
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.top < innerHeight &&
+            rect.bottom > 0 &&
+            rect.left < innerWidth &&
+            rect.right > 0 &&
+            style.visibility !== 'hidden' &&
+            style.display !== 'none'
+          );
+        })
+        .slice(0, 100)
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            label: (
+              element.getAttribute('aria-label') ||
+              element.textContent ||
+              element.getAttribute('value') ||
+              ''
+            )
+              .trim()
+              .slice(0, 160),
+            disabled:
+              element.matches(':disabled') ||
+              element.getAttribute('aria-disabled') === 'true',
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+    ) as Promise<ControlBox[]>;
 }
 
 function escapeHtml(value: string): string {
@@ -6814,6 +8661,19 @@ function readGalleryCheckout() {
     };
   }
 }
+/** One line per failed screen, naming a lost lazy chunk as such (#5028). */
+function failedShotReasons(shots: Shot[]): string[] {
+  return shots
+    .filter((shot) => !shot.ok)
+    .map((shot) =>
+      failedScreenReason(
+        shot.screen.name,
+        shot.error ?? 'screen did not render',
+        shot.appError,
+      ),
+    );
+}
+
 test('build gallery — capture key screens', async ({ page }) => {
   const browserErrors: string[] = [];
   page.on('console', (message) => {
@@ -6855,24 +8715,125 @@ test('build gallery — capture key screens', async ({ page }) => {
   }
 
   // Keep the gallery's timeout proportional to its declared coverage instead
-  // of raising the shared Playwright default used by smaller specs.
-  test.setTimeout(Math.max(90_000, selectedScreens.length * 7_000));
+  // of raising the shared Playwright default used by smaller specs: 7 s a
+  // screen, the run's bounded second captures, and an investigation's settle
+  // window when one is set (0 by default).
+  const settleWindowMs = readSettleWindow(process.env);
+  test.setTimeout(
+    Math.max(
+      90_000,
+      selectedScreens.length * (7_000 + settleWindowMs) +
+        MAX_SECOND_CAPTURES * (7_000 + settleWindowMs),
+    ),
+  );
+
+  // Test-only; refused on GitHub Actions and on a full capture (see
+  // readGalleryFaults).
+  const faults = readGalleryFaults(
+    process.env,
+    requestedScreens,
+    SCREENS.map((screen) => screen.name),
+  );
+  if (faults.length > 0)
+    console.log(
+      `Gallery fault injection is ACTIVE for this targeted capture: ${JSON.stringify(faults)}`,
+    );
 
   mkdirSync(join(GALLERY_DIR, GALLERY_DIAGNOSTICS), { recursive: true });
   const checkoutStart = readGalleryCheckout();
+  // Every declared screen gets its own bucket, even in a targeted capture.
+  assertGalleryAssetScopeCapacity(SCREENS.length);
+  const origin = new URL(
+    process.env.PW_BASE_URL ?? test.info().project.use.baseURL ?? '',
+  ).origin;
+  const documents = createDocumentTracker();
   const assets = createGalleryAssetDiagnostics(
-    new URL(process.env.PW_BASE_URL ?? test.info().project.use.baseURL ?? '')
-      .origin,
+    origin,
     selectedScreens.map((screen) => screen.name),
+    Date.now,
+    documents,
   );
-  const onRequest = assets.request;
-  const onResponse = assets.response;
-  const onFinished = assets.finished;
-  const onFailed = assets.failed;
-  page.on('request', onRequest);
-  page.on('response', onResponse);
-  page.on('requestfinished', onFinished);
-  page.on('requestfailed', onFailed);
+  const failedRequests = createFailedRequestLog(origin, documents);
+  const stopObserving = observeGalleryRequests(page, {
+    documents,
+    failedRequests,
+    assets,
+  });
+  const secondCaptures: SecondCaptureRecord[] = [];
+  // The attempt the fault injection acts on, and the photo it may wait for.
+  let faultAttempt: {
+    screen: string;
+    attempt: number;
+    screenshotWritten: Promise<void>;
+    release: () => void;
+  } | null = null;
+  const faultsFired: Array<{
+    screen: string;
+    attempt: number;
+    kind: GalleryFault['kind'];
+    path?: string;
+  }> = [];
+  const chunkFaults = faults.filter(
+    (fault): fault is Extract<GalleryFault, { kind: 'chunk' }> =>
+      fault.kind === 'chunk',
+  );
+  // Test-only: a worker-cached chunk would never reach the network, and a
+  // poisoned one must not outlive its screen.
+  const evictFaultedChunks = () =>
+    page
+      .evaluate(
+        async (chunks) => {
+          if (typeof caches === 'undefined') return;
+          for (const name of await caches.keys()) {
+            const cache = await caches.open(name);
+            for (const request of await cache.keys()) {
+              const { pathname } = new URL(request.url);
+              if (
+                chunks.some((chunk) => pathname.startsWith(`/assets/${chunk}-`))
+              )
+                await cache.delete(request);
+            }
+          }
+        },
+        chunkFaults.map((fault) => fault.chunk),
+      )
+      .catch(() => {});
+  if (chunkFaults.length > 0)
+    // The context, not the page: chunks are served through the app's service
+    // worker, whose own fetches page.route never sees.
+    await page.context().route(
+      (url) =>
+        chunkFaults.some((fault) => isChunkPath(url.pathname, fault.chunk)),
+      async (route) => {
+        const pathname = new URL(route.request().url()).pathname;
+        const active = faultAttempt;
+        const fault = chunkFaults.find(
+          (candidate) =>
+            active !== null &&
+            candidate.screen === active.screen &&
+            candidate.attempts.includes(active.attempt) &&
+            isChunkPath(pathname, candidate.chunk),
+        );
+        // Every request for the chunk in the attempt: a route chunk is also
+        // preloaded, and failing only the first left the import to succeed.
+        if (!active || !fault) return route.fallback();
+        if (fault.when === 'after-screenshot') await active.screenshotWritten;
+        faultsFired.push({
+          screen: active.screen,
+          attempt: active.attempt,
+          kind: fault.kind,
+          path: pathname,
+        });
+        if (fault.mode === 'not-found') return route.fulfill({ status: 404 });
+        if (fault.mode === 'poison')
+          return route.fulfill({
+            status: 200,
+            contentType: 'text/javascript',
+            body: 'throw new Error("Gallery fault injection: a chunk that throws when evaluated");',
+          });
+        await route.abort('aborted');
+      },
+    );
   const emittedBefore = process.env.STATION_E2E_UI_DIR
     ? inventoryGalleryAssets(process.env.STATION_E2E_UI_DIR)
     : null;
@@ -7033,146 +8994,243 @@ test('build gallery — capture key screens', async ({ page }) => {
     }),
   );
 
+  // The screen being captured's diagnostics, set by its attempts' ports and
+  // read when its result is recorded.
+  let layout: Shot['layout'];
+  let rasterDiagnostic: Shot['rasterDiagnostic'];
+  let uiAudit: Shot['uiAudit'];
+  const screenFault = (
+    screen: Screen,
+    kind: GalleryFault['kind'],
+    attempt: number,
+  ) =>
+    faults.find(
+      (fault) =>
+        fault.screen === screen.name &&
+        fault.kind === kind &&
+        fault.attempts.includes(attempt),
+    );
   try {
-    for (const screen of selectedScreens) {
-      assets.screen(screen.name);
-      browserErrors.length = 0;
-      const file = `${screen.name}.png`;
-      let layout: Shot['layout'];
-      let rasterDiagnostic: Shot['rasterDiagnostic'];
-      let uiAudit: Shot['uiAudit'];
-      try {
-        await page.setViewportSize(screen.viewport);
-        await page.emulateMedia({
-          reducedMotion: screen.reducedMotion ? 'reduce' : 'no-preference',
+    // gallery-screen-attempt.ts owns the loop over screens, the run's
+    // second-capture budget, the order of the error-surface checks and the
+    // retry rule. Every attempt is a fresh navigation on the same instance;
+    // `beforeGoto` and `cleanup` run for each.
+    await captureScreens(page, selectedScreens, {
+      failedRequests,
+      screenStarted: (screen) => assets.screen(screen.name),
+      screenFinished: (screen) => assets.screenFinished(screen.name),
+      ports: (screen, attempt) => {
+        const file = `${screen.name}.png`;
+        browserErrors.length = 0;
+        layout = undefined;
+        rasterDiagnostic = undefined;
+        uiAudit = undefined;
+        let release = () => {};
+        const screenshotWritten = new Promise<void>((resolve) => {
+          release = resolve;
         });
-        if (screen.beforeGoto) {
-          await screen.beforeGoto(page);
-        }
-        // Delivery is live-only. Observe this document's general-event stream
-        // before navigation so the POST cannot beat its subscription.
-        const notificationStream = [
-          'motion-reduced-notification',
-          'overlay-toast',
-          'overlay-toast-action',
-        ].includes(screen.name)
-          ? page.waitForResponse(
-              (response) => {
-                const url = new URL(response.url());
-                return (
-                  response.status() === 200 &&
-                  (url.pathname === '/events' ||
-                    (url.pathname === '/api/orchestration/events' &&
-                      url.searchParams.get('includeGeneral') === '1'))
+        faultAttempt = {
+          screen: screen.name,
+          attempt,
+          screenshotWritten,
+          release,
+        };
+        const faulted = chunkFaults.some(
+          (fault) => fault.screen === screen.name,
+        );
+        return {
+          capture: async (photo) => {
+            if (faulted) await evictFaultedChunks();
+            await page.setViewportSize(screen.viewport);
+            await page.emulateMedia({
+              reducedMotion: screen.reducedMotion ? 'reduce' : 'no-preference',
+            });
+            if (screen.beforeGoto) {
+              await screen.beforeGoto(page);
+            }
+            // Delivery is live-only. Observe this document's general-event stream
+            // before navigation so the POST cannot beat its subscription.
+            const notificationStream = [
+              'motion-reduced-notification',
+              'overlay-toast',
+              'overlay-toast-action',
+            ].includes(screen.name)
+              ? page.waitForResponse(
+                  (response) => {
+                    const url = new URL(response.url());
+                    return (
+                      response.status() === 200 &&
+                      (url.pathname === '/events' ||
+                        (url.pathname === '/api/orchestration/events' &&
+                          url.searchParams.get('includeGeneral') === '1'))
+                    );
+                  },
+                  { timeout: 10_000 },
+                )
+              : null;
+            // #1650: the ORDER of everything below lives in
+            // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+            // a passing gallery run compares pixels and can never report a step
+            // having moved to the wrong side of another one. Each step's own
+            // reason stays here, next to the mechanic it performs. The web-font
+            // settle is the one step that module performs itself, against the page
+            // passed here, so the STEP MAP cannot wire in a settle that reads
+            // nothing. That the object passed here is the real page is checked by
+            // `typecheck:e2e` (the structural assignment on this line) and by
+            // reading the diff, like the other six steps.
+            await runScreenshotCaptureSequence(page, {
+              reachScreen: async () => {
+                await gotoAppShell(page, screen.path);
+                // Route-only captures must not inherit a drawer opened by an
+                // earlier scenario. Surface stress cases opt in through their URL.
+                const requestedState = new URL(
+                  screen.path,
+                  'http://gallery.invalid',
                 );
+                if (requestedState.searchParams.get('surface') !== 'activity') {
+                  const hideActivity = page.getByRole('button', {
+                    name: 'Hide Activity',
+                    exact: true,
+                  });
+                  if (await hideActivity.count()) await hideActivity.click();
+                }
+                if (requestedState.searchParams.get('dock') !== 'open') {
+                  const collapseChat = page.getByRole('button', {
+                    name: 'Collapse chat',
+                    exact: true,
+                  });
+                  if (await collapseChat.count()) await collapseChat.click();
+                }
+                if (screen.waitFor) {
+                  await page.waitForSelector(screen.waitFor, {
+                    timeout: 10_000,
+                  });
+                }
+                // Let async panels settle so the shot reflects loaded data.
+                await page.waitForTimeout(1200);
               },
-              { timeout: 10_000 },
-            )
-          : null;
-        // #1650: the ORDER of everything below lives in
-        // `runScreenshotCaptureSequence` so it is a unit a test can execute —
-        // a passing gallery run compares pixels and can never report a step
-        // having moved to the wrong side of another one. Each step's own
-        // reason stays here, next to the mechanic it performs. The web-font
-        // settle is the one step that module performs itself, against the page
-        // passed here, so the STEP MAP cannot wire in a settle that reads
-        // nothing. That the object passed here is the real page is checked by
-        // `typecheck:e2e` (the structural assignment on this line) and by
-        // reading the diff, like the other six steps.
-        await runScreenshotCaptureSequence(page, {
-          reachScreen: async () => {
-            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-            // Wait past the "Warming up" splash for the real app shell.
-            await page.waitForFunction(
-              () =>
-                !!document.querySelector('.app') &&
-                !document.body.textContent?.includes('Warming up'),
-              undefined,
-              { timeout: 20_000 },
-            );
-            // Route-only captures must not inherit a drawer opened by an
-            // earlier scenario. Surface stress cases opt in through their URL.
-            const requestedState = new URL(
-              screen.path,
-              'http://gallery.invalid',
-            );
-            if (requestedState.searchParams.get('surface') !== 'activity') {
-              const hideActivity = page.getByRole('button', {
-                name: 'Hide Activity',
-                exact: true,
-              });
-              if (await hideActivity.count()) await hideActivity.click();
-            }
-            if (requestedState.searchParams.get('dock') !== 'open') {
-              const collapseChat = page.getByRole('button', {
-                name: 'Collapse chat',
-                exact: true,
-              });
-              if (await collapseChat.count()) await collapseChat.click();
-            }
-            if (screen.waitFor) {
-              await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-            }
-            // Let async panels settle so the shot reflects loaded data.
-            await page.waitForTimeout(1200);
+              assertNoLoadingSkeleton: screen.expectSkeleton
+                ? null
+                : () => assertNoLoadingSkeleton(page),
+              // Called as a method on `screen`, not as a bare extracted function:
+              // no declared hook uses `this` today, and this keeps that from being
+              // a precondition of the refactor rather than a property of the file.
+              afterGoto: screen.afterGoto
+                ? async () => {
+                    await notificationStream;
+                    await screen.afterGoto?.(page);
+                  }
+                : null,
+              // The identity-mismatch tile deliberately overrides the global
+              // healthy handshake and waits for its own deterministic blocked
+              // state. Every other screen must prove the gallery-wide route has
+              // reached the fixed healthy posture before capture rather than
+              // racing the opening probe.
+              assertConnectionChrome:
+                screen.name === 'overlay-connection-banner'
+                  ? null
+                  : () => assertGalleryConnectionChrome(page),
+              hideVolatileChrome: () => hideVolatileChrome(page),
+              screenshot: async () => {
+                if (screenFault(screen, 'fail-step', attempt))
+                  throw new Error(
+                    'Gallery fault injection: an ordinary capture-step failure (fail-step).',
+                  );
+                // Lazy brand marks can settle after the data skeleton disappears.
+                // A pending or failed mark is an incomplete reference image.
+                await expect(
+                  page.locator('.brand-icon[data-brand-key]').filter({
+                    hasNot: page.locator('svg, img, .brand-icon__glyph'),
+                  }),
+                ).toHaveCount(0, { timeout: 15_000 });
+                if (screen.name === 'settings-info-tip') {
+                  layout = await page.evaluate(() => {
+                    const main =
+                      document.querySelector<HTMLElement>('.app__main');
+                    if (!main)
+                      throw new Error('Gallery app main column is missing');
+                    return {
+                      appMainScrollTop: main.scrollTop,
+                      appMainScrollHeight: main.scrollHeight,
+                      appMainClientHeight: main.clientHeight,
+                      documentScrollY: window.scrollY,
+                    };
+                  });
+                }
+                if (screen.name !== 'settings-info-tip') {
+                  await page.mouse.move(0, 0);
+                }
+                if (screen.captureTheme) {
+                  await page.evaluate(
+                    (theme) =>
+                      document.documentElement.setAttribute(
+                        'data-theme',
+                        theme,
+                      ),
+                    screen.captureTheme,
+                  );
+                  await expect(page.locator('html')).toHaveAttribute(
+                    'data-theme',
+                    screen.captureTheme,
+                  );
+                }
+                await photo();
+                if (screen.name === 'overlay-dock-project-mismatch') {
+                  const before = await statusRasterState(page);
+                  const retiredCount = await page
+                    .getByRole('button', {
+                      name: 'Status unavailable — resync this conversation',
+                      exact: true,
+                    })
+                    .locator('..')
+                    .evaluate((host) => {
+                      const finished = host
+                        .getAnimations({ subtree: true })
+                        .filter((animation) => {
+                          const timing = animation.effect?.getComputedTiming();
+                          return (
+                            animation.playState === 'finished' &&
+                            timing?.iterations !== Infinity &&
+                            (timing?.fill === 'both' ||
+                              timing?.fill === 'forwards')
+                          );
+                        });
+                      for (const animation of finished) animation.cancel();
+                      return finished.length;
+                    });
+                  await page.evaluate(
+                    () =>
+                      new Promise<void>((resolveFrame) =>
+                        requestAnimationFrame(() =>
+                          requestAnimationFrame(() => resolveFrame()),
+                        ),
+                      ),
+                  );
+                  const after = await statusRasterState(page);
+                  const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
+                  await page.screenshot({
+                    path: join(GALLERY_DIR, diagnosticFile),
+                    fullPage: true,
+                    animations: 'disabled',
+                  });
+                  rasterDiagnostic = {
+                    before,
+                    after,
+                    retiredCount,
+                    file: diagnosticFile,
+                    sha256: createHash('sha256')
+                      .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
+                      .digest('hex'),
+                  };
+                }
+              },
+            });
           },
-          assertNoLoadingSkeleton: screen.expectSkeleton
-            ? null
-            : () => assertNoLoadingSkeleton(page),
-          // Called as a method on `screen`, not as a bare extracted function:
-          // no declared hook uses `this` today, and this keeps that from being
-          // a precondition of the refactor rather than a property of the file.
-          afterGoto: screen.afterGoto
-            ? async () => {
-                await notificationStream;
-                await screen.afterGoto?.(page);
-              }
-            : null,
-          // The identity-mismatch tile deliberately overrides the global
-          // healthy handshake and waits for its own deterministic blocked
-          // state. Every other screen must prove the gallery-wide route has
-          // reached the fixed healthy posture before capture rather than
-          // racing the opening probe.
-          assertConnectionChrome:
-            screen.name === 'overlay-connection-banner'
-              ? null
-              : () => assertGalleryConnectionChrome(page),
-          hideVolatileChrome: () => hideVolatileChrome(page),
+          readSurfaces: async () =>
+            (await page.evaluate(
+              READ_APP_ERROR_SURFACES,
+            )) as AppErrorSurfaceCounts,
           screenshot: async () => {
-            // Lazy brand marks can settle after the data skeleton disappears.
-            // A pending or failed mark is an incomplete reference image.
-            await expect(
-              page.locator('.brand-icon[data-brand-key]').filter({
-                hasNot: page.locator('svg, img, .brand-icon__glyph'),
-              }),
-            ).toHaveCount(0, { timeout: 15_000 });
-            if (screen.name === 'settings-info-tip') {
-              layout = await page.evaluate(() => {
-                const main = document.querySelector<HTMLElement>('.app__main');
-                if (!main)
-                  throw new Error('Gallery app main column is missing');
-                return {
-                  appMainScrollTop: main.scrollTop,
-                  appMainScrollHeight: main.scrollHeight,
-                  appMainClientHeight: main.clientHeight,
-                  documentScrollY: window.scrollY,
-                };
-              });
-            }
-            if (screen.name !== 'settings-info-tip') {
-              await page.mouse.move(0, 0);
-            }
-            if (screen.captureTheme) {
-              await page.evaluate(
-                (theme) =>
-                  document.documentElement.setAttribute('data-theme', theme),
-                screen.captureTheme,
-              );
-              await expect(page.locator('html')).toHaveAttribute(
-                'data-theme',
-                screen.captureTheme,
-              );
-            }
             await page.screenshot({
               path: join(GALLERY_DIR, file),
               fullPage: true,
@@ -7182,158 +9240,115 @@ test('build gallery — capture key screens', async ({ page }) => {
               // in-flight transition from being mid-frame at capture time.
               animations: 'disabled',
             });
-            if (screen.name === 'overlay-dock-project-mismatch') {
-              const before = await statusRasterState(page);
-              const retiredCount = await page
-                .getByRole('button', {
-                  name: 'Status unavailable — resync this conversation',
-                  exact: true,
-                })
-                .locator('..')
-                .evaluate((host) => {
-                  const finished = host
-                    .getAnimations({ subtree: true })
-                    .filter((animation) => {
-                      const timing = animation.effect?.getComputedTiming();
-                      return (
-                        animation.playState === 'finished' &&
-                        timing?.iterations !== Infinity &&
-                        (timing?.fill === 'both' || timing?.fill === 'forwards')
-                      );
-                    });
-                  for (const animation of finished) animation.cancel();
-                  return finished.length;
-                });
-              await page.evaluate(
-                () =>
-                  new Promise<void>((resolveFrame) =>
-                    requestAnimationFrame(() =>
-                      requestAnimationFrame(() => resolveFrame()),
-                    ),
-                  ),
-              );
-              const after = await statusRasterState(page);
-              const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
-              await page.screenshot({
-                path: join(GALLERY_DIR, diagnosticFile),
-                fullPage: true,
-                animations: 'disabled',
-              });
-              rasterDiagnostic = {
-                before,
-                after,
-                retiredCount,
-                file: diagnosticFile,
-                sha256: createHash('sha256')
-                  .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
-                  .digest('hex'),
+            faultAttempt?.release();
+            const move = screenFault(screen, 'move-after-photo', attempt);
+            if (move && move.kind === 'move-after-photo')
+              await page.evaluate((delayMs) => {
+                setTimeout(() => {
+                  const block = document.createElement('div');
+                  block.style.height = '80px';
+                  document.querySelector('.app')?.before(block);
+                }, delayMs);
+              }, move.delayMs);
+          },
+          readControls: () => readVisibleControls(page),
+          // Audit the photographed state, before any post-shot interaction.
+          audit: async () => {
+            try {
+              uiAudit = await auditGalleryScreen(page, screen.name);
+            } catch (error) {
+              uiAudit = {
+                error: error instanceof Error ? error.message : String(error),
               };
             }
+            return uiAudit;
           },
-        });
-        const controls = await page
-          .locator('button, [role="button"], input[type="submit"]')
-          .evaluateAll((elements) =>
-            elements
-              .filter((element) => {
-                const rect = element.getBoundingClientRect();
-                const style = getComputedStyle(element);
-                return (
-                  rect.width > 0 &&
-                  rect.height > 0 &&
-                  rect.top < innerHeight &&
-                  rect.bottom > 0 &&
-                  rect.left < innerWidth &&
-                  rect.right > 0 &&
-                  style.visibility !== 'hidden' &&
-                  style.display !== 'none'
-                );
-              })
-              .slice(0, 100)
-              .map((element) => ({
-                label: (
-                  element.getAttribute('aria-label') ||
-                  element.textContent ||
-                  element.getAttribute('value') ||
-                  ''
-                )
-                  .trim()
-                  .slice(0, 160),
-                disabled:
-                  element.matches(':disabled') ||
-                  element.getAttribute('aria-disabled') === 'true',
-              })),
+          // Capture whatever rendered so the broken state is still inspectable.
+          fallbackScreenshot: async () => {
+            await hideVolatileChrome(page);
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              animations: 'disabled',
+            });
+          },
+          cleanup: async () => {
+            faultAttempt?.release();
+            faultAttempt = null;
+            try {
+              await screen.cleanup?.();
+            } finally {
+              if (faulted) await evictFaultedChunks();
+            }
+            if (screenFault(screen, 'fail-cleanup', attempt))
+              throw new Error(
+                'Gallery fault injection: the screen cleanup threw (fail-cleanup).',
+              );
+          },
+          now: () => performance.now(),
+          wait: (ms) => page.waitForTimeout(ms),
+          settleWindowMs,
+          evidence: () => {
+            const { records, omitted } = failedRequests.snapshot();
+            return {
+              failedRequests: records,
+              omitted,
+              consoleErrors: [...browserErrors],
+            };
+          },
+        };
+      },
+      keepFirstImage: (screen) => {
+        try {
+          mkdirSync(join(GALLERY_DIR, 'transients'), { recursive: true });
+          const kept = `transients/${screen.name}.attempt-1.png`;
+          copyFileSync(
+            join(GALLERY_DIR, `${screen.name}.png`),
+            join(GALLERY_DIR, kept),
           );
-        // Audit the photographed state, before any post-shot interaction.
-        try {
-          uiAudit = await auditGalleryScreen(page, screen.name);
-        } catch (error) {
-          uiAudit = {
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
-        if (screen.name === 'telemetry-feedback-mobile') {
-          const extensionFailure = page
-            .getByTestId('toast-card')
-            .filter({ hasText: 'Extensions unavailable' });
-          if (await extensionFailure.count())
-            throw new Error(
-              `Extension registry failed during capture. Browser errors: ${JSON.stringify(browserErrors)}`,
-            );
-        }
-        if (
-          screen.name === 'desktop-conversation-resync' ||
-          screen.name === 'mobile-conversation-resync'
-        ) {
-          await verifyConversationRecovery(page);
-        }
-        shots.push({
-          screen,
-          file,
-          ok: true,
-          controls,
-          layout,
-          rasterDiagnostic,
-          uiAudit,
-          sha256: createHash('sha256')
-            .update(readFileSync(join(GALLERY_DIR, file)))
-            .digest('hex'),
-        });
-      } catch (error) {
-        // Capture whatever rendered so the broken state is still inspectable.
-        try {
-          await hideVolatileChrome(page);
-          await page.screenshot({
-            path: join(GALLERY_DIR, file),
-            animations: 'disabled',
-          });
+          return kept;
         } catch {
-          /* nothing renderable */
+          return null;
         }
-        shots.push({
-          screen,
-          file,
-          ok: false,
-          // Preserve the already bounded per-screen console/page errors when
-          // a render assertion fails; the fallback PNG alone cannot explain
-          // a lazy-boundary failure. Failure and capture counts stay intact.
-          error: [
-            error instanceof Error ? error.message : String(error),
-            ...(browserErrors.length
-              ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
-              : []),
-          ].join('\n'),
-        });
-      } finally {
-        await screen.cleanup?.();
-        assets.screenFinished(screen.name);
-      }
-    }
+      },
+      log: (line) => process.stdout.write(`${line}\n`),
+      screenCaptured: (screen, result) => {
+        const file = `${screen.name}.png`;
+        if (result.record) secondCaptures.push(result.record);
+        const { final } = result;
+        const shot: Shot = final.ok
+          ? {
+              screen,
+              file,
+              ok: true,
+              browserErrors: browserErrors.length
+                ? [...browserErrors]
+                : undefined,
+              controls: final.atPhoto.map(({ label, disabled }) => ({
+                label,
+                disabled,
+              })),
+              layout,
+              rasterDiagnostic,
+              uiAudit: final.audit,
+              controlsAfterPhoto: final.controlsAfterPhoto,
+              controlMovement: final.controlMovement,
+              sha256: createHash('sha256')
+                .update(readFileSync(join(GALLERY_DIR, file)))
+                .digest('hex'),
+            }
+          : {
+              screen,
+              file,
+              // An app error surface leads with its identity, not the layout
+              // findings of its error row (#5028).
+              ...failedScreenFields(result, browserErrors),
+            };
+        shot.attempts = result.attempts;
+        shots.push(shot);
+      },
+    });
   } finally {
-    page.off('request', onRequest);
-    page.off('response', onResponse);
-    page.off('requestfinished', onFinished);
-    page.off('requestfailed', onFailed);
+    stopObserving();
     try {
       const network = await assets.finish();
       const checkoutEnd = readGalleryCheckout();
@@ -7402,28 +9417,46 @@ test('build gallery — capture key screens', async ({ page }) => {
           // (scripts/screenshot-diff.mjs) can never mistake a partial
           // gallery for full coverage.
           selection: requestedScreens,
+          // Every screen whose first attempt ended on an app error surface,
+          // and how its single second capture went; `second: "passed"` is a
+          // transient. Counted, never hidden.
+          secondCaptures,
+          // Only when an investigation widened the control record's window.
+          ...(settleWindowMs > 0 ? { settleWindowMs } : {}),
+          faultInjection:
+            faults.length > 0 ? { faults, fired: faultsFired } : null,
           screens: shots.map(
             ({
               file,
               ok,
               screen,
               error,
+              browserErrors,
               sha256,
               controls,
               layout,
               rasterDiagnostic,
               uiAudit,
+              attempts,
+              appError,
+              controlsAfterPhoto,
+              controlMovement,
             }) => ({
               file,
               ok,
               name: screen.name,
               viewport: screen.viewport,
               error: error ?? null,
+              browserErrors,
               sha256,
               controls,
               layout,
               rasterDiagnostic,
               uiAudit,
+              attempts: attempts ?? 1,
+              appError,
+              controlsAfterPhoto,
+              controlMovement,
             }),
           ),
         },
@@ -7431,12 +9464,31 @@ test('build gallery — capture key screens', async ({ page }) => {
         2,
       )}\n`,
     );
+    for (const line of formatControlChangeTable(
+      shots.map(({ screen, controlsAfterPhoto, controlMovement }) => ({
+        name: screen.name,
+        controlsAfterPhoto,
+        controlMovement,
+      })),
+      settleWindowMs,
+    ))
+      console.log(line);
+    if (secondCaptures.length > 0) {
+      const count = (second: SecondCaptureRecord['second']) =>
+        secondCaptures.filter((record) => record.second === second).length;
+      console.log(
+        `Gallery app error surfaces with a failed chunk request: ${secondCaptures.length} screen(s); ${count('passed')} passed a second capture (transient), ${secondCaptures.length - count('passed') - count('budget-exhausted')} failed it, ${count('budget-exhausted')} not captured again (budget of ${MAX_SECOND_CAPTURES}).`,
+      );
+    }
   }
 
+  const failedReasons = failedShotReasons(shots);
+  for (const reason of failedReasons) console.log(reason);
   const ok = shots.filter((shot) => shot.ok).length;
-  expect(ok, 'every selected gallery screen should render').toBe(
-    selectedScreens.length,
-  );
+  expect(
+    ok,
+    `every selected gallery screen should render; failed: ${failedReasons.join('; ') || 'none recorded'}`,
+  ).toBe(selectedScreens.length);
   if (
     selectedScreens.some(
       (screen) => screen.name === 'overlay-dock-project-mismatch',

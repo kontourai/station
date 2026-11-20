@@ -1,0 +1,7 @@
+{
+  "revision": "e293438c10c0069f05cbef309961f0942cff71b9",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Only visibility changed: CLAUDE_MANAGED_DROP_IN_MAX_FILES and claudeManagedSettingsRoot are now module-private. The paths, the 256-file cap and the 1 MiB cap that connections.md states are unchanged.","inputs":["src-server/providers/adapters/claude-instruction-files.ts"]}
+  ]
+}

@@ -138,7 +138,7 @@ export async function fetchProjectConversations(
     `/api/projects/${encodeURIComponent(projectSlug)}/conversations?limit=${limit}`,
     {
       errorPrefix: 'Failed to fetch project conversations',
-      allowFailure: true,
+      validateData: Array.isArray,
     },
   );
 }

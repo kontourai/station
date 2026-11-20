@@ -1,0 +1,7 @@
+{
+  "revision": "9a876cf566925e89fd48b92b6f99ff97393a85a7",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Third review round: the handoff request contract is unchanged; an uncertain request's same-key retry is no longer blocked by the chat reading busy from its own dispatch, and retained quotes are validated.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

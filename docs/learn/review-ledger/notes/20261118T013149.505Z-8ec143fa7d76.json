@@ -1,0 +1,23 @@
+{
+  "revision": "0e1faa73d9bcfe572b37b0162b9a5077ec454d2a",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed repository setup, capability copy and configured GitLab host selection against the settings and provider tests. Live self-managed GitLab verification is pending.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/design/motion.md","note":"The repository setup assertion uses provider-neutral wording. Motion, capture and telemetry scenarios retain their prior assertions.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The repository setup assertion uses provider-neutral wording. Motion, capture and telemetry scenarios retain their prior assertions.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The repository setup assertion uses provider-neutral wording. Motion, capture and telemetry scenarios retain their prior assertions.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the added forge capability states. Existing Project Sources and Knowledge tests retain their setup and assertions.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive automation capability fields and the typed unsupported-forge cause against the PR context route.","inputs":["packages/contracts/src/pull-request-provider.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the context response additions. Review guide reads and mutations retain their existing route and authorization checks.","inputs":["src-server/routes/pull-requests/pull-request-routes.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the supported forge capability claims and explicit GitLab host routing. Existing preview defaults and agent efficiency guidance remain applicable.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the supported forge capability claims and explicit GitLab host routing. Existing preview defaults and agent efficiency guidance remain applicable.","inputs":["docs/user/settings.md"]}
+  ]
+}

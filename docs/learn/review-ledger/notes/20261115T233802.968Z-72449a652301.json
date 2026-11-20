@@ -1,0 +1,9 @@
+{
+  "revision": "f74d3c389f867e7f8b78d065c77b613f8a104619",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The manifest change only adds this branch's new child-process test file to PROCESS_HEAVY_VITEST_FILES. Checked scripts/AGENTS.md (new child-process tests must be classified in the manifest: this change does exactly that) and docs/guides/testing.md (resource groups, worker limits and the manifest as scheduling authority): group definitions, worker counts and ordering are unchanged, so the documented claims still hold.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The manifest change only adds this branch's new child-process test file to PROCESS_HEAVY_VITEST_FILES. Checked scripts/AGENTS.md (new child-process tests must be classified in the manifest: this change does exactly that) and docs/guides/testing.md (resource groups, worker limits and the manifest as scheduling authority): group definitions, worker counts and ordering are unchanged, so the documented claims still hold.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

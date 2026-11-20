@@ -1,0 +1,19 @@
+{
+  "revision": "c5771da88c3f25aa1d158ce59014737a5328853e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round: the Task follow-up hand-off now passes the item kind (forgeFeedbackOwned(itemRef, kind)), so follow-ups stop waking only for kinds pull request feedback sends. Checked the citing pages: none describes this port; the module map's follow-up and feedback paragraphs still hold (the decision doc records the per-kind rule).","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

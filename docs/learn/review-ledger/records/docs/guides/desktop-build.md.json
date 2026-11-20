@@ -108,8 +108,6 @@
 
     "src-desktop/tauri.android.dev.conf.json",
 
-    "src-desktop/tauri.beta.conf.json",
-
     "src-desktop/tauri.conf.json",
 
     "src-desktop/tauri.ios.conf.json",
@@ -232,7 +230,9 @@
 
     "pnpm-lock.yaml#/packages/koffi@3.3.7",
 
-    "src-desktop/src/html_reply_protocol.rs"
+    "src-desktop/src/html_reply_protocol.rs",
+
+    "scripts/lib/server-static-imports.mjs"
   ],
 
   "checks": [

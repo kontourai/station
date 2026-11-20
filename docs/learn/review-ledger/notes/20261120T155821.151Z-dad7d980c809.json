@@ -1,0 +1,7 @@
+{
+  "revision": "d77858e33a62ffd47c700917b0e1a283106d4160",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the linked Monitoring revision. It describes the local stall warning sampling and its limits. The observation-path review's telemetry and integrity findings have the same scope.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

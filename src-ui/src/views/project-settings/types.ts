@@ -1,3 +1,4 @@
+import type { ProjectEffort } from '@kontourai/station-contracts/project';
 import type {
   ProjectChatApprovalPosture,
   ProjectChatDefaultSelection,
@@ -32,6 +33,15 @@ export type ProjectForm = Pick<
   | 'agents'
   | 'toolDefaults'
 > & {
+  /** #5062: the Project brief. `''` is no goal / no instructions. */
+  goal: string;
+  instructions: string;
+  /** #5068: `'inherit'` is no Project setting (stored as absent). */
+  coordinatorEffort: ProjectEffort | 'inherit';
+  taskEffort: ProjectEffort | 'inherit';
+  /** #5068: the Task model and its engine; `''` is none. */
+  taskModel: string;
+  taskProviderId: string;
   defaultWorkspaceIsolation: ProjectWorkspaceIsolationChoice;
   /** `fixed` is also what an absent stored value means. */
   defaultModelSelection: ProjectChatDefaultSelection;

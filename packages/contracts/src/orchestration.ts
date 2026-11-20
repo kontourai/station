@@ -12,6 +12,7 @@ import type {
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
+  EngineApprovalReviewer,
   ModelLaunchPlan,
   ProviderDurabilityProfile,
   ProviderSendTurnInput,
@@ -99,6 +100,31 @@ export type AdoptSessionTarget =
   | { kind: 'project'; projectSlug: string }
   | { kind: 'own-folder' };
 
+/**
+ * Whether the external harness that wrote an attached session is still
+ * working on it, read from the followed transcript alone. Station does not
+ * own that process and cannot see it: neither Claude Code (no open handle on
+ * its transcript) nor Codex (its app-server holds every loaded rollout open,
+ * working or not) gives a process signal that means "running".
+ *
+ * - `active`: the transcript's latest turn has no completion and the
+ *   transcript was written within {@link ATTACHED_SOURCE_ACTIVE_WINDOW_MS}.
+ *   Continuing now forks a conversation that is still moving; adoption is
+ *   refused unless the request says `continueWhileSourceActive`.
+ * - `quiet`: the latest turn has no completion, but nothing was written for
+ *   longer than the window. It was interrupted, crashed, its engine records
+ *   no completions, or a silent tool is still running: Station cannot tell.
+ * - `idle`: the latest turn ended (or none started).
+ */
+export interface AttachedSourceActivity {
+  state: 'active' | 'quiet' | 'idle';
+  /** Source time of the newest event Station imported from the transcript. */
+  lastWriteAt?: string;
+}
+
+/** How recent a transcript write keeps an open turn `active`. */
+export const ATTACHED_SOURCE_ACTIVE_WINDOW_MS = 5 * 60_000;
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
@@ -107,6 +133,12 @@ export type OrchestrationCommand =
       idempotencyKey?: string;
       /** #3386: where a conversation no project claims continues. */
       target?: AdoptSessionTarget;
+      /**
+       * Continue even though the source reads `active`
+       * ({@link AttachedSourceActivity}); without it Station refuses with
+       * `continuation_source_active`. The original keeps running either way.
+       */
+      continueWhileSourceActive?: true;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -994,6 +1026,10 @@ export interface TurnProgressSilence {
  * recognizes only its narrower progress vocabulary (#2959/#3031).
  */
 export interface TurnProgressObservation {
+  /** Execution Session observed by the watchdog, when reported by the host. */
+  threadId?: string;
+  /** Turn observed by the watchdog, when reported by the host. */
+  turnId?: string;
   lastProgressEventAt: string;
   progressSilence?: TurnProgressSilence;
 }
@@ -1167,6 +1203,8 @@ export interface OwnedSessionActivity {
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Soonest armed check-back in this conversation; approval proposals are excluded. */
+  nextWakeUpAt?: string;
   /** Aggregate owned execution activity; the parent's own event fold is retained. */
   ownedWork?: OwnedSessionActivity & {
     state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
@@ -1205,6 +1243,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * inherited default until the next report.
    */
   appliedApprovalMode?: ApprovalMode;
+  /** The latest engine-confirmed mode on this execution Session. */
+  currentModeId?: string;
+  /** Reviewer reported by the engine for this binding. Unknown if omitted or unrecognized. */
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;
@@ -1369,6 +1411,13 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   hasActiveTurn?: boolean;
   /**
+   * Read-only attached sessions only: whether the harness that wrote the
+   * transcript is still working on it, derived at read time
+   * ({@link AttachedSourceActivity}). Absent on older hosts and on every
+   * other session.
+   */
+  attachedSourceActivity?: AttachedSourceActivity;
+  /**
    * #2310: true when this session is a **Draft** — it exists, but no turn has
    * started and no send was attempted anywhere in its CONVERSATION's lineage
    * (the root Session and every continuation/handoff child), and nothing in
@@ -1469,6 +1518,14 @@ export interface OrchestrationSessionEventPage {
   hasMore: boolean;
   /** Per-thread sequence to resume from. */
   nextSequence: number;
+  /**
+   * #5077: the thread's highest per-thread `sequence` (0 for none), read in
+   * the same snapshot as `events`. Per-thread sequences may have gaps once
+   * rows are compacted, so `session.eventCount` is a count and not a bound
+   * on any sequence or cursor; this is. Optional because older hosts omit
+   * it. Their logs are gap-free, so their `session.eventCount` equals it.
+   */
+  highWaterSequence?: number;
 }
 
 /** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */
@@ -1552,11 +1609,32 @@ export interface OrchestrationConversationEventWindow
   contextBoundaries: import('./conversation-context-boundary.js').ConversationContextBoundaryTranscriptMarker[];
 }
 
+export const STAGED_CONVERSATION_HANDOFF_PREVIEW = Object.freeze({
+  id: 'staged-agent-changes',
+  label: 'Stage chat Agent changes',
+  description:
+    'Choose the Agent and model for the next message. Sending starts a fresh Session with bounded conversation text.',
+});
+
+/** Send-time approval for a fresh Session seeded with bounded conversation text. */
+export interface StagedConversationHandoff {
+  expectedCurrentSessionId: string;
+  contextPolicy: 'continue-from-history';
+}
+
 export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
   'authorizedTranscript',
   'ownerTenantWorkspace',
   'targetAgentModel',
 ] as const);
+
+/**
+ * The machine code on a handoff refused because the conversation's current
+ * Session still has a turn running or has not settled, so a client can say
+ * what to do instead of showing the server's sentence.
+ */
+export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
+  'conversation_handoff_predecessor_busy';
 
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
@@ -1820,6 +1898,8 @@ export interface ConversationReadMessage {
   textTruncated?: { originalBytes: number };
   tools?: string[];
   createdAt?: string;
+  /** Another Station's record (`importedFrom`), not a row of this conversation. */
+  importedFrom?: string;
 }
 
 export type ConversationReadProvenance =
@@ -2111,6 +2191,23 @@ export interface ConversationOpenCallerAccess {
 }
 
 export type ConversationOpenResolution = (
+  | {
+      /** The next turn can start the reserved empty-context execution. */
+      status: 'fresh-context-ready';
+      conversation: ConversationListItem;
+      predecessorSessionId: string;
+      reservedSessionId: string;
+      /** Earlier messages remain readable but are not passed to the next engine. */
+      transcript: {
+        available: true;
+        owner: 'runtime';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: true;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
   | {
       /** A saved, authorized fork with no provider Session until first send. */
       status: 'fork-ready';

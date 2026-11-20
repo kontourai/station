@@ -32,6 +32,23 @@ subscriptions. This is a provisional architectural preference, not a measured
 performance result. A WebSocket implementation is not required for the current
 single mounted Project Room.
 
+## Delivered: one multiplexed SSE stream per Project (#4798)
+
+The many-channel chat shipped on shared multiplexed SSE, not a WebSocket:
+`GET /api/projects/:slug/rooms/live` carries every channel a client watches in
+one Project (the sidebar shows one Project). SSE already crosses the native
+bridge, the CLI UI proxy and SSH paths, and each channel is admitted through
+the existing room history read, so no new upgrade routing or socket
+permission was needed. Typing and presence ride the same stream: typing is a
+`POST` that lapses after six seconds, and both clear when the stream that
+registered them closes. Frames are notifications, not a log: an `append`
+carries the next sequence and an `update` the activity range it covers, so a
+client detects a missed frame and re-reads ordered history, and every
+reconnection reconciles once. Task rooms keep their own per-room transport.
+The comparison under *Selection evidence* was not run; this choice rests on
+transport reach and reuse of the room's own authorization, not on measured
+throughput.
+
 ## Boundaries
 
 The current UI shares one mounted Room between Overview and the expanded Room.

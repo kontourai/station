@@ -12,8 +12,38 @@ Moving the view preserves the page and login; ordinary live-surface control
 and human preemption continue to apply. The floating view remains available.
 
 The reference is KiroCrew's `BrowserLiveCard`, `BrowserLiveCardViews` and
-`TurnBlock` at `aca93ab3c4`. Use the interaction pattern as a reference rather
-than copying its separate browser runtime or recording store.
+`TurnBlock`, rechecked at `cfaffc76d3`. Use its continuous turn-level card,
+attached action trail and compact completed state as the interaction reference.
+Station keeps its existing browser runtime, viewer and explicit recording owner.
+
+## Turn-level presentation correction
+
+The first implementation grouped consecutive browser calls inside each
+assistant message. A message settling during an ongoing turn produced another
+large historical card and hid the page. That breaks continuity when an agent
+alternates browser calls, commentary and other tools.
+
+Project one activity for each exact execution thread, turn and browser session
+from the loaded transcript and current stream. Ordinary tool results and
+approvals retain their original reading order. The active card has a stable owner at the transcript tail and summarizes that
+session's actions in a compact strip, preserving the canvas, full-screen state
+and focus as later calls and assistant rows arrive. Turn
+liveness comes from the conversation's open turn, not the assistant message's
+streaming flag. Calls with incomplete identity retain their ordinary renderer.
+
+While the turn runs, the page is the primary content, with its host and shared
+control/placement actions. When the turn finishes, fold to a compact summary;
+opening the current session is a separate action. Do not retain page pixels or
+invent replay as part of this presentation change. Different browser sessions
+receive distinct activities even when they share a turn.
+
+Acceptance must exercise browser call → commentary → another tool → browser
+call across assistant rows in one turn, then completion, with only one activity
+for that session. Cover the live streaming shell, canonical projected history,
+preview-off fallback, pending approvals and separate turns/sessions. Inspect
+actual page-frame rendering at 390 and 1440 pixels in both themes; a frame
+transport refusal alone cannot establish the intended visual result.
+
 
 ## Shared owners
 

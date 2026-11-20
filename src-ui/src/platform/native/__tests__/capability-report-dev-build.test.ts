@@ -53,17 +53,66 @@ describe('capability report carries the dev-build flag across the adapter', () =
   it('preserves the native channel identity', async () => {
     const result = await adapterReporting({
       platform: 'android',
-      channel: 'beta',
+      channel: 'nightly',
       capabilities: CAPABILITIES,
       devBuild: false,
     }).getCapabilityReport();
 
-    expect(result.status === 'ok' && result.value.channel).toBe('beta');
+    expect(result.status === 'ok' && result.value.channel).toBe('nightly');
   });
+  it.each(['retired-channel', 'transport-failure'])(
+    'revokes cached native consent after %s and restores it only from a fresh valid report',
+    async (failure) => {
+      const valid = {
+        platform: 'android',
+        channel: 'nightly',
+        capabilities: CAPABILITIES,
+      };
+      let payload: unknown = valid;
+      const calls: string[] = [];
+      const adapter = new TauriNativePlatformAdapter({
+        invoke: async (command) => {
+          calls.push(command);
+          if (command === 'native_capability_report') {
+            if (payload instanceof Error) throw payload;
+            return payload as never;
+          }
+          if (command === 'station_native_consent_review')
+            return { status: 'approved' } as never;
+          throw new Error(`Unexpected native invocation: ${command}`);
+        },
+        listen: async () => () => {},
+      });
+      expect((await adapter.getCapabilityReport()).status).toBe('ok');
+      expect((await adapter.reviewConsentNatively('request')).status).toBe(
+        'ok',
+      );
+      payload =
+        failure === 'retired-channel'
+          ? { ...valid, channel: 'beta' }
+          : new Error('host unavailable');
+      expect((await adapter.getCapabilityReport()).status).toBe('error');
+      expect((await adapter.reviewConsentNatively('request')).status).toBe(
+        'unsupported',
+      );
+      expect(
+        calls.filter((command) => command === 'station_native_consent_review'),
+      ).toHaveLength(1);
+      payload = valid;
+      expect((await adapter.getCapabilityReport()).status).toBe('ok');
+      expect((await adapter.reviewConsentNatively('request')).status).toBe(
+        'ok',
+      );
+      expect(
+        calls.filter((command) => command === 'station_native_consent_review'),
+      ).toHaveLength(2);
+    },
+  );
+
   it('drops legacy build-default connection metadata from the native host', async () => {
     const result = await adapterReporting({
       platform: 'android',
-      channel: 'beta',
+      channel: 'nightly',
       capabilities: CAPABILITIES,
       devBuild: false,
       mobileDefaultEndpoint: 'https://station.example.test:8442',

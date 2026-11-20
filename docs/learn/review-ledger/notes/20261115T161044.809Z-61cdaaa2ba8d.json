@@ -1,0 +1,7 @@
+{
+  "revision": "7741f351e5c6e604023fbbde424617c8eedd4d68",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Rewrote the after-choosing-a-Station paragraph for the splash-style switching screen: checked title/address/step sequence (Checking Station access, Loading Station data, StartupScreen stages) against StationConnectingScreen.tsx, StartupScreen.tsx, AuthorityQueryContext.tsx and their tests; slow-wait actions unchanged.","inputs":["docs/guides/connections.md"]}
+  ]
+}

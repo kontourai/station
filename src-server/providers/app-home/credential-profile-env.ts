@@ -12,18 +12,25 @@
  *
  * Deliberately NOT applied by this module's callers: model discovery (it
  * lists the connection's catalog, not a profile's), adoption and
- * source-affinity resumes (they must run under the source home), source-home
- * maintenance, readiness checks (a read must not create profile homes), and
+ * source-affinity resumes (they must run under the source home; a Codex
+ * source home that is a profile's gets that profile's overlay through
+ * `credentialProfileEnvForHome` instead), source-home maintenance, readiness checks (a read must not create profile homes), and
  * login/enrolment children (they only write the profile home's own
  * credentials).
  */
+
+import { realpathSync } from 'node:fs';
 import {
   appHomeActive,
   type ConnectionEnvEngine,
+  connectionSpawnEnv,
   validateCredentialProfileEnv,
 } from '../../services/connections/connection-env.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isCanonicalPathStrictlyWithin } from '../../utils/path-containment.js';
 import {
+  appHomeProfileDir,
+  appHomesRootDir,
   CredentialProfileEnvironmentError,
   claudeAppHomeEnv,
   codexAppHomeEnv,
@@ -164,6 +171,143 @@ export function createCredentialProfileAppHomeEnvPeek(
       locateCredentialProfileAppHome(options.engine, profileRef, homeOptions),
     legacyHome: () => locateAppHomeProfile(options.engine, homeOptions),
   });
+}
+
+const CONFIG_HOME_ENV_KEY: Record<ConnectionEnvEngine, string> = {
+  claude: 'CLAUDE_CONFIG_DIR',
+  codex: 'CODEX_HOME',
+};
+
+/**
+ * Every engine home Station itself points this engine's sessions at, beyond
+ * the default (`CODEX_HOME`/`~/.codex`): the connection's own config home,
+ * the legacy app home when `useAppHome` is on, and each saved credential
+ * profile's home. Paths only, located without creating anything; a home
+ * that cannot be located is left out. Read by transcript discovery, which
+ * must find sessions wherever Station started them.
+ */
+export async function configuredEngineHomes(
+  options: Pick<
+    CredentialProfileAppHomeEnvOptions,
+    'loadConnectionSettings' | 'homeDir'
+  > & { engine: ConnectionEnvEngine },
+): Promise<string[]> {
+  const settings = await options.loadConnectionSettings();
+  const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
+  const homes: string[] = [];
+  const connectionHome = connectionSpawnEnv(settings?.config, options.engine)?.[
+    CONFIG_HOME_ENV_KEY[options.engine]
+  ];
+  if (connectionHome) homes.push(connectionHome);
+  if (appHomeActive(settings?.config)) {
+    try {
+      homes.push((await locateAppHomeProfile(options.engine, homeOptions)).dir);
+    } catch {}
+  }
+  for (const profile of normalizeCredentialProfileRegistry(
+    settings?.credentialRecovery,
+  ).profiles) {
+    try {
+      homes.push(
+        (
+          await locateCredentialProfileAppHome(
+            options.engine,
+            profile.ref,
+            homeOptions,
+          )
+        ).dir,
+      );
+    } catch {}
+  }
+  return homes;
+}
+
+/**
+ * The env overlay of the credential profile whose home is `canonicalHome`
+ * (a real path), for running a session discovered in that home: the same
+ * overlay a profile spawn applies, so the profile's credentials meet the
+ * profile's endpoint. `undefined` (no overlay) for a home outside
+ * Station's app homes, such as the default home (answered without reading
+ * configuration), for the legacy app home, and for the connection's own
+ * config home wherever it is placed, since the connection env already
+ * applies there. Throws {@link CredentialProfileEnvUnavailableError} for an
+ * invalid overlay, and for any other app home no current profile owns: a
+ * deleted profile's home keeps its credentials, and running it without its
+ * overlay would send them to the ambient endpoint.
+ */
+export async function credentialProfileEnvForHome(
+  options: Pick<
+    CredentialProfileAppHomeEnvOptions,
+    'loadConnectionSettings' | 'homeDir' | 'warn'
+  > & { engine: CredentialProfileAppHomeEngine },
+  canonicalHome: string,
+): Promise<Record<string, string> | undefined> {
+  let root: string;
+  try {
+    root = realpathSync(appHomesRootDir(options.homeDir));
+  } catch {
+    return undefined;
+  }
+  if (!isCanonicalPathStrictlyWithin(root, canonicalHome)) return undefined;
+  const realOrNull = (path: string) => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return null;
+    }
+  };
+  if (
+    realOrNull(appHomeProfileDir(options.engine, options.homeDir)) ===
+    canonicalHome
+  )
+    return undefined;
+  const settings = await options.loadConnectionSettings();
+  if (options.engine !== 'muse') {
+    const connectionHome = connectionSpawnEnv(
+      settings?.config,
+      options.engine,
+    )?.[CONFIG_HOME_ENV_KEY[options.engine]];
+    if (connectionHome && realOrNull(connectionHome) === canonicalHome)
+      return undefined;
+  }
+  const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
+  for (const profile of normalizeCredentialProfileRegistry(
+    settings?.credentialRecovery,
+  ).profiles) {
+    let dir: string;
+    try {
+      dir = realpathSync(
+        (
+          await locateCredentialProfileAppHome(
+            options.engine,
+            profile.ref,
+            homeOptions,
+          )
+        ).dir,
+      );
+    } catch {
+      continue;
+    }
+    if (dir !== canonicalHome) continue;
+    try {
+      return credentialProfileOverlayEnv(
+        settings?.credentialRecovery,
+        profile.ref,
+      );
+    } catch (error) {
+      // Server-side diagnostic: the storage id hash and offending variable
+      // names, never the raw ref or a value.
+      const names =
+        error instanceof CredentialProfileEnvUnavailableError
+          ? (error.invalidVariableNames ?? [])
+          : [];
+      options.warn?.(
+        `Credential profile ${credentialProfileStorageId(options.engine, profile.ref)} (${options.engine}): refusing to continue a session in its home: the saved env overlay is invalid${names.length > 0 ? ` (${names.join(', ')})` : ''}`,
+      );
+      throw error;
+    }
+  }
+  throw new CredentialProfileEnvUnavailableError();
 }
 
 export interface CredentialProfileAppHomeEnvOptions {

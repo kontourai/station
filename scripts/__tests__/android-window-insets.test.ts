@@ -11,11 +11,7 @@ import { expect, test } from 'vitest';
 import { applyAndroidNativeBootstrap } from '../apply-android-native-bootstrap.mjs';
 import { activityWithAndroidInsets } from '../lib/android-window-insets.mjs';
 
-test.each([
-  'io.kontourai.station',
-  'io.kontourai.station.beta',
-  'io.kontourai.station.nightly',
-])(
+test.each(['io.kontourai.station', 'io.kontourai.station.nightly'])(
   'the native build bootstrap restores inset delivery after regenerating %s',
   (namespace) => {
     const root = mkdtempSync(join(tmpdir(), 'station-insets-'));

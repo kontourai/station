@@ -125,10 +125,15 @@ export function ProjectTaskRoomConversation({
   taskId,
   projectSlug,
   taskCreatedAt,
+  threadAddress,
 }: {
   taskId: string;
   projectSlug?: string;
   taskCreatedAt?: string;
+  threadAddress?: {
+    id: string | undefined;
+    open(id: string | undefined): void;
+  };
 }) {
   const scope = useHostRequestAuthorityScope();
   const collaborationEnabled =
@@ -156,7 +161,14 @@ export function ProjectTaskRoomConversation({
     scope,
     capabilities?.historyRead,
   );
-  const [thread, setThread] = useState<string>();
+  const [localThread, setLocalThread] = useState<string>();
+  const addressedThread = threadAddress?.id;
+  const thread = threadAddress
+    ? addressedThread &&
+      records.some((record) => record.execution?.sessionId === addressedThread)
+      ? addressedThread
+      : undefined
+    : localThread;
   // A thread's unsent reply survives leaving the Task and a reload; keyed by
   // the reload partition (not the per-reload authority epoch), Task and
   // Session so it never reaches another agent (#4810 review 1).
@@ -200,6 +212,12 @@ export function ProjectTaskRoomConversation({
   const keep = useCreateTaskReferenceMutation();
   const { DiscardModal, guard } = useUnsavedGuard(
     !!reply || replyAttachments.files.length > 0,
+    () => {
+      if (followupPending.current) return false;
+      setReply('');
+      replyAttachments.clear();
+      return true;
+    },
   );
   const running =
     shared?.live?.participants.filter(
@@ -207,6 +225,14 @@ export function ProjectTaskRoomConversation({
         participant.publication === 'published' &&
         participant.actor.kind === 'agent',
     ) ?? [];
+  // The Agent whose live work continues this execution's thread (#4800):
+  // the room's own live participant record, never a guess.
+  const workingOn = (sessionId: string) =>
+    running.find(
+      (participant) =>
+        participant.work.sessionId === sessionId &&
+        participant.work.workState !== 'blocked',
+    )?.actor.label;
   const [historyWindow, setHistoryWindow] = useState(HISTORY_WINDOW);
   const now = useElapsedClock(running.length > 0);
   // The history contract pages forward through a fixed checkpoint. Read to that
@@ -505,7 +531,8 @@ export function ProjectTaskRoomConversation({
               />
             ),
             footer:
-              !inThread && replies.length ? (
+              !inThread &&
+              (replies.length || workingOn(execution.sessionId)) ? (
                 <RoomThreadSummary
                   repliers={repliers.map((actor) => ({
                     key: actor.id ?? `${actor.kind}:${actor.label}`,
@@ -516,6 +543,7 @@ export function ProjectTaskRoomConversation({
                   lastAt={lastReply}
                   disabled={followup.isPending}
                   onOpen={() => changeThread(execution.sessionId)}
+                  working={workingOn(execution.sessionId)}
                 />
               ) : undefined,
             actions: (
@@ -652,17 +680,23 @@ export function ProjectTaskRoomConversation({
       ))}
     </div>
   ) : undefined;
+  const previousThread = useRef(thread);
+  useLayoutEffect(() => {
+    if (previousThread.current === thread) return;
+    previousThread.current = thread;
+    replyAttachments.clear();
+    replyOperation.current = undefined;
+    setAttachBrief(true);
+    setUncertain(false);
+    setNotice('');
+  }, [replyAttachments, thread]);
+
   const changeThread = (next?: string) => {
     if (next === thread || followupPending.current) return;
     guard(() => {
       if (followupPending.current) return;
-      setThread(next);
-      setReply('');
-      replyAttachments.clear();
-      replyOperation.current = undefined;
-      setAttachBrief(true);
-      setUncertain(false);
-      setNotice('');
+      if (threadAddress) threadAddress.open(next);
+      else setLocalThread(next);
     });
   };
   const canReply =
@@ -681,6 +715,7 @@ export function ProjectTaskRoomConversation({
           label: `${threadRecords[0]?.actor.label ?? 'Agent'} · Thread`,
           onDismiss: () => changeThread(),
           page: true,
+          historyMode: threadAddress ? 'route' : 'entry',
         }}
         companion={
           thread ? (

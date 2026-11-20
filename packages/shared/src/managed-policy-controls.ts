@@ -32,6 +32,11 @@ import {
   MANAGED_POLICY_ENGINE_IDS,
   type ManagedPolicyEngineId,
 } from '@kontourai/station-contracts/managed-policy-engines';
+import {
+  REMOTE_TASK_VENDOR_IDS,
+  REMOTE_TASK_VENDOR_LABELS,
+  type RemoteTaskVendorId,
+} from '@kontourai/station-contracts/remote-task-engine';
 
 /** The key, relative to HKEY_LOCAL_MACHINE, as an ADMX `key` attribute. */
 export const WINDOWS_POLICY_SUBKEY = 'SOFTWARE\\Policies\\Kontour\\Station';
@@ -151,6 +156,17 @@ const ENGINE_VALUE_NAMES: Readonly<Record<ManagedPolicyEngineId, string>> = {
   muse: 'EngineMuse',
   acp: 'EngineAcp',
   'station-agent': 'EngineStationAgent',
+};
+
+/**
+ * The checkbox value for each remote task engine vendor
+ * (docs/decisions/remote-task-engines.md). Keyed by `RemoteTaskVendorId`, so
+ * a new vendor without a checkbox does not compile.
+ */
+const REMOTE_TASK_VALUE_NAMES: Readonly<Record<RemoteTaskVendorId, string>> = {
+  devin: 'RemoteTaskDevin',
+  'github-copilot': 'RemoteTaskGitHubCopilot',
+  cursor: 'RemoteTaskCursor',
 };
 
 const NOT_A_SANDBOX =
@@ -380,6 +396,33 @@ export const MANAGED_POLICY_CONTROLS: readonly ManagedPolicyControl[] = [
           item: id,
           label: ENGINE_LABELS[id],
           defaultChecked: true,
+        })),
+      },
+    ],
+  },
+  {
+    kind: 'policy',
+    id: 'RemoteTaskEngines',
+    title: 'Allowed remote task engines',
+    help: `The cloud coding agents users may send work to. A remote task runs on the vendor's machines: the prompt and the repository code leave this computer, and Station's sandbox and approval settings do not apply there.
+
+On a machine with any Station policy, a vendor left unchecked is off, and so is every vendor while this policy is Not Configured.
+
+Disabled is not supported: Station will not start. Use Not Configured to allow none.
+
+${NOT_A_SANDBOX}`,
+    limitKey: 'engines',
+    stateValueName: 'RemoteTaskEngines',
+    elements: [
+      {
+        kind: 'checkboxes',
+        path: ['limits', 'engines', 'remoteTasks'],
+        label: 'Allowed remote task engines',
+        items: REMOTE_TASK_VENDOR_IDS.map((id) => ({
+          valueName: REMOTE_TASK_VALUE_NAMES[id],
+          item: id,
+          label: REMOTE_TASK_VENDOR_LABELS[id],
+          defaultChecked: false,
         })),
       },
     ],

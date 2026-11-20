@@ -1,0 +1,7 @@
+{
+  "revision": "81fca05fb00375b2193d7c39f0097cebdba7a257",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Handoff route contract unchanged: the dialog still posts the same idempotent handoff request with a provider turn; only the first message may now be the fixed catch-up text. Claims remain accurate.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

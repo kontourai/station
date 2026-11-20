@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { STATION_HOME_ROOTS } from '../../packages/shared/src/station-home-store-registry.js';
@@ -105,6 +105,8 @@ function buildSourceHome() {
   // Code that runs, and telemetry that reports as the developer.
   write(home, 'plugins/p/index.js', 'run()');
   write(home, 'plugin-grants.json', '{}');
+  // A pinned engine install (engines/<installId>/<version>/), re-acquirable.
+  write(home, 'engines/pinned-fixture/1.0.0/engine/bin/engine', 'binary');
   write(home, 'config/telemetry-outbox.json', '[{"event":"x"}]');
   // A root no one has classified yet.
   write(home, 'brand-new-store.json', '{"future":true}');
@@ -198,6 +200,7 @@ describe('seedDevHome', () => {
       'integrations',
       'plugins',
       'plugin-grants.json',
+      'engines',
       'config/telemetry-outbox.json',
       'brand-new-store.json',
       'projects/p1/escape',
@@ -222,6 +225,7 @@ describe('seedDevHome', () => {
     expect(marker.dropped['other-machines']).toEqual(
       expect.arrayContaining(['devices', 'environments', 'integrations']),
     );
+    expect(marker.dropped['bulk-or-derived']).toEqual(['engines']);
     expect(marker.dropped.telemetry).toEqual(['config/telemetry-outbox.json']);
     expect(marker.dropped.unknown).toEqual(['brand-new-store.json']);
     expect(marker.skippedLinks).toEqual(['projects/p1/escape']);
@@ -275,6 +279,20 @@ describe('seedDevHome', () => {
     expect(() =>
       seedDevHome({ source: home, target: join(home, 'nested') }),
     ).toThrow(/outside the source/);
+    // The same place reached through a symlinked directory is still inside.
+    const alias = join(base, 'alias');
+    symlinkSync(home, alias, 'junction');
+    expect(() =>
+      seedDevHome({ source: home, target: join(alias, 'nested') }),
+    ).toThrow(/outside the source/);
+    // And so is the same place spelled in another case, where the disk
+    // treats the two spellings as one (macOS and Windows by default).
+    const recased = join(dirname(home), basename(home).toUpperCase());
+    if (recased !== home && existsSync(recased)) {
+      expect(() =>
+        seedDevHome({ source: home, target: join(recased, 'nested') }),
+      ).toThrow(/outside the source/);
+    }
     const foreign = join(base, 'foreign');
     write(foreign, 'keep-me.txt', 'mine');
     expect(() => seedDevHome({ source: home, target: foreign })).toThrow(

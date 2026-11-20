@@ -8,9 +8,9 @@ import { useSidebarPillRegions } from './pill-region-open';
  *
  * ## Why it is a chunk of its own
  *
- * `ProjectLayoutChips` is EAGER — `main.tsx` → `App.tsx` → `ProjectSidebar` —
- * so everything it references is paid for on every cold load by every user,
- * including the ones who never right-click a chip.
+ * `ProjectLayoutChips` was eager at the time of the measurement below.
+ * It now loads when the Project views open. This menu still loads on its
+ * own gesture.
  *
  * THE MEASUREMENT THAT DECIDES IT, taken on this branch against base
  * 3b55b26fb, ceiling 333800: with this component inlined into

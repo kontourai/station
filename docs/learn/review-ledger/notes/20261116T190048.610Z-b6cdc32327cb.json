@@ -1,0 +1,17 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"Adds setProjectLifecycle and getProjectDeletionPreview client calls; existing calls unchanged. Pages citing this file describe other Project requests and remain accurate.","inputs":["packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Adds setProjectLifecycle and getProjectDeletionPreview client calls; existing calls unchanged. Pages citing this file describe other Project requests and remain accurate.","inputs":["packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Adds setProjectLifecycle and getProjectDeletionPreview client calls; existing calls unchanged. Pages citing this file describe other Project requests and remain accurate.","inputs":["packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Adds setProjectLifecycle and getProjectDeletionPreview client calls; existing calls unchanged. Pages citing this file describe other Project requests and remain accurate.","inputs":["packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds setProjectLifecycle and getProjectDeletionPreview client calls; existing calls unchanged. Pages citing this file describe other Project requests and remain accurate.","inputs":["packages/sdk/src/client/projects.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Adds setProjectLifecycle and getProjectDeletionPreview client calls; existing calls unchanged. Pages citing this file describe other Project requests and remain accurate.","inputs":["packages/sdk/src/client/projects.ts"]}
+  ]
+}

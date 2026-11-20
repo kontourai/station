@@ -7,6 +7,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { ArrowLeftGlyph } from '../../components/icons/Glyph';
 import { SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { DeviceShares } from './DeviceShares';
@@ -18,6 +19,7 @@ import {
   useDeviceToolchainStatus,
 } from './deviceToolchainApi';
 import './DeviceSetupWizard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * Three-step device setup (#1970, D11): the device hub, simulator/emulator
@@ -228,6 +230,7 @@ export default function DeviceSetupWizard({
   requestScope: ApiRequestScope;
   onClose: () => void;
 }) {
+  useDecisionSurface('device-agent-control');
   const [step, setStep] = useState(0);
   const status = useDeviceToolchainStatus(requestScope);
   const action = useDeviceToolchainAction(requestScope);
@@ -400,9 +403,13 @@ export default function DeviceSetupWizard({
       footer={
         <>
           {step === 0 ? (
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose} variant="ghost">
+              Cancel
+            </Button>
           ) : (
-            <Button onClick={() => setStep(step - 1)}>Back</Button>
+            <Button onClick={() => setStep(step - 1)} variant="ghost">
+              <ArrowLeftGlyph /> Back
+            </Button>
           )}
           {step < STEPS.length - 1 ? (
             <Button

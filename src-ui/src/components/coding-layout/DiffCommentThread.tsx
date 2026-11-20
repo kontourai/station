@@ -1,7 +1,8 @@
 import type { DiffComment } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
-import { formatDateTime } from '../../utils/relativeTime';
+import { RelativeTime } from '../pull-requests/RelativeTime';
 
 interface DiffCommentThreadProps {
   comments: DiffComment[];
@@ -30,6 +31,7 @@ export function DiffCommentThread({
   onDelete,
 }: DiffCommentThreadProps) {
   const [draft, setDraft] = useState('');
+  const now = useCoarseNow(undefined, { enabled: comments.length > 0 });
 
   const submit = () => {
     const body = draft.trim();
@@ -44,9 +46,11 @@ export function DiffCommentThread({
         <div key={comment.id} className="diff-comment">
           <div className="diff-comment__body">{comment.body}</div>
           <div className="diff-comment__meta">
-            <span className="diff-comment__time">
-              {formatDateTime(comment.createdAt)}
-            </span>
+            <RelativeTime
+              iso={comment.createdAt}
+              now={now}
+              className="diff-comment__time"
+            />
             <button
               type="button"
               className="diff-comment__delete"

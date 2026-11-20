@@ -154,6 +154,8 @@ function settingsScopeDetail(
       return formatMessage('scopeDefaults', locale);
     case 'account':
       return formatMessage('scopeAccount', locale);
+    case 'personal':
+      return formatMessage('scopePersonal', locale);
     case 'device':
       return formatMessage('scopeDevice', locale);
     case 'mixed':
@@ -1159,8 +1161,10 @@ export function CommandPalette() {
               className="command-palette__input"
               type="text"
               role="combobox"
-              aria-expanded="true"
-              aria-controls="command-palette-listbox"
+              aria-expanded={ordered.length > 0}
+              aria-controls={
+                ordered.length > 0 ? 'command-palette-listbox' : undefined
+              }
               aria-autocomplete="list"
               aria-label="Search commands, projects and chats"
               // Focus stays in the input while the arrows move `activeIndex`,

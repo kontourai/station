@@ -1,0 +1,7 @@
+{
+  "revision": "c2d157194d0a5e07c43bf6ee4e19427a1b742d3f",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Review-fix round for the handoff UX lane: changes to the cited source (armed-send routing in ConversationBody, dock prop wiring, guarded attached-session continuation, extraction of useChatInput.prepareOutgoingText with no behavior change) do not touch any claim this document makes.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

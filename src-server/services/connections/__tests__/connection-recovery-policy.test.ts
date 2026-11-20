@@ -235,6 +235,42 @@ describe('credential recovery selection', () => {
     ).toEqual({ outcome: 'refused', reason: 'automatic_disabled' });
   });
 
+  test("a person's consent stands in for the automatic opt-in and nothing else", () => {
+    const consented = {
+      ...selectable,
+      policy: undefined,
+      consented: true as const,
+    };
+    expect(selectCredentialRecoveryCandidate(consented)).toEqual({
+      outcome: 'selected',
+      candidateProfileRef: 'profile-recovery',
+    });
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...consented,
+        candidateProfileRef: 'profile-primary',
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'not_enrolled' });
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...consented,
+        group: { ...consented.group, enrolledProfileRefs: [] },
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'not_enrolled' });
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...consented,
+        capability: { sameSession: true, application: 'unsupported' },
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'unsupported' });
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...consented,
+        failure: { ...exhaustedAccount, scope: 'provider' },
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'ineligible_scope' });
+  });
+
   test('fails closed for non-enrollment, same profile, unsupported application, and non-exhaustion', () => {
     expect(
       selectCredentialRecoveryCandidate({

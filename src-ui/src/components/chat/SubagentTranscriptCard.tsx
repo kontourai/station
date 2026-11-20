@@ -114,7 +114,7 @@ export function SubagentTranscriptCard({
   /** The tool call that spawned it, when the card is drawn in its place. */
   call?: ToolCallLike;
 }) {
-  const { item, provider } = child;
+  const { item, provider, stationName } = child;
   const workKind = childWorkKindOf(item);
   const isAgent = workKind === 'agent';
   const command = isAgent ? undefined : commandOf(call);
@@ -224,7 +224,15 @@ export function SubagentTranscriptCard({
               progress={item.progress}
             />
           ) : !expanded && preview ? (
-            <span className="subagent-card__preview">{preview}</span>
+            <span className="subagent-card__preview">
+              {isAgent &&
+                !running &&
+                item.result?.source &&
+                item.result.source !== 'tool-return' && (
+                  <span>{childWorkSummaryLabel(item.result.source)}: </span>
+                )}
+              {preview}
+            </span>
           ) : !expanded && isAgent && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
               No summary reported
@@ -244,6 +252,9 @@ export function SubagentTranscriptCard({
       </button>
       {expanded && (
         <div className="subagent-card__detail" id={detailId}>
+          {stationName && (
+            <p className="subagent-card__note">Via {stationName}</p>
+          )}
           {command && (
             <pre className="subagent-card__command">
               <code>{command}</code>
@@ -349,7 +360,15 @@ function SubagentCallGroup({
   }
 
   return (
-    <div className="subagent-group" data-grouped={grouped}>
+    <div
+      className="subagent-group"
+      data-grouped={grouped}
+      data-finished={
+        children.every(
+          (child) => childWorkDisplayStatus(child.item) === 'completed',
+        ) || undefined
+      }
+    >
       {grouped && (
         <button
           type="button"

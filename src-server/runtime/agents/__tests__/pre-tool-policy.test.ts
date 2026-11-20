@@ -1,13 +1,19 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  createGuardianConversationReader,
   GUARDIAN_ESCALATE_AFTER_CONSECUTIVE,
   GUARDIAN_ESCALATE_AFTER_TOTAL,
   GuardianDenialLedger,
   NO_PERSON_INTENT,
 } from '../../../services/approvals/guardian-conversation.js';
+import {
+  gateMediatedMcpCall,
+  resetPersonApprovedCalls,
+} from '../../../services/plugins/mediated-untrusted-content-gate.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import { isAutoApprovedExternalTool } from '../../tools/tool-executor.js';
+import { createChildDelegationContext } from '../delegation.js';
 import { createStagedPreToolPolicyEvaluator } from '../pre-tool-policy.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -75,6 +81,140 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         hasInteractiveApproval: true,
       }),
     ).resolves.toEqual({ behavior: 'ask' });
+  });
+
+  // Owner decision (2026-11-16): full access means no prompts. A browser
+  // snapshot marked the turn untrusted, and every later browser call asked
+  // through the hook even though the engine ran at bypassPermissions.
+  test('full access does not raise the untrusted-content ask; a refusal still applies', async () => {
+    const browserTool = {
+      toolName: 'mcp__station-browser__browser_evaluate',
+      toolCallId: 'tool-2',
+      toolArgs: { expression: '1' },
+    };
+    const asking = createEvaluator({
+      untrustedContentPermission: vi.fn(async () => 'ask' as const),
+    });
+    await expect(
+      asking(browserTool, invocation, { interaction: 'external' }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // Without full access the seam would refuse the call: nobody approved it.
+    const sendTool = {
+      toolName: 'mcp__station-control__send_message',
+      toolCallId: 'tool-3',
+      toolArgs: {},
+    };
+    const seam = () =>
+      gateMediatedMcpCall({
+        conversationIds: [invocation.conversationId],
+        serverId: 'station-control',
+        toolNames: ['send_message'],
+        definition: async () => undefined,
+        ledger: {
+          conversationHasRead: async () => true,
+        } as never,
+      });
+    expect((await seam()).allowed).toBe(false);
+    await expect(
+      asking(browserTool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'defer' });
+    // Full access is the person's answer, so the seam carrying the call
+    // passes it rather than turning the skipped prompt into a refusal.
+    await asking(sendTool, invocation, {
+      interaction: 'external',
+      fullAccess: true,
+    });
+    expect((await seam()).allowed).toBe(true);
+    resetPersonApprovedCalls();
+
+    const refusing = createEvaluator({
+      untrustedContentPermission: vi.fn(async () => 'deny' as const),
+    });
+    await expect(
+      refusing(browserTool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  // Owner decision (2026-11-16): full access trusts an agent with the work,
+  // never with widening its own trust.
+  test('a tool that changes authority asks a person even under full access and a matching grant', async () => {
+    const evaluator = createEvaluator({ isGranted: () => true });
+    for (const toolName of [
+      'mcp__station-control__update_config',
+      'mcp__station-control__update_agent',
+    ])
+      await expect(
+        evaluator({ ...tool, toolName }, invocation, {
+          interaction: 'external',
+          fullAccess: true,
+        }),
+      ).resolves.toEqual({ behavior: 'ask', required: true });
+    // The Station engine's runtime name is matched through its provenance.
+    await expect(
+      createEvaluator({
+        isGranted: () => true,
+        toolNameMapping: new Map([
+          [
+            'sc_cfg',
+            {
+              provenance: {
+                integrationId: 'station-control',
+                originalToolName: 'update_config',
+              },
+            },
+          ],
+        ]),
+      })({ ...tool, toolName: 'sc_cfg' }, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // An ordinary station-control tool is untouched.
+    await expect(
+      evaluator(tool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'allow', toolGrant: true });
+  });
+
+  // archive#2016: an operator-enabled guardian approves mutations the same way
+  // on every Station-engine surface; on an external engine a person is still
+  // asked, since a guardian allow there would run unasked at full access.
+  test('an authority tool takes a guardian allow on Station’s engine, never on an external one', async () => {
+    const guardian = {
+      isEnabled: vi.fn(() => true),
+      getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
+      reviewToolCall: vi
+        .fn()
+        .mockResolvedValue({ decision: 'allow', reason: 'Scoped.' }),
+    };
+    const evaluator = createEvaluator({ approvalGuardian: guardian });
+    const update = {
+      ...tool,
+      toolName: 'mcp__station-control__update_config',
+    };
+    await expect(
+      evaluator(update, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: false,
+      }),
+    ).resolves.toEqual({ behavior: 'allow' });
+    await expect(
+      evaluator(update, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // One review per call: the required ask reuses it.
+    expect(guardian.reviewToolCall).toHaveBeenCalledTimes(2);
   });
 
   test('explicit Ask me takes precedence over automatic, guardian and unattended allows', async () => {
@@ -148,6 +288,40 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         hasInteractiveApproval: true,
       }),
     ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  test('an inherited allowlist refuses the real pre-tool grant path', async () => {
+    const isGranted = vi.fn(() => true);
+    const evaluator = createEvaluator({ isGranted });
+    const delegation = createChildDelegationContext({
+      agentSlug: 'parent',
+      current: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('ancestor'),
+        rootAgentSlug: agentId('root'),
+        allowedTools: ['github_*'],
+        toolAllowlistConstraints: [['station-control_*']],
+      },
+    });
+    await expect(
+      evaluator(
+        tool,
+        { ...invocation, delegation },
+        {
+          interaction: 'external',
+          identity: {
+            delegationToolName: 'station-control_list_agents',
+            configProtectionToolName: 'list_agents',
+          },
+        },
+      ),
+    ).resolves.toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining('delegated child session') },
+    });
+    expect(isGranted).not.toHaveBeenCalled();
   });
 
   test('matches a raw MCP name against delegated-tool restrictions', async () => {
@@ -608,6 +782,51 @@ describe('approval guardian escalation (#4827)', () => {
     return { evaluator, reviewToolCall };
   }
 
+  test.each([
+    'interactive',
+    'task-dispatch',
+    'delegation',
+    'automation',
+    'unknown',
+  ] as const)(
+    'routes an enforce guardian defer according to the admitted %s turn',
+    async (origin) => {
+      const latestTurnDispatchOrigin = vi.fn(() => origin);
+      const evaluator = createEvaluator({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: createGuardianConversationReader({
+            conversationLineageForThreads: () => new Map(),
+            personAuthoredTurnPrompts: () => [],
+            latestTurnDispatchOrigin,
+          }),
+          reviewToolCall: async () => ({
+            decision: 'defer',
+            reason: 'No confident verdict.',
+          }),
+        },
+      });
+      const decision = await evaluator(tool, invocation, {
+        interaction: 'external',
+      });
+      expect(latestTurnDispatchOrigin).toHaveBeenCalledWith(
+        invocation.conversationId,
+      );
+      if (origin === 'interactive') {
+        expect(decision).toEqual({ behavior: 'defer' });
+      } else {
+        expect(decision).toMatchObject({
+          behavior: 'deny',
+          denial: {
+            policyDenied: true,
+            reason: expect.stringContaining('nobody is present to decide'),
+          },
+        });
+      }
+    },
+  );
+
   const attended = {
     interaction: 'managed' as const,
     hasInteractiveApproval: true,
@@ -646,6 +865,7 @@ describe('approval guardian escalation (#4827)', () => {
     await expect(evaluator(call, invocation, attended)).resolves.toEqual({
       behavior: 'ask',
       required: true,
+      guardianReason: 'guardian says deny',
     });
   });
 

@@ -192,13 +192,13 @@ export function LocalUiSessionGate({
           result.ok &&
           typeof result.bootId === 'string' &&
           result.bootId.length > 0;
-        // Only an authentication refusal is a definite "not this person";
-        // unreachable, timeout, identity or version failures are not.
         refused =
           typeof result === 'object' &&
           result !== null &&
           !result.ok &&
-          result.reason === 'authentication-failed';
+          result.evidence?.kind === 'http' &&
+          result.evidence.phase === 'authenticated' &&
+          result.evidence.status === 401;
       } catch {
         // Missing or rejected account/Device authority keeps the access
         // screen visible. It is not evidence that the broker route is offline.

@@ -1,0 +1,21 @@
+{
+  "revision": "74adffdf51dd19e8b0904fd1bc03c55890350956",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#5050: internal only. buildSessionReadModel admits the runtime home once per build and passes a reader to buildOrchestrationSessionSummary's isStationChatFolder check; cwdManagedWorkspace results, routes, API, contracts, config, env vars, metrics and UI are unchanged, so citing docs' claims remain accurate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

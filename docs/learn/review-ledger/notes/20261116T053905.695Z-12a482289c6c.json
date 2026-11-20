@@ -1,0 +1,7 @@
+{
+  "revision": "77ed9afe6f8a3fbfb2959a0b2156731bb096be84",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs delta: one new process-heavy classification for a new child-process test, as this file's rule requires. Rules unchanged and still accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

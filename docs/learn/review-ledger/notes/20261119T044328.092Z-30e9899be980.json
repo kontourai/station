@@ -1,0 +1,9 @@
+{
+  "revision": "8731aec5535442bb28119c8ffd67b5371434d32c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Settings product coverage. The merged normal account-menu route waits for the exact Settings address, visible heading and Filter settings searchbox. The main saved-prompt and external-engine scope cases coexist with the Settings discovery, two-row template selection and disclosure cases.","inputs":["tests/settings.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed phone and desktop Inbox entry coverage. The merged fixture preserves current indexed turn-directory, inventory and honest Git responses. The user reaches stored chat through its visible accessible name, and the existing action, title, focus restoration and stable URL assertions remain. This does not add new runtime authority or change responsive layout.","inputs":["tests/chat-dock-inbox-open.spec.ts"]}
+  ]
+}

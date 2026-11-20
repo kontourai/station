@@ -33,11 +33,13 @@ structural rules: keep real consumer/action and two-Station isolation tests.
 The syntax/file baseline may only shrink with `--update`; never add an exception
 for a new surface or move inherited debt to another filename.
 
-For performance or test cleanup, use the [journey profiling and mutation route](../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness). Measure actual mounted behavior before changing memoization or adding caches. Prefer canonical identity keys, bounded collections, and batched I/O; preserve authority/freshness when sharing a snapshot. DOM/source-string assertions do not establish CSS layout, hit testing, or writability.
+For performance and test cleanup, use the [journey profiling and mutation route](../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness). Measure mounted behavior before memoizing or caching. Use canonical identity keys, bounded collections and batched I/O. Preserve snapshot authority and freshness. DOM/source-string assertions cannot prove CSS layout, hit testing or writability.
 
-For compact value pickers, reuse `.choice-trigger`, `.choice-caret`, and `ArrowDownGlyph`; keep picker behavior in its existing owner. Use `Button` for standard actions and `Dialog` for standard dialog chrome. `ResponsiveDialogSurface` supplies behavior and geometry only; a custom consumer must own its overlay, background, and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Validate shared-style changes in each affected surface, including narrow widths and both themes.
+Reuse `.choice-trigger`, `.choice-caret` and `ArrowDownGlyph` for compact pickers. Keep picker behavior in its owner. `ResponsiveDialogSurface` supplies behavior and geometry. Consumers own overlay, background and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Check every affected caller at narrow widths and in both themes.
 
-Before writing feature CSS, inspect the published `@kontourai/ui/react` primitives and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). In the shell, use `ActionRow` for primary/secondary command groups, `Field`/`Select` for ordinary form choices, `StatusSummary` for identity/status/check metadata, and `content-stack` for semantic flow. Pane packages keep the published-package boundary and must not import these shell modules. Reuse one owner across equivalent surfaces; do not recreate its badge, spacing, or control chrome locally.
+Before writing feature CSS, find a shipped caller and review `@kontourai/ui/react` and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). Use `ActionRow` for commands with one primary, `Field`/`Select` for form choices, `StatusSummary` for identity, status and check metadata, and `content-stack` for semantic flow.
+
+In framed shell routes, `PageFrame` owns gutters, `PageSection` owns titled sections, and `PageRow` owns label/description/control rows. Parents own child gaps. Controls own type, padding and states. Keep feature geometry local. Change the common owner and remove matching overrides together.
 
 | Conversation surface | Shared owner |
 | --- | --- |
@@ -49,34 +51,36 @@ Before writing feature CSS, inspect the published `@kontourai/ui/react` primitiv
 
 ## UI definition of done
 
-Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/board-pane`).
+Applies to `src-ui`, `packages/basis-pane` and `packages/board-pane`.
 
-- Remote data renders loading, empty, error with a recovery action that refetches, and partial (some reads failed or still pending) states.
-- Render at 390 and 1440 pixels wide in both themes and open the PNGs; a passing test, stamp or commit message is not a render.
-- Use these owners. Pane packages import published packages (for example `@kontourai/station-sdk` and its subpaths, `@kontourai/ui/react`, `@kontourai/station-contracts`), never `src-ui` modules.
+- Render loading, empty, error with retry/refetch, and partial (failed or pending reads) states.
+- Render at 390px and 1440px in both themes. Inspect the PNGs at native size for clipped values, uneven insets and crowded actions. Check keyboard focus in context.
+- Use these owners. Pane packages import published packages (`@kontourai/station-sdk` and its subpaths, `@kontourai/ui/react`, `@kontourai/station-contracts`), never `src-ui` modules.
 
 | Pattern | Shell (`src-ui`) | Pane packages |
 | --- | --- | --- |
 | Standard action | `Button` (`components/Button`) | `ActionControl` from `@kontourai/station-sdk/action-control`; not the SDK barrel `Button`, which defaults to `type="submit"` |
 | Error with retry | `ErrorState` (`components/state`) with an `action`; `variant="compact"` inline | `ErrorState` from `@kontourai/station-sdk/error-state`, same props |
 | Empty | `Empty`; `FilteredEmpty` when a filter hides results | `Empty` from `@kontourai/ui/react` (shell-only `FilteredEmpty`: give `Empty` a clear-filter action) |
-| Loading | `SkeletonList` (rows), `SkeletonBlock` (region) | `Skeleton` from `@kontourai/ui/react` |
+| Loading | `SkeletonList` (rows), `SkeletonBlock` (region); a conversation's first load uses `ConversationLoadingStage` | `Skeleton` from `@kontourai/ui/react` |
 | Status pill or badge | `StatusBadge` or `Badge` from `@kontourai/ui/react`, not the SDK `Pill` | Same |
 | Dialog | `Dialog`; `ConfirmModal` for a confirmation | `host.confirm(...)` for a confirmation; no pane dialog owner yet, so ask before adding one |
 | Disclosure | `DisclosureToggle` for a folded list section | No published primitive; a native `button` with `aria-expanded` |
 | Key/value, table | No primitive; semantic `dl`/`table` with `--k-*` tokens | Same |
 
-`lint:component-style` rejects a new `role="alert"` element that holds its own button; use `ErrorState`.
+`npm run lint:component-style` flags new literal font sizes, padding and gaps in CSS and direct JSX styles. Check the shared owner. It also rejects `role="alert"` elements with their own button. Use `ErrorState`.
 
 Layout, touch targets and dialogs: [responsive UI](../docs/guides/responsive-ui.md). Data ownership, tones and styling: [frontend patterns](../docs/patterns/frontend.md).
 
 ## Product copy
 
-- State each fact once per surface. Show status as a badge or pill, not a sentence. Offer one primary action.
-- Put explanation in a Details disclosure or tooltip. Skip reassurance tails and mechanism explanations unless the user needs them to decide.
-- Aim for at most 100 characters per description.
-- `npm run ui-copy-length:ratchet` fails when a file gains copy over 140 characters or over two sentences. Regenerate its baseline with `node scripts/ui-copy-length.mjs --update` only to absorb shrinkage or a reviewed exception.
+See the [UI copy guide](../docs/guides/ui-copy.md) and [glossary](../docs/glossary.md#user-facing-labels).
+
+- Outcome first, in the user's nouns, plus at most one next action. State each fact once; show status as a badge, not a sentence. Aim for at most 100 characters per description.
+- No internal vocabulary (authority, receipt, durable, reconcile, legacy, …) or issue numbers. No defensive negations: say what is true, and put detail in a Details disclosure.
+- Don't repeat what is on screen: no restating subtitles or hints, no `title` equal to the visible text. Sentence case, `…`, no filler.
+- Run `npm run ui-copy-length:ratchet` and `npm run ui-copy-style:ratchet` (`npm run ui-css-slop:ratchet` for CSS). Fix a failure by rewriting; regenerate a baseline with `--update` only for shrinkage or a reviewed exception.
 
 ## Design system
 
-UI, brand, and product-copy rules live in `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md`). Style with the `--k-*` tokens instead of hard-coded colors, spacing, radii or font sizes, and don't resolve anything the doc marks OPEN.
+See [DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md) for UI, brand and copy rules (`node_modules/@kontourai/ui/DESIGN.md`). Inherit component typography or use `--k-text-*`. Station’s `--k-text-sm` follows Comfortable/Compact. Use kit color, radius and `--k-space-*` tokens. Check computed values when migrating: `--space-2` is 4px, `--k-space-2` is 8px. Leave OPEN decisions with their owners.

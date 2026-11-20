@@ -344,6 +344,37 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     ).toHaveLength(2);
   });
 
+  test("pull request feedback is labelled as Station's, not as an unknown sender or the person", async () => {
+    windowEvents.current = [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId: 't1',
+        prompt:
+          '[Station: pull request feedback for acme/widgets#42 at a1b2c3d (1 item).]\n\nFailing checks (1):\n- `ci / unit-tests`: failure',
+        clientOrigin: agentOrigin({
+          kind: 'pull-request-feedback',
+          sessionId: THREAD,
+        }),
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId: 't1' }),
+    ];
+    renderTranscript();
+    await waitFor(() =>
+      expect(document.querySelectorAll('.agent-incoming')).toHaveLength(1),
+    );
+    expect(document.querySelectorAll('.message.user')).toHaveLength(0);
+    const row = document.querySelector('.agent-incoming');
+    expect(row?.getAttribute('aria-label')).toBe(
+      'Pull request feedback from Station, not from you',
+    );
+    expect(screen.getByText('Pull request feedback from Station').tagName).toBe(
+      'P',
+    );
+    expect(document.body.textContent).not.toContain('sender unknown');
+    // Nothing to open: no Session sent it.
+    expect(row?.querySelector('a')).toBeNull();
+  });
+
   test('the header links to the Session that sent it', async () => {
     windowEvents.current = recipientEvents();
     const focus = vi

@@ -122,6 +122,7 @@ export function ConnectedServerUpdates({
   active = true,
   headingId,
   notices,
+  downloadPolicy,
   showReleaseNotes = false,
 }: {
   active?: boolean;
@@ -129,6 +130,7 @@ export function ConnectedServerUpdates({
   headingId?: string;
   /** Update notices for this server, shown under its header. */
   notices?: ReactNode;
+  downloadPolicy?: ReactNode;
   showReleaseNotes?: boolean;
 }) {
   const context = useConnectedServerUpdateContext();
@@ -172,6 +174,7 @@ export function ConnectedServerUpdates({
     // source check off.
     <CoreUpdateCheck
       showReleaseNotes={showReleaseNotes}
+      downloadPolicy={downloadPolicy}
       active={active}
       apiBase={context.apiBase}
       context={context}

@@ -14,13 +14,16 @@ import type { SessionDispatchFacts } from './thread-inbox.js';
 export function readSessionDispatchFacts(
   eventStore: Pick<
     EventStore,
-    | 'latestEventByMethod'
+    | 'firstEventByMethod'
     | 'listEventsByMethods'
     | 'readProjectTaskRoomExecutionBinding'
   >,
   sessionId: string,
 ): SessionDispatchFacts & { readonly taskBound: boolean } {
-  const started = eventStore.latestEventByMethod(sessionId, 'session.started')
+  // The stamp is a fact of the Session's creation: an in-place restart
+  // (after an idle or finished-session park) announces a later
+  // `session.started` that never carries it.
+  const started = eventStore.firstEventByMethod(sessionId, 'session.started')
     ?.payload as { metadata?: Record<string, unknown> } | undefined;
   const provenance = started?.metadata?.[DELEGATION_PROVENANCE_METADATA_KEY];
   return {

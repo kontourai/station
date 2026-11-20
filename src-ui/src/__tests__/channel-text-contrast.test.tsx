@@ -107,7 +107,7 @@ window.__contrast = (() => {
 `;
 
 type Mode = 'dark' | 'light';
-type Channel = 'release' | 'dev' | 'beta' | 'nightly';
+type Channel = 'release' | 'dev' | 'nightly';
 
 /** Which token the surface is meant to paint, so a class that stops matching
  * (the text falling back to the inherited body colour) cannot pass silently. */
@@ -361,9 +361,8 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
     }
   }
 
-  const cases = (['release', 'dev', 'beta', 'nightly'] as const).flatMap(
-    (channel) =>
-      (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
+  const cases = (['release', 'dev', 'nightly'] as const).flatMap((channel) =>
+    (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
   );
 
   test.each(cases)(
@@ -509,7 +508,7 @@ describe.skipIf(!chromiumAvailable)('channel colours painted as text', () => {
     }
   }
 
-  const gripCases = (['release', 'dev', 'beta', 'nightly'] as const).flatMap(
+  const gripCases = (['release', 'dev', 'nightly'] as const).flatMap(
     (channel) =>
       (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
   );

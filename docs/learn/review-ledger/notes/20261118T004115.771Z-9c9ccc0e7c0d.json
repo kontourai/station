@@ -1,0 +1,7 @@
+{
+  "revision": "9329692199ecdf9212f1e8a9ceb99c8acdbf369b",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed bubblewrap hidden-path composition after the shard-3 failure: preserve both named secret paths and all resolved Seatbelt hidden paths, including short session temp roots. Existing private-/tmp handling, named-symlink hiding, write-grant refusal and 1000-entry cap remain enforced. Original focused failure reproduced; corrected bubblewrap/adapter suites pass 92/92 and removal/restoration control fails the original hidden-list assertion then restores 60/60. This is builder/source evidence; no Linux kernel run was performed.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/security/confinement/bubblewrap.ts"]}
+  ]
+}

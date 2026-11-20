@@ -1,0 +1,7 @@
+{
+  "revision": "7fc73e60294b7bc5a764ddce0fa75d59f2082d6c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round re-read against the code: Gallery error-state section rewritten to match tests/helpers/gallery-screen-attempt.ts (surface checks around photo and audit, retry only with a failed current-document script request, MAX_SECOND_CAPTURES 5, second-attempt throw fails one screen, photo kept, AFTER_PHOTO_WINDOW_MS 1000) and gallery-app-error-state.ts (three detected surfaces incl. route-chunk-error, the not-detected list, identity of surfaces plus hash-masked current-document failed chunk paths or 'no failed chunk request', fault kinds chunk/fail-step/fail-cleanup/move-after-photo, refusal when the selection covers every screen); corrected the claims that ordinary failures are never retried, that the identity compares across any two builds, and that a surface means a download failed; layout-shift observer replaced by the control-box record. Verified with focused vitest suites and local fault-injected captures; not on a hosted runner.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs","tests/helpers/gallery-app-error-state.ts","tests/screenshots.spec.ts","tests/helpers/gallery-screen-attempt.ts"]}
+  ]
+}

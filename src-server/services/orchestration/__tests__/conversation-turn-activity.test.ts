@@ -885,6 +885,7 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
         method: 'turn.completed',
         turnId: 'N',
         invocationId: 'B',
+        finishReason: 'stop',
       });
       append(ROOT, {
         method: 'runtime.error',
@@ -934,6 +935,22 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
             row.payload.invocationId === 'B',
         ),
       ).toBe(true);
+      expect(bounded.map((row) => row.payload)).toContainEqual(
+        expect.objectContaining({
+          method: 'runtime.error',
+          invocationId: 'B',
+          message: 'B failed',
+        }),
+      );
+      // The same bounded facts without a provider-proven finish keep B failed.
+      const ambiguous = bounded.map(({ payload }) =>
+        payload.method === 'turn.completed' && payload.invocationId === 'B'
+          ? { ...payload, finishReason: undefined }
+          : payload,
+      );
+      expect(
+        projectSessionLifecycle({ session, events: ambiguous }).lifecycleState,
+      ).toBe('failed');
     },
   );
 

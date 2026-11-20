@@ -1,0 +1,9 @@
+{
+  "revision": "994126446272527aadcf68352206373c03c226f0",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the existing discovery route. Fixed recovery codes distinguish known CLI and sign-in failures from a generic catalog failure. The operator check and private response guard retained their original scope.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the existing discovery route. Fixed recovery codes distinguish known CLI and sign-in failures from a generic catalog failure. The operator check and private response guard retained their original scope.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]}
+  ]
+}

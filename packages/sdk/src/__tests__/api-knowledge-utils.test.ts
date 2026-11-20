@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import {
   deleteKnowledgeDoc,
+  fetchProjectConversations,
   searchKnowledge,
   updateKnowledgeNamespace,
   uploadKnowledge,
@@ -11,7 +12,7 @@ import {
   knowledgeBase,
   requestKnowledgeJson,
 } from '../api-knowledge-utils';
-import { setClientCredentialResolver } from '../client/http';
+import { StationHttpError, setClientCredentialResolver } from '../client/http';
 
 describe('api-knowledge-utils', () => {
   beforeEach(() => {
@@ -118,6 +119,67 @@ describe('api-knowledge-utils', () => {
     );
     expect(transport.mock.calls[0]?.[1]?.body).toContain(
       'Private Project instructions',
+    );
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  test('Project conversations only return an empty list after an array response from the selected Station', async () => {
+    const direct = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', direct);
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ success: true, data: [] }))
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            error: {
+              code: 'membership_required',
+              message: 'Project access required',
+            },
+            details: { scope: 'project:read' },
+          },
+          { status: 403 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            code: 'internal_error',
+            error: 'Unavailable',
+          },
+          { status: 500, headers: { 'Retry-After': '2' } },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ data: [] }))
+      .mockResolvedValueOnce(Response.json({ success: true, data: {} }))
+      .mockResolvedValueOnce(new Response('not JSON'));
+    setClientCredentialResolver(() => ({
+      origin: 'https://station.example.test',
+      transport,
+      transportBindingIsCurrent: () => true,
+    }));
+    const fetchProject = () => fetchProjectConversations('Project One', 6);
+
+    await expect(fetchProject()).resolves.toEqual([]);
+    await expect(fetchProject()).rejects.toMatchObject({
+      status: 403,
+      code: 'membership_required',
+      details: { scope: 'project:read' },
+    });
+    await expect(fetchProject()).rejects.toMatchObject({
+      status: 500,
+      code: 'internal_error',
+      retryAfterMs: 2000,
+    });
+    for (let i = 0; i < 3; i++) {
+      await expect(fetchProject()).rejects.toBeInstanceOf(StationHttpError);
+    }
+    expect(transport.mock.calls.map(([url]) => url)).toEqual(
+      Array(6).fill(
+        'https://station.example.test/api/projects/Project%20One/conversations?limit=6',
+      ),
     );
     expect(direct).not.toHaveBeenCalled();
   });

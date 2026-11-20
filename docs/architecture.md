@@ -154,7 +154,10 @@ For Station-engine turns, the `station-agent` adapter relays internally to
 elicitation, transcript-related work and Station-engine behavior. It is not a
 second public chat entry point. On a new session's first turn it may add a short
 brief of the person's confirmed private memory when that preview is on
-([Knowledge guide](guides/knowledge.md#review-recall-and-brief)). External engines
+([Knowledge guide](guides/knowledge.md#review-recall-and-brief)). A Session in
+a Project also starts with the Project brief and memory index on every engine,
+external ones included, while the `project-coordination` preview is on
+([Project settings](user/settings.md#project-brief-memory-and-models)). External engines
 retain their own execution loops behind adapters. See [ADR 0014](adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
 and the [Session API](reference/session-api.md).
 
@@ -183,6 +186,21 @@ not just cron, and a job's optional `target` runs each occurrence as a turn in a
 conversation (Automations) rather than as a Station-engine file run. MonitoringEmitter publishes to its own monitoring EventEmitter
 and persistence callback, not the orchestration EventBus. Follow each owner
 before treating a similarly named helper as the current implementation.
+
+During shutdown, the runtime stops admitting deferred Task worktree retries
+and joins those already running before stopping orchestration. Real session
+exits published during orchestration shutdown can still release assignment
+claims, write room history, and settle session-owned worktrees. The runtime
+joins those operations and startup claim reconciliation before stopping Git
+process groups or closing the EventStore. Both waits use the configuration
+drain deadline. If an operation is still running at its deadline, shutdown
+reports failure and retains the Station home runtime lease. See
+[StationRuntime shutdown](../src-server/runtime/bootstrap/station-runtime.ts).
+
+Runtime shutdown also stops admitting automatic conversation titles. A title
+model response can still arrive after shutdown begins. The
+[title generator](../src-server/services/orchestration/conversation-title-generation.ts)
+discards it before opening a write, so the prompt-derived title stays in place.
 
 ## Self-Configuring Loop
 
@@ -350,6 +368,12 @@ container port mapping do not establish reachability or TLS termination for
 that socket. Terminal has a similar dedicated-listener boundary. No networking
 change or live voice qualification is implied by this diagram review.
 
+The selected Station's authority query supplies capability observations to
+[`useServerCapabilities`](../src-ui/src/hooks/useServerCapabilities.ts).
+Each successful observation owns its STT/TTS placeholders and retires them
+when the observation is superseded, fails, or unmounts. The shared registry
+keeps provider objects owned by browser and plugin registrations.
+
 The SDK's [voiceRegistry](../packages/sdk/src/voice/registry.ts) registers
 Device-side STT/TTS implementations; its other public voice session/realtime
 interfaces have separate consumers. Registering one is not registration of a
@@ -469,6 +493,13 @@ sessions and OpenCode's session database through its Session sources. A
 `read-only-attached` record imports observed history without taking over the
 external process. Missing files or stale observations do not prove that
 the external engine is live or controllable.
+
+Each Station reads only its own computer's provider files. Sessions on another
+computer reach this Station through that computer's own Station over a
+connected SSH environment: the [remote session reader](../src-server/services/ssh/remote-session-reader.ts)
+lists them and relays one bounded, read-only history page when a row is
+opened. No transcript path or source handle crosses that connection, and no
+per-computer daemon runs.
 
 Command ownership checks refuse mutations of the original attached execution.
 Adoption is a deliberate exception that can create an independently authorized

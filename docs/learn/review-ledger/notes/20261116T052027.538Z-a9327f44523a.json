@@ -1,0 +1,7 @@
+{
+  "revision": "ab9edfe28f12f8552662edc2e1e90104766b15ff",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Cites agent-configuration.md only for Agent identity surfaces; the added section on session answers, full access and authority tools makes no identity claim, so this inventory is unaffected.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

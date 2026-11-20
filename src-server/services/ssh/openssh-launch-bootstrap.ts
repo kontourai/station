@@ -442,7 +442,7 @@ if node_ready "$TARGET_PORT"; then
 fi
 
 # A managed launch never triggers station's own build (a build is not a
-# launch — station#1133 live-verification finding #1: an unbuilt instance
+# launch - station#1133 live-verification finding #1: an unbuilt instance
 # ran npm run build:ui inside the readiness window and blew it, then failed
 # outright on an environment-specific Rollup error).
 #
@@ -450,27 +450,27 @@ fi
 # under an instance name this feature owns exclusively, never one an
 # operator's own tooling manages. An earlier revision discovered an
 # already-built instance (e.g. a systemd-managed dogfood host's own named
-# instance) and ran station start UNDER THAT DISCOVERED NAME — which
+# instance) and ran station start UNDER THAT DISCOVERED NAME - which
 # started/adopted the operator's own service-managed instance out from
 # under it: systemd and Station then disagreed about who owned the
 # process, and the operator had to manually stop it before the service
 # could cleanly restart. That directly broke this feature's own "never
 # adopt or kill a process it did not start" promise.
 #
-# The fix keeps discovery for what it's legitimately good for — finding an
-# ALREADY-BUILT layout to avoid a needless build — but never runs under the
+# The fix keeps discovery for what it's legitimately good for - finding an
+# ALREADY-BUILT layout to avoid a needless build - but never runs under the
 # discovered name. STATION_INSTANCE is always this exact launch key's own
 # dedicated instance ("ssh-launch-<launchKey>"), which can never collide
 # with or be confused for any instance an operator separately manages.
-# Build directories are instance-scoped (lifecycle.ts resolveBuildPaths —
+# Build directories are instance-scoped (lifecycle.ts resolveBuildPaths -
 # bare dist-server/dist-ui for the unnamed 'default' instance,
 # dist-server-<id>/dist-ui-<id> otherwise), so the dedicated instance needs
 # its own dist-server-ssh-launch-<launchKey>/dist-ui-ssh-launch-<launchKey>
 # pair to be considered installed. If a previous managed launch under this
 # same key already created them, reuse as-is. Otherwise, DERIVE them (a
 # symlink, not a copy or a rebuild) from whatever build is already present
-# under any other instance name — preferring the bare 'default' build, then
-# the first other instance-scoped build found — so an existing build is
+# under any other instance name - preferring the bare 'default' build, then
+# the first other instance-scoped build found - so an existing build is
 # reused without ever running under that build's own instance identity.
 # Only when no build exists anywhere under any name does this refuse fast
 # with requires-build, which remains a legitimate, meaningful refusal.
@@ -516,7 +516,7 @@ cd "$PROJECT_DIR" || fail project-unavailable
 # station#1133 live-verification finding: station start allocates
 # EXACTLY the --port/--ui-port it is given (never a silently different
 # port), and only ever does real work synchronously (pre-flight checks,
-# then a detached, unref'd spawn) once a build already exists — guaranteed
+# then a detached, unref'd spawn) once a build already exists - guaranteed
 # above (reusing whichever instance's build was actually found). So this
 # can safely run in the foreground: its own exit code and captured output
 # are the direct, reliable signal for a port conflict or any other

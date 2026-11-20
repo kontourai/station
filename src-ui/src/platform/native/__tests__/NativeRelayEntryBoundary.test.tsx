@@ -92,6 +92,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     return {
       captureCredentialEvidence: () => null,
       activeConnection: entry.relay ? relayConnection : directConnection,
+      apiBase: (entry.relay ? relayConnection : directConnection).url,
       connections: [relayConnection, directConnection],
     };
   },
@@ -101,9 +102,9 @@ vi.mock('../../PlatformProfileContext', () => ({
   nativeProfileRepository: () => entry.repository,
   usePlatformProfile: () => ({
     isTauri: entry.native,
-    isMobile: true,
+    isMobile: entry.native,
     isDesktop: false,
-    target: 'ios',
+    target: entry.native ? 'ios' : null,
     channel: 'nightly',
     isDevBuild: false,
   }),
@@ -130,11 +131,13 @@ vi.mock('../../../contexts/AuthContext', () => ({
 vi.mock('../../../contexts/RecoveryQueryBoundary', () => ({
   RecoveryQueryBoundary: ({ children }: { children: ReactNode }) => {
     entry.recovery();
-    return children;
+    return <div data-testid="entry-recovery">{children}</div>;
   },
 }));
 vi.mock('../../../contexts/AuthorityQueryContext', () => ({
-  AuthorityQueryProvider: Through,
+  AuthorityQueryProvider: ({ children }: { children: ReactNode }) => (
+    <div data-testid="entry-authority">{children}</div>
+  ),
 }));
 vi.mock('../../../contexts/AccountPreferencesProvider', () => ({
   AccountPreferencesProvider: ({ children }: { children: ReactNode }) => {
@@ -158,7 +161,9 @@ vi.mock('../../../contexts/MessageContextContext', () => ({
   MessageContextContext: Through,
 }));
 vi.mock('../../../contexts/NavigationContext', () => ({
-  NavigationProvider: Through,
+  NavigationProvider: ({ children }: { children: ReactNode }) => (
+    <div data-testid="entry-navigation">{children}</div>
+  ),
 }));
 vi.mock('../../../contexts/PreviewContext', () => ({
   PreviewProvider: Through,
@@ -171,7 +176,17 @@ vi.mock('../../../contexts/SyntaxHighlighterContext', () => ({
   SyntaxHighlighterProvider: Through,
 }));
 vi.mock('../../../contexts/ToastContext', () => ({
-  ToastProvider: Through,
+  ToastProvider: ({
+    children,
+    stationScope,
+  }: {
+    children: ReactNode;
+    stationScope: string;
+  }) => (
+    <div data-testid="entry-toast" data-station-scope={stationScope}>
+      {children}
+    </div>
+  ),
 }));
 vi.mock('../../../contexts/VoiceProviderContext', () => ({
   VoiceProviderContext: Through,
@@ -201,10 +216,21 @@ vi.mock('../../../core/PermissionManager', () => ({
   PermissionManager: Through,
 }));
 vi.mock('../../../components/DeferredCapabilityBoundary', () => ({
-  DeferredCapabilityBoundary: () => null,
+  DeferredCapabilityBoundary: ({ id }: { id: string }) =>
+    id === 'connection-recovery' ? (
+      <div data-testid="entry-recovery-controls" />
+    ) : null,
+}));
+// The boot test owns main's routing and provider lifetimes. Onboarding's
+// ConnectionStore and transport behavior are exercised in its own suite.
+vi.mock('../../../components/OnboardingGate', () => ({
+  OnboardingGate: () => <div data-testid="entry-recovery-controls" />,
 }));
 vi.mock('../../../components/BrandingThemeBridge', () => ({
   BrandingThemeBridge: () => null,
+}));
+vi.mock('../../../components/CustomAppearanceBridge', () => ({
+  CustomAppearanceBridge: () => null,
 }));
 vi.mock('../../../components/notifications/NotificationContainer', () => ({
   NotificationContainer: () => null,
@@ -239,6 +265,28 @@ vi.mock('../../../App', () => ({
     return <div>Operator workspace</div>;
   },
 }));
+function expectOperatorProviderPlacement() {
+  const workspace = screen.getByText('Operator workspace');
+  const navigation = screen.getByTestId('entry-navigation');
+  const toast = screen.getByTestId('entry-toast');
+  const authority = screen.getByTestId('entry-authority');
+  const recovery = screen.getByTestId('entry-recovery');
+  const connection = entry.relay ? relayConnection : directConnection;
+
+  expect(navigation.contains(toast)).toBe(true);
+  expect(toast.dataset.stationScope).toBe(
+    JSON.stringify([connection.id, connection.url]),
+  );
+  expect(toast.contains(recovery)).toBe(true);
+  expect(toast.contains(authority)).toBe(true);
+  expect(recovery.contains(screen.getByTestId('entry-recovery-controls'))).toBe(
+    true,
+  );
+  expect(authority.contains(recovery)).toBe(false);
+  expect(recovery.contains(authority)).toBe(false);
+  expect(authority.contains(workspace)).toBe(true);
+}
+
 afterEach(() => cleanup());
 it('the actual main entry cuts native routes above operator providers through pending account and selection changes', async () => {
   document.body.innerHTML = '<div id="root"></div>';
@@ -336,6 +384,7 @@ it('the actual main entry cuts native routes above operator providers through pe
     for (const listener of entry.listeners) listener();
   });
   await screen.findByText('Operator workspace');
+  expectOperatorProviderPlacement();
   expect(entry.auth).toHaveBeenCalled();
   expect(entry.workState).toHaveBeenCalled();
   expect(entry.undo).toHaveBeenCalled();
@@ -396,6 +445,7 @@ it('the actual main entry cuts native routes above operator providers through pe
     for (const listener of entry.listeners) listener();
   });
   await screen.findByText('Operator workspace');
+  expectOperatorProviderPlacement();
   expect(entry.auth).toHaveBeenCalled();
   expect(entry.workState).toHaveBeenCalled();
   expect(entry.undo).toHaveBeenCalled();

@@ -2,6 +2,7 @@ import { requestCurrentStationAccess } from '@kontourai/station-connect';
 import { useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { errorText } from '../../utils/errorText';
 
 /**
@@ -31,6 +32,7 @@ type PromptState =
   | { phase: 'failed'; message: string };
 
 export function ShareAnswerPairingPrompt() {
+  useDecisionSurface('share-answer-pairing');
   const { apiBase } = useApiBase();
   const { navigate } = useNavigation();
   const [state, setState] = useState<PromptState>({ phase: 'idle' });

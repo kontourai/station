@@ -1,0 +1,9 @@
+{
+  "revision": "7dbaf1842090636188ca69bea3f2958a06576cf0",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The canonical-event browser journey still exercises live tool progress and approval. It now reloads the completed event window before expanding settled tool activity and checks the same tool name and final progress. The focused Chromium journey passed locally.","inputs":["tests/orchestration-chat-flow.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The canonical-event browser journey still exercises live tool progress and approval. It now reloads the completed event window before expanding settled tool activity and checks the same tool name and final progress. The focused Chromium journey passed locally.","inputs":["tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

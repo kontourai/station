@@ -1,0 +1,7 @@
+{
+  "revision": "9ab0e548e18ec874022811452c3ebd4f6c01883a",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"opencode-session-source.ts gained the OpenCode 2.x layout. Re-read the external transcript import and source-home lines that cite it: OpenCode still starts before the first message in its ordered query (time order in 1.x, seq in 2.x), STATION_EXTERNAL_OPENCODE_SOURCE_ROOT still selects the folder holding the database for observation only, and OpenCode sessions still have no continuation. No prose change needed.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]}
+  ]
+}

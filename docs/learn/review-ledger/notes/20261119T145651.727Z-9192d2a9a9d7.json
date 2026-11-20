@@ -1,0 +1,25 @@
+{
+  "revision": "8643a35bc5a1e415b91756c865f5c29fd86882c0",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed Codex send admission. An unterminated tracked turn now refuses a new send before transport dispatch. Queue and Steer retain their current routes, and fixture terminals preserve the existing approval policy and late interrupt assertions.","inputs":["src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"ToolCallDisplay now reads a still-running call's state from the live tool record (useCallWithObservedRunning); it changes no approval, policy, MCP app or delivery behavior. Grepped citing documents for tool-row outcome, approval and app-card claims; none affected.","inputs":["src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"ToolCallDisplay now reads a still-running call's state from the live tool record (useCallWithObservedRunning); it changes no approval, policy, MCP app or delivery behavior. Grepped citing documents for tool-row outcome, approval and app-card claims; none affected.","inputs":["src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

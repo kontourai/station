@@ -1,11 +1,17 @@
 import type { ProjectRoomBrowserView } from '@kontourai/station-contracts/project-room-browser';
 import type { ProjectTaskRoomReadOutcome } from '@kontourai/station-contracts/project-task-room';
+import { READ_MARKER_UNREAD_COUNT_CAP } from '@kontourai/station-contracts/read-markers';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import { ProjectMembershipRefusal } from '../projects/project-membership-store.js';
 import { ProjectRoomRefusal } from '../projects/project-room-store.js';
 import type { RoomVersion, RoomVersionSource } from './read-marker-service.js';
 
+const isRefusal = (error: unknown) =>
+  error instanceof ProjectRoomRefusal ||
+  error instanceof ProjectMembershipRefusal ||
+  error instanceof FileStorageNotFoundError ||
+  error instanceof InvalidPathSegmentError;
 /**
  * Project room versions for read markers (#3075), read through the room
  * service's own `view` admission. The marker is keyed by the room id the
@@ -20,6 +26,13 @@ export function projectRoomVersionSource(rooms: {
     slug: string,
     channelId?: string,
   ): Promise<{ data: Pick<ProjectRoomBrowserView, 'roomId' | 'checkpoint'> }>;
+  mentioned?(
+    request: Request,
+    slug: string,
+    after: number,
+    limit: number,
+    channelId?: string,
+  ): Promise<{ data: boolean }>;
 }): RoomVersionSource<{ projectSlug: string; roomId: string }> {
   return {
     async latest({ projectSlug, roomId }, request) {
@@ -34,16 +47,31 @@ export function projectRoomVersionSource(rooms: {
         // The same answer for "no such Project", "not this Project's room"
         // and "not yours", so a summary is never an existence oracle. Any
         // other failure is not a refusal and propagates.
-        if (
-          error instanceof ProjectRoomRefusal ||
-          error instanceof ProjectMembershipRefusal ||
-          error instanceof FileStorageNotFoundError ||
-          error instanceof InvalidPathSegmentError
-        )
-          return undefined;
+        if (isRefusal(error)) return undefined;
         throw error;
       }
     },
+    ...(rooms.mentioned
+      ? {
+          // Within the unread count's cap: the badge counts no further.
+          async mentionedAfter({ projectSlug, roomId }, seen, request) {
+            try {
+              return (
+                await rooms.mentioned!(
+                  request,
+                  projectSlug,
+                  seen,
+                  READ_MARKER_UNREAD_COUNT_CAP,
+                  roomId,
+                )
+              ).data;
+            } catch (error) {
+              if (isRefusal(error)) return false;
+              throw error;
+            }
+          },
+        }
+      : {}),
   };
 }
 

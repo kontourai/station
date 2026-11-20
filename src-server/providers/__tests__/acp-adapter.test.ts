@@ -28,7 +28,15 @@ import {
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
@@ -127,6 +135,7 @@ function createConnections(
 
 function createAdapter(
   options: {
+    provider?: AcpAdapterOptions['provider'];
     imageCapability?: boolean;
     loadSessionCapability?: boolean;
     /** Advertise `sessionCapabilities.resume` (`{}`) at initialize. */
@@ -163,6 +172,7 @@ function createAdapter(
 } {
   const processes: FakeAcpProcess[] = [];
   const adapter = new AcpAdapter({
+    provider: options.provider,
     getConnections: async () =>
       createConnections(options.connectionOverrides ?? []),
     logger: options.logger ?? {
@@ -1396,7 +1406,11 @@ describe('AcpAdapter', () => {
       const evaluator = vi
         .fn()
         .mockResolvedValueOnce({ behavior: 'defer' })
-        .mockResolvedValueOnce({ behavior: 'ask', required: true });
+        .mockResolvedValueOnce({
+          behavior: 'ask',
+          required: true,
+          guardianReason: 'The only-if-asked rule requires a person.',
+        });
       const { adapter, processes } = createAdapter({
         resolvePreToolPolicy: async () => evaluator,
       });
@@ -1429,7 +1443,10 @@ describe('AcpAdapter', () => {
         'mcp__tools__write',
       );
       const required = await nextEvent(iterator, 'required request.opened');
-      expect(required.method).toBe('request.opened');
+      expect(required).toMatchObject({
+        method: 'request.opened',
+        guardianReason: 'The only-if-asked rule requires a person.',
+      });
       await adapter.respondToRequest(
         'required-ask',
         String(required.requestId),
@@ -1656,7 +1673,7 @@ describe('AcpAdapter', () => {
        * guardian whose verdict the test sets. Only the guardian's model call
        * is replaced.
        */
-      function guardianPolicy(decision: 'allow' | 'deny') {
+      function guardianPolicy(decision: 'allow' | 'deny' | 'defer') {
         const reviewToolCall = vi.fn(async () => ({
           decision,
           reason: `guardian says ${decision}`,
@@ -1677,7 +1694,7 @@ describe('AcpAdapter', () => {
       }
       async function start(
         threadId: string,
-        decision: 'allow' | 'deny',
+        decision: 'allow' | 'deny' | 'defer',
         metadata: Record<string, unknown> = {},
       ) {
         const { evaluator, reviewToolCall } = guardianPolicy(decision);
@@ -1704,6 +1721,20 @@ describe('AcpAdapter', () => {
           reviewToolCall,
         };
       }
+      test('an unattended enforce guardian defer declines the ACP request immediately', async () => {
+        const { adapter, client, reviewToolCall } = await start(
+          'thread-guardian-defer',
+          'defer',
+        );
+        await expect(
+          requestPermission(client, 'deferred', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(reviewToolCall).toHaveBeenCalledOnce();
+        await adapter.stopAll();
+      });
+
       const planExits = [
         ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
         ['exit-plan', { name: 'ExitPlanMode' }],
@@ -2867,7 +2898,11 @@ describe('AcpAdapter', () => {
             connectionFingerprint: staleFingerprint,
           },
         }),
-      ).rejects.toThrow(/different engine connection configuration/i);
+      ).rejects.toMatchObject({
+        code: 'acp_resume_configuration_changed',
+        failurePhase: 'refused',
+        message: expect.stringContaining('Continue with chat history'),
+      });
 
       // Rejected before ever spawning a process for the stale cursor.
       expect(processes).toHaveLength(0);
@@ -4333,6 +4368,143 @@ describe('AcpAdapter', () => {
     }
   });
 
+  test.each(['agy', 'kiro-cli'])(
+    'Full access on %s answers regular ACP asks, then Ask takes effect without restarting',
+    async (command) => {
+      const { adapter, processes } = createAdapter({
+        connectionOverrides: [
+          { id: 'other', command: `/usr/bin/${command}`, args: ['acp'] },
+        ],
+      });
+      const threadId = 'antigravity-approval';
+      const events = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        await adapter.startSession({
+          provider: 'acp',
+          threadId,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'other' },
+          confinement: 'host',
+          modelOptions: { approvalMode: 'never' },
+        });
+        await nextEvent(events, 'session.started');
+        expect(await nextEvent(events, 'session.configured')).toMatchObject({
+          metadata: { approvalMode: 'never' },
+        });
+
+        const permission = (
+          id: string,
+          kind: 'other' | 'switch_mode',
+          options = [PERMISSION_OPTIONS[0]!, PERMISSION_OPTIONS[2]!],
+        ) =>
+          processes[0]!.client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: { toolCallId: id, title: id, name: id, kind },
+            options,
+          });
+        await expect(
+          permission('mcp_station-control_get_appearance', 'other'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        const persistent = permission('always-only', 'other', [
+          PERMISSION_OPTIONS[1]!,
+          PERMISSION_OPTIONS[2]!,
+        ]);
+        const persistentRequest = await nextEvent(events, 'request.opened');
+        expect(persistentRequest).toMatchObject({ title: 'always-only' });
+        await adapter.respondToRequest(
+          threadId,
+          String(persistentRequest.requestId),
+          'decline',
+        );
+        await expect(persistent).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        await nextEvent(events, 'request.resolved');
+
+        const plan = permission('plan-exit', 'switch_mode');
+        const planRequest = await nextEvent(events, 'request.opened');
+        expect(planRequest).toMatchObject({
+          method: 'request.opened',
+          title: 'plan-exit',
+        });
+        await adapter.respondToRequest(
+          threadId,
+          String(planRequest.requestId),
+          'decline',
+        );
+        await plan;
+        await nextEvent(events, 'request.resolved');
+
+        await adapter.sendTurn({
+          threadId,
+          input: 'Continue',
+          confinement: 'host',
+          modelOptions: { approvalMode: 'ask' },
+        });
+        await nextEvent(events, 'turn.started');
+        processes[0]!.resolvePrompt('end_turn');
+        await nextEvent(events, 'turn.completed');
+        expect(processes).toHaveLength(1);
+
+        const ask = permission('mcp_station-control_get_appearance', 'other');
+        const opened = await nextEvent(events, 'request.opened');
+        expect(opened).toMatchObject({
+          method: 'request.opened',
+          title: 'mcp_station-control_get_appearance',
+        });
+        await adapter.respondToRequest(
+          threadId,
+          String(opened.requestId),
+          'decline',
+        );
+        await expect(ask).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+      } finally {
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test('a delegated child cannot auto-approve a nameless ACP edit through the parent defaults', async () => {
+    const { adapter, processes } = createAdapter();
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    try {
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'approval-forbidden-child',
+        cwd: '/tmp/project',
+        metadata: {
+          connectionId: 'kiro',
+          delegation: {
+            mode: 'isolated-child',
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: 'parent',
+            rootAgentSlug: 'parent',
+            denyApprovals: true,
+          },
+        },
+        modelOptions: { approvalMode: 'auto' },
+      });
+      await nextEvent(events, 'session.started');
+      await nextEvent(events, 'session.configured');
+      await expect(
+        processes[0]!.client.requestPermission({
+          sessionId: 'ignored-by-adapter',
+          toolCall: { toolCallId: 'nameless', title: 'Edit', kind: 'edit' },
+          options: PERMISSION_OPTIONS,
+        }),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
   test('acceptForSession grants the whole tool: a later call auto-allows with no prompt', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -4425,7 +4597,43 @@ describe('AcpAdapter', () => {
     expect(await adapter.hasSession('thread-other')).toBe(false);
   });
 
-  test('#354 a refusal or exhausted request budget completes the turn but keeps the ACP stop reason', async () => {
+  test('a tool refused after configuration changes settles a silent ACP end as an actionable failure', async () => {
+    const { adapter, processes } = createAdapter({
+      resolvePreToolPolicy: async () => async () => ({
+        behavior: 'deny',
+        staleGeneration: true,
+        denial: { allowed: false, reason: 'Agent configuration changed' },
+      }),
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const threadId = 'thread-stale-policy';
+    await adapter.startSession({
+      provider: 'acp',
+      threadId,
+      metadata: { connectionId: 'kiro' },
+      agent: { slug: 'engine-lab' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId, input: 'Read a file' });
+    const started = await nextEvent(iterator, 'turn.started');
+    const process = processes[0]!;
+    await expect(
+      requestPermission(process.client, 'tool-stale', 'read_file'),
+    ).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'reject-once' },
+    });
+    process.resolvePrompt('end_turn');
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      method: 'runtime.error',
+      turnId: started.turnId,
+      code: 'stale_generation',
+      kind: 'permission_denied',
+      message: expect.stringContaining('Start a new chat'),
+    });
+  });
+
+  test('#354 refusal and request budget exhaustion settle as non-retryable failures with their provider reason', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
@@ -4450,7 +4658,7 @@ describe('AcpAdapter', () => {
       completions.push(
         (await nextEvent(
           iterator,
-          `turn.completed (${stopReason})`,
+          `terminal (${stopReason})`,
         )) as unknown as Record<string, unknown>,
       );
     }
@@ -4459,14 +4667,43 @@ describe('AcpAdapter', () => {
     expect(ended).toMatchObject({ finishReason: 'stop' });
     expect(ended).not.toHaveProperty('stopReason');
     expect(refused).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'refusal',
+      method: 'runtime.error',
+      code: 'acp-turn-refused',
+      retryable: false,
+      details: { stopReason: 'refusal' },
     });
     expect(exhausted).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'max_turn_requests',
+      method: 'runtime.error',
+      code: 'acp-turn-request-limit',
+      retryable: false,
+      details: { stopReason: 'max_turn_requests' },
+    });
+    await adapter.stopAll();
+  });
+
+  test('OpenCode over ACP reports an unconfirmed result when its actual prompt reply omits the reason', async () => {
+    const { adapter, processes } = createAdapter({ provider: 'opencode' });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'opencode',
+      threadId: 'thread-stop',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-stop', input: 'work' });
+    await nextEvent(iterator, 'turn.started');
+
+    // Exercise a protocol reply from an implementation that omitted stopReason.
+    processes[0].resolvePrompt(
+      undefined as unknown as Parameters<FakeAcpProcess['resolvePrompt']>[0],
+    );
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      provider: 'opencode',
+      method: 'runtime.error',
+      code: 'acp-turn-outcome-unknown',
+      retryable: false,
     });
     await adapter.stopAll();
   });
@@ -4584,7 +4821,14 @@ describe('AcpAdapter', () => {
     const own = { turnId: turn.turnId, invocationId: 'invocation-reprompt' };
     await nextOf('turn.started');
 
-    await adapter.steerTurn('thread-origin-reprompt', 'go left', turn.turnId);
+    const steering = adapter.steerTurn(
+      'thread-origin-reprompt',
+      'go left',
+      turn.turnId,
+    );
+    await vi.waitFor(() => expect(processes[0]!.cancelCalls).toBe(1));
+    processes[0]!.resolvePrompt('cancelled');
+    await steering;
     expect(processes[0]!.cancelCalls).toBe(1);
     expect(processes[0]!.promptContents).toHaveLength(2);
     expect(await nextOf('turn.started')).toMatchObject({
@@ -4592,8 +4836,7 @@ describe('AcpAdapter', () => {
       inputKind: 'steer',
       steerInterruptedRun: true,
     });
-    // The cancelled prompt's settlement does not end the steered turn.
-    processes[0]!.resolvePrompt('cancelled');
+    // The cancelled prompt's settlement did not end the steered turn.
     await processes[0]!.client.sessionUpdate({
       sessionId: 'native-kiro-cli',
       update: {
@@ -6264,11 +6507,19 @@ describe('station#1182: runtime-reported model', () => {
       },
     });
 
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'acp',
       threadId: 'thread-mode-turn',
       cwd: '/tmp/project',
       metadata: { connectionId: 'kiro' },
+    });
+    expect((await nextEvent(iterator, 'session.started')).method).toBe(
+      'session.started',
+    );
+    expect(await nextEvent(iterator, 'initial mode')).toMatchObject({
+      method: 'session.configured',
+      metadata: { acpSessionMode: 'ask' },
     });
     expect(processes[0].setModeCalls).toEqual([]);
 
@@ -6278,6 +6529,10 @@ describe('station#1182: runtime-reported model', () => {
       modelOptions: { mode: 'code' },
     });
     expect(processes[0].setModeCalls).toEqual(['code']);
+    expect(await nextEvent(iterator, 'engine mode')).toMatchObject({
+      method: 'session.engine-mode-observed',
+      modeId: 'code',
+    });
     processes[0].resolvePrompt('end_turn');
 
     await adapter.stopAll();
@@ -6470,13 +6725,14 @@ describe('station#1182: runtime-reported model', () => {
     expect(processes[0].destroyCalls).toBe(1);
   });
 
-  // The UI reads ACP_MODEL_OVERRIDE_PER_TURN directly (useChatInput) while the
-  // server enforces the adapter's declared metadata; both must agree.
+  // The UI reads the matrix while the server enforces adapter metadata;
+  // both declarations must agree on per-turn model selection.
   test('the adapter declares the per-turn model override the UI reads, and the matrix cell matches', () => {
     const { adapter } = createAdapter();
     expect(ENGINE_CAPABILITY_MATRICES.acp.modelSelection).toEqual({
       state: 'session',
       channel: 'wire',
+      overridePerTurn: adapter.metadata.modelLaunch.overridePerTurn,
     });
     expect(adapter.metadata.modelLaunch.overridePerTurn).toBe(
       ACP_MODEL_OVERRIDE_PER_TURN,
@@ -7552,6 +7808,19 @@ const KIRO_AGENT_INFO = { name: 'Kiro CLI Agent', version: '2.33.0' };
 const GROK_INITIALIZE_META = { grokShell: true, agentVersion: '1.0.50' };
 
 describe('AcpAdapter.steerTurn', () => {
+  // Real ACP engines eventually answer the cancelled prompt. Tests may hold
+  // this separately from cancel's notification write to exercise the race.
+  beforeEach(() => {
+    vi.spyOn(FakeAcpProcess.prototype, 'cancel').mockImplementation(
+      async function (this: FakeAcpProcess) {
+        this.cancelCalls += 1;
+        await this.cancelPromise;
+        this.resolvePrompt('cancelled');
+      },
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   async function startSteerableTurn(
     threadId: string,
     options: Parameters<typeof createAdapter>[0],
@@ -7807,7 +8076,7 @@ describe('AcpAdapter.steerTurn', () => {
     expect(processes[0]?.cancelCalls).toBe(0);
     expect(processes[0]?.promptContents).toEqual([
       [{ type: 'text', text: 'start' }],
-      [{ type: 'text', text: 'go left' }],
+      [{ type: 'text', text: expect.stringContaining('go left') }],
     ]);
     const steer = await nextEvent(iterator, 'steer turn.started');
     expect(steer).toMatchObject({
@@ -7945,7 +8214,7 @@ describe('AcpAdapter.steerTurn', () => {
 
     expect(processes[0]?.cancelCalls).toBe(1);
     expect(processes[0]?.promptContents).toEqual([
-      [{ type: 'text', text: 'go left' }],
+      [{ type: 'text', text: expect.stringContaining('go left') }],
     ]);
     await adapter.stopAll();
   });
@@ -8016,7 +8285,13 @@ describe('AcpAdapter.steerTurn', () => {
       'thread-goose-steer',
       { connectionOverrides: gooseConnection, onProcess: asGoose },
     );
+    expect(
+      adapter.sessionDurability('thread-goose-steer')?.steerPlacement.state,
+    ).toBe('emulated');
     await announceGooseRun(processes[0]!, GOOSE_RUN);
+    expect(
+      adapter.sessionDurability('thread-goose-steer')?.steerPlacement.state,
+    ).toBe('native');
 
     await adapter.steerTurn('thread-goose-steer', 'go left', turn.turnId);
 
@@ -8136,6 +8411,87 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test.each(['cancel-error', 'timeout'])(
+    'fallback stops without a replacement on %s',
+    async (failure) => {
+      const { adapter, processes, turn } = await startSteerableTurn(
+        'cancel-failure',
+        { connectionOverrides: [{ id: 'kiro', command: 'other-cli' }] },
+      );
+      const proc = processes[0]!;
+      let cancelled!: () => void;
+      const sentCancel = new Promise<void>((resolve) => {
+        cancelled = resolve;
+      });
+      proc.cancel = async () => {
+        cancelled();
+        if (failure === 'cancel-error') throw new Error('cancel failed');
+      };
+      vi.useFakeTimers();
+      try {
+        const steering = adapter.steerTurn(
+          'cancel-failure',
+          'continue with checks',
+          turn.turnId,
+        );
+        const refused = expect(steering).rejects.toThrow(
+          failure === 'cancel-error'
+            ? 'cancel failed'
+            : 'did not finish cancelling',
+        );
+        await sentCancel;
+        if (failure === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+        await refused;
+        expect(proc.promptContents).toHaveLength(1);
+        expect(await adapter.hasSession('cancel-failure')).toBe(false);
+        proc.resolvePrompt('end_turn');
+      } finally {
+        vi.useRealTimers();
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test('fallback waits for the cancelled prompt to settle before sending the continuation', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'wait-cancel',
+      { connectionOverrides: [{ id: 'kiro', command: 'other-cli' }] },
+    );
+    const proc = processes[0]!;
+    let cancelled!: () => void;
+    const sentCancel = new Promise<void>((resolve) => {
+      cancelled = resolve;
+    });
+    proc.cancel = async () => {
+      proc.cancelCalls += 1;
+      cancelled();
+    };
+    const steering = adapter.steerTurn(
+      'wait-cancel',
+      'also run the checks',
+      turn.turnId,
+    );
+    await sentCancel;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(proc.promptContents).toHaveLength(1);
+    await expect(
+      adapter.steerTurn('wait-cancel', 'a second steer', turn.turnId),
+    ).rejects.toThrow('already being applied');
+    proc.resolvePrompt('cancelled');
+    await steering;
+    expect(proc.promptContents).toHaveLength(2);
+    expect(proc.promptContents[1]).toEqual([
+      { type: 'text', text: expect.stringContaining('also run the checks') },
+    ]);
+    expect(proc.promptContents[1]).toEqual([
+      {
+        type: 'text',
+        text: expect.stringContaining('Continue the current task'),
+      },
+    ]);
+    await adapter.stopAll();
+  });
+
   test('unknown ACP cancels and re-prompts on the same turn', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
@@ -8165,7 +8521,10 @@ describe('AcpAdapter.steerTurn', () => {
     expect(processes[0]?.cancelCalls).toBe(1);
     expect(processes[0]?.promptContents).toHaveLength(2);
     expect(processes[0]?.promptContents[1]).toEqual([
-      { type: 'text', text: 'take this instead' },
+      {
+        type: 'text',
+        text: expect.stringContaining('Continue the current task'),
+      },
     ]);
     await expect(
       nextEvent(iterator, 'steer turn.started'),
@@ -8177,8 +8536,6 @@ describe('AcpAdapter.steerTurn', () => {
       steerInterruptedRun: true,
     });
 
-    processes[0]?.resolvePrompt('end_turn');
-    await Promise.resolve();
     await expect(
       adapter.sendTurn({
         threadId: 'thread-acp-fallback',
@@ -8490,7 +8847,7 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
     await adapter.stopAll();
   });
 
-  test('an unknown transport-shaped rejection stays generic and carries no quota code', async () => {
+  test('the local ACP connection close produces transport guidance without quota facts', async () => {
     const { adapter, turn, errorEvent } = await startFailedQuotaTurn({
       threadId: 'thread-transport',
       rejection: new Error('ACP connection closed'),
@@ -8499,12 +8856,16 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
       method: 'runtime.error',
       severity: 'error',
       turnId: turn.turnId,
-      message: 'ACP connection closed',
+      code: 'acp-transport-closed',
+      kind: 'unavailable',
+      failurePhase: 'failed',
+      retryable: true,
+      message: expect.stringContaining('provider outcome is unknown'),
     });
     expect(errorEvent).not.toMatchObject({
       code: 'provider-plan-quota-exhausted',
     });
-    expect('code' in errorEvent && errorEvent.code).toBeFalsy();
+    expect(errorEvent).not.toHaveProperty('details');
     await adapter.stopAll();
   });
 

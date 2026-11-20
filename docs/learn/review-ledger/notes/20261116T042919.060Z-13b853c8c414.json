@@ -1,0 +1,7 @@
+{
+  "revision": "bb92f90571eeebb284604a0f2dda3627b47e9419",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Spec change only removes the per-screen settle pad and derives the timeout; reduced-motion emulation and motion screens unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

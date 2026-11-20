@@ -1,0 +1,161 @@
+{
+  "revision": "b1777ed713e9b171cdb8bef0c20926c8f6a9a29b",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Traced the pinned Tauri install failure, retained package, retry confirmation and copyable diagnostic. The updater reports full storage from its I/O error. Chromium rendered the recovery fixture. Full native installation was not exercised.","inputs":["docs/guides/desktop-build.md","src-desktop/src/desktop_update.rs","src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the shared Inbox row actions, layout and dismissal scopes. Snooze precedes Settle on the rail, owned rows without Settle offer dismissal, and settled rows can be put away. Ran the focused Inbox and Chromium swipe journeys.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Traced the chat label lookup, turn notification scheduling paths, legacy in-app body rendering and agent toast attribution. The session target, preview privacy and delivery policy still own routing, interruption and hidden content. Focused server and UI cases ran. Physical push delivery was not exercised.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/turn-completion-notifications.ts","src-ui/src/components/notifications/NotificationContainer.tsx","src-ui/src/lib/notification-envelope-toast.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Compared the notification route composition with the cited paths. The changed callback looks up display-only chat attribution for the already verified agent notification Session. Route registration, peer/tenant authority, runtime setup and other cited routes are unaffected.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the composition diff. Both turn notification producers get the same chat-title lookup after recipient admission. Other route/service construction, tracker follow-ups, and push routing are unaffected.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked that the popover holds focus, retains the Undo window, and reports a rejected dismissal. Approval decisions and action routing still use their existing owners.","inputs":["src-ui/src/components/notifications/NotificationHistory.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the row action predicates and swipe order. Dismissal is Inbox visibility and Settle is person-scoped conversation state. Chat activation, drafting and composition use their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the row action predicates and swipe order. Dismissal is Inbox visibility and Settle is person-scoped conversation state. Chat activation, drafting and composition use their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the row action predicates and swipe order. Dismissal is Inbox visibility and Settle is person-scoped conversation state. Chat activation, drafting and composition use their existing owners.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"The completion section now describes the chat title and what to review. This does not change the neighboring automation, audience or delivery policy.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"The only Settings change is install error copy for a native disk-full result. Channel, platform and service controls remain governed by their existing sources. Existing Updates captures retain their recorded historical scenarios.","inputs":["src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Checked the still-collapsed technical details and wrapped, copyable diagnostic text. Existing learning captures retain their recorded historical scenarios. A controlled fixture checked this update-failure dialog at 390px and 1440px in both themes.","inputs":["src-ui/src/views/settings/coreUpdatePresentation.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Checked the still-collapsed technical details and wrapped, copyable diagnostic text. Existing learning captures retain their recorded historical scenarios. A controlled fixture checked this update-failure dialog at 390px and 1440px in both themes.","inputs":["src-ui/src/views/settings/coreUpdatePresentation.tsx"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Checked the still-collapsed technical details and wrapped, copyable diagnostic text. Existing learning captures retain their recorded historical scenarios. A controlled fixture checked this update-failure dialog at 390px and 1440px in both themes.","inputs":["src-ui/src/views/settings/coreUpdatePresentation.tsx"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Checked the still-collapsed technical details and wrapped, copyable diagnostic text. Existing learning captures retain their recorded historical scenarios. A controlled fixture checked this update-failure dialog at 390px and 1440px in both themes.","inputs":["src-ui/src/views/settings/coreUpdatePresentation.tsx"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Checked the still-collapsed technical details and wrapped, copyable diagnostic text. Existing learning captures retain their recorded historical scenarios. A controlled fixture checked this update-failure dialog at 390px and 1440px in both themes.","inputs":["src-ui/src/views/settings/coreUpdatePresentation.tsx"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Checked the still-collapsed technical details and wrapped, copyable diagnostic text. Existing learning captures retain their recorded historical scenarios. A controlled fixture checked this update-failure dialog at 390px and 1440px in both themes.","inputs":["src-ui/src/views/settings/coreUpdatePresentation.tsx"]}
+  ]
+}

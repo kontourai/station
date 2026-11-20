@@ -66,6 +66,7 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
 import './MCPToolUIFrame.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { isDistinctFrameOrigin } from './frameOrigin';
 
 interface MCPToolUIResourceContent {
@@ -725,6 +726,7 @@ function MCPToolUISandbox({
     resolve: () => void;
     reject: () => void;
   } | null>(null);
+  useDecisionSurface('mcp-tool-call-approval', !!pendingCall);
   const readOnly = component.approvalPolicy === 'read-only';
   // Stable primitives so the bridge effect doesn't re-run on every render (the
   // refParts object identity changes each render in the parent).

@@ -5,11 +5,14 @@ import { expect, test } from 'vitest';
 import { workloadBudgetEngineContext } from '../../../services/infra/workload-budget.js';
 import { hostImageAgentInstruction } from '../../../services/orchestration/host-image-turn-capture.js';
 import { createStationBrowserMcpServer } from '../../../tools/station-browser-mcp-server.js';
+import { StationControlDisclosure } from '../../../tools/station-control-disclosure.js';
 import {
   createSelectedStationControlMcpServer,
   stationControlToolCatalog,
 } from '../../../tools/station-control-mcp-server.js';
 import { createStationDocsMcpServer } from '../../../tools/station-docs-mcp-server.js';
+import { codexDynamicTools } from '../../mcp/codex-dynamic-tools.js';
+import { createCodexBoundToolServer } from '../../mcp/station-control-in-process.js';
 import {
   composeStationInstructions,
   effectiveStationControlTools,
@@ -58,6 +61,31 @@ async function toolListJsonBytes(server: McpServer): Promise<number> {
 }
 
 /**
+ * The `dynamicTools` Codex's `thread/start` carries when the bound channel is
+ * on: browser tools and the whole station-control catalog at `bound`, devices
+ * included (the widest offer, #2376 slice 2). Such a session has no
+ * header-token station-control listing beside it.
+ */
+async function codexBoundToolsJsonBytes(): Promise<number> {
+  const server = await createCodexBoundToolServer({
+    sessionId: 'agent-context-budget',
+    includeBrowser: true,
+    includeDevices: true,
+    stationControl: {},
+    isCurrent: () => true,
+    dispatch: async () => {
+      throw new Error('The budget only lists the bound tools.');
+    },
+  });
+  try {
+    expect(server.tools.length).toBeGreaterThan(0);
+    return utf8Bytes(JSON.stringify(codexDynamicTools(server.tools)));
+  } finally {
+    await server.close();
+  }
+}
+
+/**
  * Station's orchestration instructions as a Claude session with the whole
  * station-control catalog receives them (the largest composition: browser,
  * devices and the ToolSearch loading line all apply).
@@ -80,7 +108,7 @@ function claudeStationInstructions(): string {
 test('Station-injected agent context matches the committed budget', async () => {
   const measured = {
     // Claude's in-process delivery: the session credential is `bound`, the
-    // widest listing. Codex and ACP see the `delegated-custody` subset.
+    // widest listing.
     stationControlToolListJsonBytes: await toolListJsonBytes(
       createSelectedStationControlMcpServer(
         undefined,
@@ -89,6 +117,30 @@ test('Station-injected agent context matches the committed budget', async () => 
         'bound',
       ),
     ),
+    // What ACP engines, and Codex without the bound channel, list: their
+    // credential travels to the engine, so it holds `delegated-custody` and
+    // sees that subset.
+    stationControlDelegatedToolListJsonBytes: await toolListJsonBytes(
+      createSelectedStationControlMcpServer(
+        undefined,
+        undefined,
+        'station-control',
+        'delegated-custody',
+      ),
+    ),
+    // What a Codex Session admitted to tool families (#2376 slice 3) lists
+    // first: the family index, before it loads any family.
+    stationControlFamilyIndexToolListJsonBytes: await toolListJsonBytes(
+      createSelectedStationControlMcpServer(
+        undefined,
+        undefined,
+        'station-control',
+        'delegated-custody',
+        new StationControlDisclosure(() => true),
+      ),
+    ),
+    // Codex's bound channel, offered as `dynamicTools` instead of it.
+    codexBoundToolsJsonBytes: await codexBoundToolsJsonBytes(),
     stationBrowserToolListJsonBytes: await toolListJsonBytes(
       createStationBrowserMcpServer(),
     ),

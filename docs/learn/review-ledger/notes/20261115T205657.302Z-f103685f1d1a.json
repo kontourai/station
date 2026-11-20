@@ -1,0 +1,7 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#4995: JsonFileMutationAuthority now states the lock temporary is removed on every acquisition exit and the bounded startup sweep's exact admission (name, 24h age, nlink 1, no live owner, depth 3, 20k entries) and its metric. No module-map claim covers the setup probe or AgentService.findAgent.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-route-support.ts","src-server/services/agents/agent-service.ts","src-server/telemetry/metrics.ts"]}
+  ]
+}

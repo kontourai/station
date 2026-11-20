@@ -359,7 +359,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const replay = isReplayThread(session.id);
   const replayHistory = useReplayHistory(session.id);
   const enabled = Boolean(
-    session.orchestrationSessionStarted &&
+    (session.orchestrationSessionStarted ||
+      session.conversationOpenState?.status === 'fresh-context-ready') &&
       (!replay || replayHistory) &&
       !unavailable &&
       !resolving,
@@ -388,6 +389,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             loadOlder: () => requestReplayHistory(session.id),
             loadTurn: async () => false,
             reload: () => requestReplayHistory(session.id),
+            // A replay's tape is never painted from the reopen cache.
+            revalidating: false,
           }
         : { ...serverWindow, reload: retryHistory },
     [replayHistory, serverWindow, session.id, retryHistory],
@@ -409,8 +412,19 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const windowWatermark = replay
     ? Number.MAX_SAFE_INTEGER
     : serverWindow.watermark;
-  const liveGap =
+  // A failed read that holds nothing has no rows for live events to gap
+  // against: its failure is the state to show, not a catch-up that never ends
+  // (the gap reload waits on the error, so it would never clear).
+  const windowFailedEmpty = Boolean(
+    serverWindow.error && serverWindow.events.length === 0,
+  );
+  const truncatedPastWindow =
     !replay && windowWatermark < readSequencedLiveTruncation(apiBase);
+  const liveGap = truncatedPastWindow && !windowFailedEmpty;
+  // The same failed, empty window must not draw the buffered live tail as
+  // its transcript either: past the truncation that tail starts mid-chat.
+  // Its rows are withheld (not its events) without counting as a catch-up.
+  const failedTailWithheld = windowFailedEmpty && truncatedPastWindow;
   const gapReloadKey = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (
@@ -534,25 +548,23 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {
-    // A restored conversation may have continued in another client. The
-    // conversation read is authoritative for which child session receives
-    // subsequent Stop/approval/live-event routing; no route-local workspace
-    // reconstruction is involved.
-    const currentSessionId = window.currentSessionId;
+    const read = serverWindow.executionRead;
     const latest = activeChatsStore.getSnapshot()[session.id];
+    // A settled head read may advance the binding it began with. An /open
+    // response or live Session start applied since then supersedes it.
     if (
-      currentSessionId &&
-      session.currentSessionId !== currentSessionId &&
-      latest?.currentSessionId === session.currentSessionId
+      !serverWindow.revalidating &&
+      read &&
+      latest &&
+      read.priorSessionId === (latest.currentSessionId ?? session.id) &&
+      read.sessionId !== read.priorSessionId
     ) {
       activeChatsStore.updateChat(session.id, {
-        currentSessionId,
+        currentSessionId: read.sessionId,
         ...(session.conversationId
           ? {
               conversationOpenPending: true,
               conversationOpenFailed: false,
-              // Retire the predecessor shell at the boundary. Subsequent
-              // live events and open revalidation now address the new child.
               orchestrationTurnOpen: false,
               openTurnId: undefined,
               streamingMessage: undefined,
@@ -562,9 +574,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     }
   }, [
     session.conversationId,
-    session.currentSessionId,
     session.id,
-    window.currentSessionId,
+    serverWindow.executionRead,
+    serverWindow.revalidating,
   ]);
   // #2304: seed the open turn's server start when this client attached to a
   // turn already running (fresh load, reconnect), so the "Working for" clock
@@ -1124,12 +1136,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       ? { error: new Error('The owning Station connection is unavailable.') }
       : {}),
     loading: resolving || window.loading,
+    // Events stay stitched (a live approval in the tail stays answerable),
+    // as they do while catching up; only the rows are withheld.
     events: stitchedEvents,
     enabled,
     catchingUp: !replay && (serverWindow.catchingUp || liveGap),
     openTurnProjected,
     messages:
-      enabled && !replay && (serverWindow.catchingUp || liveGap)
+      enabled &&
+      !replay &&
+      (serverWindow.catchingUp || liveGap || failedTailWithheld)
         ? EMPTY_MESSAGES
         : enabled
           ? messages

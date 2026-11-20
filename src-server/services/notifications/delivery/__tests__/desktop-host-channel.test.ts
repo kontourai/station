@@ -6,6 +6,7 @@ import {
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
 import { EventBus } from '../../../orchestration/event-bus.js';
+import { composeWebPushPayload } from '../../push-payload-composer.js';
 import {
   DESKTOP_HOST_LEASE_MS,
   DesktopHostChannel,
@@ -37,9 +38,12 @@ function approval(
   };
 }
 
-function wired(hideContent = false) {
+function wired(hideContent = false, stationId?: () => string | undefined) {
   let now = 1_000_000;
-  const channel = new DesktopHostChannel({ now: () => now });
+  const channel = new DesktopHostChannel({
+    now: () => now,
+    ...(stationId ? { stationId } : {}),
+  });
   const bus = new EventBus();
   const prefs = defaultNotificationPreferences();
   if (hideContent)
@@ -133,6 +137,44 @@ describe('DesktopHostChannel', () => {
     ]);
     // The cursor moves past what was read.
     expect(channel.read(DESKTOP, feed.cursor).entries).toEqual([]);
+  });
+
+  test('the click link names the Station that queued it, and matches the Web Push link', async () => {
+    // A desktop app that switched Stations after this alert was posted
+    // opens it on this Station (the one the link names), not the active one.
+    const { channel, bus } = wired(false, () => 'env-station-a');
+    channel.read(DESKTOP, 0);
+    const record = approval({
+      id: 'n-7',
+      metadata: {
+        sessionId: 'thread-7',
+        sessionKind: 'runtime',
+        projectSlug: 'alpha',
+      },
+    });
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, record);
+    await flush();
+    const [entry] = channel.read(DESKTOP, 0).entries;
+    expect(entry).toMatchObject({
+      link: '/projects/alpha?chat=thread-7&dock=open&openedNotification=n-7&station=env-station-a',
+    });
+    // One builder: the same record opens the same place from Web Push.
+    expect(
+      composeWebPushPayload(
+        record as unknown as Notification,
+        undefined,
+        'env-station-a',
+      )?.payload.url,
+    ).toBe(entry && 'link' in entry ? entry.link : undefined);
+  });
+
+  test('a Station id outside the contract grammar is left out of the link', async () => {
+    const { channel, bus } = wired(false, () => 'not a station/id');
+    channel.read(DESKTOP, 0);
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval());
+    await flush();
+    const [entry] = channel.read(DESKTOP, 0).entries;
+    expect(entry).toMatchObject({ link: '/approvals?openedNotification=n-1' });
   });
 
   test('#3382: the feed carries the title and body in display form', async () => {

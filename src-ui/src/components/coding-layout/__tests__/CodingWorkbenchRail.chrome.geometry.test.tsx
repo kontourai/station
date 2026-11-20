@@ -189,7 +189,7 @@ describe.skipIf(!chromiumAvailable)(
           const tip = document.createElement('span');
           tip.className = 'tooltip tooltip--left coding-workbench__rail-tip';
           tip.setAttribute('role', 'tooltip');
-          tip.textContent = 'Open Browser';
+          tip.textContent = 'Open a new Browser pane';
           tip.style.position = 'fixed';
           tip.style.top = `${anchor.top + anchor.height / 2}px`;
           tip.style.right = `${window.innerWidth - anchor.left + gap}px`;
@@ -239,6 +239,61 @@ describe.skipIf(!chromiumAvailable)(
         expect(geometry.tip.y + geometry.tip.h).toBeLessThanOrEqual(
           VIEWPORT.height,
         );
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('a pane ordinal sits in the item’s top-right corner, inside the rail, like the count badge', async () => {
+      const css =
+        resolveCssImports(INDEX_CSS_PATH) +
+        '\n' +
+        readFileSync(WORKBENCH_CSS_PATH, 'utf8');
+      const page = await browser.newPage({ viewport: VIEWPORT });
+      try {
+        // The rail as CodingViewRail draws it: two previews numbered 1 and 2,
+        // and a Diff with a count, beside the column's right edge.
+        await page.setContent(`<!doctype html><html><head><style>${css}
+          html,body{height:100%;margin:0}
+          .coding-workbench{height:100%;display:flex;justify-content:flex-end}
+        </style></head><body><div class="coding-workbench"><nav class="coding-workbench__rail" aria-label="Views">
+          <button type="button" class="coding-workbench__rail-item" data-rail-item="diff">D<span class="coding-workbench__rail-count">3</span></button>
+          <button type="button" class="coding-workbench__rail-item" data-rail-item="doc-1">P<span class="coding-workbench__rail-ordinal">1</span></button>
+          <button type="button" class="coding-workbench__rail-item" data-rail-item="doc-2">P<span class="coding-workbench__rail-ordinal">2</span></button>
+        </nav></div></body></html>`);
+        const boxes = await page.evaluate(() => {
+          const box = (selector: string) => {
+            const r = document.querySelector(selector)!.getBoundingClientRect();
+            return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+          };
+          return {
+            rail: box('.coding-workbench__rail'),
+            item: box('[data-rail-item="doc-1"]'),
+            ordinal: box(
+              '[data-rail-item="doc-1"] .coding-workbench__rail-ordinal',
+            ),
+            diff: box('[data-rail-item="diff"]'),
+            count: box('[data-rail-item="diff"] .coding-workbench__rail-count'),
+          };
+        });
+        // Inside the item and the rail on every side: nothing clips it.
+        for (const outer of [boxes.item, boxes.rail]) {
+          expect(boxes.ordinal.l).toBeGreaterThanOrEqual(outer.l);
+          expect(boxes.ordinal.r).toBeLessThanOrEqual(outer.r);
+          expect(boxes.ordinal.t).toBeGreaterThanOrEqual(outer.t);
+          expect(boxes.ordinal.b).toBeLessThanOrEqual(outer.b);
+        }
+        // The count badge's corner: the same offsets from the item's top-right.
+        expect(boxes.ordinal.t - boxes.item.t).toBe(
+          boxes.count.t - boxes.diff.t,
+        );
+        expect(boxes.item.r - boxes.ordinal.r).toBe(
+          boxes.diff.r - boxes.count.r,
+        );
+        await page.screenshot({
+          path: resolve(REPO_ROOT, '.kontourai/shell-chrome/rail-ordinals.png'),
+          clip: { x: VIEWPORT.width - 60, y: 0, width: 60, height: 160 },
+        });
       } finally {
         await page.close();
       }

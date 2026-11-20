@@ -1,0 +1,29 @@
+{
+  "revision": "fd9b8ad045e37cea984afc4d1695770ee37e6494",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Review round 6: checked the automatic-quarantine clause against the module's rejected branch and its test.","inputs":["docs/guides/connections.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review round 6: checked the not-waiting fallback against the coordinator and its retirement-fault test.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 6: a pre-send refusal whose session is quarantined now releases and retires the stop as session-ended for automatic attempts too, returning session-ended with whether the retirement was written. Indeterminate paths unchanged. Executed production-adapter coordinator tests with fault injection.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 6: a pre-send refusal whose session is quarantined now releases and retires the stop as session-ended for automatic attempts too, returning session-ended with whether the retirement was written. Indeterminate paths unchanged. Executed production-adapter coordinator tests with fault injection.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review round 6: a pre-send refusal whose session is quarantined now releases and retires the stop as session-ended for automatic attempts too, returning session-ended with whether the retirement was written. Indeterminate paths unchanged. Executed production-adapter coordinator tests with fault injection.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Review round 6: a pre-send refusal whose session is quarantined now releases and retires the stop as session-ended for automatic attempts too, returning session-ended with whether the retirement was written. Indeterminate paths unchanged. Executed production-adapter coordinator tests with fault injection.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 6: a pre-send refusal whose session is quarantined now releases and retires the stop as session-ended for automatic attempts too, returning session-ended with whether the retirement was written. Indeterminate paths unchanged. Executed production-adapter coordinator tests with fault injection.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review round 6: handles the session-ended outcome (records canceled once when retired; otherwise keeps the reset timer and answers a click not-waiting). Resume-at-reset unchanged.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review round 6: handles the session-ended outcome (records canceled once when retired; otherwise keeps the reset timer and answers a click not-waiting). Resume-at-reset unchanged.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review round 6: handles the session-ended outcome (records canceled once when retired; otherwise keeps the reset timer and answers a click not-waiting). Resume-at-reset unchanged.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Review round 6: only the Continue on section gained the automatic-quarantine clause; citing claims hold.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Review round 6: only the continue-on text gained the not-waiting fallback; citing claims hold.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

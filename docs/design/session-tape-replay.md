@@ -158,9 +158,11 @@ the adapter mechanisms below do not by themselves establish the dock capability:
 
 Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 `capabilities` string. The dock currently enables native steering for Claude
-Code, Codex, Muse and the GitHub Copilot (SDK) preview engine, and holds Station-owned steering for an observed post-tool
-boundary, otherwise a terminal. ACP uses a safe-waiting fallback because its
-capability matrix also admits interruptive cancel-and-reprompt. A steer fold appends a user row and
+Code, Codex, Muse and the GitHub Copilot (SDK) preview engine. Station-owned
+steering waits for an observed post-tool boundary in the accepted turn. ACP reports native channels from the live
+handshake; otherwise an explicit Steer uses cancel-and-reprompt after waiting
+for cancellation to finish, with a continuation instruction. Queue remains
+the default on that interrupting fallback. A steer fold appends a user row and
 **does not** reset `streamingMessage`. The event-log projection
 (`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
 what the engine produced before it as its own assistant row, so the steer

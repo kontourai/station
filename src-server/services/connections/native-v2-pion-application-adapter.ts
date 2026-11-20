@@ -38,7 +38,7 @@ const APP_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
 const CLIENT_INSTANCE_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SURFACE_KEY_THUMBPRINT = /^[A-Za-z0-9_-]{43}$/;
-const NATIVE_CHANNELS = new Set(['dev', 'stable', 'beta', 'nightly']);
+const NATIVE_CHANNELS = new Set(['dev', 'stable', 'nightly']);
 
 /** Resolve only operator-approved surfaces; each peer retains its immutable approval. */
 export function createResolvedNativeV2PionApplicationAdapter(

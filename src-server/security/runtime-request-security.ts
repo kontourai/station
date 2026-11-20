@@ -219,7 +219,6 @@ function validNativePrincipalSurface(
     /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(surface.appIdentifier) &&
     (surface.channel === 'dev' ||
       surface.channel === 'stable' ||
-      surface.channel === 'beta' ||
       surface.channel === 'nightly') &&
     typeof surface.clientInstanceId === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(

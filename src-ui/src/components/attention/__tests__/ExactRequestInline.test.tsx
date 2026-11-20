@@ -35,6 +35,7 @@ vi.mock('../../../lib/openApprovalConversation', () => ({
   openApprovalConversation: (href: string) => openConversation(href),
 }));
 
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { AttentionCard } from '../AttentionCard';
 import { AttentionHistoryItem } from '../AttentionHistoryItem';
 import { ExactRequestInline } from '../ExactRequestInline';
@@ -93,6 +94,8 @@ test('Approve once answers the exact request once, through the guarded path', as
   wrap(<ExactRequestInline reference={reference} openHref="/?chat=a" />);
 
   const approve = await screen.findByRole('button', { name: 'Approve once' });
+  // Custom CSS is held off while this decision is on screen.
+  expect(mountedDecisionSurfaces()).toContain('exact-request-decision');
   await waitFor(() =>
     expect((approve as HTMLButtonElement).disabled).toBe(false),
   );

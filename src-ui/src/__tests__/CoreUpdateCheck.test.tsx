@@ -391,7 +391,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     // P2 refusal copy, not the server message, is the main explanation.
     expect(
       screen.getByText(
-        'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        'This server has no install record, so Station can’t check for updates. Update it with the method that installed it.',
       ),
     ).toBeTruthy();
     // No provenance fields → no meta row at all, not empty labels.
@@ -427,12 +427,12 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     });
     expect(
       screen.getByText(
-        'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        'This server’s install record is invalid, so Station can’t check for updates. Update it with the method that installed it.',
       ),
     ).toBeTruthy();
     expect(
       screen.queryByText(
-        'This server install has no usable update provenance.',
+        'This server has no install record, so Station can’t check for updates.',
       ),
     ).toBeNull();
     expect(
@@ -637,7 +637,7 @@ describe('comparison-priority matrix (update-ux PR4)', () => {
     ).toBeTruthy();
     expect(
       screen.queryByText(
-        'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        'This server has no install record, so Station can’t check for updates. Update it with the method that installed it.',
       ),
     ).toBeNull();
     expect(

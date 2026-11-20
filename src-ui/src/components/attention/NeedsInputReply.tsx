@@ -29,6 +29,7 @@ import { ChatInputArea } from '../chat/ChatInputArea';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { ErrorState, SkeletonBlock } from '../state';
 import './NeedsInputReply.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
@@ -41,6 +42,7 @@ export function NeedsInputReply({
   item: NeedsInputAttentionItem & { inputReference: AttentionRequestReference };
   scope: Scope;
 }) {
+  useDecisionSurface('needs-input-reply');
   const [reference] = useState(item.inputReference);
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);

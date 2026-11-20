@@ -470,7 +470,7 @@ function writeMode(
  * @kontourai/ui 1.16 defines `--k-focus` in its tokens, so "is `--k-focus`
  * defined" can no longer tell a white-label focus colour from the default.
  * The marker keeps the device accent chosen in Appearance on the ring unless
- * a white-label theme chose a focus colour (Dev, Beta and Nightly builds
+ * a white-label theme chose a focus colour (Dev and Nightly builds
  * keep their own focus colour through index.css's channel selectors).
  */
 export const BRANDING_FOCUS_ATTRIBUTE = 'data-brand-focus';

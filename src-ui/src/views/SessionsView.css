@@ -334,29 +334,77 @@
   overflow-wrap: anywhere;
 }
 
-/* The No project alternative reads as an action, not a third footer
-   button competing with Continue. */
-.sessions-detail__confirm-alternative {
+/* The one way to continue an external conversation sits with its origin:
+   in the host's header row when there is one, else in this compact row.
+   Anything that explains it (a reason, the No project choice, a failure)
+   follows in one quiet line. */
+.sessions-detail__origin-row {
+  flex: 0 0 auto;
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  margin: var(--k-space-2) var(--chat-message-gutter) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
-/* Link-styled, but a full touch target that starts on the text's edge, and
-   underlined so it does not read as a link by colour alone. */
-.sessions-detail__confirm-alternative .button {
-  min-height: 44px;
-  padding-inline: 0;
+.sessions-detail__continue-notice {
+  flex: 0 0 auto;
+  display: grid;
+  gap: var(--k-space-1);
+  margin: var(--k-space-1) var(--chat-message-gutter) 0;
+}
+
+.sessions-detail__continue-note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.sessions-detail__continue-notice p {
+  margin: 0;
+}
+
+/* Link-styled, underlined so it does not read as a link by colour alone. */
+.sessions-detail__continue-note .button {
+  min-height: 0;
+  padding: 0;
+  font-size: inherit;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-/* Spacing for the continuation confirmation's paragraphs. */
-.sessions-detail__confirm {
-  display: grid;
-  gap: var(--k-space-3);
+.sessions-detail__continue-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
-.sessions-detail__confirm p {
+/* The source is still running: its caution and two choices take a full row
+   under the header, where the continuation notice sits, not a dialog and not
+   the header's action slot. */
+.sessions-detail__source-active {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-1) var(--chat-message-gutter) 0;
+}
+
+.sessions-detail__source-active-text {
+  flex: 1 1 16rem;
   margin: 0;
+  color: var(--k-caution);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.sessions-detail__source-active-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
 }
 
 .sessions-detail__adoption-reason {

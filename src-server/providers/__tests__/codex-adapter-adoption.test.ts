@@ -12,6 +12,7 @@ import { PassThrough, Writable } from 'node:stream';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -188,6 +189,62 @@ afterEach(() => {
 });
 
 describe('Codex native attached-session adoption', () => {
+  test('#2376 slice 3: an adopted fork never gets tool families, even when they are admitted', async () => {
+    const child = new FakeCodexProcess();
+    const mint = vi.fn(() => ({
+      url: 'http://127.0.0.1:4977/mcp/station-control',
+      token: 'adopted-header-token',
+    }));
+    const adapter = new CodexAdapter({
+      processFactory: () => child,
+      resolveSourceHome: () => '/source-home',
+      toolFamiliesEnabled: () => true,
+      findBinary: () => '/usr/local/bin/codex',
+      runCommand: async () => ({
+        code: 0,
+        stdout: 'codex-cli 0.167.0\n',
+        stderr: '',
+      }),
+      mintStationControlMcpAuth: mint,
+    });
+    // Admission itself says yes; only the adoption keeps families off.
+    await expect(adapter.toolFamiliesAdmitted()).resolves.toBe(true);
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        agent: {
+          toolServers: [
+            {
+              id: 'station-control',
+              displayName: 'Station Control',
+              transport: 'stdio',
+              command: process.execPath,
+              args: [builtinStationControlServerPath()],
+            },
+          ],
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(async () => undefined),
+        onProviderChildCreated: vi.fn(async () => undefined),
+      },
+    );
+    await initialize(child);
+    const fork = await waitForCall(child, 'thread/fork');
+    expect(fork.params.config).toMatchObject({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:4977/mcp/station-control',
+    });
+    expect(fork.params.config).not.toHaveProperty(
+      'features.mcp_tool_list_changed',
+    );
+    expect(mint).toHaveBeenCalledOnce();
+    expect(mint.mock.calls[0]).not.toContain(true);
+    respond(child, fork, forkResult());
+    const adopted = await adoption;
+    expect(adopted.resumeCursor).not.toHaveProperty('toolFamilies');
+    await adapter.stopSession(TARGET_ID);
+  });
+
   test('forks exactly once at the completed boundary and records the distinct child before returning it', async () => {
     const process = new FakeCodexProcess();
     const processFactory = vi.fn(() => process);
@@ -821,6 +878,132 @@ describe('Codex native attached-session adoption', () => {
       CODEX_HOME: '/source-home',
     });
     expect(process.killed).toBe(true);
+  });
+
+  test("a session found in a credential-profile home continues with that profile's env overlay under its home", async () => {
+    const overlay = {
+      OPENAI_BASE_URL: 'http://127.0.0.1:8319',
+      OPENAI_API_KEY: '',
+    };
+    const resolveSourceHomeEnv = vi.fn(async (home: string) =>
+      home === '/profile-home' ? overlay : undefined,
+    );
+    const process = new FakeCodexProcess();
+    const processFactory = vi.fn(() => process);
+    const adapter = new CodexAdapter({
+      processFactory,
+      resolveSourceHome: () => '/profile-home',
+      resolveSourceHomeEnv,
+      getConnectionEnv: async () => ({ OPENAI_BASE_URL: 'http://connection' }),
+    } as any);
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        sourceAffinity: { ...AFFINITY },
+        sourceBoundary: {
+          kind: 'completed-turn',
+          providerTurnId: TURN_ID,
+          observedEventId: 'observed-completion',
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(async () => undefined),
+        onProviderChildCreated: vi.fn(async () => undefined),
+      },
+    );
+    await initialize(process);
+    const fork = await waitForCall(process, 'thread/fork');
+    respond(process, fork, forkResult());
+    await adoption;
+    expect(resolveSourceHomeEnv).toHaveBeenCalledWith('/profile-home');
+    // The profile overlay outranks the connection env; the home key is last.
+    expect(processFactory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        OPENAI_BASE_URL: 'http://127.0.0.1:8319',
+        OPENAI_API_KEY: '',
+        CODEX_HOME: '/profile-home',
+      }),
+      expect.anything(),
+    );
+
+    const maintenance = new FakeCodexProcess();
+    const maintenanceFactory = vi.fn(() => maintenance);
+    const discard = new CodexAdapter({
+      processFactory: maintenanceFactory,
+      resolveSourceHome: () => '/profile-home',
+      resolveSourceHomeEnv,
+    } as any).discardSession(
+      TARGET_ID,
+      recovery({
+        resumeCursor: { codexThreadId: CHILD_ID, sourceAffinity: AFFINITY },
+      }),
+    );
+    await initialize(maintenance);
+    respond(maintenance, await waitForCall(maintenance, 'thread/delete'), {});
+    await discard;
+    expect(maintenanceFactory).toHaveBeenCalledWith({
+      ...overlay,
+      CODEX_HOME: '/profile-home',
+    });
+  });
+
+  test('a source home resolved asynchronously (after a refresh) is the home the child runs in', async () => {
+    const process = new FakeCodexProcess();
+    const processFactory = vi.fn(() => process);
+    const adapter = new CodexAdapter({
+      processFactory,
+      resolveSourceHome: async () => '/refreshed-home',
+    } as any);
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        sourceAffinity: { ...AFFINITY },
+        sourceBoundary: {
+          kind: 'completed-turn',
+          providerTurnId: TURN_ID,
+          observedEventId: 'observed-completion',
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(async () => undefined),
+        onProviderChildCreated: vi.fn(async () => undefined),
+      },
+    );
+    await initialize(process);
+    respond(process, await waitForCall(process, 'thread/fork'), forkResult());
+    await adoption;
+    expect(processFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ CODEX_HOME: '/refreshed-home' }),
+      expect.anything(),
+    );
+  });
+
+  test('a profile home whose overlay cannot be prepared refuses continuation before spawning', async () => {
+    const processFactory = vi.fn(() => new FakeCodexProcess());
+    const adapter = new CodexAdapter({
+      processFactory,
+      resolveSourceHome: () => '/profile-home',
+      resolveSourceHomeEnv: async () => {
+        throw new Error(
+          'Credential profile environment could not be prepared.',
+        );
+      },
+    } as any);
+    await expect(
+      adapter.adoptSession(
+        adoptInput({
+          sourceAffinity: { ...AFFINITY },
+          sourceBoundary: {
+            kind: 'completed-turn',
+            providerTurnId: TURN_ID,
+            observedEventId: 'observed-completion',
+          },
+        }),
+        {
+          onProviderChildCreationStarted: vi.fn(async () => undefined),
+          onProviderChildCreated: vi.fn(async () => undefined),
+        },
+      ),
+    ).rejects.toThrow(/could not be prepared/);
+    expect(processFactory).not.toHaveBeenCalled();
   });
 
   test('reconciles an unknown child through a bounded list and source-home rollout header', async () => {

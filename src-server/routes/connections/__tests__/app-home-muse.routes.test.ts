@@ -59,7 +59,7 @@ function museConnectionService() {
 
 function fakeChild() {
   let onData: ((chunk: unknown) => void) | undefined;
-  const signals: string[] = [];
+  const stop = vi.fn(async () => undefined);
   const stream = {
     on(_event: 'data', listener: (chunk: unknown) => void) {
       onData = listener;
@@ -67,16 +67,13 @@ function fakeChild() {
     },
   };
   return {
-    signals,
+    stop,
     emitPrompt: () => onData?.(Buffer.from(MUSE_DEVICE_CODE_STDOUT, 'utf8')),
     child: {
       stdout: stream as unknown as NodeJS.ReadableStream,
       stderr: null,
       on: () => undefined,
-      kill: (signal?: NodeJS.Signals) => {
-        signals.push(signal ?? 'SIGTERM');
-        return true;
-      },
+      stop,
     } as unknown as DeviceCodeChildProcess,
   };
 }
@@ -189,7 +186,7 @@ describe('Muse credential-profile sign-in (#1942)', () => {
       data: { login: { phase: string } };
     }>(cancelled);
     expect(cancelBody.data.login.phase).toBe('cancelled');
-    expect(spawned.signals).toContain('SIGTERM');
+    expect(spawned.stop).toHaveBeenCalledOnce();
   });
 
   test('the home Station signs in is the home a Muse session runs under', async () => {

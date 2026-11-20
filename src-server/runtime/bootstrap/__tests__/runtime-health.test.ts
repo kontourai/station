@@ -1,3 +1,4 @@
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runtimeEventLoopLag } from '../../../telemetry/metrics.js';
 import {
@@ -7,6 +8,14 @@ import {
   startRuntimeEventLoopLagMonitoring,
   startRuntimeHealthChecks,
 } from '../runtime-health.js';
+
+vi.mock(import('node:perf_hooks'), async (importOriginal) => {
+  const perfHooks = await importOriginal();
+  return {
+    ...perfHooks,
+    monitorEventLoopDelay: vi.fn(perfHooks.monitorEventLoopDelay),
+  };
+});
 
 const idleResources = {
   cpuUserMicros: 0,
@@ -168,52 +177,59 @@ describe('runtime-health', () => {
     let tick: (() => void) | undefined;
     const reports: Array<() => void> = [];
     const logger = { debug: vi.fn(), warn: vi.fn() };
-    const histogram = {
-      enable: vi.fn(),
-      reset: vi.fn(),
-      max: 0,
-      percentile: vi.fn(() => 40 * 1e6),
-    };
+    const factory = vi.mocked(monitorEventLoopDelay);
+    const histogram = monitorEventLoopDelay({ resolution: 100 });
+    factory.mockClear();
+    factory.mockReturnValueOnce(histogram);
+    const enable = vi.spyOn(histogram, 'enable');
+    const reset = vi.spyOn(histogram, 'reset');
+    const max = vi.spyOn(histogram, 'max', 'get');
+    vi.spyOn(histogram, 'percentile').mockReturnValue(40 * 1e6);
 
-    startRuntimeEventLoopLagMonitoring({
-      timers: [],
-      logger,
-      interval: 10_000,
-      now: () => 0,
-      scheduleInterval: (callback) => {
-        tick = callback;
-        return {} as NodeJS.Timeout;
-      },
-      recordLag: vi.fn(),
-      delayHistogram: histogram,
-      sampleResources: () => idleResources,
-      observeGc: () => {},
-      scheduleReport: (report, delayMs) => {
-        expect(delayMs).toBe(EVENT_LOOP_STALL_REPORT_DELAY_MS);
-        reports.push(report);
-      },
-    });
-    expect(histogram.enable).toHaveBeenCalledTimes(1);
+    try {
+      startRuntimeEventLoopLagMonitoring({
+        timers: [],
+        logger,
+        interval: 10_000,
+        now: () => 0,
+        scheduleInterval: (callback) => {
+          tick = callback;
+          return {} as NodeJS.Timeout;
+        },
+        recordLag: vi.fn(),
+        sampleResources: () => idleResources,
+        observeGc: () => {},
+        scheduleReport: (report, delayMs) => {
+          expect(delayMs).toBe(EVENT_LOOP_STALL_REPORT_DELAY_MS);
+          reports.push(report);
+        },
+      });
+      expect(factory).toHaveBeenCalledExactlyOnceWith({ resolution: 100 });
+      expect(enable).toHaveBeenCalledTimes(1);
 
-    histogram.max = (EVENT_LOOP_STALL_WARN_MS - 1) * 1e6;
-    tick?.();
-    expect(reports).toHaveLength(0);
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
+      max.mockReturnValue((EVENT_LOOP_STALL_WARN_MS - 1) * 1e6);
+      tick?.();
+      expect(reports).toHaveLength(0);
+      expect(reset).toHaveBeenCalledTimes(1);
 
-    histogram.max = 17_842 * 1e6;
-    tick?.();
-    expect(histogram.reset).toHaveBeenCalledTimes(2);
-    expect(reports).toHaveLength(1);
-    expect(logger.warn).not.toHaveBeenCalled();
-    reports[0]();
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Event loop stalled',
-      expect.objectContaining({
-        maxDelayMs: 17_842,
-        p99DelayMs: 40,
-        windowMs: 10_000,
-      }),
-    );
+      max.mockReturnValue(17_842 * 1e6);
+      tick?.();
+      expect(reset).toHaveBeenCalledTimes(2);
+      expect(reports).toHaveLength(1);
+      expect(logger.warn).not.toHaveBeenCalled();
+      reports[0]();
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Event loop stalled',
+        expect.objectContaining({
+          maxDelayMs: 17_842,
+          p99DelayMs: 40,
+          sampleResolutionMs: 100,
+          windowMs: 10_000,
+        }),
+      );
+    } finally {
+      histogram.disable();
+    }
   });
 
   // The 2026-10 probe-failure restarts logged 72s and 86s stalls with nothing
@@ -286,6 +302,7 @@ describe('runtime-health', () => {
     expect(logger.warn).toHaveBeenCalledWith('Event loop stalled', {
       maxDelayMs: 72_276,
       p99DelayMs: 72_276,
+      sampleResolutionMs: 100,
       windowMs: 10_000,
       elapsedMs: 82_000,
       cpuUserMs: 61_400,

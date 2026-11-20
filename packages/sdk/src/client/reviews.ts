@@ -13,6 +13,7 @@ import {
   getJson,
   mutateJson,
   readEnvelopeOrThrow,
+  StationHttpError,
 } from './http';
 
 function projectReviewsPath(projectSlug: string): string {
@@ -43,7 +44,13 @@ export async function runIndependentReview(
     status = parseIndependentReviewRequestStatus(
       await readEnvelopeOrThrow<unknown>(response),
     );
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof StationHttpError &&
+      error.status === 409 &&
+      error.code === 'review_request_conflict'
+    )
+      throw error;
     // The exact request may have crossed the server boundary. Read before any
     // safe idempotent retry; if it was definitely absent, retry the same key.
     try {

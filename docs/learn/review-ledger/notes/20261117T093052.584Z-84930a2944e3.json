@@ -1,0 +1,9 @@
+{
+  "revision": "025ad31bfcc21fb1e73b59ac02cb12f3d51eb0e5",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"AttentionCard only renames the pull request feedback item's button to 'Turn off agent feedback'; neither page names that button.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"AttentionCard only renames the pull request feedback item's button to 'Turn off agent feedback'; neither page names that button.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

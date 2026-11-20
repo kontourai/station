@@ -20,6 +20,7 @@ import {
 } from './reviewEvidenceCopy';
 import { SurveyFlowReviewDetail } from './SurveyFlowReviewDetail';
 import './review-detail.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type BulkAction = 'approve' | 'reject' | null;
 
@@ -238,6 +239,7 @@ export function ReviewLayout({
     selectedId === deepLink;
 
   const pendingIds = changes.map((change) => change.id);
+  useDecisionSurface('proposed-change', pendingIds.length > 0);
   const bulkPending =
     bulkApproveMutation.isPending || bulkRejectMutation.isPending;
 

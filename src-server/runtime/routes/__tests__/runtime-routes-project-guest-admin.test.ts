@@ -1726,6 +1726,72 @@ describe('project guest administration over the production composition', () => {
       ).toBe(403);
   });
 
+  test('Project Room live: an account-bound member types, lists members and opens the live stream through the production mount (#4798, #4799)', async () => {
+    const h = await setup();
+    const { project, guest } = await h.shareWithGuestAdmin(
+      'live-project',
+      'Live Project',
+    );
+    const projectBase = '/api/projects/live-project';
+    const send = (method: string, value: unknown) =>
+      guest({
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    const opened = await h.request(
+      `${projectBase}/room/init`,
+      send('POST', { expectedProjectId: project.id }),
+    );
+    expect(opened.status, await opened.clone().text()).toBe(200);
+    const view = (
+      await readJson<{ data: { roomId: string; actor: { id: string } } }>(
+        await h.request(`${projectBase}/room`, guest()),
+      )
+    ).data;
+    const guards = {
+      expectedRoomId: view.roomId,
+      expectedProjectId: project.id,
+      expectedActorId: view.actor.id,
+    };
+    // Typing is a room write past the Project read guard, at both addresses.
+    for (const path of [
+      `${projectBase}/room/typing`,
+      `${projectBase}/channels/${view.roomId}/typing`,
+    ]) {
+      const typed = await h.request(
+        path,
+        send('POST', {
+          ...guards,
+          clientId: crypto.randomUUID(),
+          typing: true,
+        }),
+      );
+      expect(typed.status, `${path}: ${await typed.clone().text()}`).toBe(200);
+    }
+    const members = await h.request(`${projectBase}/room/members`, guest());
+    expect(members.status, await members.clone().text()).toBe(200);
+    const live = await h.request(
+      `${projectBase}/rooms/live?channel=${view.roomId}&client=${crypto.randomUUID()}`,
+      guest(),
+    );
+    expect(live.status).toBe(200);
+    const first = new TextDecoder().decode(
+      (await live.body!.getReader().read()).value,
+    );
+    expect(first).toContain('event: subscribed');
+    await live.body?.cancel().catch(() => {});
+    // Typing is not a wildcard: another leaf of that name is still refused.
+    expect(
+      (
+        await h.request(
+          `${projectBase}/room/typing/extra`,
+          send('POST', guards),
+        )
+      ).status,
+    ).toBe(403);
+  });
+
   test('Project Room message actions: an account-bound member reacts, edits, deletes and shares a file through the production mount (#4796, #4797, #4812)', async () => {
     const h = await setup();
     const { project, guest } = await h.shareWithGuestAdmin(

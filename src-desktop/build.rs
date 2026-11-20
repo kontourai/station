@@ -51,10 +51,8 @@ fn configure_ios_relay_association() {
             .as_str()
             .expect("iOS pairing scheme must be a string");
         assert!(
-            matches!(
-                pairing,
-                "station-stable" | "station-beta" | "station-nightly"
-            ) || pairing.starts_with("station-dev-"),
+            matches!(pairing, "station-stable" | "station-nightly")
+                || pairing.starts_with("station-dev-"),
             "unsupported iOS Station pairing scheme"
         );
         tauri_plugin::mobile::update_info_plist(|info| {

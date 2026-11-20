@@ -1042,7 +1042,7 @@ describe('persistent runner policy', () => {
       [
         'fast-checks-shard',
         'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
-        'fast-checks-plan, actionlint-artifact',
+        'pr-admission, fast-checks-plan, actionlint-artifact',
         'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
       ],
       [
@@ -2979,7 +2979,7 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fast-checks',
       message:
-        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
+        'Required browser smoke must execute once whenever the heavy checks run, with its real exit status inside fast-checks-statics.',
     });
   });
 
@@ -4520,10 +4520,11 @@ describe('the real workflow corpus', () => {
     // contributing files are listed below so the next removal says which one.
     // 7 until #2416 moved CI Extended's coverage onto parallel hosted shards,
     // which dropped `ci-extended.yml#coverage` from the fleet.
-    expect(directCapacityJobs).toBe(6);
+    // Container smoke moved to an isolated GitHub-hosted VM when desktop-win's
+    // WSL listener retired.
+    expect(directCapacityJobs).toBe(5);
     expect(capacityFiles.sort()).toEqual([
       '.github/workflows/ci-extended.yml#playwright-full',
-      '.github/workflows/container-smoke.yml#smoke',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-work-board-reference',
       '.github/workflows/interactive-workspace-performance.yml#reference-performance',

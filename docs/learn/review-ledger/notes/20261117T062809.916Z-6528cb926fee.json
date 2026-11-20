@@ -1,0 +1,9 @@
+{
+  "revision": "fdc210b0bd05629d1f20dc1a021beb771b9be8c7",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#5120: the manifest only gained a PROCESS_HEAVY_VITEST_FILES entry for scripts/__tests__/run-veritas-readiness.process.test.ts; classification rules and lanes this page states are unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#5120: the manifest only gained a PROCESS_HEAVY_VITEST_FILES entry for scripts/__tests__/run-veritas-readiness.process.test.ts; classification rules and lanes this page states are unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

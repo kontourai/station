@@ -1,0 +1,7 @@
+{
+  "revision": "cd39ac7dd3b6eb14ab2c1642a97de46ab4c5c2c6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The guard test gained one entry for ci-health.test.ts, whose remaining path read is each workflow by a listed name; the guide's description of the guard is unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

@@ -1,3 +1,6 @@
+import { isHtmlReplyPublication } from '@kontourai/station-contracts/html-reply';
+import { parseProjectSessionContextComposed } from '@kontourai/station-contracts/project-session-context';
+import { PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   TURN_ENGINE_DISPLAY_NAME_METADATA_KEY,
@@ -350,9 +353,31 @@ function usageSlot(
  */
 function contextInjectionSlot(
   terminal: CanonicalRuntimeEvent,
+  started?: CanonicalRuntimeEvent,
 ): TurnProvenanceSlot<TurnProvenanceContextInjection> {
+  // #5062: the Project brief and memory index, recorded by Station's own
+  // dispatch on this turn's `turn.started` for EVERY engine. It is the one
+  // Station-composed context an external engine carries.
+  const project =
+    started && started.provider === terminal.provider
+      ? parseProjectSessionContextComposed(
+          (started as { metadata?: Record<string, unknown> }).metadata?.[
+            PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY
+          ],
+        )
+      : undefined;
+  const projectBlocks: TurnProvenanceContextInjection = {
+    ...(project?.brief ? { projectBrief: project.brief } : {}),
+    ...(project?.memory ? { projectMemory: project.memory } : {}),
+  };
   if (terminal.provider !== 'station-agent') {
-    return unavailable(NOT_REPORTED);
+    return project && started
+      ? {
+          state: 'observed',
+          value: projectBlocks,
+          observedFrom: [observation(started)],
+        }
+      : unavailable(NOT_REPORTED);
   }
   const metadata = (terminal as { metadata?: Record<string, unknown> })
     .metadata;
@@ -360,10 +385,29 @@ function contextInjectionSlot(
     metadata?.[CONTEXT_INJECTION_METADATA_KEY],
   );
   if (parsed) {
+    if (!project) {
+      return {
+        state: 'observed',
+        value: parsed,
+        observedFrom: [observation(terminal)],
+      };
+    }
+    // Station's own engine received the Project context as ambient context
+    // (the relay composes it once in `/chat`), so `/chat` counted it in its
+    // ambient block. Name it as the Project brief and memory instead, and
+    // keep only what the ambient block holds beyond them.
+    const projectTokens =
+      (project.brief?.approxTokens ?? 0) + (project.memory?.approxTokens ?? 0);
+    const { ambient, ...rest } = parsed;
+    const remaining = (ambient?.approxTokens ?? 0) - projectTokens;
     return {
       state: 'observed',
-      value: parsed,
-      observedFrom: [observation(terminal)],
+      value: {
+        ...rest,
+        ...(remaining > 0 ? { ambient: { approxTokens: remaining } } : {}),
+        ...projectBlocks,
+      },
+      observedFrom: [observation(started!), observation(terminal)],
     };
   }
   return unavailable(NOT_CAPTURED);
@@ -429,8 +473,11 @@ export function assembleTurnProvenanceEnvelopes(
         accumulator.terminal = event;
         break;
       }
-      case 'tool.started':
       case 'tool.completed':
+        if (isHtmlReplyPublication(event)) break;
+        accumulatorFor(key).toolEvents.push(event);
+        break;
+      case 'tool.started':
         accumulatorFor(key).toolEvents.push(event);
         break;
       case 'token-usage.updated':
@@ -463,7 +510,7 @@ export function assembleTurnProvenanceEnvelopes(
       routingReceipt: unavailable(NOT_CAPTURED),
       sources: unavailable(NOT_CAPTURED),
       trustReport: trustReportSlot(terminal),
-      contextInjection: contextInjectionSlot(terminal),
+      contextInjection: contextInjectionSlot(terminal, accumulator.started),
     });
   }
   return envelopes;

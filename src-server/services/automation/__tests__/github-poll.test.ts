@@ -49,7 +49,11 @@ function configuration(
         repository: 'kontourai/station',
         enabled: true,
         grants: [
-          { projectId: 'station', agentId: 'repairer', actions: ['notify'] },
+          {
+            projectId: 'station',
+            agentId: 'repairer',
+            actions: ['dispatch-task'],
+          },
         ],
         credentialSecretBinding: 'github-token',
         pollIntervalMs: INTERVAL,

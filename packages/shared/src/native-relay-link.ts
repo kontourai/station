@@ -81,7 +81,7 @@ export function nativeRelayLinkScheme(
       invalid();
     return devScheme;
   }
-  if (!['stable', 'beta', 'nightly'].includes(channel)) invalid();
+  if (!['stable', 'nightly'].includes(channel)) invalid();
   return `station-relay-${channel}`;
 }
 

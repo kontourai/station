@@ -1,0 +1,17 @@
+{
+  "revision": "e26b308e7d05d2a276b127d0474da57442735cad",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked each page citing this source after the final pre-push round: they state that the hook exists, that --no-verify is not allowed, where gate:for routes, or link to other sections of the guides; none states which pre-push step refuses or warns, its exit status or its cost, and none is contradicted by the export check only warning.","inputs":[".githooks/pre-push"]},
+
+    {"path":"AGENTS.md","note":"Checked each page citing this source after the final pre-push round: they state that the hook exists, that --no-verify is not allowed, where gate:for routes, or link to other sections of the guides; none states which pre-push step refuses or warns, its exit status or its cost, and none is contradicted by the export check only warning.","inputs":[".githooks/pre-push"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked each page citing this source after the final pre-push round: they state that the hook exists, that --no-verify is not allowed, where gate:for routes, or link to other sections of the guides; none states which pre-push step refuses or warns, its exit status or its cost, and none is contradicted by the export check only warning.","inputs":[".githooks/pre-push"]},
+
+    {"path":"docs/guides/development.md","note":"Checked each page citing this source after the final pre-push round: they state that the hook exists, that --no-verify is not allowed, where gate:for routes, or link to other sections of the guides; none states which pre-push step refuses or warns, its exit status or its cost, and none is contradicted by the export check only warning.","inputs":[".githooks/pre-push"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked each page citing this source after the final pre-push round: they state that the hook exists, that --no-verify is not allowed, where gate:for routes, or link to other sections of the guides; none states which pre-push step refuses or warns, its exit status or its cost, and none is contradicted by the export check only warning.","inputs":[".githooks/pre-push"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Checked each page citing this source after the final pre-push round: they state that the hook exists, that --no-verify is not allowed, where gate:for routes, or link to other sections of the guides; none states which pre-push step refuses or warns, its exit status or its cost, and none is contradicted by the export check only warning.","inputs":[".githooks/pre-push"]}
+  ]
+}

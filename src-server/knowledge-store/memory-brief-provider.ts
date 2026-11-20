@@ -122,7 +122,11 @@ export function createMemoryBriefProvider(
     let handedOff = false;
     try {
       const assertCurrent = () => {
-        if (!deps.enabled() || request.signal.aborted)
+        if (
+          !deps.enabled() ||
+          request.signal.aborted ||
+          !deps.isRequestCurrent(request)
+        )
           throw new Error('Private memory authority ended.');
       };
       const root = await deps.manager.findRoot(scope, assertCurrent);
@@ -133,7 +137,13 @@ export function createMemoryBriefProvider(
         [root],
         new Response(null, { status: 200 }),
       );
-      if (!guarded.ok) return null;
+      if (
+        !guarded.ok ||
+        !deps.enabled() ||
+        request.signal.aborted ||
+        !deps.isRequestCurrent(request)
+      )
+        return null;
       if (!brief.text) {
         if (key) finish(key, owner);
         if (onAbort) request.signal.removeEventListener('abort', onAbort);

@@ -129,12 +129,30 @@
   min-width: 44px;
 }
 
-.child-chat-pane
-  .tool-call__status-footer:not(.tool-call__status-footer--error) {
-  color: var(--k-text);
-}
-
 .child-chat-trail__segment:not(:last-child) {
   min-width: 44px;
   max-width: 60%;
+}
+
+/* One breadcrumb, one separator: Parent / Child. The parent crumb is the
+   way back on a wide bar, so the ‹ button is the phone's alone. The parent
+   yields width first, so the child's title stays readable. */
+.chat-dock__active-identity--child .child-chat-trail__back {
+  display: none;
+}
+.child-chat-trail__separator {
+  flex: none;
+  color: var(--k-text-muted);
+}
+.chat-dock__active-identity--child .child-chat-trail__segment:last-child {
+  flex: 0 1 auto;
+}
+.chat-dock__active-identity--child .child-chat-trail__segment:not(:last-child) {
+  flex: 0 8 auto;
+  max-width: 45%;
+}
+/* A phone bar has room for one title: ‹ goes back, the child is named. */
+.chat-dock__mobile-header--child .child-chat-trail__segment:not(:last-child),
+.chat-dock__mobile-header--child .child-chat-trail__separator {
+  display: none;
 }

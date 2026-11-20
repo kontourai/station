@@ -39,10 +39,13 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   }),
 }));
 
-const { show } = vi.hoisted(() => ({ show: vi.fn() }));
+const { show, playSound } = vi.hoisted(() => ({
+  show: vi.fn(),
+  playSound: vi.fn(),
+}));
 vi.mock('../contexts/ToastContext', () => ({ toastStore: { show } }));
 vi.mock('../lib/notification-sounds', () => ({
-  playDeliveredNotificationSound: vi.fn(),
+  playDeliveredNotificationSound: playSound,
 }));
 // The lazily loaded envelope toast chunk fails to load (offline, or a deploy
 // replaced it).
@@ -57,21 +60,36 @@ import {
 } from '../hooks/useServerEvents';
 
 describe('enveloped delivery toast fallback (#2587 review L6)', () => {
-  test('a failed envelope chunk still shows the plain toast', async () => {
+  test('a failed envelope chunk preserves a malformed fallback and honors valid silence', async () => {
+    handleNotificationDeliveredToast({
+      id: 'silent-1',
+      category: 'agent-done',
+      title: 'Silent history entry',
+      metadata: {
+        envelope: {
+          v: 1,
+          source: { kind: 'system', subsystem: 'fixture' },
+          audience: { kind: 'owner' },
+          urgency: 'done',
+          interrupt: 'silent',
+        },
+      },
+    });
     handleNotificationDeliveredToast({
       id: 'n-1',
       category: 'agent-done',
       title: 'Tests pass',
       body: 'All green.',
-      metadata: { envelope: { v: 1 } },
+      metadata: { envelope: { v: 1, interrupt: 'silent' } },
     });
     await vi.waitFor(() => expect(show).toHaveBeenCalledTimes(1));
+    expect(playSound).toHaveBeenCalledTimes(1);
     expect(show).toHaveBeenCalledWith(
       'Tests pass — All green.',
       undefined,
       NOTIFICATION_TOAST_DISPLAY_MS,
       undefined,
-      { envelope: { v: 1 } },
+      { envelope: { v: 1, interrupt: 'silent' } },
     );
   });
 });

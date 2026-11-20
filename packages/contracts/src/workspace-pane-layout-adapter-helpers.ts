@@ -16,6 +16,7 @@ import {
   WORKSPACE_PANE_REGIONS,
   type WorkspacePaneBoundContext,
   WorkspacePaneContextRequirement,
+  WorkspacePaneInstance,
   WorkspacePaneLifecycle,
   WorkspacePaneProvenance,
   WorkspacePaneRegion,
@@ -26,6 +27,26 @@ import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from './workspace-pane-lay
 export const DESCRIPTOR_ID_PREFIX = 'pane';
 export const RENDERER_ID_PREFIX = 'renderer';
 export const INSTANCE_ID_PREFIX = 'instance';
+export const COMPACT_PROJECT_LAYOUT_PANE_ID_PREFIX =
+  'instance:project-layout-v1:';
+
+export function matchesLegacyProjectLayoutPaneId(
+  instance: WorkspacePaneInstance,
+  candidate: string,
+): boolean {
+  const { projectId, sourceId } = instance.boundContext ?? {};
+  if (
+    !instance.instanceId.startsWith(COMPACT_PROJECT_LAYOUT_PANE_ID_PREFIX) ||
+    candidate.length <= MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH ||
+    !projectId ||
+    !sourceId
+  )
+    return false;
+  const scope = instanceScopeSegment(`project:${projectId}:source:${sourceId}`);
+  return (
+    candidate === `${INSTANCE_ID_PREFIX}:${scope}:${instance.descriptorId}`
+  );
+}
 export const STATE_KEY_PREFIX = 'state';
 
 const DEFAULT_REGION: WorkspacePaneRegion = 'primary';

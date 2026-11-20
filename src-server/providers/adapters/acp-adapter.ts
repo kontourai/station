@@ -1,4 +1,6 @@
+import { ACP_RESUME_CONFIGURATION_CHANGED_CODE } from '@kontourai/station-contracts/provider-failure';
 import {
+  interpretAcpTurnStop,
   PROVIDER_TURN_TRIGGER,
   type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -8,7 +10,11 @@ import {
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
-import { ProviderRefusalError, providerFailure } from '../provider-failure.js';
+import {
+  ProviderRefusalError,
+  providerFailure,
+  providerFailureForCode,
+} from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
@@ -39,7 +45,6 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-  type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -206,6 +211,11 @@ import {
   buildCliRuntimePrerequisites,
   findCliBinaryAsync,
 } from '../auth/cli-auth.js';
+import {
+  ACP_TRANSPORT_CLOSED_CODE,
+  ACP_TRANSPORT_CLOSED_GUIDANCE,
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
+} from '../delegated-runtime-failure.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -826,6 +836,9 @@ export interface AcpSessionRecord {
    * cannot complete or fail the still-open turn.
    */
   promptEpoch: number;
+  promptSettled?: Promise<void>;
+  steering?: boolean;
+  steerFallbackObserved?: boolean;
   /** Invalidation generation captured when this session start was accepted. */
   generation: number;
   /** A `session.started` receipt was published and needs a terminal peer. */
@@ -856,6 +869,7 @@ export interface AcpSessionRecord {
    */
   approvedTools: Set<string>;
   preToolPolicy?: StagedPreToolPolicyEvaluator;
+  staleToolPolicyTurnId?: string;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
   /**
@@ -904,7 +918,7 @@ export interface AcpSessionRecord {
    */
   openCodeEditGrant?: boolean;
   /** #3290: launches a replacement process for this session on a floor. */
-  relaunch?: (floor: OpenCodeApprovalFloor | undefined) => ACPProcess;
+  relaunch?: (floor: OpenCodeApprovalFloor | undefined) => Promise<ACPProcess>;
   /**
    * chat-host-images: a relaunch is starting a replacement engine that
    * shares this launch's temp folder; the old process dying meanwhile must
@@ -1838,8 +1852,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         }),
       );
       if (currentFingerprint !== input.resumeCursor.connectionFingerprint) {
-        throw new Error(
-          'This conversation was started under a different engine connection configuration and cannot be resumed.',
+        throw new SessionStartRefusedError(
+          'This conversation was started under a different engine connection configuration. Open Reset agent context and choose Continue with chat history to start a new Session in this conversation.',
+          ACP_RESUME_CONFIGURATION_CHANGED_CODE,
         );
       }
     }
@@ -1847,10 +1862,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: nothing requested leaves OpenCode on its own configuration; a
     // mode puts it on Station's floor for that mode.
     const startApprovalMode =
+      approvalControl === 'engine'
+        ? undefined
+        : acpAppliedApprovalMode(requestedApprovalMode, input.confinement);
+    const startApprovalFloor =
       approvalControl === 'station'
-        ? acpAppliedApprovalMode(requestedApprovalMode, input.confinement)
+        ? acpApprovalFloor(startApprovalMode)
         : undefined;
-    const startApprovalFloor = acpApprovalFloor(startApprovalMode);
     if (startApprovalFloor) {
       const preflight = this.startPreflights.get(input.threadId);
       this.startPreflights.delete(input.threadId);
@@ -1966,7 +1984,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     const tmpDir = engineSessionTmpDir(input.threadId);
     // Shared by relaunches: the start's failure quotes whichever launch spoke last.
     const stderrTail = createStderrTail();
-    const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
+    const launchProcess = (
+      floor: OpenCodeApprovalFloor | undefined,
+      openCode2: boolean,
+    ) =>
       processFactory({
         command: config.command,
         args: config.args,
@@ -1986,7 +2007,7 @@ export class AcpAdapter implements ProviderAdapterShape {
               },
             }
           : {}),
-        ...(floor
+        ...(floor && !openCode2
           ? {
               spawnEnv: (env: NodeJS.ProcessEnv) =>
                 withStationOpenCodeApprovalConfig(env, floor),
@@ -2016,8 +2037,15 @@ export class AcpAdapter implements ProviderAdapterShape {
     // process exits while it is still this session's current process and no
     // relaunch is starting its replacement (which shares the folder; a
     // relaunch swaps `record.process` before destroying the old one).
-    const launch = (floor: OpenCodeApprovalFloor | undefined) => {
-      const engine = launchProcess(floor);
+    const launch = async (floor: OpenCodeApprovalFloor | undefined) => {
+      const openCode2 =
+        approvalControl === 'station' &&
+        (await this.openCodeLaunchVersion(config.command))?.major === 2;
+      if (openCode2 && floor === 'confined')
+        throw new ApprovalGovernanceRefusedError(
+          openCodeAcpApprovalUnsupportedReason('2.x'),
+        );
+      const engine = launchProcess(floor, openCode2);
       (
         engine as { once?: (event: string, listener: () => void) => unknown }
       ).once?.('exit', () => {
@@ -2046,7 +2074,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
       return engine;
     };
-    const acpProcess = launch(startApprovalFloor);
+    const acpProcess = await launch(startApprovalFloor);
     record.process = acpProcess;
     record.relaunch = launch;
     let settleStart!: () => void;
@@ -3170,6 +3198,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    const configured = (await this.connections()).some(
+      (connection) => connection.id === record.connectionId,
+    );
+    if (
+      !configured ||
+      this.sessions.get(input.threadId) !== record ||
+      record.stopping
+    ) {
+      throw new SendTurnRefusedError(
+        'This engine is disconnected. Continue with another agent.',
+        'session_gone',
+      );
+    }
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
     // retryably rather than racing the start.
@@ -3226,7 +3267,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const turnApprovalMode = readApprovalMode(input.modelOptions);
     let approvalTakeoverFailed = false;
     if (turnApprovalMode) {
-      if (record.approvalControl !== 'station') {
+      if (record.approvalControl === 'engine') {
         throw new SendTurnRefusedError(
           ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
           'input_unsupported',
@@ -3238,7 +3279,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
       // Station takes over from the engine's own configuration, or moves
       // between floors: relaunch on the floor and resume the same session.
-      const floor = acpApprovalFloor(applied);
+      const floor =
+        record.approvalControl === 'station'
+          ? acpApprovalFloor(applied)
+          : undefined;
       const switched: { ok: true } | { ok: false; reason: string } =
         floor === record.approvalFloor
           ? { ok: true }
@@ -3309,26 +3353,33 @@ export class AcpAdapter implements ProviderAdapterShape {
         governedModeRefusal(requestedMode),
       );
     }
-    if (requestedMode && requestedMode !== record.currentModeId) {
-      const catalog = turnCatalog;
-      if (catalog.modes.length === 0) {
-        throw new Error(
-          `ACP mode option unavailable: this session did not advertise a session mode.`,
+    if (requestedMode && requestedMode !== turnCatalog.currentModeId) {
+      if (turnCatalog.modes.length === 0) {
+        throw new SendTurnRefusedError(
+          'ACP mode option unavailable: this session did not advertise a session mode.',
+          'input_unsupported',
         );
       }
-      const appliedMode = await applyAdvertisedAcpSessionMode(
-        record.process,
-        { ...catalog, currentModeId: record.currentModeId },
-        requestedMode,
-        record.connectionId,
-      );
-      record.currentModeId = appliedMode.currentModeId;
-      record.acpModeCatalog = {
-        ...catalog,
-        currentModeId: appliedMode.currentModeId,
-      };
-      if (appliedMode.configOptions) {
-        record.configOptions = appliedMode.configOptions;
+      try {
+        const appliedMode = await applyAdvertisedAcpSessionMode(
+          record.process,
+          turnCatalog,
+          requestedMode,
+          record.connectionId,
+        );
+        record.currentModeId = appliedMode.currentModeId;
+        record.acpModeCatalog = {
+          ...turnCatalog,
+          currentModeId: appliedMode.currentModeId,
+        };
+        if (appliedMode.configOptions) {
+          record.configOptions = appliedMode.configOptions;
+        }
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          errorMessage(error),
+          'input_unsupported',
+        );
       }
     }
     const turnEffort = requestedAcpEffort(input.modelOptions);
@@ -3349,6 +3400,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
+    if (record.stopping || this.sessions.get(input.threadId) !== record)
+      throw new SendTurnRefusedError(
+        'This ACP session has stopped.',
+        'unavailable',
+      );
     // No rewind can have begun meanwhile: it refuses while a send prepares.
     if (record.activeTurnId)
       throw new SendTurnRefusedError(
@@ -3380,6 +3436,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.turnErrorNotificationsSuppressed =
       (record.quarantinedTurnIds?.size ?? 0) > 0;
 
+    const observedMode = record.acpModeCatalog?.currentModeId;
+    if (requestedMode && observedMode) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.engine-mode-observed',
+        modeId: observedMode,
+      });
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -3574,6 +3641,24 @@ export class AcpAdapter implements ProviderAdapterShape {
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }
 
+  sessionDurability(threadId: string) {
+    const record = this.sessions.get(threadId);
+    if (!record) return undefined;
+    const channel = resolveAcpSteerChannel(record.process.initResult).channel;
+    return channel === 'cancel-reprompt' ||
+      record.steerFallbackObserved ||
+      (channel === 'run-steer' && !record.acpActiveRunId)
+      ? ACP_ENGINE_DURABILITY
+      : {
+          ...ACP_ENGINE_DURABILITY,
+          steerPlacement: {
+            state: 'native' as const,
+            boundary: 'engine-defined' as const,
+            detail: 'Additional input uses the live engine steering channel.',
+          },
+        };
+  }
+
   async steerTurn(
     threadId: string,
     input: string,
@@ -3587,21 +3672,36 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (!text) {
       throw new Error('Steer input is empty.');
     }
-    const native = await this.tryNativeAcpSteer(record, threadId, turnId, text);
-    if (!native) {
-      await this.steerByCancelReprompt(record, threadId, turnId, text);
+    if (record.steering)
+      throw new SendTurnRefusedError(
+        'A steer is already being applied.',
+        'busy',
+      );
+    record.steering = true;
+    try {
+      const native = await this.tryNativeAcpSteer(
+        record,
+        threadId,
+        turnId,
+        text,
+      );
+      if (!native) {
+        await this.steerByCancelReprompt(record, threadId, turnId, text);
+      }
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        turnId,
+        method: 'turn.started',
+        prompt: text,
+        inputKind: 'steer',
+        ...(native ? {} : { steerInterruptedRun: true as const }),
+      });
+    } finally {
+      record.steering = false;
     }
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      method: 'turn.started',
-      prompt: text,
-      inputKind: 'steer',
-      ...(native ? {} : { steerInterruptedRun: true as const }),
-    });
   }
 
   async respondToRequest(
@@ -4809,7 +4909,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           outcome: mapAcpDecisionToOutcome('decline', params.options),
         };
       }
+      let guardianReason: string | undefined;
       if (toolName && record.preToolPolicy) {
+        const turnId = record.activeTurnId;
         const decision = await record.preToolPolicy(
           {
             toolName,
@@ -4827,6 +4929,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             // ACP names are reported by the external process. Keep the raw
             // name authoritative so reserved-name grants remain fail-closed.
             identity: externalPreToolPolicyIdentity(toolName),
+            // Full access: the untrusted-content ask is not raised; a tool
+            // that changes authority still asks (owner decision 2026-11-16).
+            ...(record.approvalMode === 'never' ? { fullAccess: true } : {}),
           },
         );
         // #2947: no Station allow answers a request addressed to a person.
@@ -4852,12 +4957,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           );
         }
         if (decision.behavior === 'deny') {
+          if (
+            decision.staleGeneration &&
+            turnId !== undefined &&
+            this.ownsActiveTurn(record.session.threadId, record, turnId)
+          ) {
+            record.staleToolPolicyTurnId = turnId;
+          }
           return {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        if (decision.behavior === 'ask' && decision.required)
+        if (decision.behavior === 'ask' && decision.required) {
           needsPerson = true;
+          guardianReason = decision.guardianReason;
+        }
         // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
@@ -4885,10 +4999,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       // offers no allow option falls through to the prompt.
       if (
         !needsPerson &&
+        !record.delegation?.denyApprovals &&
         acpApprovalModeAllows(record.approvalMode, params.toolCall?.kind)
       ) {
-        const allowed = mapAcpDecisionToOutcome('accept', params.options);
-        if (allowed.outcome !== 'cancelled') return { outcome: allowed };
+        const once = params.options.find(
+          (option) => option.kind === 'allow_once',
+        );
+        if (once)
+          return { outcome: { outcome: 'selected', optionId: once.optionId } };
       }
 
       // Tool-level session grant: "Allow for this session" covers every later
@@ -4938,6 +5056,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         method: 'request.opened',
         requestType: 'approval',
         title: params.toolCall?.title ?? 'Allow tool call',
+        ...(guardianReason ? { guardianReason } : {}),
         payload: {
           toolCallId: params.toolCall?.toolCallId,
           // The programmatic name, when the engine reports one: it is what
@@ -5043,13 +5162,34 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
     const cwd = record.session.cwd ?? '';
     const previous = record.process;
-    const next = record.relaunch(floor);
+    const next = await record.relaunch(floor);
+    if (
+      record.stopping ||
+      this.sessions.get(record.session.threadId) !== record ||
+      !this.isCurrentGeneration(record.session.threadId, record.generation)
+    ) {
+      await next.destroy();
+      return {
+        ok: false,
+        reason: 'the session stopped while preparing its replacement',
+      };
+    }
     let configOptions: unknown[] | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     record.relaunching = true;
     try {
       const establish = (async () => {
+        if (
+          record.stopping ||
+          this.sessions.get(record.session.threadId) !== record
+        )
+          throw new ProviderTurnEndedError();
         await next.start();
+        if (
+          record.stopping ||
+          this.sessions.get(record.session.threadId) !== record
+        )
+          throw new ProviderTurnEndedError();
         if (canResume) {
           const resumed = await next.resumeSession(
             cursor.acpSessionId,
@@ -5128,6 +5268,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       record.exitedDuringRelaunch = false;
     }
 
+    if (
+      record.stopping ||
+      this.sessions.get(record.session.threadId) !== record
+    ) {
+      await next.destroy();
+      return {
+        ok: false,
+        reason: 'the session stopped while resuming its replacement',
+      };
+    }
     record.process = next;
     record.approvalFloor = floor;
     // The replaced process ran the open wake; the new one never ends it.
@@ -5139,6 +5289,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         error,
       );
     });
+    // Mode observations belong to the process that reported them.
+    if (record.acpModeCatalog)
+      record.acpModeCatalog = {
+        ...record.acpModeCatalog,
+        currentModeId: undefined,
+      };
     if (configOptions) {
       record.configOptions = configOptions;
       try {
@@ -5146,6 +5302,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // governs, it runs build unless the chat chose plan.
         if (floor && !record.currentModeId) record.currentModeId = 'build';
         const catalog = advertisedAcpSessionModes({ configOptions });
+        if (catalog.modes.length > 0) record.acpModeCatalog = catalog;
         if (
           record.currentModeId &&
           catalog.currentModeId !== record.currentModeId &&
@@ -5157,6 +5314,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             record.currentModeId,
             record.connectionId,
           );
+          record.acpModeCatalog = {
+            ...catalog,
+            currentModeId: applied.currentModeId,
+          };
           if (applied.configOptions)
             record.configOptions = applied.configOptions;
         }
@@ -5208,6 +5369,21 @@ export class AcpAdapter implements ProviderAdapterShape {
     return code.length > 0 ? openCodeProjectCodeRefusal(code) : undefined;
   }
 
+  private openCodeLaunchCommand(command: string): string {
+    return managedEngineLaunch('acp', { command, args: [], env: {} }, 'user')
+      .command;
+  }
+
+  private async openCodeLaunchVersion(command: string) {
+    const resolved = await findCliBinaryAsync(
+      this.openCodeLaunchCommand(command),
+    );
+    if (!resolved) return undefined;
+    return (this.options.probeOpenCodeVersion ?? openCodeVersionProbe.probe)(
+      resolved,
+    );
+  }
+
   private async verifyApprovalFloor(
     command: string,
     cwd: string,
@@ -5217,37 +5393,28 @@ export class AcpAdapter implements ProviderAdapterShape {
     // since OpenCode imports such code as it loads its configuration.
     const refusal = await this.projectCodeRefusal(cwd, floor);
     if (refusal) return { ok: false, reason: refusal };
+    const version = await this.openCodeLaunchVersion(command);
+    if (version && openCodeServesNatively(version)) {
+      // Host never-ask answers the asks OpenCode makes. It does not promise
+      // to force an ask or override the engine's denies, so saved allows do
+      // not invalidate it. Confined modes still require verifiable rules.
+      if (version.major === 2 && floor === 'full') return { ok: true };
+      return {
+        ok: false,
+        reason: openCodeAcpApprovalUnsupportedReason(version.text),
+      };
+    }
     let env: NodeJS.ProcessEnv;
     try {
       env = withStationOpenCodeApprovalConfig(await augmentedSpawnEnv(), floor);
     } catch (error) {
       return { ok: false, reason: errorMessage(error) };
     }
-    // The binary a launch would run: a managed policy's `acp` pin replaces
-    // the connection's command (`acp-process.ts`), so the version and the
-    // rules are read from that one.
-    const launched = managedEngineLaunch(
-      'acp',
-      { command, args: [], env: {} },
-      'user',
-    ).command;
-    const resolved = await findCliBinaryAsync(launched);
-    if (!resolved) {
-      return { ok: false, reason: `${launched} could not be found` };
-    }
-    // Ruling R1: Station's check reads 1.x's `debug agent <name>`, which
-    // 2.x does not have, and 2.x keeps saved approvals the check cannot
-    // see. Over ACP Station does not govern a 2.x OpenCode; its own
-    // approvals still apply when Station's mode is not asked for.
-    const version = await (
-      this.options.probeOpenCodeVersion ?? openCodeVersionProbe.probe
-    )(resolved);
-    if (version && openCodeServesNatively(version)) {
-      return {
-        ok: false,
-        reason: openCodeAcpApprovalUnsupportedReason(version.text),
-      };
-    }
+    const resolved = await findCliBinaryAsync(
+      this.openCodeLaunchCommand(command),
+    );
+    if (!resolved)
+      return { ok: false, reason: `${command} could not be found` };
     const reader = (this.options.readOpenCodeAgents ?? openCodeAgentReader)({
       command: resolved,
       cwd,
@@ -6146,13 +6313,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       this.publish({ ...base, method: 'turn.aborted', reason: 'interrupted' });
       record.session.status = 'ready';
     } else {
-      this.publish({
-        ...base,
-        method: 'turn.completed',
-        ...mapAcpStopReasonToTurnCompletion(
-          (stopReason ?? 'end_turn') as StopReason,
+      this.publish(
+        interpretAcpTurnStop(
+          {
+            ...base,
+            method: 'turn.completed',
+            ...mapAcpStopReasonToTurnCompletion(stopReason),
+          },
+          'acp-transport',
         ),
-      });
+      );
       record.session.status = 'ready';
     }
     record.session.updatedAt = new Date().toISOString();
@@ -6287,6 +6457,36 @@ export class AcpAdapter implements ProviderAdapterShape {
     );
   }
 
+  private failStaleToolPolicyTurn(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+  ): boolean {
+    if (record.staleToolPolicyTurnId !== turnId) return false;
+    record.staleToolPolicyTurnId = undefined;
+    record.turnErrorNotifications = undefined;
+    this.settleRequestsAtPromptEnd(record, threadId, turnId);
+    this.settlePromptEndState(record, threadId, turnId, 'unresolved');
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      ...this.turnOrigin(record, turnId),
+      method: 'runtime.error',
+      ...providerFailure('permission_denied'),
+      severity: 'error',
+      code: 'stale_generation',
+      message:
+        'Station blocked this tool because the Agent configuration changed. Start a new chat to retry with the current configuration.',
+    } satisfies ProviderRuntimeErrorEvent);
+    record.session.status = 'error';
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
+    return true;
+  }
+
   private bindPromptSettlement(
     record: AcpSessionRecord,
     threadId: string,
@@ -6294,6 +6494,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     promptEpoch: number,
     prompt: Promise<PromptResponse>,
   ): void {
+    record.promptSettled = prompt.then(
+      () => undefined,
+      () => undefined,
+    );
     prompt
       .then((response) => {
         // archive#4084: unquarantine unconditionally —
@@ -6328,6 +6532,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           });
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        if (
+          response.stopReason !== 'cancelled' &&
+          this.failStaleToolPolicyTurn(record, threadId, turnId)
+        )
+          return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.settlePromptEndState(
@@ -6336,16 +6545,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           turnId,
           response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
         );
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          turnId,
-          ...this.turnOrigin(record, turnId),
-          method: 'turn.completed',
-          ...mapAcpStopReasonToTurnCompletion(response.stopReason),
-        });
+        this.publish(
+          interpretAcpTurnStop(
+            {
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId,
+              createdAt: new Date().toISOString(),
+              turnId,
+              ...this.turnOrigin(record, turnId),
+              method: 'turn.completed',
+              ...mapAcpStopReasonToTurnCompletion(response.stopReason),
+            },
+            'acp-transport',
+          ),
+        );
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();
         record.activeTurnId = undefined;
@@ -6354,6 +6568,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.quarantinedTurnIds?.delete(turnId);
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        if (this.failStaleToolPolicyTurn(record, threadId, turnId)) return;
         // #2265: a classified provider-plan quota exhaustion publishes
         // fixed safe copy plus bounded facts — never the engine's raw
         // message, and never the co-reported notification text (which is
@@ -6396,8 +6611,29 @@ export class AcpAdapter implements ProviderAdapterShape {
             code: ENGINE_SIGN_IN_REQUIRED_CODE,
             message: `${record.engineName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
+        } else if (
+          error instanceof Error &&
+          !(error instanceof RequestError) &&
+          error.message === 'ACP connection closed'
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'runtime.error',
+            ...providerFailureForCode(ACP_TRANSPORT_CLOSED_CODE),
+            severity: 'error',
+            code: ACP_TRANSPORT_CLOSED_CODE,
+            message: ACP_TRANSPORT_CLOSED_GUIDANCE,
+          } satisfies ProviderRuntimeErrorEvent);
         } else {
-          const baseMessage = acpFailureMessage(error);
+          const delegated = record.recoveryStart.metadata?.taskId === threadId;
+          const baseMessage = delegated
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : acpFailureMessage(error);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -6408,9 +6644,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'runtime.error',
             ...providerFailure('provider_error'),
             severity: 'error',
-            message: coReportedCause
-              ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-              : baseMessage,
+            message:
+              !delegated && coReportedCause
+                ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+                : baseMessage,
           } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';
@@ -6503,21 +6740,54 @@ export class AcpAdapter implements ProviderAdapterShape {
     turnId: string,
     text: string,
   ): Promise<void> {
+    record.steerFallbackObserved = true;
+    const previousPrompt = record.promptSettled;
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
     this.settlePromptEndState(record, threadId, turnId, 'cancelled');
-    await record.process.cancel();
-    if (record.activeTurnId !== turnId) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        (async () => {
+          await record.process.cancel();
+          await previousPrompt;
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'The engine did not finish cancelling the active prompt.',
+                ),
+              ),
+            10_000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      // This epoch has superseded the old prompt: stop owns its terminal
+      // outcome when cancellation cannot be confirmed, never a replacement.
+      await this.stopSession(threadId);
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (
+      record.activeTurnId !== turnId ||
+      record.stopping ||
+      this.sessions.get(threadId) !== record
+    ) {
       throw new ProviderTurnEndedError();
     }
+    const continuation = `Continue the current task from where you stopped, taking this additional user instruction into account. If it changes the task, follow the new direction.\n\n${text}`;
     this.bindPromptSettlement(
       record,
       threadId,
       turnId,
       promptEpoch,
-      record.process.prompt([{ type: 'text', text }]),
+      record.process.prompt([{ type: 'text', text: continuation }]),
     );
   }
 }

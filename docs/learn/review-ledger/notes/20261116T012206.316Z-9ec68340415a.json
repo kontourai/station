@@ -1,0 +1,7 @@
+{
+  "revision": "fc213e17fcbb3b28883d2086f1fe277eb87a1fb2",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed the OpenCode bullet for fc213e17fc: replaced the overclaiming opencode-next.db sentence. Station now reads an opencode-next.db by its own layout, lists a session OpenCode 2.x copied from it once (from the 2.x database), and skips only a preview-format file it cannot read beside a 2.x store (OpenCode's importNextDatabase/isNextDatabase in v1-migration.bun.ts). Added the one warning for a compaction still unfinished after 15 minutes. Checked by the v2 source tests.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

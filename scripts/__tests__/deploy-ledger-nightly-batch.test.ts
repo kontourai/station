@@ -16,6 +16,7 @@ import { commitLedgerWithRetry } from '../lib/deploy-ledger-commit.mjs';
 import { evaluateDocumentationReview } from '../lib/documentation-review.mjs';
 import { GENERATED_LEDGER_SUBJECT } from '../normalize-deploy-ledger-head.mjs';
 import { ledgerEquivalentSources } from '../qualification-evidence.mjs';
+import { evaluateIf } from './helpers/github-if.js';
 
 /**
  * One deploy-ledger commit per Nightly run. Every ledger push to main
@@ -99,62 +100,6 @@ const nativeRecordScript = () =>
     workflow('nightly-native-cohort.yml').jobs['record-native-completion'],
     'Record durable completion only after the verified final receipt',
   );
-/**
- * A GitHub `if:` as the runner evaluates it. An expression that calls none
- * of always(), success(), failure() or cancelled() is implicitly ANDed with
- * success(): every need (a job) or every earlier step (a step) succeeded and
- * the run is not cancelled. Without that, a guard that lost its always()
- * reads as if it still had one.
- */
-function evaluateIf(
-  condition: string,
-  {
-    needs = {},
-    steps = {},
-    priorSuccess,
-    cancelled = false,
-  }: {
-    needs?: Record<
-      string,
-      { result: string; outputs?: Record<string, string> }
-    >;
-    steps?: Record<string, { outputs?: Record<string, string> }>;
-    priorSuccess?: boolean;
-    cancelled?: boolean;
-  },
-): boolean {
-  const inner = condition
-    .trim()
-    .replace(/^\$\{\{\s*/, '')
-    .replace(/\s*\}\}$/, '');
-  const succeeded =
-    priorSuccess ??
-    Object.values(needs).every((need) => need.result === 'success');
-  const value = Boolean(
-    Function(
-      'needs',
-      'steps',
-      'github',
-      'always',
-      'success',
-      'failure',
-      'cancelled',
-      `return (${inner.replace(/needs\.([\w-]+)/g, 'needs["$1"]').replace(/steps\.([\w-]+)/g, 'steps["$1"]')})`,
-    )(
-      needs,
-      steps,
-      { ref: 'refs/heads/main', sha: 'a'.repeat(40), event_name: 'schedule' },
-      () => true,
-      () => succeeded && !cancelled,
-      () => !succeeded,
-      () => cancelled,
-    ),
-  );
-  return /\b(?:always|success|failure|cancelled)\(\)/.test(inner)
-    ? value
-    : value && succeeded && !cancelled;
-}
-
 /** Whether the cohort's marker step runs after the ledger step ended so. */
 function markerRuns(ledgerExit: number | null, output: string) {
   const marker = (

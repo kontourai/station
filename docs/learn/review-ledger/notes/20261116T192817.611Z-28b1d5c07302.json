@@ -1,0 +1,9 @@
+{
+  "revision": "cb32c4eff0ffcc72bd39ae0778df90950968e6cb",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md gained a Project lifecycle section; pages citing it reference other routes whose text is unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md gained a Project lifecycle section; pages citing it reference other routes whose text is unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

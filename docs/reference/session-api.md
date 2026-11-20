@@ -55,7 +55,10 @@ Provider handoffs retain the Conversation ID and append linked execution
 Sessions. Returning to a compatible built-in engine can resume its earlier
 native thread with a bounded seed of the intervening conversation, after the
 previous engine confirms retirement. Unsupported or unbound history uses
-bounded replay. An explicit fork creates a separate Conversation.
+bounded replay. An explicit fork creates a separate Conversation. A handoff
+while the current Session still has a turn running, or has not settled, is
+refused (`409`) with `code: "conversation_handoff_predecessor_busy"`
+(`CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE`).
 
 An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of
@@ -100,8 +103,10 @@ identity with context sent to its predecessor. Context-start consumption
 remains a separate boundary; ordinary context replacement and fork delivery are
 not qualified by this native-return receipt.
 
-New seed-backed ordinary continuations and `continue-from-history` context starts
-also pin their exact text and source cutoffs before the replacement provider
+A `continue-from-history` context boundary starts a fresh engine Session and
+carries the chat text. It skips native resume even when the predecessor
+recorded a cursor. Both these starts and seed-backed ordinary continuations
+pin their exact text and source cutoffs before the replacement provider
 starts. A seed reads each message at its full size, including a reply Station
 stored out of line, so a long reply is seeded whole or disclosed as omitted,
 never cut to its preview. Retries recheck source access and use that pin, even if a cursor becomes
@@ -342,7 +347,8 @@ the operator's `coding:exec` grant to name one (one of the owner's own devices
 with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
-`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
+`/conversations/:conversationId/handoff`, `/conversations/:conversationId/staged-handoff`
+and `POST /api/orchestration/delegations`;
 the other routes the rule covers are listed in the [API reference](api.md#choosing-a-working-folder).
 The operator credential is unaffected, and so is the roundtrip script at the end
 of this page when it runs with the operator credential (a paired device's
@@ -410,14 +416,13 @@ affects new Sessions; continuing a qualified retained Session still requires
 current authorization for its recorded directory. The receipt itself grants no
 authority.
 
-A station-control call to `delegate_task` or `send_message` from a delegated
-child is refused before anything starts: `POST /api/orchestration/delegations`
-and `/chat`, `/chat/delegated` and `/chat/background` answer `403` with
-`delegated_tool_blocked`, ahead of the delegation depth limit and on every
-engine whose call carries a verified station-control caller. The decision uses
-the calling Session's own recorded delegation context, so a request body cannot
-re-allow it. See [tool-policy delivery](../conformance/tool-policy-delivery.md)
-for the callers this covers.
+Station derives delegation lineage from the verified calling Session. A child
+can call `delegate_task` to start another child in its current Project on
+this Station, subject to its inherited tool and depth limits. The request never
+chooses its own parent or root. A child calling `send_message` still receives
+`403` with `delegated_tool_blocked`. A child at its depth limit receives
+`delegation_depth_exceeded` if it tries to delegate. See [tool-policy
+delivery](../conformance/tool-policy-delivery.md).
 
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is
@@ -539,17 +544,17 @@ Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
 of the conversation. Known original input is compared before replay or a new
-provider effect: changed input returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
-can replay a started turn (`providerTurnId`); authorized staged attachments
-are bound to that turn. Staged bytes are authorized against the earlier claim's
-Session and read without binding before digest comparison, including retained,
-dead-invoked and reclaimable claims. The production continuation uses the caller's
-read authority across every materialized Session; an unavailable or unreadable
-lineage fails closed before key inspection or staged hydration. The same rule
-applies before inbox admission and to the recorded sender's inspections during
-placement and abandoned-start recovery; an unavailable result is never an empty
-ledger or permission to send. Only after a safe start or replay is chosen
-are they bound to its actual Session; tombstones retain no input proof.
+provider effect. Changed input returns `client_turn_input_conflict`. An exact
+staged retry can replay a started turn (`providerTurnId`) without reading its
+bytes. The turn claim identifies the authenticated uploader and ordered refs.
+Different refs conflict even if the bytes are the same. Unverifiable legacy
+turns cannot acknowledge a staged retry. Station binds the refs only for a
+fresh provider send or the first queue submission. The production continuation
+uses the caller's read authority across every materialized Session. An
+unavailable or unreadable lineage fails closed before key inspection or staged
+hydration. The same rule applies before inbox admission and to the recorded
+sender's inspections during placement and abandoned-start recovery. Retention
+tombstones preserve the key without preserving input proof.
 An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
@@ -624,7 +629,9 @@ refusal; a request alone does not prove storage.
   reference is accepted for the held entry (released if it is not queued), the
   entry lists them as `attachments` descriptors (kind, name, MIME type, size;
   never bytes), and placement sends them with the message. The same key with
-  different files is a different message. Without the flag a busy send with
+  different file bytes or different staged refs is a different message. An
+  older inbox entry without exact stage identity cannot acknowledge a staged
+  retry. Without the flag a busy send with
   files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
@@ -730,10 +737,16 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native Claude/Codex/Muse
-  placement is engine-defined and disclosed. Where Station owns the loop,
-  input waits for its next observed post-tool boundary; otherwise it waits
-  for the next turn boundary. The current VoltAgent loop observes the boundary
+- **Steer:** Station records the active Session and the turn's opening event
+  with the text before handoff. If the head has no active turn, admission
+  answers `inbox_stale_head`. If the target ends before placement, the entry
+  is refused with `steer_turn_ended`. Native placement is
+  engine-defined and disclosed, including OpenCode and ACP sessions whose
+  handshake selects a native channel. Other ACP sessions can interrupt the
+  active prompt, wait for its terminal answer, and re-prompt with a continuation
+  instruction on the same turn. Where Station owns the loop,
+  input waits for its next observed post-tool boundary in that turn.
+  The current VoltAgent loop observes the boundary
   after the preceding step's tools settle. Prompt injection leaves the entry
   claimed. It becomes sent only after the carrying model request returns and
   its user message and steer event are recorded durably. A crash before that
@@ -820,7 +833,9 @@ execution default on the destination Station. It selects the engine connection
 and its account, never a caller-provided URL or credential. The profile's
 instructions, skills and tool policy must be deliverable; missing delivery is a
 refusal rather than a substituted profile. The optional fingerprint fences the
-loaded authored definition, excluding execution and display provenance. It does
+loaded authored definition, excluding execution and display provenance. The
+reserved built-in names `Station` and `Station Assistant` have one canonical
+fingerprint; genuine name or prompt edits still change it. It does
 not verify installed tool or skill contents. An older string-only receiver
 rejects this object instead of silently ignoring an engine selector.
 
@@ -829,6 +844,29 @@ binding and expected fingerprint. Continuation reconstructs them from persisted
 session metadata. Changing the engine on a bound conversation requires an
 explicit handoff; omitting the override on that handoff restores the authored
 binding and model default.
+
+### Send a staged Agent change
+
+With **Stage chat Agent changes** enabled, submit the first message with
+`POST /api/orchestration/conversations/:conversationId/staged-handoff`. Supply
+the ordinary handoff target and idempotency key, `target.expectedEngine`, and
+`stagedHandoff: { expectedCurrentSessionId, contextPolicy: "continue-from-history" }`.
+A selected model travels as `target.model.override` on that exact connection.
+A receiver-owned engine default with its own engine connection uses the Agent
+selector for engine changes. General-purpose profiles can use a compatible
+execution override under the same profile checks as other handoffs.
+
+Station requires an idle, current source Session and refuses while a follow-up
+is queued. A successful Send starts a fresh Session with bounded authorized
+conversation text and the submitted first message. Prior attachment bytes,
+engine-native cursors and engine-local tool state stay with the source.
+The message can include attachments supported by the selected engine. If the
+response is lost, check the handoff status using the same key before trying
+another Send. A same-key retry must identify the same request.
+A conversation owner can withdraw a request that has no reservation with
+`DELETE /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey`.
+The withdrawal is durable. A late request under the same key cannot reserve
+a successor. Station refuses withdrawal after the reservation exists.
 
 The optional conversation-open `execution.environment: { kind: "current" }`
 requires the authorized current child's persisted start Environment identity to
@@ -885,8 +923,9 @@ Station's, the chat runs an agent Station does not govern
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)), or
 the project's OpenCode configuration declares code OpenCode runs at launch
 ([what the modes cannot govern](../guides/acp.md#what-ask-and-auto-cannot-govern-on-opencode)).
-On OpenCode 2 it is also refused when the chat runs over ACP, where Station
-cannot verify OpenCode 2's rules ([OpenCode 2 and OpenCode 1](../guides/acp.md#opencode-2-and-opencode-1)).
+On OpenCode 2 over ACP, confined approval modes are refused because Station
+cannot verify saved approvals; host Never ask is supported without a launch
+overlay ([OpenCode 2 and OpenCode 1](../guides/acp.md#opencode-2-and-opencode-1)).
 On the `opencode` engine's native transport, it is refused when OpenCode has
 saved approvals that would let a governed action run without asking
 ([OpenCode native transport](../decisions/opencode-native-transport.md#governance)).
@@ -1376,7 +1415,7 @@ The remaining controls are defined by
   reconnect/list reads and the client's safety poll recover a missed notice.
 
 The other lifecycle controls are `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target?, continueWhileSourceActive? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
 `alreadyAdopted: true`; `target` is described below),
@@ -1384,7 +1423,57 @@ Continue intent and returns the existing continuation with
 and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
-process. The engine capability matrix declares independent continuation support;
+process.
+
+When Station builds a conversation index for older events, it picks the newest
+text value for owner, Agent, and Project metadata. Startup can also recover a
+missing Project label in a bounded batch of already-indexed conversations.
+Existing owner and Agent bindings are kept during that Project-label repair.
+
+On cold follow, Station reads at most 64 recent configuration events to find
+the attachment's prior Project attribution. A full window without a claim
+leaves that attribution unknown. A new Project observation can record a
+recovery tied to the newest configuration in the window. An unattributed
+observation alone leaves a possibly older Project label in place. The follower
+advances its remembered attribution only after the configuration event commits.
+
+A read-only attached session's summary carries `attachedSourceActivity`
+(`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time
+by [`deriveAttachedSourceActivity`](../../src-server/services/orchestration/attached-source-activity.ts)
+from what Station observed of the transcript. `active` means the latest turn has no
+completion and the session was written within
+`ATTACHED_SOURCE_ACTIVE_WINDOW_MS` (five minutes). `quiet` means a turn is open
+but nothing was written for longer than that, so it was interrupted, crashed, or is running a
+silent tool; Station cannot tell which. `idle` means the latest turn ended.
+`lastWriteAt` is the later of the newest imported event's source time and
+`attachedSource.lastWriteAt`, the newest write the source itself reported
+(recorded in 30-second steps), which covers writes that produce no event:
+
+- Claude Code: the transcript's modification time and, while that changed in
+  the last two hours, the newest `<session>/subagents/*.jsonl`. A directory
+  with more than 1024 transcripts or 4096 entries is not read at all, and a
+  scan is reused for up to 25 seconds while no subagent is added, so an append
+  can be seen that much later.
+- OpenCode: the session row, the messages read, and the parts of a message
+  still being written (`time_updated`).
+- Codex and Grok report none; their imported records' times are used.
+
+A write dated more than `ATTACHED_SOURCE_CLOCK_SKEW_MS` (one minute) after the
+read is not counted. Station does not
+read process state: Claude Code holds no handle on its transcript, and a Codex
+app-server holds every loaded rollout open whether it is working or not.
+
+`adoptSession` re-derives this from the same projection before reserving. When
+it reads `active`, the command is refused with HTTP 409,
+`code: 'continuation_source_active'`, `kind: 'busy'`, `retryable: true`, and
+nothing is created. The same command with `continueWhileSourceActive: true`
+proceeds. A retry that names an existing continuation's idempotency key still
+returns that continuation. Continuing never stops the original: the child is an
+independent native session that misses whatever the original writes later.
+Station has no "take over" action because it does not own, and cannot
+reliably identify, the process that writes the transcript.
+
+The engine capability matrix declares independent continuation support;
 known unsupported and unknown engines keep the conversation's message box
 disabled with a reason. The adoption owner enforces the same declaration before
 invoking an adapter, then checks current source, Project, ownership, and runtime
@@ -1395,6 +1484,32 @@ Codex rollout observation reads the local `CODEX_HOME/sessions` directory
 (`~/.codex/sessions` by default) through bounded, read-only pages. It imports
 supported turn boundaries, user messages, assistant text, public reasoning
 summaries, tool activity, cumulative token snapshots, and compaction markers.
+Claude transcript discovery
+([`claude-transcript-session-source.ts`](../../src-server/providers/sessions/claude-transcript-session-source.ts))
+lists `projects/<project>/<session>.jsonl` under the Claude config home and
+keeps the 128 most recently modified transcripts. Its traversal bound (4,096
+by default) charges each folder opened and each entry statted; entries skipped
+by name cost no system call and count against a separate bound four times as
+large. Passing either bound ends the pass as `candidate_limit`, even when
+some transcripts it reached were refused. Within the
+bound, project folders are visited in order of the newer of their own
+modification time and the newest transcript the previous pass saw in them. It does not descend into a
+session's own folder: the `subagents/` transcripts there repeat the parent's
+session ID and are part of that session. Current Claude Code starts a
+transcript with title, owner and queue records that carry no working
+directory. Discovery reads at most 16 leading records and 4 MiB of each file,
+skipping any record over the line limit (a pasted image can make the first
+prompt megabytes long), to reach the first one that names both the session
+and its working directory. The session's creation time is the earliest
+timestamp among those records, normally when its first prompt was queued.
+Leading records that name different sessions, an identity past either bound,
+or a sidechain record in a session's place refuse the file. A file's result
+is reused until it is replaced, shrinks, or, for a refusal, changes size.
+When a pass finds transcripts but accepts none, the source logs one warning
+naming the outcome and counting refusals by reason, and logs again only when that outcome changes or after a
+pass accepts a session. On a home larger than the bound, a folder the
+previous pass did not reach is ranked by its own modification time only, so a
+long-running session in it can stay outside the bound.
 Every discovered transcript enters the shared follower
 ([`AttachedSessionFollowService`](../../src-server/services/orchestration/attached-session-follow-service.ts)),
 which attributes it with `resolveAttachedSessionProject`: first a Project whose
@@ -1520,7 +1635,10 @@ reason and offer no retry. The Starter Work launch reports it with
 `retrySafe: false`. An engine that fails its readiness check before
 anything is created answers 400 with `code: 'continuation_engine_not_ready'`,
 `retryable: true` and the engine's readiness report in `error`; the Starter
-Work launch settles it as `failed` with `retrySafe: true`. Other adoption
+Work launch settles it as `failed` with `retrySafe: true`. A source still
+running answers 409 with `code: 'continuation_source_active'` (above); the
+Starter Work launch settles it as `failed` with `retrySafe: true` and the same
+`code`, and `AdoptSessionError.code` carries it in the SDK. Other adoption
 failures keep their retryable answers.
 
 `target` accepts only these two shapes; any other field, such as a path, is
@@ -1648,9 +1766,27 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+the engine's default home directory. Codex observation also reads the homes
+Station runs Codex in ([`configuredEngineHomes`](../../src-server/providers/app-home/credential-profile-env.ts):
+the connection's config home, the legacy app home and every credential-profile
+home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
+own source affinity and thread ids, so continuation resumes in the home the
+rollout was found in, with a credential profile's env overlay applied
+(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation, and so does an app home that is no current profile's, the legacy app home or the connection's config home, such as a deleted profile's).
+A native session id present in two homes is two threads, one per home. Each
+home reads its own newest 128 rollouts, up to 512 in all, default home first.
+An affinity resolves only for a currently configured home; on a miss the home
+list is re-read once, so a continuation right after a restart does not wait
+for discovery. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
-OpenCode sessions have no continuation. See the
+OpenCode sessions have no continuation. With
+`STATION_EXTERNAL_ACP_SESSIONS=1`, the
+[ACP session list source](../../src-server/providers/sessions/acp-session-list-source.ts)
+lists the sessions an ACP connection reports through `session/list`, read by
+the capability probe Station already runs per connection
+([`acp-session-listing.ts`](../../src-server/services/acp/acp-session-listing.ts)).
+It imports no transcript, because `session/load` resumes the session in the
+agent, and ACP declares `externalSessionContinuation: unsupported`. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
@@ -1806,7 +1942,12 @@ that file is the source of truth for shapes, not this doc.
 
 For paging through a live-growing event log without re-fetching everything, use
 `GET /api/orchestration/sessions/:threadId/event-page?afterSequence=<n>&limit=<1-100>`,
-which returns `{ session, events: {sequence, event}[], hasMore, nextSequence }`.
+which returns `{ session, events: {sequence, event}[], hasMore, nextSequence, highWaterSequence }`.
+`sequence` is the thread's own ordinal. Sequences are increasing but need not be
+contiguous, so `session.eventCount` counts events and does not bound a cursor.
+`highWaterSequence` is the thread's highest sequence, read with the page; a
+cursor above it is ahead of the history. Hosts before #5077 omit it; their
+sequences have no gaps, so `session.eventCount` is their high water.
 
 **A polling gotcha:** if you call `/events` immediately after the foreground execution
 endpoint returns, you may see only lifecycle events — the accepted turn may not have
@@ -1832,21 +1973,20 @@ A session is a child of the conversation when its launch names any session of
 the conversation's lineage as its parent:
 
 - by its delegation context (`metadata.delegation.parentConversationId`).
-  When a Claude Code or Codex session calls `delegate_task` through its
-  session-bound station-control (Claude Code's in-process server, Codex's
-  per-session HTTP server), Station derives it from the calling session's own
-  record. For Station's own agent, the runtime attests it from the
-  conversation it ran the tool call in. Neither comes from the request. On a
+  When a Claude Code, Codex or Station-agent session calls `delegate_task`
+  through its session-bound station-control (the in-process server for Claude
+  Code and Station's own agent, Codex's per-session HTTP server or, with its
+  bound-channel preview on, its bound `dynamicTools` channel), Station derives
+  it from the calling session's own record. It never comes from the request.
+  On a
   direct request it is the requester's own claim. A paired-Station dispatch
   record keeps the same value as `metadata.parentConversationId`;
 - otherwise by `metadata.parentTaskId`, which a request may set itself. A
   delegation context naming another conversation always wins over it.
 
-A task launched through a caller-less station-control process (a stdio child
-with no per-session credential, as a Strands-runtime agent uses) carries no
-delegation context. Unless its
-request named `parentTaskId`, it is not found as a child and the total doesn't
-show it as missing.
+A station-control request with no per-session credential is refused before
+it reaches the dispatch route (`station_control_caller_required`), so it
+launches no task.
 
 Tokens: `totalTokens` is input + output as each engine reported them; cache
 reads and writes are listed separately and are not added. `total.tokens`
@@ -1870,7 +2010,9 @@ reserved start metadata key `stationDelegationProvenance` (a request can't
 set it; Station strips any value a caller supplies):
 
 - `caller-derived` (from the calling session's own record) or
-  `runtime-attested` (Station's own runtime vouched for it): the session is
+  `runtime-attested` (Station's own runtime vouched for it; only sessions
+  launched before #2377 slice D, when Station's engine had no session
+  caller, carry it): the session is
   real work of your conversation that runs under another owner. In hosted
   mode that happens when Station can't attribute the dispatch to a bound
   caller (for example an external engine using a delegated-custody Session capability), so the
@@ -2044,11 +2186,38 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   A held stop keeps Resume now. Either answers `not-waiting` for a stop with
   no known reset or one no longer waiting.
 
+- `GET /sessions/:threadId/usage-limit/continue-on` answers `{ profiles }`
+  (`UsageLimitContinueOnOptions`): the enrolled credential profiles
+  (`ref`, optional `label`) a waiting stop may continue on, in enrollment
+  order. It is empty for an engine that cannot apply a profile (Claude Code),
+  a stop that is not waiting, a hosted Station, or while credential-recovery
+  admission is blocked.
+  The answer also carries `stopId`, the waiting stop the accounts are offered
+  for. `POST /sessions/:threadId/usage-limit/continue-on` with
+  `{ "profileRef", "stopId" }`
+  ("Continue on <label>") stages that profile and replays the stopped turn
+  under it, through the same protocol as automatic credential recovery, with
+  this request as the consent the `automatic` policy otherwise gives. The
+  pre-dispatch checks apply first. A `stopId` that is not the waiting stop
+  answers `not-waiting` (a click from an older banner never acts on a newer
+  stop). A profile not currently offered, one that no longer qualifies when
+  staged, or a failure before the replay reaches the engine's send (the
+  account is rolled back and the session restarted on the connection's
+  account) answers `not-switched` and leaves the stop waiting for its reset.
+  If the session cannot be restarted on the connection's account either, it is
+  quarantined and the answer is `retired` with `session-ended` (or
+  `not-waiting` if that retirement could not be written; the stop then retires
+  at its reset, when the pre-dispatch check finds the closed session).
+  A failure after the send was called answers `failed`, and the stop does not
+  resume on its own. Both list or switch this Station's accounts, so they need the
+  `access:manage` pairing scope as well as the Session's own person.
+
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the
 dispatch started; whether the provider accepts it shows later in `recovery`,
 which can still read `failed` if the dispatch is rejected), `failed` (it could
 not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
-(with `reason`), `chosen` (with `choice`) or `not-waiting` (nothing was left
+(with `reason`), `chosen` (with `choice`), `not-switched` (Continue on did
+not switch accounts) or `not-waiting` (nothing was left
 to act on), and `recovery`
 is the projection afterward.
 
@@ -2078,9 +2247,14 @@ authorized like the session's other reads and are never cached
 (`Cache-Control: private, no-store`).
 
 Query: `offset` (message index, default `0`) and `limit` (messages per page,
-`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
-`entries` (prompt and reply text, tool calls, tool results; inline image data
-replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`1`–`50`, default `30`), or `tail=1` for the last `limit` messages (a tail
+read names no offset; `400` otherwise). The response's `data` is a
+`ChildWorkTranscriptPage`: `entries` (prompt and reply text, tool calls, tool
+results; inline image data replaced by a placeholder, then each text cut at
+4,000 characters and flagged), `offset` and `endOffset` (the message indexes
+where the page starts and just past where it ends, so a reader continues from
+`endOffset`; a read from past the end names the end as both), and
+`nextOffset` when another page follows an offset read.
 Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
 only matching IDs; legacy entries without IDs remain readable without assuming
 that adjacent records belong to the same call.

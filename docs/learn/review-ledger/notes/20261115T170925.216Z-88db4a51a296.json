@@ -1,0 +1,7 @@
+{
+  "revision": "75118037bf6de0a99606da1a97921802d58eb9c6",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal only passes the start's requested effort label to the Run setup chip; onboarding and start-composer flow claims unchanged.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

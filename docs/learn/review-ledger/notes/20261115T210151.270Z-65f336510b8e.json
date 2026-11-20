@@ -1,0 +1,19 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"#4995 adds two counters (station.logs.suppressed_records by component/level; station.logs.stdout_file.rotations by outcome). Existing metric claims in citing pages unchanged; metrics.md regenerated; config.md Logging documents both.","inputs":["src-server/telemetry/metrics.ts"]}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "revision": "e57caa2454025bbdfe92a7369dcb2cdbfcc152b6",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the one-time version-two refold through the stored-checkpoint mismatch and preserved incremental watermark path. A host-published HTML card adds no provider tool call. Usage inventory, history windows and public response shapes retain their existing boundaries.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the one-time version-two refold through the stored-checkpoint mismatch and preserved incremental watermark path. A host-published HTML card adds no provider tool call. Usage inventory, history windows and public response shapes retain their existing boundaries.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the one-time version-two refold through the stored-checkpoint mismatch and preserved incremental watermark path. A host-published HTML card adds no provider tool call. Usage inventory, history windows and public response shapes retain their existing boundaries.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the one-time version-two refold through the stored-checkpoint mismatch and preserved incremental watermark path. A host-published HTML card adds no provider tool call. Usage inventory, history windows and public response shapes retain their existing boundaries.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the one-time version-two refold through the stored-checkpoint mismatch and preserved incremental watermark path. A host-published HTML card adds no provider tool call. Usage inventory, history windows and public response shapes retain their existing boundaries.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked Chromium evidence for swipe reveal and a separate Remove tap. The test keeps both pre-tap no-action assertions and waits for one callback from that single tap. This change adds no device-runtime claim.","inputs":["src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

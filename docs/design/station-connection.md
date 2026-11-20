@@ -357,6 +357,12 @@ Canonicalize once; reject encoded separators, nested encodings, traversal,
 invalid segments, unsupported query keys and excessive query/body sizes.
 Request budget, CSRF, scope coverage and agent-origin checks remain active.
 
+Continuing a source conversation on the paired Station is not a tunnel
+operation. The source's own `conversation-handoffs` route sends its history and
+the receiver saves it as a new conversation; only that conversation's first
+turn then goes through the tunnel's `chat` leaf. See
+[continuing a chat on a paired Station](chat-composer.md#continuing-a-chat-on-a-paired-station).
+
 Every admitted mutation reparses its body and rejects spoofed actor,
 delegation, preparation and background fields. The relay chat schema explicitly
 preserves supported `whenBusy:'queue'`. Inbox/continue payloads
@@ -489,7 +495,7 @@ expansion, Markdown, attachments and accessibility shared.
 | Audit finding | End state / retired implementation |
 | --- | --- |
 | 1. Mutable session detail versus dock | MutableSessionDetail uses ConversationBody at record density and retains session metadata and evidence panels. SessionTranscript and SessionReplyComposer are deleted. |
-| 2. Attached-session third stack | AttachedSessionDetail uses the same body and composer with its real permissions and confirmed Continue in Station action. Its separate message loop and textarea are deleted; the original record remains read-only. |
+| 2. Attached-session third stack | AttachedSessionDetail uses the same body and composer with its real permissions and one-step Continue in Station action. Its separate message loop and textarea are deleted; the original record remains read-only. |
 | 3. Five Stops | ConversationStopControl and the controller own immediate turn interruption, confirmed Task stop, busy state and translated failures. ComposerStopButton is the styled leaf. |
 | 4. Delivery notes | MessageDeliveryNote takes a DeliveryPort instead of reading activeChatsStore. Child instruction, review, queued, unsent and peer adapters retain distinct queued/received/refused/uncertain states through that port. |
 | 5. Approval controls | useApprovalAnswering owns answers and inspection through connection/Task ports for ToolCallDisplay, ChatMessageList, attention cards and details. Existing trust and content gates remain. |

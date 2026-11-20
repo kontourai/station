@@ -13,12 +13,13 @@ keeps the durable correlation. Runtime composition mounts this personal-home
 feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
 
-New Project's start intent is a separate setup choice. **Documents and
-knowledge** and **Connected tools** create a Project without a folder/starter
-prompt, then open Sources or Tools. **Repository or folder** keeps the existing
-starter recommendation; **Blank Project** may select a layout explicitly. The
-creation recovery pointer retains this intent alongside its selected starter.
-Neither an intent nor an installed layout is a dispatched Task or readiness proof.
+New Project starts with **Blank workspace** or **From a repository**. Both
+can choose an installed layout. Blank workspace puts that choice under **More
+options**. Selecting a Git checkout keeps the Coding
+recommendation when it is available. Add documents and connected tools after
+creation in **Files & connections**. Saved creation requests retain their
+original destination and starter, including earlier requests that open Sources
+or Tools. Creating a Project or choosing a layout does not dispatch a Task.
 All Starter launch routes require the home’s first-run status to be completed.
 
 The technical behavior below accompanies the shorter
@@ -59,12 +60,15 @@ never creates another Task.
 4. Keep gate state, evidence, route-backs, and receipts with the work as it
    progresses.
 
-The Project’s **Tasks** list shows each local Task’s title, recorded status, and
-assigned Agent when known. Select its title or **Open Task** to enter its Task
-Room. **Details** opens inspection and dispatch controls; the optional board
-continues to group Tasks by status. The list separates **Now** (ready, active,
-blocked or awaiting review), **Backlog**, and **History**. These views do not
-change status. A row or board card can also show its Session's agent-reported
+The Project’s **Tasks** section opens as a board that files each Task by what
+is true of it now (its run and its kept pull requests), not by its recorded
+status; see [Projects, Tasks, and Sessions](../user/concepts.md#projects-tasks-and-sessions).
+Each card has one next action, such as **Start**, **Open run**, **Open PR**,
+**Merge…** or **Mark done**. **List** shows each local Task's title, derived
+status word and assigned Agent when known; select its title or **Open Task**
+to enter its Task Room, and **Details** for inspection and dispatch controls.
+The list separates **Now** (ready, active, blocked or awaiting review),
+**Backlog**, and **History** by recorded status. Neither view changes status. A row or board card can also show its Session's agent-reported
 plan progress, which never changes status either; see
 [Getting started](../user/getting-started.md#start-your-first-task).
 **Refresh Tasks** reads current Task records.
@@ -120,8 +124,8 @@ visible. Run `station doctor` for a local diagnosis.
 ## Continue an Attached Session
 
 Open the terminal Session from the **inbox**, where it reads like any chat, then
-type a message and press Send. Chat asks once, **Continue here?**,
-and **Continue and send** continues it there with that message.
+press **Continue in Station**. No message is needed; a typed draft is sent once
+the continuation opens, and Send continues the same way.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has
 observed; wait for a completed turn if the message box is unavailable. Station
@@ -135,7 +139,11 @@ inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
 Session links open the Chat reader on the verified Station. Attached continuation
-still asks for confirmation before creating and sending into its continuation.
+asks first only when the original is still mid-turn in its own app: Station
+refuses a launch for a source that reads as still running
+(`code: "continuation_source_active"`, `retrySafe: true`) until it is
+repeated with `continueWhileSourceActive`, which the reader's **Continue
+anyway** sends with the same operation identity.
 
 An attached terminal Session stays read only. The first eligible continuation
 launches the bounded `continue-session` Starter: Station

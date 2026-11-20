@@ -658,7 +658,29 @@
 
     "src-server/providers/registries/registry-source-detection.ts",
 
-    "src-server/providers/registries/agent-registry-provider.ts"
+    "src-server/providers/registries/agent-registry-provider.ts",
+
+    "src-server/routes/system/__tests__/install-provenance.test.ts",
+
+    "src-server/routes/evidence/task-code-reviews.ts",
+
+    "src-server/services/evidence/task-code-review-module.ts",
+
+    "packages/sdk/src/client/custom-appearance-library.ts",
+
+    "packages/sdk/src/client/custom-appearance-mutations.ts",
+
+    "src-server/services/flow/flow-gate-diagnostics.ts",
+
+    "src-server/routes/evidence/flow-runs.ts",
+
+    "packages/contracts/src/project-room-coordinator.ts",
+
+    "src-server/runtime/routes/project-room-coordinator-runtime.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts",
+
+    "src-server/services/knowledge/knowledge-storage.ts"
   ],
 
   "checks": [

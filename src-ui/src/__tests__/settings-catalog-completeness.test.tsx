@@ -9,7 +9,10 @@ import type {
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
-import { authenticatedFetch } from '@kontourai/station-sdk';
+import {
+  authenticatedFetch,
+  type CoreUpdateStatus,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -22,6 +25,7 @@ import {
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
+import type { CoreUpdateCheck } from '../views/settings/CoreUpdateCheck';
 import {
   matchingSettingsRows,
   OPERATOR_ONLY_SECTION_IDS,
@@ -56,6 +60,15 @@ vi.mock('@kontourai/station-connect', () => ({
   requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
 const systemStatusRead = vi.hoisted(() => vi.fn());
+// Host options' workload status. The ordinary case has no cleanup backlog,
+// so the abandoned-workloads block renders nothing unless a test sets one.
+const workloadCleanup = vi.hoisted(() => ({
+  current: { pending: [], abandoned: [], abandonedDropped: 0 } as {
+    pending: unknown[];
+    abandoned: unknown[];
+    abandonedDropped: number;
+  },
+}));
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
     '@kontourai/station-contracts/notification-preferences'
@@ -84,9 +97,24 @@ vi.mock('@kontourai/station-sdk', async () => {
       isPending: false,
     }),
     usePairedDevicesQuery: () => ({ data: [] }),
-    // ConnectedServerUpdates reads the shared core-update answer (it never
-    // fetches it). No answer yet is the neutral case for the catalog.
-    useCoreUpdateStatusQuery: () => ({ data: undefined }),
+    useAutomationSources: () => ({
+      data: { configurationFingerprint: 'f'.repeat(64), sources: [] },
+    }),
+    useAutomationRules: () => ({
+      data: { configurationFingerprint: 'f'.repeat(64), rules: [] },
+    }),
+    useAutomationEpisodes: () => ({ data: { episodes: [] } }),
+    useAutomationDeliveries: () => ({ data: { deliveries: [], polls: [] } }),
+    // Exercise the catalog with a server that supports staged updates.
+    useCoreUpdateStatusQuery: () => ({
+      data: {
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        releaseCheck: 'verified',
+        stagedUpdates: true,
+        updateAvailable: false,
+      } satisfies CoreUpdateStatus,
+    }),
     StationReadOnlyError: class extends Error {},
     // #4402: "New Muse chats" renders only with a Muse engine; the catalog
     // lists it, so this Station has one and every row renders.
@@ -250,6 +278,21 @@ vi.mock('@kontourai/station-sdk', async () => {
         isLoading: false,
       };
     },
+    WorkloadBudgetsUnsupportedError: class extends Error {},
+    useWorkloadBudgetsQuery: () => ({
+      isLoading: false,
+      error: null,
+      data: {
+        enforcement: { state: 'ready', platform: 'linux' },
+        hostMemoryBytes: 16 * 1024 ** 3,
+        settings: {},
+        settingsWritable: true,
+        applies: 'new-scopes',
+        activeScopes: 0,
+        cleanup: workloadCleanup.current,
+      },
+      refetch: vi.fn(),
+    }),
     useFeaturePreviewsQuery: () => ({
       isLoading: false,
       error: null,
@@ -572,7 +615,14 @@ vi.mock('../components/header/ThemeToggle', () => ({
   ThemeToggle: () => <button type="button">theme</button>,
 }));
 vi.mock('../views/settings/CoreUpdateCheck', () => ({
-  CoreUpdateCheck: () => <button type="button">check</button>,
+  CoreUpdateCheck: ({
+    downloadPolicy,
+  }: ComponentProps<typeof CoreUpdateCheck>) => (
+    <>
+      <button type="button">check</button>
+      {downloadPolicy}
+    </>
+  ),
 }));
 
 /**
@@ -627,6 +677,11 @@ describe('settings catalog completeness', () => {
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
     window.history.replaceState({}, '', '/settings?view=overview');
+    workloadCleanup.current = {
+      pending: [],
+      abandoned: [],
+      abandonedDropped: 0,
+    };
   });
 
   async function renderSettings() {
@@ -722,6 +777,42 @@ describe('settings catalog completeness', () => {
 
     expect(container.querySelector('.settings__skeleton')).toBeTruthy();
     expect(screen.queryByText('Unable to load settings')).toBeNull();
+  });
+
+  test('Host options lists engine workloads Station couldn’t stop, with the budget preview off', async () => {
+    workloadCleanup.current = {
+      pending: [],
+      abandoned: [
+        {
+          unit: 'station-engine-abandoned.scope',
+          attempts: 3,
+          errorKind: 'bus_unavailable',
+          lastError: 'Failed to connect to bus',
+          firstFailedAt: '2026-11-10T11:00:00.000Z',
+          abandonedAt: '2026-11-10T12:00:00.000Z',
+        },
+      ],
+      abandonedDropped: 0,
+    };
+    window.history.replaceState({}, '', '/settings?view=host-runtime');
+    const { container } = await renderSettings();
+    const section = container.querySelector('#section-host-runtime');
+    expect(section).toBeTruthy();
+    const heading = within(section as HTMLElement).getByRole('heading', {
+      name: 'Workloads Station couldn’t stop',
+    });
+    expect(
+      within(heading.closest('section') as HTMLElement).getByText(
+        'station-engine-abandoned.scope',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('Host options adds nothing when no workload is abandoned', async () => {
+    window.history.replaceState({}, '', '/settings?view=host-runtime');
+    const { container } = await renderSettings();
+    expect(container.querySelector('#section-host-runtime')).toBeTruthy();
+    expect(screen.queryByText('Workloads Station couldn’t stop')).toBeNull();
   });
 
   test('the rendered desktop Settings view and catalog enumerate the same exact ids', async () => {
@@ -1616,7 +1707,7 @@ describe('settings catalog completeness', () => {
     );
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        container.querySelector('#core-app-updates'),
+        screen.getByRole('combobox', { name: 'Automatic server download' }),
       ),
     );
     expect(window.location.search).toBe('?keep=1&view=system');
@@ -1679,9 +1770,15 @@ describe('settings catalog completeness', () => {
       const target = trayNavigationTarget(destination);
       expect(target?.pathname).toBe('/settings');
       navigationStore.navigate(target!.pathname, target!.params);
-      await waitFor(() =>
-        expect(document.activeElement).toBe(container.querySelector(`#${id}`)),
-      );
+      await waitFor(() => {
+        const target =
+          destination === 'serverUpdates'
+            ? screen.getByRole('combobox', {
+                name: 'Automatic server download',
+              })
+            : container.querySelector(`#${id}`);
+        expect(document.activeElement).toBe(target);
+      });
       expect(
         container
           .querySelector(`#${id}`)
@@ -2248,6 +2345,31 @@ describe('settings catalog completeness', () => {
       });
     });
 
+    // A required setting is outside the reset plan, so "every setting uses
+    // its default" would be false while it still holds a stored value.
+    test('an empty plan says only the clearable settings are at their defaults', async () => {
+      configProvenance = { defaultModel: { source: 'file' } };
+      await renderSettings();
+
+      expect(
+        screen.getByText(
+          'Restores most Station settings to their defaults. Device settings are kept.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      expect(
+        screen.getByText(
+          'Nothing to reset. The settings a reset can clear already use their defaults.',
+        ),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+
     test('is refused while the form holds an unsaved draft', async () => {
       // A reset writes what the SERVER stores; the draft is not part of it,
       // so a Save afterwards would re-store the very values just cleared.
@@ -2264,9 +2386,7 @@ describe('settings catalog completeness', () => {
       }) as HTMLButtonElement;
       expect(reset.disabled).toBe(true);
       expect(
-        screen.getByText(
-          'Save or discard your unsaved changes first. Discard is always available.',
-        ),
+        screen.getByText('Save or discard your changes first.'),
       ).toBeTruthy();
       fireEvent.click(reset);
       expect(updateConfig).not.toHaveBeenCalled();

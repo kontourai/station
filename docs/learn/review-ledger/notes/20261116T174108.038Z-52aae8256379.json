@@ -1,0 +1,11 @@
+{
+  "revision": "bbd4ca4407ac2930c2f6863973e06ee8987780bf",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Gallery child-chat screen now goes back by the parent crumb on wide bars and by the back button on phones; no motion, testing-procedure or telemetry claim changes.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Gallery child-chat screen now goes back by the parent crumb on wide bars and by the back button on phones; no motion, testing-procedure or telemetry claim changes.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Gallery child-chat screen now goes back by the parent crumb on wide bars and by the back button on phones; no motion, testing-procedure or telemetry claim changes.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

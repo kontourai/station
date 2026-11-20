@@ -1,7 +1,9 @@
 name: Nightly
 
 # Nightly proves source usability and signed artifact custody independently of
-# scheduled full qualification. Beta and stable retain exact-SHA full regression.
+# scheduled full qualification. Stable RC/final retain exact-SHA full regression.
+# Source usability is the merge queue's fast-checks statics on this exact SHA
+# when that run passed, and otherwise the source gate's own checks below.
 on:
   schedule:
     - cron: '47 * * * *'
@@ -33,11 +35,18 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      - name: Refuse a Nightly base at or below a published RC or final
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/nightly-release-base.mjs --package-json package.json --repository "$GITHUB_REPOSITORY"
       - id: decide
         name: Decide configured cadence and bounded terminal delivery recovery
         env:
           GH_TOKEN: ${{ github.token }}
           STATION_NIGHTLY_INTERVAL_HOURS: ${{ vars.STATION_NIGHTLY_INTERVAL_HOURS }}
+          REQUESTED_REBUILD_INDEX: ${{ inputs.rebuild_index }}
         run: |
           set -euo pipefail
           # The ledger's rows land on main after a ship, so the run's own
@@ -45,7 +54,7 @@ jobs:
           git fetch --no-tags origin main
           reservations="$RUNNER_TEMP/nightly-reservations.txt"
           git ls-remote --refs "https://github.com/$GITHUB_REPOSITORY" 'refs/tags/nightly-version-code/*' > "$reservations"
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ -n "$REQUESTED_REBUILD_INDEX" ]; then
             echo 'publish=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -66,7 +75,8 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' && needs.delivery-decide.outputs.publish == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
-    permissions: { contents: read }
+    # actions: read is for the merge-queue receipt lookup's run and job listings.
+    permissions: { contents: read, actions: read }
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
@@ -92,13 +102,31 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      # The merge queue ran these checks on this exact SHA when its merge_group
+      # run of ci.yml passed fast-checks statics, journey step included
+      # (scripts/nightly-source-gate-receipt.mjs). Only accepted=true skips
+      # them; no receipt, an API error or a failure of this step runs them all.
+      - id: receipt
+        name: Accept the merge queue's source gate for this exact SHA
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: node scripts/nightly-source-gate-receipt.mjs
+      # Installation and the Chromium cache steps always run: this job is the
+      # only writer of the cache that pull-request and merge-group jobs restore.
       - run: npm run dependencies:ci
       - name: Check native platform boundary before staging
+        if: steps.receipt.outputs.accepted != 'true'
         run: npm run native-platform:ratchet
       - name: Lint
+        if: steps.receipt.outputs.accepted != 'true'
         run: npm run lint:check
-      - run: npm run build:connect
+      - if: steps.receipt.outputs.accepted != 'true'
+        run: npm run build:connect
       - name: Typecheck
+        if: steps.receipt.outputs.accepted != 'true'
         env:
           # station#2621: this fleet reports 4 vCPUs / ~15.6 GiB, which the
           # RAM-only default rounds to 2 typecheck slots -- see the matching
@@ -129,6 +157,7 @@ jobs:
           echo '::error::Playwright install failed after 3 attempts'
           exit 1
       - name: Run deterministic browser smoke
+        if: steps.receipt.outputs.accepted != 'true'
         timeout-minutes: 10
         env:
           PW_REPORTER: line,html

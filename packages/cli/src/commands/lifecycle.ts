@@ -144,6 +144,7 @@ import {
   PACKAGED_RELEASE_MANIFEST_FILENAME,
   type PackagedReleaseChannel,
   type PackagedRuntimeChannel,
+  packagedReleaseVersion,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
 import { isLoopbackSelfAuthEndpoint } from './local-self-auth.js';
@@ -183,9 +184,11 @@ import {
 import {
   DIRECT_LAUNCH_ENV,
   planServerLaunch,
+  readAdmittedGeneration,
   requestSupervisorSync,
   runSupervisorHandoff,
   SUPERVISOR_BUNDLE_FILENAME,
+  type SupervisorRequestTarget,
 } from './supervisor-launch.js';
 import { terminalSafeText } from './terminal-safe.js';
 import {
@@ -3611,7 +3614,7 @@ function resolveSourceBuildManifest(): BuildManifest {
   }
   return {
     sha: releaseManifest.sha,
-    branch: releaseManifest.ref,
+    branch: `v${packagedReleaseVersion(releaseManifest)}`,
     builtAt: new Date().toISOString(),
   };
 }
@@ -4017,11 +4020,14 @@ const INTERNAL_PROXY_CALLER_HEADER = 'x-station-proxy-caller';
  *   positive evidence something else owns the port (lost port race or a
  *   draining previous boot). Never grounds for extending the deadline.
  * - 'http-error': a listener answered non-2xx.
+ * - 'supervisor-not-serving': the boot triple matched, but the supervisor
+ *   did not confirm the API read came from a stable serving generation.
  */
 export type IdentityWaitFailureKind =
   | 'no-listener'
   | 'request-timeout'
   | 'gateway-unavailable'
+  | 'supervisor-not-serving'
   | 'http-error'
   | 'identity-mismatch';
 
@@ -4066,6 +4072,8 @@ export function classifyIdentityWaitError(
 }
 
 export interface IdentityWaitOptions {
+  /** The parent that must admit the API generation during supervised start. */
+  supervisor?: { target: SupervisorRequestTarget; pid: number; port: number };
   /**
    * Liveness probe for the supervised child whose readiness is being awaited.
    * Providing it opts into bounded deadline extension: when the base deadline
@@ -4105,6 +4113,9 @@ export function childExitedBeforeReadinessMessage(
   if (lastKind === 'identity-mismatch') {
     return `Station process exited; ${url} answered as a different instance (${lastFailure}): ${mismatchDetail}`;
   }
+  if (lastKind === 'supervisor-not-serving') {
+    return `Station supervisor exited before confirming an admitted API generation at ${url}`;
+  }
   if (lastKind === 'http-error' || lastKind === 'gateway-unavailable') {
     return `Station process exited; ${url} answered ${lastFailure}`;
   }
@@ -4115,9 +4126,62 @@ function throwIfReadinessAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Readiness wait abandoned');
 }
 
+type StartupIdentity = { instanceId: string; sha: string; bootId: string };
+
+function matchesStartupIdentity(
+  expected: StartupIdentity,
+  actual: Partial<StartupIdentity>,
+): boolean {
+  return (
+    actual.instanceId === expected.instanceId &&
+    actual.sha === expected.sha &&
+    actual.bootId === expected.bootId
+  );
+}
+
+async function confirmAdmittedIdentity(
+  supervisor: NonNullable<IdentityWaitOptions['supervisor']>,
+  expected: StartupIdentity,
+  url: string,
+  signal: AbortSignal,
+  headers?: Readonly<Record<string, string>>,
+): Promise<boolean> {
+  const binding = {
+    pid: supervisor.pid,
+    port: supervisor.port,
+  };
+  const first = await readAdmittedGeneration(
+    supervisor.target,
+    binding,
+    signal,
+  );
+  if (!first) return false;
+  // HTTP reports the launch identity, which a replacement inherits. The
+  // supervisor reports a separate boot ID for each generation. Hold that
+  // admission fixed across a fresh HTTP identity read.
+  const response = await requestIdentity(url, signal, headers, true);
+  if (!response.ok) {
+    await response.body?.cancel();
+    return false;
+  }
+  if (
+    !matchesStartupIdentity(
+      expected,
+      (await response.json()) as Partial<StartupIdentity>,
+    )
+  )
+    return false;
+  const last = await readAdmittedGeneration(supervisor.target, binding, signal);
+  return (
+    last?.generation === first.generation &&
+    last.pid === first.pid &&
+    last.bootId === first.bootId
+  );
+}
+
 export async function waitForIdentity(
   url: string,
-  expected: { instanceId: string; sha: string; bootId: string },
+  expected: StartupIdentity,
   timeoutMs = STARTUP_READINESS_TIMEOUT_MS,
   headers?: Readonly<Record<string, string>>,
   options?: IdentityWaitOptions,
@@ -4174,16 +4238,32 @@ export async function waitForIdentity(
           response.json(),
           deadlineExceeded,
         ])) as Partial<typeof expected>;
-        if (
-          actual.instanceId === expected.instanceId &&
-          actual.sha === expected.sha &&
-          actual.bootId === expected.bootId
-        ) {
-          return;
+        if (matchesStartupIdentity(expected, actual)) {
+          const supervisor = options?.supervisor;
+          if (
+            !supervisor ||
+            (await Promise.race([
+              confirmAdmittedIdentity(
+                supervisor,
+                expected,
+                url,
+                options?.signal
+                  ? AbortSignal.any([controller.signal, options.signal])
+                  : controller.signal,
+                headers,
+              ),
+              deadlineExceeded,
+            ]))
+          )
+            return;
+          lastFailure =
+            'supervisor has no matching admitted serving generation';
+          lastKind = 'supervisor-not-serving';
+        } else {
+          lastFailure = 'managed boot identity mismatch';
+          lastKind = 'identity-mismatch';
+          lastMismatchDetail = describeIdentityMismatch(expected, actual);
         }
-        lastFailure = 'managed boot identity mismatch';
-        lastKind = 'identity-mismatch';
-        lastMismatchDetail = describeIdentityMismatch(expected, actual);
       } else {
         lastFailure = `${response.status} ${response.statusText}`.trim();
         lastKind = classifyIdentityWaitStatus(response.status);
@@ -4374,15 +4454,16 @@ function probeTcpListenerOnce(
 /**
  * Node's fetch may append its own Host field to a caller-supplied Host. The
  * hosted ingress deliberately rejects duplicate Host fields, so use the node
- * HTTP client only for these internal exact-host probes. Local mode keeps its
- * existing fetch path byte-for-byte.
+ * HTTP client for these internal exact-host probes. The supervised admission
+ * confirmation also uses it without a connection pool.
  */
 function requestIdentity(
   url: string,
   signal: AbortSignal,
   headers?: Readonly<Record<string, string>>,
+  freshConnection = false,
 ): Promise<Response> {
-  if (!headers?.Host) {
+  if (!headers?.Host && !freshConnection) {
     return fetch(url, {
       headers: { Accept: 'application/json', ...headers },
       signal,
@@ -4394,6 +4475,7 @@ function requestIdentity(
       {
         headers: { Accept: 'application/json', ...headers },
         signal,
+        ...(freshConnection ? { agent: false } : {}),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -5468,7 +5550,19 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { instanceId, sha: serverEnv.STATION_BUILD_SHA, bootId },
           STARTUP_READINESS_TIMEOUT_MS,
           readinessHeaders,
-          { childAlive: childAliveProbe(serverProc.pid), signal },
+          {
+            childAlive: childAliveProbe(serverProc.pid),
+            signal,
+            ...(launch.supervised
+              ? {
+                  supervisor: {
+                    target: supervisorTarget(generation),
+                    pid: serverProc.pid!,
+                    port: serverPort,
+                  },
+                }
+              : {}),
+          },
         ),
       (signal) =>
         waitForTcpOk(host, serverPort + 2, STARTUP_READINESS_TIMEOUT_MS, {
@@ -5836,6 +5930,8 @@ function describeDirectStart(record: InstanceStateRecord): string {
  * back or was refused.
  */
 export async function restart(opts: StopOptions = {}): Promise<void> {
+  // Refuse before asking the supervisor to drain the healthy generation.
+  loadInstalledManagedPolicyChecked();
   const record = findRunningTarget(opts, 'restart');
   if (!record.supervised) {
     throw new Error(
@@ -6141,9 +6237,18 @@ function assertStationHomeInactive(
   // only handle a reader has for stopping the thing, and findRunning discards
   // it (station#3064 made this population include supervised services, whose
   // remedy is a different command).
-  const registryPathExists =
-    operation !== 'reset' &&
-    existsSync(resolveInstanceRegistryPath(projectHome));
+  const registryPath = resolveInstanceRegistryPath(projectHome);
+  let registryPathExists = true;
+  try {
+    if (!lstatSync(registryPath).isFile()) {
+      throw new Error(
+        `Station instance registry is not a regular file: ${registryPath}`,
+      );
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    registryPathExists = false;
+  }
   const homeInstances = registryPathExists
     ? findRunningHomeInstances(projectHome)
     : [];
@@ -6380,7 +6485,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
+  // The manifest's `channel` is the runtime channel (stable|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {
@@ -6660,7 +6765,7 @@ export function renderPrebuiltArchiveUpgradeRefusal(
 ): string {
   const { release } = codeRoot;
   return [
-    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
+    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is v${packagedReleaseVersion(release)} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
     'Install through install.sh to get upgrades (`station upgrade` re-runs the installer that installed the version).',
     'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
     `Instance state for the ${release.channel} channel lives in ${stateDir}, outside every version directory, so the new version sees and stops what this one started.`,

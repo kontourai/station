@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Documented the Project memory client and Project usage filter; checked against packages/sdk/src/client/project-memory.ts and analytics.ts.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

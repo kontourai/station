@@ -63,7 +63,7 @@ function enrollmentFailureCopy(cause: unknown): string {
     nativeEnrollmentFailureDiagnostic(cause)?.httpStatus === 410
   )
     return 'This device setup expired. Close the expired request, then request device access again.';
-  return 'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station owner what to do next.';
+  return 'Station couldn’t confirm this device setup step. Keep this screen open and ask the Station operator what to do next.';
 }
 
 function reportEnrollmentFailure(
@@ -434,7 +434,7 @@ export function NativeRelayEnrollmentWizard({
           'The request is waiting for Station operator approval. Check again after the operator reviews it.',
         );
       } else {
-        setError('Station did not accept this enrollment request.');
+        setError('Station didn’t accept this setup request.');
       }
     },
     onError: reportStepFailure,
@@ -485,7 +485,7 @@ export function NativeRelayEnrollmentWizard({
         );
       } else {
         setError(
-          'This enrollment is no longer pending. Start a new setup if needed.',
+          'This setup request is no longer pending. Start a new one if needed.',
         );
       }
     },
@@ -598,7 +598,7 @@ export function NativeRelayEnrollmentWizard({
         <h3>Approve this device</h3>
         <RelaySetupHelp label="About device approval">
           <p>
-            Sign in to request approval from the Station owner, then sign in
+            Sign in to request approval from the Station operator, then sign in
             again to open your shared projects.
           </p>
         </RelaySetupHelp>
@@ -613,7 +613,7 @@ export function NativeRelayEnrollmentWizard({
             <>
               <p role="status">
                 {savedConnectionsAmbiguous
-                  ? 'More than one connection is saved on this device. Ask the Station owner for a new setup invitation, then review and remove saved connections before continuing.'
+                  ? 'More than one connection is saved on this device. Ask the Station operator for a new setup invitation, then review and remove saved connections before continuing.'
                   : 'Saved Device setup could not be checked. Retry before starting another setup.'}
               </p>
               <Button onClick={() => void recovery.refetch()}>
@@ -701,7 +701,7 @@ export function NativeRelayEnrollmentWizard({
       ) : null}
 
       {phase === 'challenge' ? (
-        <section aria-label="Station account enrollment">
+        <section aria-label="Station account setup">
           <p>Submit your account details within five minutes.</p>
           <label className="editor-field">
             <span className="editor-label">Station account username</span>
@@ -795,7 +795,7 @@ export function NativeRelayEnrollmentWizard({
 
       {phase === 'pending' ? (
         <section aria-label="Pending operator approval">
-          <p>Waiting for the Station owner to approve this device.</p>
+          <p>Waiting for the Station operator to approve this device.</p>
           <Button
             disabled={busy}
             pending={checkStatus.isPending}
@@ -816,7 +816,7 @@ export function NativeRelayEnrollmentWizard({
       {phase === 'staged' ? (
         <section aria-label="Device delivery staged">
           <p>
-            The Station owner approved this device. Finish device setup to
+            The Station operator approved this device. Finish device setup to
             continue.
           </p>
           <Button

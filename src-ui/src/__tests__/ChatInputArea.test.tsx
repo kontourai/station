@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -25,6 +27,10 @@ import {
 } from '../components/chat/conversationReferenceDrag';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
+
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -44,7 +50,9 @@ vi.mock('../components/ModelSelector', () => ({
 }));
 
 vi.mock('../components/chat/SlashCommandSelector', () => ({
-  SlashCommandSelector: () => null,
+  // A marker, so a test can tell whether the selector (which runs a command
+  // on select) was offered at all.
+  SlashCommandSelector: () => <div data-testid="slash-command-selector" />,
 }));
 
 vi.mock('@kontourai/station-sdk/coding-file-mentions-query', () => ({
@@ -81,8 +89,8 @@ beforeAll(() => {
   });
 });
 
-function renderChatInputArea(overrides: Record<string, unknown> = {}) {
-  const props = {
+function chatInputAreaProps(overrides: Record<string, unknown> = {}) {
+  return {
     agentSlug: 'station',
     conversationId: undefined,
     messageCount: 0,
@@ -125,7 +133,11 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     updateFromInput: vi.fn(),
     closeAll: vi.fn(),
     ...overrides,
-  };
+  } as React.ComponentProps<typeof ChatInputArea>;
+}
+
+function renderChatInputArea(overrides: Record<string, unknown> = {}) {
+  const props = chatInputAreaProps(overrides);
 
   render(<ChatInputArea {...props} />);
   if (props.modelQuery === null)
@@ -134,7 +146,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
-  test('keeps Send and Stop available during a turn, steering natively by default', () => {
+  test('queues with Send on a native steering engine and keeps Stop available', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -144,17 +156,23 @@ describe('ChatInputArea', () => {
       onSend,
     });
     expect(screen.getByRole('textbox').getAttribute('placeholder')).toBe(
-      'Steer this turn…',
+      'Queue a follow-up…',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onSend).toHaveBeenCalledOnce();
-    expect(onQueueFollowUp).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
   });
 
-  test('an explicit Queue choice wins over the native steer default', () => {
+  test('renders the composer custom-appearance hook around its text box', () => {
+    renderChatInputArea();
+    const composer = document.querySelector(appearanceHook('composer'));
+    expect(composer?.contains(screen.getByRole('textbox'))).toBe(true);
+  });
+
+  test('switching back to Queue clears an explicit Steer choice', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -164,6 +182,8 @@ describe('ChatInputArea', () => {
       onSend,
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Steer' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Queue for next turn' }),
     );
@@ -236,7 +256,7 @@ describe('ChatInputArea', () => {
 
   test('a send blocked for another reason offers no removal', () => {
     renderChatInputArea({
-      sendBlockedReason: 'Wait until every selected file finishes staging.',
+      sendBlockedReason: "You can read this chat but can't send to it.",
     });
     expect(
       screen.queryByRole('button', { name: 'Remove attachments' }),
@@ -269,6 +289,49 @@ describe('ChatInputArea', () => {
     renderChatInputArea({ disabled: true, loadingConversation: true });
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
     expect(textarea.placeholder).toBe('Loading chat…');
+  });
+
+  test('a conversation still opening keeps its draft editable but unsendable', () => {
+    const onInputChange = vi.fn();
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      disabled: true,
+      loadingConversation: true,
+      allowDraftWhileDisabled: true,
+      onInputChange,
+      onSend,
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.placeholder).toBe(
+      'Start typing. You can send once this chat opens…',
+    );
+    fireEvent.change(textarea, { target: { value: 'typed while opening' } });
+    expect(onInputChange).toHaveBeenCalledWith('typed while opening');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  // A command runs on select, so a composer that only drafts must not offer
+  // the selector: Enter there would dispatch before the open read answers.
+  test('a draft-only composer opens no slash-command selector', async () => {
+    // The live composer first, so the lazy chunk is loaded and the absence
+    // below cannot be a selector that simply has not resolved yet.
+    renderChatInputArea({ commandQuery: 'comp' });
+    expect(await screen.findByTestId('slash-command-selector')).toBeTruthy();
+    cleanup();
+    renderChatInputArea({
+      disabled: true,
+      loadingConversation: true,
+      allowDraftWhileDisabled: true,
+      commandQuery: 'comp',
+    });
+    await act(async () => {});
+    expect(screen.queryByTestId('slash-command-selector')).toBeNull();
   });
 
   test('a composer whose sending the server refused invites no typing', () => {
@@ -1164,7 +1227,7 @@ describe('ChatInputArea', () => {
     expect(
       screen.getByText('Existing models, if shown, may be out of date.'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: /Claude Sonnet/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Claude Sonnet/ }));
     expect(onModelSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'claude-sonnet' }),
     );
@@ -1234,7 +1297,7 @@ describe('ChatInputArea', () => {
     ).toBe('Big Pickle');
     expect(
       modelButton.querySelector('.chat-input__chip-caption')?.textContent,
-    ).toBe('Engine & model');
+    ).toBe('Model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -1600,14 +1663,12 @@ describe('ChatInputArea', () => {
 
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
-    if (!screen.queryByRole('dialog', { name: 'Run setup' }))
+    if (!screen.queryByRole('dialog', { name: 'Agent & model' }))
       fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });
-    fireEvent.click(
-      screen.getByRole('radio', { name: /Never ask \(full access\)/ }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: /^Full access/ }));
     expect(
       screen.getByRole('button', { name: 'Enable full access' }),
     ).toBeTruthy();
@@ -2448,4 +2509,289 @@ test('ACP reply setup uses the connection engine mark', async () => {
         .querySelector('[data-brand-key="opencode"]'),
     ).not.toBeNull(),
   );
+});
+
+test('on a phone, choosing another engine closes Run setup; another model of the same engine does not', async () => {
+  const mobile = (query: string) => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    media: query,
+    onchange: null,
+  });
+  vi.mocked(window.matchMedia).mockImplementation(mobile);
+  try {
+    const onModelSelect = vi.fn();
+    const models = [
+      { id: 'claude-sonnet', name: 'Claude Sonnet' },
+      { id: 'claude-opus', name: 'Claude Opus' },
+      { id: 'gpt-6', name: 'GPT Six', executionAgentId: 'codex' },
+    ];
+    renderChatInputArea({
+      modelQuery: '',
+      availableModels: models,
+      pickerModels: models,
+      onModelSelect,
+    });
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
+    expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: /^Claude Opus/ },
+        { timeout: 5_000 },
+      ),
+    );
+    expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^GPT Six/ }));
+    expect(onModelSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'gpt-6' }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Agent & model' })).toBeNull();
+  } finally {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      ...mobile(query),
+      matches: false,
+    }));
+  }
+}, 7_500);
+
+test('a draft sized while hidden is measured again once it shows, not pinned at zero height', async () => {
+  let measured = 0;
+  const scrollHeight = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'scrollHeight',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+    configurable: true,
+    get() {
+      return this instanceof HTMLTextAreaElement ? measured : 0;
+    },
+  });
+  const callbacks: Array<() => void> = [];
+  const previousObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(callback: () => void) {
+      callbacks.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as never;
+  try {
+    renderChatInputArea({ input: '' });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // Hidden at mount: nothing measurable, so nothing is pinned.
+    expect(textarea.style.height).not.toBe('0px');
+    // Shown: the next resize measures it.
+    measured = 46;
+    await act(async () => {
+      for (const callback of callbacks) callback();
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => resolve(null)),
+      );
+    });
+    expect(textarea.style.height).toBe('46px');
+  } finally {
+    globalThis.ResizeObserver = previousObserver;
+    if (scrollHeight)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'scrollHeight',
+        scrollHeight,
+      );
+    else
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+  }
+});
+
+test('reply setup names a requested effort after the model, never a guessed one', () => {
+  const models = [
+    {
+      id: 'claude-opus',
+      name: 'Opus',
+      capabilities: {
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+      },
+    },
+  ];
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: { effort: 'high' },
+  });
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  expect(trigger.getAttribute('aria-label')).toMatch(
+    /^Claude Code · Opus · High/,
+  );
+  cleanup();
+
+  // Nothing requested: the engine default applies, so no level is named.
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: {},
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus');
+});
+
+describe('ChatInputArea: Send while a file is uploading', () => {
+  const FILE = {
+    id: 'f1',
+    name: 'shot.png',
+    type: 'image/png',
+    size: 10,
+    data: 'data:image/png;base64,AAAA',
+    preview: 'data:image/png;base64,AAAA',
+  };
+  const stage = (
+    state: 'uploading' | 'complete' | 'retryable',
+    extra: Record<string, unknown> = {},
+  ) => ({
+    clientAttachmentId: 'f1',
+    name: 'shot.png',
+    mimeType: 'image/png',
+    size: 10,
+    state,
+    progress: state === 'uploading' ? 0.4 : 1,
+    delivery: 'staged',
+    ...extra,
+  });
+
+  function renderUploading(overrides: Record<string, unknown> = {}) {
+    const onSend = vi.fn(async () => {});
+    const base = {
+      input: 'look at this',
+      attachments: [FILE],
+      attachmentStages: [stage('uploading')],
+      onSend,
+      ...overrides,
+    };
+    const view = render(<ChatInputArea {...chatInputAreaProps(base)} />);
+    return {
+      onSend,
+      rerender: (next: Record<string, unknown>) =>
+        view.rerender(
+          <ChatInputArea {...chatInputAreaProps({ ...base, ...next })} />,
+        ),
+    };
+  }
+
+  test('an upload in progress shows its progress, not an error', async () => {
+    renderUploading();
+    expect(await screen.findByText('Uploading 40%')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(document.querySelector('.chat-input__attachment-error')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+    ).toBe(false);
+  });
+
+  test('Send waits for the upload and then sends by itself, with the file', async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Held, not refused: no error line, and nothing sent without the file.
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+    expect(document.querySelector('.chat-input__attachment-error')).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+    ).toBe(true);
+
+    rerender({ attachmentStages: [stage('complete')] });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(screen.queryByText('Sends when uploads finish')).toBeNull();
+  });
+
+  test('Return during an upload waits the same way', async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.keyDown(screen.getByRole('textbox'), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+    expect(onSend).not.toHaveBeenCalled();
+    rerender({ attachmentStages: [stage('complete')] });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+  });
+
+  test('a failed upload drops the waiting send and says why', async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+
+    rerender({
+      attachmentStages: [stage('retryable', { error: 'network' })],
+      sendBlockedReason:
+        'An upload did not finish. Retry it or remove it before sending.',
+    });
+    expect(
+      await screen.findByText(
+        'An upload did not finish. Retry it or remove it before sending.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Sends when uploads finish')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry shot.png' })).toBeTruthy();
+
+    // A later successful retry does not send on the earlier click's behalf.
+    rerender({
+      attachmentStages: [stage('complete')],
+      sendBlockedReason: undefined,
+    });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test("Don't send cancels the wait", async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: "Don't send" }));
+    expect(screen.queryByText('Sends when uploads finish')).toBeNull();
+    rerender({ attachmentStages: [stage('complete')] });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('removing a file cancels the wait instead of sending without it', async () => {
+    const onRemoveAttachment = vi.fn();
+    const { onSend, rerender } = renderUploading({ onRemoveAttachment });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Remove shot.png' }),
+    );
+    expect(onRemoveAttachment).toHaveBeenCalledWith('f1');
+    rerender({ attachments: [], attachmentStages: [] });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('a send the host already holds for the uploads is not offered twice', async () => {
+    const { onSend } = renderUploading({ sendQueuedForUploads: true });
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(send.hasAttribute('disabled')).toBe(true);
+    fireEvent.keyDown(screen.getByRole('textbox'), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: "Don't send" })).toBeNull();
+  });
 });

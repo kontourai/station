@@ -31,6 +31,7 @@ import {
 import { attachCiFastDiagnostics } from './verification-ci-fast-diagnostics.mjs';
 import {
   createCompletionPhaseRunner,
+  describeCompletionPhaseAdmission,
   phaseRecordPassed,
 } from './verification-completion-phases.mjs';
 import {
@@ -1235,6 +1236,9 @@ async function runOwnerAndPublish({
       'verification terminal publication fenced: phase cleanup unresolved',
     );
   }
+  const phaseAdmission = raw?.phaseAdmission
+    ? describeCompletionPhaseAdmission(raw.phaseAdmission, timedOut)
+    : null;
   let terminalOutputOwned = outputOwned;
   if (!terminalOutputOwned) {
     // No execution capacity is retained while waiting to publish: a final
@@ -1257,7 +1261,9 @@ async function runOwnerAndPublish({
     });
     if (!acquired.outputOwned)
       throw new Error(
-        'verification terminal publication fenced: output ownership unavailable',
+        phaseAdmission
+          ? `verification terminal publication fenced: output ownership unavailable (${phaseAdmission})`
+          : 'verification terminal publication fenced: output ownership unavailable',
       );
     terminalOutputOwned = true;
   }
@@ -1265,7 +1271,9 @@ async function runOwnerAndPublish({
     context,
     directory,
     owner,
-    raw,
+    raw: phaseAdmission
+      ? { ...raw, phaseAdmission, infrastructureCause: phaseAdmission }
+      : raw,
     timedOut: timedOut || raw?.deadlineExpired === true,
     getLease,
     onOwnershipLost,

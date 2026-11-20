@@ -1,0 +1,7 @@
+{
+  "revision": "a34b34766d3b31b94ef564ea5265969c62ab28bc",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Listed only because I edited the Task experience sentence in docs/contexts/workspace-surfaces/CONTEXT.md and docs/glossary.md. This page explains context boundaries and defers vocabulary to the glossary; it quotes no Task experience copy. No edit needed.","inputs":["CONTEXT.md","docs/contexts/workspace-surfaces/CONTEXT.md","docs/glossary.md"]}
+  ]
+}

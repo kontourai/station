@@ -1,0 +1,7 @@
+{
+  "revision": "80933fd7347e17564b98c4707ef2c716b811e8f3",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Cites sdk.md; the change is the peer-list readiness paragraph, which adds no SDK rule or workflow instruction this file states.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

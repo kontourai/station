@@ -1,0 +1,217 @@
+{
+  "revision": "ca877af8dcd23e831b754d6b19cd1975fcd22178",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified the ordinary continuation and preparing-successor path through route admission and inbox placement. A stale explicit workspace does not acquire queue custody, and the stored Session pin prevents placement after replacement.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked runtime composition. Only the thread inbox observes the additional preparing-state signal. Other delivery ports, authorization and route registrations keep their existing behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the exact plain reservation and predecessor read against existing lineage authority. The preparation signal is read-only, uses the existing start counter, and does not authorize a foreign, replaced or materialized Session.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Verified that the duplicate-start claim refusal now forwards the existing typed starting code before another adapter can be bound or started. Receipt handling and launch ownership retain their existing order.","inputs":["src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Verified same-Station workspace and target checks on the authorized plain successor. The fallback is restricted to an active unmaterialized reservation and captures its destination for later placement.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed controlled route evidence: automatic cold continuation, ordinary Queue receipt, stale workspace refusal, FIFO release, and no second provider turn on same-key retry. Removing the fallback reproduced HTTP 400.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed controlled route evidence: automatic cold continuation, ordinary Queue receipt, stale workspace refusal, FIFO release, and no second provider turn on same-key retry. Removing the fallback reproduced HTTP 400.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The original concurrency control still asserts one adapter binding and preserved ownership. It now also requires the typed starting refusal.","inputs":["src-server/services/orchestration/__tests__/session-command-module.test.ts"]}
+  ]
+}

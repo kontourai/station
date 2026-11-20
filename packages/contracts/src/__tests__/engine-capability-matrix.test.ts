@@ -59,6 +59,11 @@ describe('engine capability matrix', () => {
       state: 'unsupported',
       reason: expect.stringMatching(/Muse sessions it did not start/),
     });
+    // ACP sessions are listed read-only; resume is not evidenced to keep history.
+    expect(externalSessionContinuationSupport('acp')).toMatchObject({
+      state: 'unsupported',
+      reason: expect.stringMatching(/no evidence that resuming one keeps/),
+    });
   });
 
   test('sessionDeliveryChannels reproduces the shipped per-engine delivery truth (acp/claude/codex; bedrock/ollama undefined)', () => {
@@ -1170,18 +1175,17 @@ describe('acpApprovalControl (#3290)', () => {
     }
   });
 
-  test('every other command, a wrapper included, leaves the engine to decide', () => {
+  test('external ACP commands use the shared permission-request path', () => {
     for (const command of [
+      'agy',
       'kiro-cli',
       'npx',
       'opencode-ai',
       '/usr/bin/opencode/agent',
-      '',
-      undefined,
-      null,
     ]) {
-      expect(acpStationApprovalEngine(command)).toBeUndefined();
-      expect(acpApprovalControl(command)).toBe('engine');
+      expect(acpApprovalControl(command)).toBe('requests');
     }
+    for (const command of ['', undefined, null])
+      expect(acpApprovalControl(command)).toBe('engine');
   });
 });

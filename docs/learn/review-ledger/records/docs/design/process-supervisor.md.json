@@ -28,7 +28,15 @@
 
     "src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts",
 
-    "src-server/services/terminal/__tests__/fixtures/workload-journey-core.ts"
+    "src-server/services/terminal/__tests__/fixtures/workload-journey-core.ts",
+
+    "packages/supervisor/src/supervisor.ts",
+
+    "packages/cli/src/commands/lifecycle.ts",
+
+    "packages/cli/src/commands/supervisor-launch.ts",
+
+    "packages/cli/src/__tests__/supervised-lifecycle.real.test.ts"
   ],
 
   "checks": []

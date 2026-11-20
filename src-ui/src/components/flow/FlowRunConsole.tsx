@@ -40,6 +40,7 @@ import {
 } from '../chat/TaskPicker';
 import { flowRunStatusTone } from '../kontour/station-tones';
 import { Empty, Skeleton, SkeletonList } from '../state';
+import { FlowGateDiagnostics } from './FlowGateDiagnostics';
 import './flow-events.css';
 import './FlowRunConsole.css';
 
@@ -271,6 +272,7 @@ function GateCard({
       {gate.summary && (
         <p className="flow-gate-card__summary">{gate.summary}</p>
       )}
+      <FlowGateDiagnostics details={gate.display_diagnostics} />
       <div className="flow-gate-card__meta">
         Step: {gate.step_id}
         {gate.is_open ? ' · open' : ''}

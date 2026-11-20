@@ -353,10 +353,10 @@ test.each([
       fireEvent.click(screen.getByText('Data captured · incomplete'));
       expect(screen.getByText('future.window')).toBeTruthy();
       expect(
-        screen.getByText(
-          'Live reading; history retains allowance observations only',
-        ),
-      ).toBeTruthy();
+        screen.getByText("Fields Station didn't recognize").parentElement
+          ?.textContent,
+      ).toContain('future.window');
+      expect(screen.getByText('Keeps allowance readings only')).toBeTruthy();
       fireEvent.click(screen.getByText('View observations'));
       expect((await screen.findByRole('table')).textContent).toContain('90%');
       expect(screen.getByRole('table').textContent).toContain('Not reported');
@@ -485,7 +485,7 @@ test.each([
       );
     }
     expect(
-      screen.getByText('This Station · selected profile · attributed runs'),
+      screen.getByText('This Station · selected account · attributed runs'),
     ).toBeTruthy();
     fireEvent.change(screen.getByRole('combobox', { name: 'Activity for' }), {
       target: { value: 'engine' },

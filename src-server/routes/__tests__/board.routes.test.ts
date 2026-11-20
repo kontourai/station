@@ -2,9 +2,15 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { Hono } from 'hono';
+import { describe, expect, test, vi } from 'vitest';
+import { runCli } from '../../../packages/cli/src/cli.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { BoardStore } from '../../services/board/board-store.js';
 import { type BoardRouteAuthorization, createBoardRoutes } from '../board.js';
+
+const makeCliHome = trackTempDirs();
 
 const SESSION_REF = { kind: 'session', id: 'session-1' } as const;
 
@@ -32,6 +38,89 @@ async function appFor(authz: BoardRouteAuthorization = ALLOW_ALL) {
   const root = await mkdtemp(join(tmpdir(), 'station-board-routes-'));
   return { root, app: createBoardRoutes(new BoardStore(root), authz) };
 }
+
+test('Board CLI arranges owned widgets and preserves route refusals', async () => {
+  const authority: BoardRouteAuthorization = {
+    canReadSession: (id, request) =>
+      id === SESSION_REF.id &&
+      request.headers.get('authorization') === 'Bearer owner',
+    taskExists: (projectId, taskId) =>
+      projectId === 'project-1' && taskId === 'task-1',
+  };
+  const app = new Hono();
+  app.route(
+    '/api/board',
+    createBoardRoutes(
+      new BoardStore(makeCliHome('station-board-cli-')),
+      authority,
+    ),
+  );
+  const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.stubGlobal('fetch', (url: string | URL | Request, init?: RequestInit) =>
+    app.fetch(new Request(url, init)),
+  );
+  async function run(args: string[], credential = 'owner') {
+    output.mockClear();
+    await runCli([
+      'board',
+      ...args,
+      '--api-base=https://station.test',
+      `--credential=${credential}`,
+      '--json',
+    ]);
+    return output.mock.lastCall && JSON.parse(String(output.mock.lastCall[0]));
+  }
+  try {
+    const ref = ['session', SESSION_REF.id];
+    const first = '{"type":"card","title":"One","body":"first"}';
+    const second = '{"type":"card","title":"Two","body":"second"}';
+    expect(await run(['pin', ...ref, 'one', `--data=${first}`])).toMatchObject({
+      widgets: [{ name: 'one', block: { title: 'One', body: 'first' } }],
+    });
+    await run(['pin', ...ref, 'two', `--data=${second}`]);
+    expect(await run(['move', ...ref, 'one', '--after=two'])).toMatchObject({
+      widgets: [
+        { name: 'two', position: 0 },
+        { name: 'one', position: 1 },
+      ],
+    });
+    const claim =
+      '{"type":"card","body":"claim","fields":[{"label":"state","value":"green"}]}';
+    await expect(
+      run(['pin', ...ref, 'claim', `--data=${claim}`]),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: 'board_provenance_refused',
+    });
+    await expect(
+      run(['unpin', ...ref, 'one'], 'foreign'),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      run(['move', ...ref, 'missing', '--after=two']),
+    ).rejects.toMatchObject({ status: 404, code: 'board_widget_not_found' });
+    expect(await run(['read', ...ref])).toMatchObject({
+      widgets: [
+        { name: 'two', position: 0, block: { body: 'second' } },
+        { name: 'one', position: 1, block: { body: 'first' } },
+      ],
+    });
+    expect(await run(['unpin', ...ref, 'two'])).toMatchObject({
+      widgets: [{ name: 'one', position: 0 }],
+    });
+    expect(
+      await run(['read', 'task', 'task-1', '--project=project-1']),
+    ).toMatchObject({
+      reference: { kind: 'task', id: 'task-1', projectId: 'project-1' },
+    });
+    await expect(
+      run(['read', 'task', 'task-1', '--project=wrong']),
+    ).rejects.toMatchObject({ status: 404 });
+  } finally {
+    output.mockRestore();
+    vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
+  }
+});
 
 describe('board routes', () => {
   test('GET reads an empty board for a reference with no rows yet', async () => {

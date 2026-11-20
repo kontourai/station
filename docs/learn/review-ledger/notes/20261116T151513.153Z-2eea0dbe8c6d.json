@@ -1,0 +1,7 @@
+{
+  "revision": "6a6b39ee1af7b7faf299de3e195e4b3f3b15ed04",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the diff: one new cold-boot case pins that the built-in engine binding resolves (to a ready Claude) without calling ClaudeAdapter listModelCatalog or getCommands. No telemetry name, attribute or emission described by the citing page changed beyond the resolve_catalog count no longer emitted for the skipped boot discovery.","inputs":["src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]}
+  ]
+}

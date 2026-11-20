@@ -271,7 +271,7 @@ async function nativePrepareSurface(
     p.enrollmentId !== enrollmentId ||
     typeof p.appIdentifier !== 'string' ||
     !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(p.appIdentifier) ||
-    !['dev', 'stable', 'beta', 'nightly'].includes(p.channel as string) ||
+    !['dev', 'stable', 'nightly'].includes(p.channel as string) ||
     typeof p.clientInstanceId !== 'string' ||
     !uuid.test(p.clientInstanceId) ||
     typeof p.keyThumbprint !== 'string' ||
@@ -447,7 +447,7 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
         raw.kind !== 'station-native' ||
         typeof raw.appIdentifier !== 'string' ||
         !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(raw.appIdentifier) ||
-        !['dev', 'stable', 'beta', 'nightly'].includes(raw.channel as string) ||
+        !['dev', 'stable', 'nightly'].includes(raw.channel as string) ||
         typeof raw.clientInstanceId !== 'string' ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
           raw.clientInstanceId,

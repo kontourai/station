@@ -1,0 +1,7 @@
+{
+  "revision": "6b3e1426d9cd829157b7621179242834a4e0a47f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Arming removed: the handoff request contract is unchanged; only an uncertain request is exempt from the busy guard, and a send the queue fence refused drops its retained request.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

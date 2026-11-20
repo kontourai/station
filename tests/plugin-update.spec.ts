@@ -4,7 +4,8 @@ import { dismissSetupLauncher } from './helpers/orchestration';
  * Uses page.route to mock API responses for isolation from backend state.
  */
 
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './helpers/fixture-audit';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import {
   installVisualViewportFixture,
@@ -278,6 +279,61 @@ async function seedPluginLifecycleRoutes(page: Page) {
 }
 
 test.describe('Plugin Update Flow', () => {
+  test('keeps partial results visible and only confirms an empty completed check', async ({
+    page,
+  }, testInfo) => {
+    await seedRoutes(page);
+    let outcome: 'refused' | 'partial' | 'complete' = 'refused';
+    await page.route('**/api/plugins/check-updates', (route) =>
+      outcome === 'refused'
+        ? route.fulfill({ status: 503, body: 'Update service unavailable' })
+        : route.fulfill({
+            json: {
+              status: outcome,
+              updates: outcome === 'partial' ? PLUGIN_UPDATES : [],
+            },
+          }),
+    );
+    await page.goto('/plugins');
+    await dismissSetupLauncher(page);
+    const retry = page.getByRole('button', { name: 'Retry update check' });
+    await expect(
+      page.getByText('Plugin update check unavailable.'),
+    ).toBeVisible();
+    await expect(page.getByText('No plugin updates found.')).toBeHidden();
+
+    outcome = 'partial';
+    await retry.click();
+    const incomplete = page.getByText(
+      'Some plugin update sources could not be checked.',
+    );
+    await expect(incomplete).toBeVisible();
+    await expect(page.getByText('1 update available')).toBeVisible();
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await expect(
+        page.getByText('v1.0.0 · Update available', { exact: true }),
+      ).toBeVisible();
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await expect(incomplete).toBeVisible();
+        await page.screenshot({
+          path: testInfo.outputPath(`plugin-check-${width}-${theme}.png`),
+          animations: 'disabled',
+        });
+      }
+    }
+
+    outcome = 'complete';
+    await retry.click();
+    await expect(page.getByText('No plugin updates found.')).toBeVisible();
+    await expect(incomplete).toBeHidden();
+    await expect(page.getByText('1 update available')).toBeHidden();
+  });
+
   test('executes plugin update and refreshes list', async ({ page }) => {
     await seedRoutes(page);
 
@@ -363,7 +419,30 @@ test.describe('Plugin Update Flow', () => {
           },
           components: [],
           conflicts: [],
-          dependencies: [],
+          dependencies: [
+            {
+              id: 'registry-dependency',
+              status: 'installed',
+              registryTrust: {
+                state: 'verified',
+                revision: `sha256:${'a'.repeat(64)}`,
+                receipt: {
+                  version: 1,
+                  registryId: 'registry-dependency',
+                  registryKeyDigest: `sha256:${'b'.repeat(64)}`,
+                  packageDigest: `sha256:${'c'.repeat(64)}`,
+                  claimDigest: `sha256:${'d'.repeat(64)}`,
+                  signer: {
+                    keyId: 'dependency-signing-key',
+                    spkiFingerprint: `sha256:${'e'.repeat(64)}`,
+                  },
+                  policyScope: 'local',
+                  policyEpoch: 'fixture-epoch',
+                  policyFingerprint: `sha256:${'f'.repeat(64)}`,
+                },
+              },
+            },
+          ],
           // `usePluginManagementViewModel.confirmInstall` fail-closes ("no
           // preview, no basis, no install", archive#4288) unless the preview
           // itself carries `contentDigest` and `permissions` — without them
@@ -407,6 +486,11 @@ test.describe('Plugin Update Flow', () => {
       .click();
     await page.locator('.plugins__install-input').fill('/tmp/network-kit');
     await page.locator('.plugins__install-btn').click();
+    await expect(
+      page.getByRole('region', {
+        name: 'Registry verification for registry-dependency',
+      }),
+    ).toContainText('dependency-signing-key');
     await page.getByRole('button', { name: 'Confirm Install' }).click();
 
     await expect(
@@ -432,9 +516,16 @@ test.describe('Plugin Update Flow', () => {
     await expect(
       page.getByRole('heading', { name: 'Lifecycle Plugin' }),
     ).toBeVisible();
-    await expect(page.getByText('layout:ops')).toBeVisible();
-    await expect(page.getByText('agent:lifecycle-agent')).toBeVisible();
-    await expect(page.getByText('type:voice')).toBeVisible();
+    const adds = page.locator('.plugins__contributions');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Layout' }),
+    ).toContainText('Ops');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Agent' }),
+    ).toContainText('Lifecycle Agent');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Connection type' }),
+    ).toContainText('voice');
     await expect(page.getByText('main@abcdef1')).toBeVisible();
 
     await page.getByRole('button', { name: 'Update to v2.0.0' }).click();
@@ -474,7 +565,7 @@ test.describe('Plugin Update Flow', () => {
     await expect(page.getByText('Improve lifecycle hooks')).toBeVisible();
 
     await page.getByRole('button', { name: 'Remove' }).click();
-    await expect(page.getByText('Remove Plugin')).toBeVisible();
+    await expect(page.getByText('Remove plugin')).toBeVisible();
     await page.locator('.plugins__confirm-delete').click();
     await expect(page.getByText('Removed lifecycle-plugin.')).toBeVisible();
   });
@@ -552,7 +643,7 @@ test.describe('Plugin Update Flow', () => {
     await page.getByRole('button', { name: /Lifecycle Plugin/ }).click();
     const removeTrigger = page.getByRole('button', { name: 'Remove' });
     await removeTrigger.click();
-    const confirm = page.getByRole('dialog', { name: 'Remove Plugin' });
+    const confirm = page.getByRole('dialog', { name: 'Remove plugin' });
     await expect(confirm).toBeVisible();
     await expect(confirm).toBeFocused();
     for (const name of ['Cancel', 'Remove']) {

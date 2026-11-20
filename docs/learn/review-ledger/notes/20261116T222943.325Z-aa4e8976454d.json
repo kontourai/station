@@ -1,0 +1,13 @@
+{
+  "revision": "485f0c4cbb8422978daf088d7e3ce003df3eec4e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta-review fix: the child transcript tail query records its first page's range as that page's param, stops forward paging at an empty ranged page, and reports no later page against a server with ranges. Checked the SDK reference's child transcript section still describes the reader (latest first, older above, cursor polling, legacy fallback); no wording change needed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Delta-review fix: the child transcript tail query records its first page's range as that page's param, stops forward paging at an empty ranged page, and reports no later page against a server with ranges. Checked the SDK reference's child transcript section still describes the reader (latest first, older above, cursor polling, legacy fallback); no wording change needed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta-review fix: the child transcript tail query records its first page's range as that page's param, stops forward paging at an empty ranged page, and reports no later page against a server with ranges. Checked the SDK reference's child transcript section still describes the reader (latest first, older above, cursor polling, legacy fallback); no wording change needed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta-review fix: the child transcript tail query records its first page's range as that page's param, stops forward paging at an empty ranged page, and reports no later page against a server with ranges. Checked the SDK reference's child transcript section still describes the reader (latest first, older above, cursor polling, legacy fallback); no wording change needed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

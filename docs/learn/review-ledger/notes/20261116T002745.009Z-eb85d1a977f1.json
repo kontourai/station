@@ -1,0 +1,7 @@
+{
+  "revision": "2ff9ffc7c0655c354ee3802324a02ef950bd0018",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed: the notification delivery design's finished-alert section changed (durable finish states, restart replay, row bound, released-key card alert). The cited delivery contract this document relies on is unchanged.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

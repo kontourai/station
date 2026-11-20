@@ -43,6 +43,11 @@ Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**
 - **End for everyone** ends the session for every viewer. **Power off** stops
   the device. Only the operator can do either.
 
+On a phone, **Device settings** fills the Device pane. Press Escape or use Close
+to return focus to the **⋯** button. On a wide screen the drawer sits beside
+the device when there is room. Location distinguishes a position reported by
+the device from the last position set in Station.
+
 ## Share a device and give Agents access
 
 Devices belong to the operator. In **Settings → Advanced → Browser & devices**,

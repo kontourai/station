@@ -884,7 +884,14 @@ export function reconcileBackgroundTasksSnapshot(
     if (entry.kind === 'agent')
       return !sessionsByThread.has(entry.delegateThreadId ?? entry.id);
     const parent = sessionsByThread.get(entry.chatThreadId);
-    return !parent || parent.hasActiveTurn === false;
+    if (!parent) return true;
+    if (parent.hasActiveTurn !== false) return false;
+    // A tool still running after its turn ended is background work (a
+    // backgrounded command, or a subagent's own call). The snapshot lists no
+    // tools, so while the conversation still reports running child work it
+    // cannot refute the live record: settling here read "no result" until the
+    // call's next progress revived it, on every reconnect.
+    return !(parent.conversationActivity?.runningChildWork?.count ?? 0);
   });
   if (stale.length) {
     const entries = { ...next.entries };
@@ -947,6 +954,23 @@ export function stationProviderTasks(
   }));
 }
 
+/** A chat's running engine child as the card the Running list shows. */
+export function providerTaskEntry(
+  state: BackgroundTasksState,
+  chatThreadId: string,
+  task: ChatBackgroundTask,
+): BackgroundTaskEntry {
+  const matchedTool = task.toolCallId
+    ? state.entries[task.toolCallId]
+    : undefined;
+  return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
+    chatThreadId,
+    // #2459: no spawning tool card, no start. `Date.now()` here was an
+    // invented start that reset on every recompute.
+    startedAt: matchedTool?.startedAt,
+  });
+}
+
 /**
  * The one read the UI consumes: this chat's Running/Finished entries, with
  * provider background subagents (`ChatUIState.backgroundTasks`, tracked
@@ -973,17 +997,9 @@ export function selectChatBackgroundTasks(
     (entry) => !(entry.kind === 'tool' && suppressedToolCallIds.has(entry.id)),
   );
 
-  const providerEntries = (providerTasks ?? []).map((task) => {
-    const matchedTool = task.toolCallId
-      ? state.entries[task.toolCallId]
-      : undefined;
-    return backgroundTaskEntryFromChildWork(providerTaskChildWork(task), {
-      chatThreadId,
-      // #2459: no spawning tool card, no start. `Date.now()` here was an
-      // invented start that reset on every recompute.
-      startedAt: matchedTool?.startedAt,
-    });
-  });
+  const providerEntries = (providerTasks ?? []).map((task) =>
+    providerTaskEntry(state, chatThreadId, task),
+  );
 
   // An unknown start sorts last rather than posing as "now".
   const running = [

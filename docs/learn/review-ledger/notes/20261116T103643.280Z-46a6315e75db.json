@@ -1,0 +1,7 @@
+{
+  "revision": "15d1df3bc49207263bdced8d75ab7d26443b44f0",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp.md","note":"Checked the new authorization-request and grant rows in section 5.3 against oauth-store.ts: request IDs are random('oar_') and grant IDs random('oag_'), both 32 random bytes base64url (47 characters); the request state list matches the oauth-records.ts enum. Checked that the prefixes stay outside the oat_/ort_/oac_ audience pattern, that management-service and CLI ID checks ({20,128}) accept them, and that IDs created before the prefixes that begin with -- remain unaddressable by the CLI and are not migrated. Outside-agent exposure remains compiled off until R6; no live client or provider was exercised.","inputs":["docs/design/outside-agent-mcp.md"]}
+  ]
+}

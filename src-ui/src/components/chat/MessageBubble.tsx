@@ -263,6 +263,19 @@ function MessageBubbleComponent({
   owner,
   accountableHuman,
 }: MessageBubbleProps) {
+  const isLastMessage = idx === activeSession.messageCount - 1;
+  const rowIsLiveTurn =
+    (activeSession.liveTurnId !== undefined &&
+      msg.turnId === activeSession.liveTurnId) ||
+    (activeSession.liveTailRow === true && isLastMessage);
+  const rowKey =
+    msg.role === 'assistant' && msg.id && msg.sessionId
+      ? JSON.stringify([activeSession.id, msg.sessionId, msg.id])
+      : undefined;
+  // A row that settles on screen keeps its existing Markdown keys.
+  const [initialHistoryRowKey] = useState(() =>
+    msg.turnEnded && !rowIsLiveTurn ? rowKey : undefined,
+  );
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
   const connection = useOptionalConversationConnection();
@@ -440,7 +453,6 @@ function MessageBubbleComponent({
   if (msg.role === 'assistant' && !hasVisibleContent && !endedEmpty)
     return null;
 
-  const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
 
   const isAssistant = msg.role === 'assistant';
@@ -449,12 +461,6 @@ function MessageBubbleComponent({
   const sender = msg.role === 'user' ? msg.sender : undefined;
   const providerSender =
     msg.sender?.kind === 'provider' ? msg.sender : undefined;
-  // A row is the open turn when it carries the live turn's id, or when the
-  // live turn renders as the last row instead of the streaming shell.
-  const rowIsLiveTurn =
-    (activeSession.liveTurnId !== undefined &&
-      msg.turnId === activeSession.liveTurnId) ||
-    (activeSession.liveTailRow === true && isLastMessage);
   const foldWork =
     isMobile &&
     isAssistant &&
@@ -616,7 +622,7 @@ function MessageBubbleComponent({
   // row's ⋯ trigger (`inlineCopy` below), so none of the desktop sites renders
   // there: one copy per row, never a second one inside the sheet.
   const copyLabel =
-    msg.role === 'user'
+    msg.role === 'user' && !sender && !stationAuthored && !msg.fromPrompt
       ? 'Copy your message'
       : isAssistant
         ? 'Copy answer'
@@ -975,7 +981,10 @@ function MessageBubbleComponent({
     </>
   );
   // #926 amendment (owner, 2026-10): Basis stays visible at rest, beside
-  // the hover-revealed row rather than inside it.
+  // the hover-revealed row rather than inside it. It shows at the bar's end
+  // (chat.css `order`): the hidden row keeps its space, so a chip drawn
+  // before it sat apart from the bubble's edge. It stays first in the DOM so
+  // keyboard focus reaches the visible chip before the hidden row.
   const turnFooterBar = (
     <div className="turn-footer__bar">
       {basisChip}
@@ -1160,6 +1169,8 @@ function MessageBubbleComponent({
     return (
       <div
         className="message-row message-row--agent message-row--compact"
+        data-surface="message"
+        data-message-role="assistant"
         data-chat-message-key={anchorKey}
         data-message-mobile={isMobile}
         style={agentAccentStyle(sender)}
@@ -1174,6 +1185,7 @@ function MessageBubbleComponent({
             isStreamingMessage={false}
             callerAccess={activeSession.callerAccess}
           />
+          {inlineCopy}
           {metadataControls}
           {metadataIdentity}
           {metadataAfter}
@@ -1190,6 +1202,9 @@ function MessageBubbleComponent({
           ? ' message-row--exchange-start'
           : ''
       }`}
+      data-surface="message"
+      // Another agent's message arrives as a user turn; it reads as the agent's.
+      data-message-role={sender ? 'assistant' : msg.role}
       data-chat-message-key={anchorKey}
       data-message-mobile={isMobile}
       // The sender's accent (agentSenderAccent.ts); the avatar and the bubble
@@ -1286,6 +1301,7 @@ function MessageBubbleComponent({
           ) : null}
           <HostImagesContext.Provider value={settledHostImages(msg.hostImages)}>
             <MessageContent
+              sessionId={answerSessionId}
               contentParts={
                 taskProposal
                   ? msg.contentParts?.map((part) =>
@@ -1302,6 +1318,11 @@ function MessageBubbleComponent({
                   : msg.contentParts
               }
               messageKey={anchorKey}
+              pagedHistoryRowKey={
+                rowKey === initialHistoryRowKey
+                  ? initialHistoryRowKey
+                  : undefined
+              }
               textContent={
                 taskProposal
                   ? textContent.replace(

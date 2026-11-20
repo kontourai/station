@@ -18,6 +18,10 @@ export {
   enumerateLayoutPanes,
 } from './workspace-pane-layout-adapter-catalog.js';
 export {
+  COMPACT_PROJECT_LAYOUT_PANE_ID_PREFIX,
+  matchesLegacyProjectLayoutPaneId,
+} from './workspace-pane-layout-adapter-helpers.js';
+export {
   type EnumerableLayoutDefinition,
   MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH,
   type WorkspacePaneCatalog,

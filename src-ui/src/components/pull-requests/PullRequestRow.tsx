@@ -30,6 +30,7 @@ export function PullRequestRow({
   overflowLabel,
   current = false,
   note,
+  detail,
 }: {
   title: string;
   /** "#42" or "lantern/lantern #42" — where the title lives. */
@@ -52,6 +53,8 @@ export function PullRequestRow({
   current?: boolean;
   /** One line below, for a row that cannot be opened (its reason). */
   note?: string;
+  /** One quiet line below the row: what Station last did for it. */
+  detail?: ReactNode;
 }) {
   const menu = useRef<OverflowMenuHandle>(null);
   // A right-click or hold anywhere on the row opens its `⋯`: the same rows,
@@ -110,6 +113,7 @@ export function PullRequestRow({
         />
       )}
       {note && <p className="pull-request-row__note">{note}</p>}
+      {detail && <p className="pull-request-row__detail">{detail}</p>}
     </li>
   );
 }

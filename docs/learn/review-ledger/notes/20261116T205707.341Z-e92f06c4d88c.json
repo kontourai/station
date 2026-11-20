@@ -1,0 +1,7 @@
+{
+  "revision": "8a7dee80b0b050d312da8caa6176d86776d85fa5",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Representative narrow-diff demo and its 120s liveness limit are unchanged; the new rule only affects the hosted shard plan.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts","scripts/run-changed-verification.mjs"]}
+  ]
+}

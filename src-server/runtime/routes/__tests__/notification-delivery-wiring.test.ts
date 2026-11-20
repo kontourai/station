@@ -291,6 +291,68 @@ describe('wireNotificationDelivery (production composition)', () => {
     );
   });
 
+  test('every OS link names this Station, read per delivery: Web Push and the desktop feed', async () => {
+    let environmentId = 'env-first';
+    const { eventBus, send, wiring } = wire({
+      devicePairing: {
+        listDevices: () => DEVICES,
+        deviceLocality: () => undefined,
+        listPushSubscriptions: () => [
+          {
+            deviceId: 'phone',
+            subscription: {
+              endpoint: 'https://push.example.test/phone',
+              keys: { p256dh: 'p-phone', auth: 'a-phone' },
+            },
+          },
+        ],
+        clearPushSubscription: vi.fn(),
+        environmentId: () => environmentId,
+      },
+    });
+    const feed = wiring.desktopHostChannel!;
+    feed.read('device:tablet', 0);
+    const linkOf = (payload: unknown) =>
+      new URL(
+        String(
+          (payload as { url?: unknown; data?: { url?: unknown } }).url ??
+            (payload as { data?: { url?: unknown } }).data?.url,
+        ),
+        'https://station.invalid',
+      );
+    const stations = () => ({
+      webPush: send.mock.calls.map(([, payload]) =>
+        linkOf(payload).searchParams.get('station'),
+      ),
+      desktop: feed
+        .read('device:tablet', 0)
+        .entries.map((entry) =>
+          entry.kind === 'alert' && entry.link
+            ? new URL(entry.link, 'https://station.invalid').searchParams.get(
+                'station',
+              )
+            : null,
+        ),
+    });
+    eventBus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, approval() as never);
+    await flush();
+    expect(stations()).toEqual({
+      webPush: ['env-first'],
+      desktop: ['env-first'],
+    });
+    // An environment reset replaces the id: the next delivery carries it.
+    environmentId = 'env-reset';
+    eventBus.emit(
+      SERVER_EVENTS.NOTIFICATION_DELIVERED,
+      approval({ id: 'n-second' }) as never,
+    );
+    await flush();
+    expect(stations()).toEqual({
+      webPush: ['env-first', 'env-reset'],
+      desktop: ['env-first', 'env-reset'],
+    });
+  });
+
   test('a paired device may hold a feed only if it is in the family', () => {
     const { wiring } = wire();
     expect(wiring.isFeedDevice('phone')).toBe(true);

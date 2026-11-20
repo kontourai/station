@@ -1,0 +1,7 @@
+{
+  "revision": "8a7dee80b0b050d312da8caa6176d86776d85fa5",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Code-health guidance unchanged by the selector change; gate passes with no introduced findings.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/fast-checks-shard.mjs"]}
+  ]
+}

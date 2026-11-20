@@ -19,6 +19,7 @@ import { ApprovalRegistry } from '../../../services/approvals/approval-registry.
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
   approvalDuration: { record: vi.fn() },
   approvalInboxOps: { add: vi.fn() },
   approvalOps: { add: vi.fn() },

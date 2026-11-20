@@ -621,6 +621,8 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Delivery notes');
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page
       .getByPlaceholder('~/code/my-project')
       .fill('/tmp/delivery-notes');
@@ -691,6 +693,8 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('New Project');
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page
       .getByPlaceholder('~/code/my-project')
       .fill('/tmp/git-workspace/');
@@ -770,6 +774,8 @@ test.describe('Project Navigation', () => {
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
     // No trailing slash: the shape a user who pastes a path actually types.
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page
       .getByPlaceholder('~/code/my-project')
       .fill('/tmp/typed-workspace');
@@ -836,6 +842,8 @@ test.describe('Project Navigation', () => {
 
     await page.goto('/projects/new');
     await page.getByPlaceholder('My Project').fill('Typed Workspace');
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page
       .getByPlaceholder('~/code/my-project')
       .fill('/tmp/typed-workspace');

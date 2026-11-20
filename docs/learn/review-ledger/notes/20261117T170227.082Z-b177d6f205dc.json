@@ -1,0 +1,7 @@
+{
+  "revision": "613beb5346fe1e308db2ffaaf4dfca7b7040fbce",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-checked the easing section. The keyword is one CSS ident, folded only in the ASCII range, so an animation named U+0130 still leaves a later ease-in rejected at ceiling 0. A quoted name, a quoted URL, and a quoted var(--ease-in) are not that keyword. Adjacent tokens, hex escapes, ease-in-out, and ease-iné are unchanged. Restored index-based toLowerCase: the new test failed because the U+0130 line was not ease-in. Removed string skipping: the quoted animation name was rejected. Restored, and all 19 tests passed. The ratchet test has no separate prose owner. No screenshot or computed timing.","inputs":["docs/design/motion.md","scripts/motion-contract-ratchet.mjs"]}
+  ]
+}

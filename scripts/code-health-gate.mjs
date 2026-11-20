@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { holdHeavyCheckSlotForProcess } from './lib/heavy-check-slots.mjs';
 import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -175,7 +176,6 @@ async function runCodeHealthGate(root, baseRef) {
 
 if (invokedDirectly(import.meta.url)) {
   try {
-    await ensureLivenessScale();
     const args = process.argv.slice(2);
     if (args.length > 1 || (args.length && !args[0].startsWith('--base=')))
       throw new Error(
@@ -187,6 +187,12 @@ if (invokedDirectly(import.meta.url)) {
       'origin/main';
     if (!base || base.startsWith('-'))
       throw new Error('Invalid code-health base');
+    // One fallow audit reached 5.1 GiB; two worktrees running this gate at
+    // once got a Station engine OOM-killed (#5080). Queue for the host-wide
+    // heavy-check slot, however the gate was started.
+    if (!(await holdHeavyCheckSlotForProcess('code-health-gate')))
+      throw new Error('No heavy-check slot; the gate did not run');
+    await ensureLivenessScale();
     const result = await runCodeHealthGate(process.cwd(), base);
     console.log(JSON.stringify(result, null, 2));
     // An empty comparison must say what it is rather than borrow the verdict

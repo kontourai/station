@@ -41,6 +41,15 @@ import { WorkloadHost } from './workload-host.ts';
 
 export const SUPERVISOR_VERSION: string = packageJson.version;
 
+/**
+ * Node flags for each core generation; the supervisor's own flags are not
+ * passed on. V8 sizes the young generation from the host's memory and never
+ * shrinks it at rest: on a 64 GB Mac an idle core kept 134 MB of new space
+ * committed with 1 MB live. Capping each semi-space at 16 MB bounds it at
+ * about 34 MB (docs/reference/station-weight.md#server-memory-at-rest).
+ */
+const CORE_EXEC_ARGV: readonly string[] = ['--max-semi-space-size=16'];
+
 export interface SupervisorOptions {
   /** The initial core entry; must already be inside `buildRoot`. */
   entry: string;
@@ -138,8 +147,7 @@ function createForkLauncher(options: {
       delete env[TEST_FORCE_CATCHING_ENV];
       const child = fork(entry, [], {
         env,
-        // The supervisor's own Node flags are not the core's.
-        execArgv: [],
+        execArgv: [...CORE_EXEC_ARGV],
         stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
         serialization: 'json',
         windowsHide: true,
@@ -320,7 +328,15 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
         workloads: workloads.status(),
         workloadHost: { available: workloads.available },
       }),
-      handoff: (request, onProgress) => manager.handoff(request, onProgress),
+      handoff: async (request, onProgress) => {
+        const { terminalStartupRefusal, ...result } = await manager.handoff(
+          request,
+          onProgress,
+        );
+        return terminalStartupRefusal
+          ? { ...result, afterReply: () => void shutdown(1) }
+          : result;
+      },
       stop: (drainDeadlineMs) => void stopAndExit(drainDeadlineMs),
       subscribe: (listener) => {
         subscribers.add(listener);

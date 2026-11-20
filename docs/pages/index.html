@@ -3,10 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>Station: Code from anywhere. On your own, or with your team.</title>
     <meta
       name="description"
-      content="Code from anywhere. On your own, or with your team. Pick up where you left off, bring your team into the work, and make what your agents produce something you can build on together."
+      content="Code from anywhere. On your own, or with your team. Talk with your team in Project channels, bring your agents into the conversation, and carry the work through Tasks. Open source and self-hosted."
     />
     <link rel="canonical" href="https://kontourai.github.io/station/" />
     <meta property="og:type" content="website" />
@@ -14,154 +15,194 @@
     <meta property="og:title" content="Station: Code from anywhere. On your own, or with your team." />
     <meta
       property="og:description"
-      content="Code from anywhere. On your own, or with your team. Pick up where you left off, bring your team into the work, and make what your agents produce something you can build on together."
+      content="Code from anywhere. On your own, or with your team. Talk with your team in Project channels, bring your agents into the conversation, and carry the work through Tasks. Open source and self-hosted."
     />
     <meta property="og:url" content="https://kontourai.github.io/station/" />
-    <meta property="og:image" content="https://kontourai.github.io/station/media/task-capabilities-light-desktop.png" />
+    <meta property="og:image" content="https://kontourai.github.io/station/media/room-long-light-desktop.png" />
     <meta property="og:image:width" content="1440" />
     <meta property="og:image:height" content="900" />
     <meta
       property="og:image:alt"
-      content="A Station Task room showing its plan, work chats, and artifacts and receipts."
+      content="A Station Project channel, #general, where three people and the agent Scout discuss a release."
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Station: Code from anywhere. On your own, or with your team." />
     <meta
       name="twitter:description"
-      content="Code from anywhere. On your own, or with your team. Pick up where you left off, bring your team into the work, and make what your agents produce something you can build on together."
+      content="Code from anywhere. On your own, or with your team. Talk with your team in Project channels, bring your agents into the conversation, and carry the work through Tasks. Open source and self-hosted."
     />
-    <meta name="twitter:image" content="https://kontourai.github.io/station/media/task-capabilities-light-desktop.png" />
+    <meta name="twitter:image" content="https://kontourai.github.io/station/media/room-long-light-desktop.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header class="site-header">
       <a class="brand" href="./index.html">Station</a>
       <nav aria-label="Primary">
-        <a href="#platform">Platform</a>
-        <a href="#use-cases">Use cases</a>
+        <a class="nav-wide" href="#how">How it works</a>
+        <a href="#self-host">Self-host</a>
         <a href="#get-station">Get Station</a>
-        <a href="#developers">Developers</a>
+        <a class="nav-wide" href="#developers">Developers</a>
         <a href="./docs/">Docs</a>
         <a href="https://github.com/kontourai/station">GitHub</a>
       </nav>
     </header>
 
     <main>
-      <section class="hero">
+      <section class="hero" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <h1>Code from anywhere. On your own, or with your team.</h1>
-          <p class="lede">Agent work shouldn’t be trapped in one terminal or provider. Pick up where you left off, bring your team into the work, and make what your agents produce something you can build on together.</p>
+          <p class="eyebrow">Open source · Runs on your own machine</p>
+          <h1 id="hero-title">Code from anywhere. On your own, or with your team.</h1>
+          <p class="lede">Station gives each Project a place to talk, a seat for your agents, and Tasks that carry the work through. Run it on your own computer or server.</p>
           <div class="hero-actions">
-            <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
-            <a class="button secondary" href="https://github.com/kontourai/station">View source</a>
-            <a class="button secondary" href="https://station.kontourai.io">Product site</a>
+            <a class="button primary" href="./docs/user/getting-started.html#quickstart">Get started</a>
+            <a class="text-link" href="https://github.com/kontourai/station/blob/main/docs/learn/walkthroughs.md">Product tour</a>
           </div>
-          <p class="status-line">
-            Active development under Apache-2.0. v1 is coming soon. Try a Nightly server or desktop
-            build, or run from source. Nightly is a testing channel; follow the
-            setup guide for supported platforms and current limits.
-          </p>
         </div>
-        <figure class="hero-media">
-          <img
-            src="./media/task-capabilities-light-desktop.png"
-            width="1440"
-            height="900"
-            alt="A Station Task room for the Task Review the documentation change. Its overview lists three steps, Plan, Work chats, and Artifacts and receipts, above the Project tools available to the Task."
-          />
-          <figcaption>A Task room keeps the plan, the agent conversations, and the recorded results together. Captured by Station’s automated UI gallery with sample data.</figcaption>
+        <figure class="hero-stage">
+          <picture class="stage-desktop">
+            <source media="(prefers-color-scheme: dark)" srcset="./media/room-long-dark-desktop.png" />
+            <img
+              src="./media/room-long-light-desktop.png"
+              width="1440"
+              height="900"
+              alt="A Station Project, Onboarding revamp, open on its #general channel. Jonas Berg, Maya Chen and Priya Natarajan discuss a release, and the agent Scout, marked Agent, reports that all 12 onboarding checks pass. Jonas has replied to Scout in a thread."
+            />
+          </picture>
+          <picture class="stage-phone">
+            <source media="(prefers-color-scheme: dark)" srcset="./media/room-long-dark-mobile.png" />
+            <img
+              src="./media/room-long-light-mobile.png"
+              width="390"
+              height="844"
+              alt="The same #general channel on a phone, full screen, with Scout's message and its one reply."
+            />
+          </picture>
+          <figcaption>A Project channel with three people and an agent, at desktop and phone sizes. Captured by Station’s automated UI gallery with sample data.</figcaption>
         </figure>
       </section>
 
-      <section id="platform" class="section">
+      <section id="how" class="section" aria-labelledby="how-title">
         <div class="section-heading">
-          <h2>What Station does.</h2>
+          <h2 id="how-title">Three things you do in Station.</h2>
+        </div>
+        <ol class="steps" aria-label="What you do in Station">
+          <li><a href="#talk"><span>1</span> Talk with your team</a></li>
+          <li><a href="#agents"><span>2</span> Bring your agents in</a></li>
+          <li><a href="#done"><span>3</span> Get the project done</a></li>
+        </ol>
+      </section>
+
+      <section id="talk" class="section story" aria-labelledby="talk-title">
+        <div class="story-copy">
+          <p class="eyebrow">1 · Talk with your team</p>
+          <h2 id="talk-title">Every Project has its own channels.</h2>
+          <p>A Project’s Room starts with <code>#general</code>. Add channels for design, a launch, or anything else, then rename or archive them as the work moves. Each channel keeps its own history and shared note.</p>
+          <ul class="checks">
+            <li>Messages group by person and by day, and a reply opens a thread.</li>
+            <li>The sidebar lists each Project’s channels and Tasks, with unread counts.</li>
+            <li>On a phone, a channel opens full screen with the composer at the bottom.</li>
+          </ul>
+          <p class="fine-print">Inviting other people uses Project sharing, which is still in development. Today, an invited person’s browser opens shared Projects read-only. <a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md">Read the setup and current limits</a>.</p>
+        </div>
+        <figure class="story-media phone">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="./media/channel-nav-list-dark-mobile.png" />
+            <img
+              src="./media/channel-nav-list-light-mobile.png"
+              width="390"
+              height="1200"
+              loading="lazy"
+              alt="The Onboarding revamp Project on a phone. Its channels, general, design and launch-plan, are listed with unread counts, followed by its Tasks."
+            />
+          </picture>
+        </figure>
+      </section>
+
+      <section id="agents" class="section story reverse" aria-labelledby="agents-title">
+        <div class="story-copy">
+          <p class="eyebrow">2 · Bring your agents in</p>
+          <h2 id="agents-title">Agents answer where everyone can read.</h2>
+          <p>Choose <strong>Bring an Agent</strong> in a channel to ask one of your agents a question. Its answer comes back to that channel, marked as an agent, so the whole team reads it and replies in the same thread.</p>
+          <ul class="checks">
+            <li><strong>Recap Project</strong> prepares a request for an agent to summarize the Project, its Tasks and the discussion.</li>
+            <li>Run a Station agent on a local or hosted model, or connect supported agent CLIs and compatible custom engines.</li>
+            <li>Agent requests run on your Station, with the agents and connections you set up there.</li>
+          </ul>
+          <a class="text-link" href="./docs/user/concepts.html">Understand agents and connections</a>
+        </div>
+        <figure class="story-media phone crop-thread">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="./media/channel-nav-thread-dark-mobile.png" />
+            <img
+              src="./media/channel-nav-thread-light-mobile.png"
+              width="390"
+              height="844"
+              loading="lazy"
+              alt="A thread in #general on a phone. The agent Scout traces a Safari sign-in bug: the return URL loses its query string after sign-in, and the session cookie is set after the redirect. Priya Natarajan replies that both fixes are in the branch, and Jonas Berg that he is shipping it after lunch."
+            />
+          </picture>
+        </figure>
+      </section>
+
+      <section id="done" class="section story wide" aria-labelledby="done-title">
+        <div class="story-copy">
+          <p class="eyebrow">3 · Get the project done</p>
+          <h2 id="done-title">Turn the conversation into a Task.</h2>
+          <p>A Task keeps its plan, the agent work chats, and the recorded results together. Reopen it later, or from another device, and the record is still there.</p>
+          <ul class="checks">
+            <li>Start a Task from a chat with <strong>New Task from this</strong>, or from a GitHub issue on the Project’s Tasks board.</li>
+            <li>Configured workflows can attach gate results, missing evidence and receipts. Completing a Task doesn’t mean a review or gate passed.</li>
+            <li>Pair a phone, tablet or laptop with scoped, revocable access, or send work to another computer you own over SSH.</li>
+          </ul>
+          <a class="text-link" href="./docs/user/concepts.html">Understand Projects, Tasks and Sessions</a>
+        </div>
+        <figure class="story-media task-figure">
+          <picture>
+            <!-- Each source states its own size: the box is reserved from the
+                 capture that loads, so a phone capture can't grow the page
+                 under a jump to a later anchor. -->
+            <source media="(max-width: 640px) and (prefers-color-scheme: dark)" srcset="./media/task-capabilities-dark-mobile.png" width="390" height="844" />
+            <source media="(max-width: 640px)" srcset="./media/task-capabilities-light-mobile.png" width="390" height="844" />
+            <source media="(prefers-color-scheme: dark)" srcset="./media/task-capabilities-dark-desktop.png" width="1440" height="900" />
+            <img
+              src="./media/task-capabilities-light-desktop.png"
+              width="1440"
+              height="900"
+              loading="lazy"
+              alt="A Station Task, Review the documentation change. Its overview lists three steps, Plan, Work chats, and Artifacts and receipts, above the Project tools available to the Task."
+            />
+          </picture>
+        </figure>
+      </section>
+
+      <section id="self-host" class="section" aria-labelledby="self-host-title">
+        <div class="section-heading">
+          <p class="eyebrow">Open source · Self-hosted</p>
+          <h2 id="self-host-title">Yours to run, read and change.</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <h3>Bring the coding agents you already use</h3>
-            <p>Run a Station agent on a local or hosted model, or connect supported agent CLIs and compatible custom engines. Each engine keeps its own tool loop. Station supplies Project context and records its activity.</p>
-            <a href="./docs/user/concepts.html">Understand agents and connections</a>
-          </article>
-          <article>
-            <h3>Pick up where you left off</h3>
-            <p>The plan, conversations, files, artifacts, and results stay linked to the Task. Reopen it to review the record, then check that its workspace is still available.</p>
-            <a href="./docs/user/concepts.html">Understand Projects, Tasks, and Sessions</a>
-          </article>
-          <article>
-            <h3>Review the changes and check results</h3>
-            <p>Configured workflows can attach gate results, missing evidence, exceptions, and receipts to a Task. Completing a Task doesn’t mean a review or gate passed.</p>
-            <a href="./docs/user/concepts.html">Understand gates and receipts</a>
-          </article>
-          <article>
-            <h3>Run it on your own machine</h3>
-            <p>Station stores its data on the computer that runs it. Connected model services, engines, devices, and integrations can send and receive data outside it. Desktop builds also check for updates.</p>
+            <h3>Runs on your own machine</h3>
+            <p>Station stores its data on the computer that runs it. Connected model services, engines, devices and integrations can send and receive data outside it. Desktop builds also check for updates.</p>
             <a href="./docs/user/getting-started.html">Get started</a>
           </article>
           <article>
-            <h3>Direct work from another device</h3>
-            <p>Pair a phone, tablet, or laptop with scoped, revocable access and open the same Task. You can also send work to another computer you own over SSH, using that computer’s agents and credentials.</p>
-            <a href="https://github.com/kontourai/station/blob/main/docs/guides/machine-relationships.md">Read about computer relationships</a>
-          </article>
-          <article>
-            <h3>Add a tool or work surface</h3>
-            <p>Plugins built on the public SDK can add layouts, agents, MCP tools, model providers, knowledge, and skills for your own setup or a team-specific work surface.</p>
-            <a href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md">Read the plugin guide</a>
-          </article>
-        </div>
-      </section>
-
-      <section class="section" aria-labelledby="shared-work-title">
-        <div class="section-heading">
-          <h2 id="shared-work-title">From your first idea to what you ship.</h2>
-        </div>
-        <p>Plan, build, and ship with your coding agents. Start on your own, then bring in teammates who can make decisions with you and take the work forward themselves. See progress as it happens, share what you learn, and build on work already done.</p>
-        <p>Team collaboration is in development. The current sharing limits are described below.</p>
-        <p>Today, you can invite people to a Project and give them a role. After signing in and
-          getting their browser approved, they can read the Tasks you publish for
-          them. Editing Tasks and running agents from that entry aren’t available
-          yet. Review and member-presence UI include Feature Previews. Pairing
-          connects your own devices; it isn’t team access.</p>
-        <p><a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md">Read sharing setup and current limits</a>.</p>
-      </section>
-
-      <section id="use-cases" class="section">
-        <div class="section-heading">
-          <h2>What people use it for.</h2>
-        </div>
-        <div class="feature-grid">
-          <article>
-            <h3>Ship a change with its checks attached</h3>
-            <p>Open the repository as a Project, create a Task, pick an agent, and keep the commands that ran, their results, and the review receipts with the change.</p>
-          </article>
-          <article>
-            <h3>Keep a long piece of work alive</h3>
-            <p>A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence.</p>
-          </article>
-          <article>
-            <h3>Use agents without a cloud account</h3>
-            <p>A configured local model can provide inference without a cloud account. Tools, engines, and other enabled integrations retain their own network behavior.</p>
-          </article>
-          <article>
-            <h3>Coordinate several agents</h3>
-            <p>Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace.</p>
-          </article>
-          <article>
-            <h3>Run it on a server you control</h3>
-            <p>Build the container image from the checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. A published image is not yet available for anonymous pulls.</p>
+            <h3>Or on a server you control</h3>
+            <p>Build the container image from the checkout and run it behind your own authenticated ingress. A published image is not yet available for anonymous pulls.</p>
             <a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment.md">Read the deployment guide</a>
           </article>
           <article>
-            <h3>Build a purpose-built work surface</h3>
-            <p>Use the public SDK to build a review workbench, a release console, or a layout for a particular kind of work. The plugin guide lists supported hooks and their limits.</p>
+            <h3>Open source under Apache-2.0</h3>
+            <p>Read the code, file issues and contribute. Station is in active development, and v1 is coming soon.</p>
+            <a href="https://github.com/kontourai/station">View the source</a>
           </article>
         </div>
       </section>
 
-      <section id="get-station" class="section">
+      <section id="get-station" class="section" aria-labelledby="get-station-title">
         <div class="section-heading">
-          <h2>Choose how to try Station.</h2>
-          <p class="section-note">Station is open source and under active development. Nightly is a testing channel; the setup guide owns platform requirements and release availability.</p>
+          <h2 id="get-station-title">Choose how to try Station.</h2>
+          <p class="section-note">Nightly is a testing channel; the setup guide owns platform requirements and release availability.</p>
         </div>
         <div class="feature-grid">
           <article>
@@ -182,9 +223,9 @@
         </div>
       </section>
 
-      <section id="developers" class="section">
+      <section id="developers" class="section" aria-labelledby="developers-title">
         <div class="section-heading">
-          <h2>Build on Station.</h2>
+          <h2 id="developers-title">Build on Station.</h2>
         </div>
         <div class="feature-grid">
           <article>
@@ -229,9 +270,9 @@
         </p>
       </section>
 
-      <section class="section cta">
-        <h2>Start with one connection and one project.</h2>
-        <p>Run Station, connect an agent, and open your project. Start a Task and inspect what the agent changes.</p>
+      <section class="section cta" aria-labelledby="cta-title">
+        <h2 id="cta-title">Start with one Project.</h2>
+        <p>Run Station, connect an agent, and open your project. Talk it through in <code>#general</code>, then start a Task.</p>
         <a class="button primary" href="./docs/user/getting-started.html">Get started</a>
       </section>
     </main>

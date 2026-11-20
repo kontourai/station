@@ -198,7 +198,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     );
     expect(list.scrollTop).toBe(120);
     expect(
-      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+      screen.getByRole('button', { name: /^Shared row title.*Shared project/ }),
     ).toBeTruthy();
   });
 
@@ -234,7 +234,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+      screen.getByRole('button', { name: /^Shared row title.*Shared project/ }),
     );
     await waitFor(() => expect(onOpenFailed).toHaveBeenCalledOnce());
     expect(onOpenConversation.mock.calls[0]?.slice(0, 2)).toEqual([
@@ -397,8 +397,12 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         ).value,
       ).toBe('project:["station:local","alpha"]');
       fireEvent.click(
+        // Desktop: a count badge on the scope picker; the phone keeps its notice.
         screen.getByRole('button', {
-          name: '1 need you outside this filter · Show all',
+          name:
+            host === 'desktop'
+              ? '1 need you outside this filter. Show all work'
+              : '1 need you outside this filter · Show all',
         }),
       );
       expect(screen.getByText('Remote approval')).toBeTruthy();
@@ -574,7 +578,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       expect(within(lane).getByText('Ship release')).toBeTruthy();
       fireEvent.click(
         within(lane).getByRole('button', {
-          name: 'Release conversation, Shared project',
+          name: /^Release conversation.*Shared project/,
         }),
       );
       expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
@@ -584,7 +588,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         '/tasks/task-1?dock=open&chat=linked-chat&taskView=conversation',
       );
       expect(
-        within(lane).queryByRole('button', { name: 'Ship release, alpha' }),
+        within(lane).queryByRole('button', { name: /^Ship release.*alpha/ }),
       ).toBeNull();
       fireEvent.click(
         within(lane).getByRole('button', { name: 'Open task Ship release' }),
@@ -713,7 +717,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       fireEvent.click(
         within(needsYou).getByRole('button', {
-          name: 'Security review, No project',
+          name: /^Security review.*No project/,
         }),
       );
       await vi.waitFor(() =>
@@ -787,7 +791,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       ).toBeNull();
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'Historical work 44, Shared project',
+          name: /^Historical work 44.*Shared project/,
         }),
       );
       expect(handlers.onFocusChat).toHaveBeenCalledWith('history-44');
@@ -839,7 +843,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
         );
       const current = screen.getByRole('button', {
-        name: 'Historical work 40, Shared project',
+        name: /^Historical work 40.*Shared project/,
       });
       expect(current.getAttribute('aria-current')).toBe('true');
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
@@ -847,7 +851,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       );
       expect(
         screen.queryByRole('button', {
-          name: 'Historical work 39, Shared project',
+          name: /^Historical work 39.*Shared project/,
         }),
       ).toBeNull();
     },
@@ -858,7 +862,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expectSharedRowAnatomy(container);
     expect(
       screen.getByRole('button', {
-        name: 'Shared row title, Shared project',
+        name: /^Shared row title.*Shared project/,
       }),
     ).not.toBeNull();
   });
@@ -869,7 +873,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
-        name: 'Shared row title, Shared project',
+        name: /^Shared row title.*Shared project/,
       }),
     ).not.toBeNull();
     // The sheet's rows use the always-visible ≥44px action chrome.
@@ -938,7 +942,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     );
     expect(
       within(snoozed).getByRole('button', {
-        name: 'Shared row title, Shared project',
+        name: /^Shared row title.*Shared project/,
       }),
     ).toBeTruthy();
   });
@@ -1042,7 +1046,9 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       [{ slug: 'claude', name: 'Claude Code' }] as any,
     );
     const row = screen.getByTestId('inbox-row');
-    expect(row.textContent).toContain('Claude Code');
+    // A hover row draws the agent as its mark, named in the mark's tooltip.
+    const marks = row.querySelector('[data-testid="identity-marks"]');
+    expect(marks?.getAttribute('title')).toBe('Claude Code');
     expect(row.textContent).not.toContain('Codex');
   });
   beforeEach(() => {
@@ -1108,7 +1114,8 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       vi.fn(),
       AGENTS,
     );
-    expect(container.querySelector('.inbox-row__meta-text')?.textContent).toBe(
+    // No mark to stand for it, so the agent stays in words before the project.
+    expect(container.querySelector('.inbox-row__context')?.textContent).toBe(
       'Codex · Shared project',
     );
   });
@@ -1136,7 +1143,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     expect(avatar?.hasAttribute('tabindex')).toBe(false);
     // The row's accessible name is unchanged by the icon.
     expect(
-      screen.getByRole('button', { name: 'Shared row title, Shared project' }),
+      screen.getByRole('button', { name: /^Shared row title.*Shared project/ }),
     ).not.toBeNull();
     const focusableWithIcon = withIcon.container.querySelectorAll(
       '.chat-dock-inbox__row button',
@@ -1293,11 +1300,10 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
       container
         .querySelector('[data-testid="identity-marks"]')
         ?.getAttribute('title'),
-    ).toBe('Ran on Claude Code, Codex');
-    // The agent stays named in text beside the marks.
-    expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
-      'Station',
-    );
+    ).toBe('Station — Ran on Claude Code, Codex');
+    // The marks stand in for the agent's name on a hover row: it is in their
+    // tooltip (above) and the hover card, not repeated as text.
+    expect(container.querySelector('.inbox-row__agent')).toBeNull();
 
     const many = renderPanelHost(
       rowFor({

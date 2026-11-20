@@ -255,7 +255,9 @@ describe('inbox hover card opening (through the real row)', () => {
     hoverRow();
     await screen.findByTestId('inbox-row-hover-card');
     fireEvent.pointerLeave(screen.getByTestId('inbox-row'));
-    expect(screen.queryByTestId('inbox-row-hover-card')).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByTestId('inbox-row-hover-card')).toBeNull(),
+    );
   });
 
   it('focus opens it immediately and blur closes it', async () => {

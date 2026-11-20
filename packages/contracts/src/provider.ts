@@ -286,6 +286,21 @@ export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
  * brief's digest: that turn's own record of what it carried.
  */
 export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
+/**
+ * #5062/#5065: what a new Session in a Project starts from, the
+ * `ProjectSessionContext` (`project-session-context.ts`): the Project brief and
+ * memory index, read once when the Session starts. Stamped into start
+ * metadata by Station's start choke point after the reserved-key strip, and
+ * prepended to the first turn's ambient context on every engine, like the
+ * Task brief.
+ */
+export const PROJECT_SESSION_CONTEXT_METADATA_KEY = 'stationProjectContext';
+/**
+ * Stamped on the one turn that composed the Project context, with a
+ * `ProjectSessionContextComposed` receipt (digest and approximate tokens).
+ */
+export const PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY =
+  'stationProjectContextComposed';
 export const TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY =
   'stationLearningContextContributions';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
@@ -377,6 +392,8 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY,
   TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
@@ -617,6 +634,15 @@ export function modelLaunchTelemetryAttributes(
  * `engine-capability-matrix.ts`, #3290).
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
+
+/** Who the provider reports it would use to review eligible escalations. */
+export type EngineApprovalReviewer = 'user' | 'automatic' | 'unknown';
+
+export function isEngineApprovalReviewer(
+  value: unknown,
+): value is EngineApprovalReviewer {
+  return value === 'user' || value === 'automatic' || value === 'unknown';
+}
 
 export const APPROVAL_MODES: readonly ApprovalMode[] = [
   'ask',
@@ -1035,6 +1061,16 @@ export function lastRuntimeError<T extends { readonly method?: unknown }>(
 export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
 
 /**
+ * #5113: `runtime.warning` codes for an engine's own workload scope entering
+ * and leaving near-cap memory pressure. `details` carries
+ * `workingSetBytes`, `memoryMaxBytes` and `thresholdPercent`. The engine is
+ * told the same transition in its turn.
+ */
+export const WORKLOAD_MEMORY_PRESSURE_CODE = 'workload-memory-pressure';
+export const WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE =
+  'workload-memory-pressure-cleared';
+
+/**
  * A provider reported a failed query/turn without disproving its native binding.
  * This is not a completed turn, a retry instruction, or a resumability claim.
  */
@@ -1303,6 +1339,12 @@ export interface AttachedSessionSourceMetadata {
   completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
+  /**
+   * The newest write the source reported for this session (to the nearest
+   * 30 seconds), including writes that produce no event. Read by
+   * `attachedSourceActivity`.
+   */
+  lastWriteAt?: string;
 }
 
 // ── #895 wave A: per-agent capability delivery (agent-engine-unification.md §3.2/§5/§6.2) ──
@@ -1716,6 +1758,11 @@ export interface ProviderSession {
   tenantExecutionContext?: TenantExecutionContext;
   createdAt: string;
   updatedAt: string;
+}
+
+/** An engine binding in one of these states cannot take a turn. */
+export function providerSessionBindingEnded(status: string): boolean {
+  return status === 'closed' || status === 'dead' || status === 'error';
 }
 
 export interface ProviderTurnStartResult {

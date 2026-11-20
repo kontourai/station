@@ -25,11 +25,13 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AgentScheduleNotes } from '../components/chat-dock/AgentScheduleNotes';
 import { SessionScheduledSection } from '../components/chat-dock/SessionScheduledSection';
 import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
+import { mountedDecisionSurfaces } from '../lib/custom-appearance/decision-surfaces';
 
 const API = 'http://station.test';
 const CONVERSATION = 'conv-1';
@@ -179,6 +181,8 @@ const ruleProposal: AutomationProposal = {
 };
 
 let schedule: ConversationAgentSchedule;
+let activationRefusal: string | undefined;
+let creationRefusal: string | undefined;
 let calls: Array<{ method: string; url: string; body?: unknown }>;
 
 beforeEach(() => {
@@ -186,6 +190,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'], now: NOW });
   schedule = { wakeUps: [wakeUp], jobProposals: [proposal], jobs: [] };
   calls = [];
+  activationRefusal = undefined;
+  creationRefusal = undefined;
   scheduler.jobs = [];
   scheduler.conversationTargets = false;
   setClientCredentialResolver(() => ({
@@ -231,8 +237,38 @@ beforeEach(() => {
         }
         if (
           url.endsWith('/automation-proposals/ap1/confirm') ||
-          url.endsWith('/automation-proposals/ap1/decline')
+          url.endsWith('/automation-proposals/ap2/confirm')
         ) {
+          if (creationRefusal)
+            return Response.json(
+              {
+                success: false,
+                code: 'automation_proposal_binding_changed',
+                error: creationRefusal,
+              },
+              { status: 409 },
+            );
+          const proposed = url.endsWith('/ap1/confirm')
+            ? automationProposal
+            : ruleProposal;
+          const createdId = `${proposed.kind}-proposal-1`;
+          schedule = { ...schedule, automationProposals: [] };
+          return Response.json({
+            success: true,
+            data: {
+              proposal: {
+                ...proposed,
+                state: 'confirmed',
+                createdId,
+              },
+              createdId,
+              enabled: body?.enable === true && activationRefusal === undefined,
+              untrustedContentAtConfirm: false,
+              ...(activationRefusal ? { message: activationRefusal } : {}),
+            },
+          });
+        }
+        if (url.endsWith('/automation-proposals/ap1/decline')) {
           schedule = { ...schedule, automationProposals: [] };
           return Response.json({ success: true, data: { ok: true } });
         }
@@ -320,7 +356,7 @@ describe('an Automation proposal waits for the person (#4830)', () => {
     expect(card.textContent).toContain('You asked to hear about CI failures.');
   });
 
-  test('Confirm creates it in its default state unless “Turn it on now” is ticked', async () => {
+  test('Confirm shows that a source was saved and turned on when requested', async () => {
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
     fireEvent.click(
       await screen.findByRole('checkbox', { name: 'Turn it on now' }),
@@ -338,6 +374,55 @@ describe('an Automation proposal waits for the person (#4830)', () => {
         },
       ]),
     );
+    expect((await screen.findByRole('status')).textContent).toContain(
+      'Source saved and turned on.',
+    );
+  });
+
+  test.each([
+    ['source', automationProposal, 'Source saved and still disabled.'],
+    ['rule', ruleProposal, 'Rule saved and still observing.'],
+  ] as const)(
+    'retains the saved %s outcome after requested activation fails',
+    async (_kind, proposed, expectedStatus) => {
+      schedule = { ...schedule, automationProposals: [proposed] };
+      activationRefusal = 'The Agent or its Project access changed.';
+      const user = userEvent.setup();
+      mount(
+        <AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />,
+      );
+      const toggle = await screen.findByRole('checkbox', {
+        name: 'Turn it on now',
+      });
+      toggle.focus();
+      await user.keyboard(' ');
+      await user.tab();
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Confirm' }),
+      );
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+      });
+      const result = screen.getByRole('status');
+      expect(result.textContent).toContain(expectedStatus);
+      expect(result.textContent).toContain(activationRefusal);
+      expect(result.textContent).toContain(`${proposed.kind}-proposal-1`);
+      expect(result.textContent).toContain('with the Station operator');
+      expect(posts()).toHaveLength(1);
+    },
+  );
+
+  test('a binding refusal leaves the proposal open with a recovery step', async () => {
+    creationRefusal = 'The Agent changed. Decline it and ask the agent again.';
+    mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'The reviewed Agent or its Project access changed. Decline it and ask the Agent again.',
+    );
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   test('what the agent wrote is set apart, and its instructions open whole', async () => {
@@ -385,6 +470,8 @@ describe('an Automation proposal waits for the person (#4830)', () => {
     };
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
     await screen.findByRole('button', { name: 'Confirm' });
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('automation-proposal');
     expect(screen.queryByRole('note')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
     await waitFor(() =>
@@ -440,6 +527,9 @@ describe('in-chat notes', () => {
 
   test('Approve is the person’s own scheduler create, naming the proposal, with exactly the proposed job', async () => {
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    await screen.findByRole('button', { name: 'Approve' });
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('job-proposal');
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() =>
       expect(posts()).toEqual([
@@ -509,6 +599,8 @@ describe('in-chat notes', () => {
     );
     // Not the quiet armed line.
     expect(screen.queryByText(/Checking back at/)).toBeNull();
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('check-back-approval');
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await waitFor(() =>
       expect(posts()).toEqual([

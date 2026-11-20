@@ -15,7 +15,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import { CHANNEL_PALETTES } from './lib/station-icon.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const ANDROID_ICON_CHANNELS = ['stable', 'dev', 'beta', 'nightly'];
+export const ANDROID_ICON_CHANNELS = ['stable', 'dev', 'nightly'];
 // Android colour resources are #AARRGGBB.
 const opaque = (hex) => `#FF${hex.slice(1).toUpperCase()}`;
 
@@ -33,11 +33,6 @@ export const ANDROID_CHANNEL_IDENTITY = {
     appName: 'Station Dev',
     accent: opaque(CHANNEL_PALETTES.dev.water),
     splashBackground: '#FFFFF8E7',
-  },
-  beta: {
-    appName: 'Station Beta',
-    accent: opaque(CHANNEL_PALETTES.beta.water),
-    splashBackground: '#FFF2FDF5',
   },
   nightly: {
     appName: 'Station Nightly',

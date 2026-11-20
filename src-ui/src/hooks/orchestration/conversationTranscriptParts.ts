@@ -36,6 +36,9 @@ export function conversationPartToContentParts(
     output: part.output,
     ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
     ...(part.claudeArtifact ? { claudeArtifact: part.claudeArtifact } : {}),
+    ...(part.appearanceProposal
+      ? { appearanceProposal: part.appearanceProposal }
+      : {}),
     ...(part.stationControlRefusal
       ? { stationControlRefusal: part.stationControlRefusal }
       : {}),

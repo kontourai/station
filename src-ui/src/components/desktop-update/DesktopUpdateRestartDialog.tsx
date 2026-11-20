@@ -1,24 +1,27 @@
-import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-update';
-import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import type {
+  DesktopUpdateError,
+  DesktopUpdateState,
+} from '@kontourai/station-contracts/desktop-update';
+import type { ServerUpdateRunningTurns } from '@kontourai/station-contracts/system-status';
+import { useServerUpdateRunningTurnsQuery } from '@kontourai/station-sdk';
+import { displayMultilineText } from '@kontourai/station-shared/display-text';
+import { useState } from 'react';
+import { useApiBase } from '../../contexts/ApiBaseContext';
 import { installDesktopUpdateAndRestart } from '../../platform/native/desktopUpdate';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { TechnicalDetails } from '../../views/settings/coreUpdatePresentation';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
-import {
-  type DesktopRestartServerImpact,
-  type RunningTurn,
-  runningTurns,
-} from './restartImpact';
+import { desktopInstallFailureMessage } from './desktopUpdatePresentation';
+import type { DesktopRestartServerImpact } from './restartImpact';
 import { useDesktopRestartServerImpact } from './useDesktopRestartServerImpact';
 import './DesktopUpdate.css';
 
 type TurnsRead =
   | { status: 'pending' }
   | { status: 'unavailable' }
-  | { status: 'ready'; turns: RunningTurn[] };
+  | { status: 'ready'; data: ServerUpdateRunningTurns };
 
 interface DesktopUpdateRestartDialogViewProps {
   version: string;
@@ -27,7 +30,7 @@ interface DesktopUpdateRestartDialogViewProps {
   turns: TurnsRead;
   installing: boolean;
   /** The last install attempt's failure, when it is the latest outcome. */
-  installError: string | null;
+  installError: Pick<DesktopUpdateError, 'message' | 'reason'> | null;
   onRestart: () => void;
   onClose: () => void;
   returnFocusTarget?: HTMLElement | null;
@@ -36,25 +39,11 @@ interface DesktopUpdateRestartDialogViewProps {
 function ImpactCopy({ impact }: { impact: DesktopRestartServerImpact }) {
   switch (impact) {
     case 'sidecar-restarts':
-      return (
-        <p>
-          Station’s built-in server runs inside this app, so it restarts too.
-        </p>
-      );
+      return <p>Station’s built-in server restarts with the app.</p>;
     case 'service-keeps-running':
-      return (
-        <p>
-          Station’s server runs as a background service on this computer. It
-          keeps running, and so do its agents.
-        </p>
-      );
+      return <p>The Station service and its agents keep running.</p>;
     case 'other-server-keeps-running':
-      return (
-        <p>
-          This app is connected to a Station server that runs outside it. That
-          server keeps running, and so do its agents.
-        </p>
-      );
+      return <p>The connected Station server and its agents keep running.</p>;
     default:
       return (
         <p>
@@ -83,19 +72,31 @@ function TurnsCopy({ turns }: { turns: TurnsRead }) {
       </p>
     );
   }
-  if (turns.turns.length === 0) return <p>Nothing is running right now.</p>;
+  const { turns: listed, hiddenCount } = turns.data;
+  const total = listed.length + hiddenCount;
+  if (total === 0) return <p>Nothing is running right now.</p>;
   return (
     <>
       <p>
-        {turns.turns.length === 1
-          ? 'This agent turn is running and will be interrupted:'
-          : `These ${turns.turns.length} agent turns are running and will be interrupted:`}
+        {total === 1
+          ? 'Restarting will interrupt 1 running agent turn.'
+          : `Restarting will interrupt ${total} running agent turns.`}
       </p>
-      <ul className="desktop-update-dialog__turns">
-        {turns.turns.map((turn) => (
-          <li key={turn.id}>{turn.title}</li>
-        ))}
-      </ul>
+      {listed.length > 0 && (
+        <ul className="desktop-update-dialog__turns">
+          {listed.map((turn) => (
+            <li key={turn.sessionId}>
+              {turn.title ?? 'Untitled conversation'}
+            </li>
+          ))}
+        </ul>
+      )}
+      {hiddenCount > 0 && (
+        <p>
+          {hiddenCount} running {hiddenCount === 1 ? 'turn is' : 'turns are'}{' '}
+          private.
+        </p>
+      )}
     </>
   );
 }
@@ -112,13 +113,19 @@ function DesktopUpdateRestartDialogView({
   onClose,
   returnFocusTarget,
 }: DesktopUpdateRestartDialogViewProps) {
-  const turnsMatter = impact === 'sidecar-restarts' || impact === 'unknown';
+  const turnsMatter = impact === 'sidecar-restarts';
   // Restart is offered only once the user can see what it interrupts.
   const awaitingTurns = turnsMatter && turns.status === 'pending';
   return (
     <Dialog
-      title={`Restart Station to install ${version}?`}
-      closeLabel="Close restart confirmation"
+      title={
+        installing
+          ? 'Installing Station update…'
+          : installError
+            ? 'Station update failed'
+            : 'Restart Station to update?'
+      }
+      closeLabel="Close update dialog"
       onClose={onClose}
       dismissible={!installing}
       hideClose={installing}
@@ -137,25 +144,25 @@ function DesktopUpdateRestartDialogView({
             pending={installing}
             pendingLabel="Installing…"
           >
-            {installError ? 'Retry' : 'Restart now'}
+            {installError ? 'Retry install' : 'Restart now'}
           </Button>
         </>
       }
     >
       <div className="desktop-update-dialog">
-        <p>
-          Station closes, installs version {version} (you have {currentVersion}
-          ), and opens again.
-        </p>
+        {installError && (
+          <p role="alert">
+            {desktopInstallFailureMessage(installError.reason)}
+          </p>
+        )}
+        <p>Installed version {currentVersion}</p>
+        <p>Update version {version}</p>
         <ImpactCopy impact={impact} />
         {turnsMatter && <TurnsCopy turns={turns} />}
         {installError && (
-          <>
-            <p role="alert">
-              The update did not install, and Station did not restart.
-            </p>
-            <TechnicalDetails detail={installError} />
-          </>
+          <TechnicalDetails
+            detail={displayMultilineText(installError.message)}
+          />
         )}
       </div>
     </Dialog>
@@ -177,13 +184,10 @@ export function DesktopUpdateRestartDialog({
   returnFocusTarget?: HTMLElement | null;
 }) {
   const impact = useDesktopRestartServerImpact();
-  const turnsMatter = impact === 'sidecar-restarts' || impact === 'unknown';
-  const sessions = useOrchestrationSessionsQuery({ enabled: turnsMatter });
-  const { refetch } = sessions;
-  // The cached list may be minutes old; the dialog is about now.
-  useEffect(() => {
-    if (turnsMatter) void refetch();
-  }, [turnsMatter, refetch]);
+  const { apiBase } = useApiBase();
+  const runningTurns = useServerUpdateRunningTurnsQuery(apiBase, {
+    enabled: impact === 'sidecar-restarts',
+  });
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requested, setRequested] = useState(false);
 
@@ -197,18 +201,19 @@ export function DesktopUpdateRestartDialog({
   // answer to this dialog's request.
   const installError = requested
     ? null
-    : (requestError ??
-      (phase.status === 'ready' && state.error?.context === 'install'
-        ? state.error.message
-        : null));
+    : requestError
+      ? { message: requestError }
+      : phase.status === 'ready' && state.error?.context === 'install'
+        ? state.error
+        : null;
 
   if (version === null) return null;
 
-  const turns: TurnsRead = sessions.isError
+  const turns: TurnsRead = runningTurns.isError
     ? { status: 'unavailable' }
-    : sessions.data === undefined || sessions.isFetching
+    : runningTurns.data === undefined || runningTurns.isFetching
       ? { status: 'pending' }
-      : { status: 'ready', turns: runningTurns(sessions.data) };
+      : { status: 'ready', data: runningTurns.data };
 
   return (
     <DesktopUpdateRestartDialogView

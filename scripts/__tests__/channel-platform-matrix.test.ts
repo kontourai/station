@@ -28,7 +28,7 @@ const digest = (path: string) =>
 
 describe('cross-platform release channel matrix', () => {
   test('aligns desktop and Android names, identifiers, homes, ports, and icon sources', () => {
-    for (const channel of ['stable', 'beta', 'nightly']) {
+    for (const channel of ['stable', 'nightly']) {
       const entry = matrix[channel];
       expect(entry.desktopIdentifier).toBe(entry.androidIdentifier);
       expect(entry.runtimeDirectory).toBe(
@@ -46,8 +46,8 @@ describe('cross-platform release channel matrix', () => {
     }
   });
 
-  test('wires the Beta and Nightly desktop overlays to the matrix on every desktop OS', () => {
-    for (const channel of ['beta', 'nightly']) {
+  test('wires the Nightly desktop overlays to the matrix on every desktop OS', () => {
+    for (const channel of ['nightly']) {
       const config = JSON.parse(
         readFileSync(
           resolve(root, 'src-desktop', `tauri.${channel}.conf.json`),
@@ -70,7 +70,7 @@ describe('cross-platform release channel matrix', () => {
 
   test('binds every release Tauri registration and generated native consumer to the matrix', () => {
     const authority = readChannelPlatformMatrix();
-    for (const channel of ['stable', 'beta', 'nightly']) {
+    for (const channel of ['stable', 'nightly']) {
       const file =
         channel === 'stable' ? 'tauri.conf.json' : `tauri.${channel}.conf.json`;
       const config = JSON.parse(
@@ -91,7 +91,7 @@ describe('cross-platform release channel matrix', () => {
       resolve(root, 'src-desktop/src/pairing_deep_link_channels_generated.rs'),
       'utf8',
     );
-    for (const channel of ['stable', 'beta', 'nightly']) {
+    for (const channel of ['stable', 'nightly']) {
       expect(generatedTs).toContain(
         pairingSchemeForChannel(authority, channel),
       );
@@ -117,7 +117,7 @@ describe('cross-platform release channel matrix', () => {
       mkdirSync(resolve(destination, '..'), { recursive: true });
       writeFileSync(destination, contents);
     }
-    for (const channel of ['stable', 'beta', 'nightly']) {
+    for (const channel of ['stable', 'nightly']) {
       const file =
         channel === 'stable' ? 'tauri.conf.json' : `tauri.${channel}.conf.json`;
       const destination = join(fixture, 'src-desktop', file);
@@ -148,18 +148,17 @@ describe('cross-platform release channel matrix', () => {
         'mipmap-xxxhdpi/ic_launcher.png',
       );
     expect(
-      new Set(
-        ['stable', 'beta', 'nightly'].map((channel) => digest(icon(channel))),
-      ).size,
-    ).toBe(3);
+      new Set(['stable', 'nightly'].map((channel) => digest(icon(channel))))
+        .size,
+    ).toBe(2);
     expect(digest(icon('development'))).not.toBe(digest(icon('stable')));
     // iosIconSource is the committed asset-catalog set the TestFlight
     // workflow copies over gen/apple after `tauri ios init` (#1776).
-    const iosIcons = ['stable', 'beta', 'nightly'].map((channel) =>
+    const iosIcons = ['stable', 'nightly'].map((channel) =>
       resolve(root, matrix[channel].iosIconSource, 'AppIcon-512@2x.png'),
     );
     expect(iosIcons.every((path) => readFileSync(path).length > 0)).toBe(true);
-    expect(new Set(iosIcons.map(digest)).size).toBe(3);
+    expect(new Set(iosIcons.map(digest)).size).toBe(2);
   });
 
   test('applies each channel identity to main and debug so source-set precedence cannot mask it', () => {
@@ -167,7 +166,7 @@ describe('cross-platform release channel matrix', () => {
     const publicAssets = join(fixture, 'src-ui/public');
     mkdirSync(publicAssets, { recursive: true });
     writeFileSync(join(publicAssets, 'favicon.png'), 'station-mark');
-    for (const channel of ['dev', 'beta', 'nightly'])
+    for (const channel of ['dev', 'nightly'])
       writeFileSync(
         join(publicAssets, `favicon-${channel}.png`),
         `station-${channel}-mark`,
@@ -296,9 +295,15 @@ describe('cross-platform release channel matrix', () => {
   test('keeps iOS publication gated until each identifier has signing and store ownership', () => {
     expect(matrix.stable.iosStatus).toBe('release-enabled');
     expect(matrix.development.iosStatus).toMatch(/^gated:/);
-    for (const channel of ['beta', 'nightly'])
+    for (const channel of ['nightly'])
       expect(matrix[channel].iosStatus).toMatch(
         /^source-configured; provider-NOT_VERIFIED/,
       );
   });
+});
+
+test('retired Beta pairing identity cannot alias a retained channel', () => {
+  expect(() =>
+    pairingSchemeForChannel({ ...matrix, beta: matrix.stable }, 'beta'),
+  ).toThrow(/no valid release pairing scheme/);
 });

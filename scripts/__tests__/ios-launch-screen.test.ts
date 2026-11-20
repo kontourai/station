@@ -9,7 +9,6 @@ const makeTempDir = trackTempDirs();
 test.each([
   ['io.kontourai.station', 'stable'],
   ['io.kontourai.station.dev.instance', 'dev'],
-  ['io.kontourai.station.beta', 'beta'],
   ['io.kontourai.station.nightly', 'nightly'],
 ])(
   'configured %s stages its exact channel launch mark despite a preserved Stable project',
@@ -24,7 +23,7 @@ test.each([
       'reviewed-storyboard',
     );
     writeFileSync(join(root, 'src-ui/public/favicon.png'), 'stable-artwork');
-    for (const variant of ['dev', 'beta', 'nightly'])
+    for (const variant of ['dev', 'nightly'])
       writeFileSync(
         join(root, `src-ui/public/favicon-${variant}.png`),
         `${variant}-artwork`,

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { ReviewItem } from '@kontourai/survey';
 import { initialReviewQueueSessionState } from '@kontourai/survey/review-workbench';
 import { createServerReviewSessionRecord } from '@kontourai/survey/review-workbench/server-review-session';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FileStationSurveyReviewSessionStore,
   type StationSurveyReviewSession,
@@ -266,5 +266,67 @@ describe('SurveyFlowReviewService', () => {
     await expect(store.resolve('review:example:1')).rejects.toThrow(
       'ambiguous',
     );
+  });
+
+  it('continues through the real Flow Agents adapter on every call', async () => {
+    const root = await fixture();
+    const service = new SurveyFlowReviewService(
+      new FileStationSurveyReviewSessionStore({
+        listSlugs: () => ['example'],
+        workspace: () => root,
+      }),
+    );
+    const input = {
+      runId: '',
+      expectedRunHead: 'head',
+      gate: 'review',
+      resume: {} as never,
+      reviewSessionRef: 'review:example:1',
+    };
+    // The adapter's own input check proves the real adapter ran, both on the
+    // call that loads it and on a later call.
+    for (let call = 0; call < 2; call += 1) {
+      await expect(service.continuePausedGate(input)).rejects.toMatchObject({
+        code: 'SURVEY_FLOW_GATE_INVALID_INPUT',
+        field: 'runId',
+      });
+    }
+  });
+
+  it('rejects a continuation while the adapter cannot load and continues once it can', async () => {
+    // A failed load is not remembered (load-flow-agents.ts); vitest reports
+    // the factory's error as a mocking error.
+    const adapterModule = '@kontourai/flow-agents/survey-flow-gate-adapter';
+    const root = await fixture();
+    vi.resetModules();
+    vi.doMock(adapterModule, () => {
+      throw new Error('survey adapter unavailable');
+    });
+    try {
+      const fresh = await import('../survey-flow-review-service.js');
+      const service = new fresh.SurveyFlowReviewService(
+        new fresh.FileStationSurveyReviewSessionStore({
+          listSlugs: () => ['example'],
+          workspace: () => root,
+        }),
+      );
+      const input = {
+        runId: '',
+        expectedRunHead: 'head',
+        gate: 'review',
+        resume: {} as never,
+        reviewSessionRef: 'review:example:1',
+      };
+      await expect(service.continuePausedGate(input)).rejects.toThrow(
+        /error when mocking a module/,
+      );
+      vi.doUnmock(adapterModule);
+      await expect(service.continuePausedGate(input)).rejects.toMatchObject({
+        code: 'SURVEY_FLOW_GATE_INVALID_INPUT',
+      });
+    } finally {
+      vi.doUnmock(adapterModule);
+      vi.resetModules();
+    }
   });
 });

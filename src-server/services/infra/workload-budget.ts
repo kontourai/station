@@ -262,8 +262,45 @@ export interface ScopeMemoryReading {
   swapMaxBytes?: number | 'max';
   /** `oom_kill` from `memory.events`. */
   oomKills?: number;
+  /**
+   * `memory.current` less `memory.stat` `inactive_file`: the memory that
+   * reclaim cannot cheaply return. Absent when `memory.stat` is unreadable.
+   */
+  workingSetBytes?: number;
+  /**
+   * `memory.events` counts: `max` and `high` count allocations that hit that
+   * limit and reclaimed (routine when page cache fills the scope), `oom`
+   * counts reclaims that failed.
+   */
+  memoryEvents?: { high: number; max: number; oom: number };
   tasksCurrent?: number;
   tasksMax?: number | 'max';
+}
+
+/** `key value` lines (`memory.events`, `memory.stat`) by key. */
+function keyedCounters(text: string | undefined): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const line of text?.split('\n') ?? []) {
+    const [key, value] = line.trim().split(/\s+/);
+    if (key && value !== undefined) values.set(key, value);
+  }
+  return values;
+}
+
+/** `memory.events` `high`, `max` and `oom`, when all three are present. */
+function memoryEventCounts(
+  events: Map<string, string>,
+): ScopeMemoryReading['memoryEvents'] {
+  const high = events.get('high');
+  const max = events.get('max');
+  const oom = events.get('oom');
+  if (high === undefined || max === undefined || oom === undefined)
+    return undefined;
+  return {
+    high: counter(high, 'memory.events high'),
+    max: counter(max, 'memory.events max'),
+    oom: counter(oom, 'memory.events oom'),
+  };
 }
 
 type ReadText = (path: string) => Promise<string>;
@@ -299,23 +336,39 @@ export async function readScopeMemory(
   read: ReadText = readText,
 ): Promise<ScopeMemoryReading> {
   const file = (name: string) => join(directory, name);
-  const [current, max, peak, swapCurrent, swapMax, events, pids, pidsMax] =
-    await Promise.all([
-      read(file('memory.current')),
-      read(file('memory.max')),
-      optional(() => read(file('memory.peak'))),
-      optional(() => read(file('memory.swap.current'))),
-      optional(() => read(file('memory.swap.max'))),
-      optional(() => read(file('memory.events'))),
-      optional(() => read(file('pids.current'))),
-      optional(() => read(file('pids.max'))),
-    ]);
-  const oomKill = events
-    ?.split('\n')
-    .map((line) => line.trim().split(/\s+/))
-    .find(([key]) => key === 'oom_kill')?.[1];
+  const [
+    current,
+    max,
+    peak,
+    swapCurrent,
+    swapMax,
+    events,
+    stat,
+    pids,
+    pidsMax,
+  ] = await Promise.all([
+    read(file('memory.current')),
+    read(file('memory.max')),
+    optional(() => read(file('memory.peak'))),
+    optional(() => read(file('memory.swap.current'))),
+    optional(() => read(file('memory.swap.max'))),
+    optional(() => read(file('memory.events'))),
+    optional(() => read(file('memory.stat'))),
+    optional(() => read(file('pids.current'))),
+    optional(() => read(file('pids.max'))),
+  ]);
+  const eventCounts = keyedCounters(events);
+  const oomKill = eventCounts.get('oom_kill');
+  const currentBytes = counter(current, 'memory.current');
+  const inactiveFile = keyedCounters(stat).get('inactive_file');
+  const memoryEvents = memoryEventCounts(eventCounts);
   return {
-    currentBytes: counter(current, 'memory.current'),
+    currentBytes,
+    ...(inactiveFile === undefined || !/^\d+$/.test(inactiveFile)
+      ? {}
+      : {
+          workingSetBytes: Math.max(0, currentBytes - Number(inactiveFile)),
+        }),
     maxBytes: limit(max, 'memory.max'),
     ...(peak === undefined ? {} : { peakBytes: counter(peak, 'memory.peak') }),
     ...(swapCurrent === undefined
@@ -327,6 +380,7 @@ export async function readScopeMemory(
     ...(oomKill === undefined
       ? {}
       : { oomKills: counter(oomKill, 'memory.events oom_kill') }),
+    ...(memoryEvents ? { memoryEvents } : {}),
     ...(pids === undefined
       ? {}
       : { tasksCurrent: counter(pids, 'pids.current') }),

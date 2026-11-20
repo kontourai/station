@@ -342,6 +342,93 @@ describe('GitHubPullRequestProvider', () => {
     expect(transport.mock.calls[0]?.[1]).not.toHaveProperty('workingDirectory');
   });
 
+  test('every full pull request read asks gh for the draft flag and review decision', async () => {
+    const identity = {
+      host: 'github.com',
+      repository: { owner: 'kontourai', name: 'station' },
+    };
+    const stdout = JSON.stringify({
+      number: 7,
+      url: 'https://github.com/kontourai/station/pull/7',
+      title: 'Title',
+      state: 'OPEN',
+      headRefName: 'feature',
+      baseRefName: 'main',
+    });
+    const transport = vi.fn().mockResolvedValue({ stdout });
+    const provider = new GitHubPullRequestProvider(transport);
+    await provider.getPullRequestByIdentity(identity, '7');
+    await provider.getPullRequest(context, '7');
+    transport.mockResolvedValue({ stdout: '[]' });
+    await provider.listPullRequests(context, {});
+    const fieldLists = transport.mock.calls
+      .map(([args]) => args as string[])
+      .filter((args) => args[0] === 'pr' && args.includes('--json'))
+      .map((args) => (args[args.indexOf('--json') + 1] ?? '').split(','));
+    expect(fieldLists).toHaveLength(3);
+    for (const fields of fieldLists)
+      expect(fields).toEqual(
+        expect.arrayContaining([
+          'isDraft',
+          'reviewDecision',
+          'mergeStateStatus',
+        ]),
+      );
+  });
+
+  test.each([
+    ['CLEAN', 'clean'],
+    ['HAS_HOOKS', 'clean'],
+    ['BLOCKED', 'blocked'],
+    ['UNSTABLE', 'checks-not-passing'],
+    ['DIRTY', 'conflicting'],
+    ['BEHIND', 'behind'],
+    ['DRAFT', 'draft'],
+    ['UNKNOWN', 'unknown'],
+  ])(
+    'maps mergeStateStatus %s to readiness %s',
+    (mergeStateStatus, readiness) => {
+      expect(
+        normalizeGitHubPullRequest(
+          {
+            number: 7,
+            url: 'https://github.com/kontourai/station/pull/7',
+            title: 'Title',
+            state: 'OPEN',
+            headRefName: 'feature',
+            baseRefName: 'main',
+            mergeStateStatus,
+            isDraft: mergeStateStatus === 'DRAFT',
+            reviewDecision: 'CHANGES_REQUESTED',
+          },
+          'github.com',
+        ),
+      ).toMatchObject({
+        mergeReadiness: readiness,
+        draft: mergeStateStatus === 'DRAFT',
+        reviewDecision: 'changes_requested',
+      });
+    },
+  );
+
+  test('leaves draft, review decision and readiness absent when gh omits them', () => {
+    const normalized = normalizeGitHubPullRequest(
+      {
+        number: 7,
+        url: 'https://github.com/kontourai/station/pull/7',
+        title: 'Title',
+        state: 'OPEN',
+        headRefName: 'feature',
+        baseRefName: 'main',
+        reviewDecision: '',
+      },
+      'github.com',
+    );
+    expect(normalized).not.toHaveProperty('draft');
+    expect(normalized).not.toHaveProperty('reviewDecision');
+    expect(normalized).not.toHaveProperty('mergeReadiness');
+  });
+
   test('maps gh JSON into the normalized model', async () => {
     const transport = vi
       .fn()

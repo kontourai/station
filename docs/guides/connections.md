@@ -56,7 +56,16 @@ settings from a check that actually reached the provider:
 - **Unreachable** — configured, but Station cannot reach it.
 
 The engine page's Status, its **Ready** step and its readiness notice show the
-same state as its row. A section tab carries an attention mark when an engine
+same state as its row. If a saved ACP engine is still checking access, wait for
+the check to finish and retry. The current list describes the latest observation.
+Starting a Session checks readiness again. A live model catalog alone does not
+verify a completed turn.
+
+If the Engine inventory cannot finish in time, try Connections again shortly.
+A CLI shown in system diagnostics is a separate PATH observation. An unavailable
+check retains the last observed presence or reports it as unknown.
+
+A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
@@ -83,7 +92,7 @@ that server's authentication requirements; some permit anonymous access or
 host-managed credentials. Blank fields alone do not establish readiness. A
 refused check retains its reason so you can correct the settings and retry.
 
-**Test Connection** first requests the model catalog. If no usable catalog is
+**Test connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
 prove chat, tool calling, images, or other model features. See the
@@ -106,6 +115,13 @@ and select **Finish sign-in**. Station reports completion only after the engine
 confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
+
+If Station cannot confirm that a device-code sign-in process stopped, it keeps
+the host slot reserved. Ask the Station host operator to verify that the
+launcher and all its descendants have stopped before restarting Station. If the
+operator cannot verify the whole process tree, restart the host before resuming
+device-code sign-in. Check the selected profile's sign-in status before
+starting another attempt.
 
 Muse Code (#1942) signs in with a device code too: Station runs the bare
 `muse login`, offered only while `muse login --help` still says "approve a code
@@ -162,11 +178,13 @@ provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
-field paths and deliberate exclusions. Only field names leave the server for
-unmapped values. This bounded shape audit excludes null/empty fields, value
-validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+**Data captured** lists the reading's source, **Stored in** (secure store or
+credential file), **History**, **Fields Station didn't recognize**,
+**Excluded fields** and **Complete** (No when the response was too large to
+check). Only field names leave the server for unrecognized values, and the panel
+ends with “Values and credentials are never shown.” This bounded check excludes
+null/empty fields, value validation, credential stores and other endpoints;
+**None** does not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
@@ -265,6 +283,11 @@ management routes; Project membership and its `manage-members` action remain
 independent requirements. It grants no Agent, terminal, or Task publication
 (share/unshare) authority.
 
+The app choices are Stable and Nightly. Legacy Beta approvals and pending
+requests from an older host are retained there and excluded from actionable
+lists after Station-scope validation. The panel shows their excluded count;
+malformed or foreign-Station records still make the read fail.
+
 **Invite device** opens three steps:
 
 1. **Send the app link.** Choose the recipient app and copy its setup link. The
@@ -320,8 +343,8 @@ Project access administration still requires Project IAM. See the
 
 Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
-**Enter a pairing code**, with **Find nearby Stations** under **More connection
-options**. Enter its address, a pairing code,
+**Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
+under **More ways to connect**. Enter its address, a pairing code,
 or scan a QR code. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
@@ -393,6 +416,11 @@ request does not revoke an already approved receiver grant. After confirmed
 cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
+Reachability is observed separately: this Station keeps each paired
+Station's last public-handshake answer (probed with no credential, refreshed
+in the background while its list is being read, every few seconds while the
+**Runs on** list is open), so that list greys out one that is recovering, unreachable or answering as a
+different Station, and delegation to it fails at once with that reason.
 
 Tap the Station chip (its dot and name, in every state) on a phone, or the
 connection name on desktop, to
@@ -430,8 +458,11 @@ manual retry, a credential change or the network returning. It also checks
 whenever the app returns to the foreground. The app's own supervised local
 Station is not probed, so its row has no check time.
 
-After you choose a Station, the app names it, its address and the step it is
-on while it verifies access. If that takes longer than six seconds, it says it
+After you choose a Station, the app shows the launch screen's mark and
+animation with "Connecting to" the Station's name, its address, and the step it
+is on: checking access, then (in the desktop and phone apps) loading its data,
+then any later preparation such as loading your preferences, each named as it
+starts. If checking access takes longer than six seconds, it says it
 has had no answer and offers **Try again**, **Back to** the Station most
 recently used before it, and **Manage Stations**, instead of waiting out the
 request deadline. In the desktop and phone apps, a Station that answered but is
@@ -440,7 +471,8 @@ still loading its data says so after six seconds and offers **Back to** and
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**
-forgets them together after a confirmation that names each one. The current Station cannot be
+forgets them together after a confirmation that names each one. Forgetting leaves
+the menu open, with focus on the next Station (else the previous one). The current Station cannot be
 forgotten here. On the desktop app, Stations other channels or development
 instances left in the shared profile file can be forgotten like any other;
 only the app's own local Station is refused, and the × is not offered for it.
@@ -615,8 +647,8 @@ is shown.
 The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
 [Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
 [member Project view](../../src-ui/src/views/project-page/MemberProjectPage.tsx).
-Its captured-scope list and detail reads live in
-[ProjectsContext](../../src-ui/src/contexts/ProjectsContext.tsx) and use the
+Its [shared-work hooks](../../src-ui/src/views/project-page/useMemberProjectSharedWork.ts)
+read the list and detail with the captured Project scope through the
 [shared-task SDK readers](../../packages/sdk/src/client/project-shared-tasks.ts).
 
 No direct HTTP fallback is used. The CLI continues to refuse these routes as
@@ -891,22 +923,30 @@ recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
 
+The Agent `maxSteps` field limits model steps on Station’s VoltAgent runtime.
+Strands and external engines use their own limits. The Agent editor presents
+this scope next to the step limit.
+
 OpenCode is still added and saved as an Agent Client Protocol engine. With the
 **OpenCode native engine** Feature Preview on (Settings → Advanced → Feature
 previews), new chats on it run on Station's `opencode` engine instead. That
 engine drives OpenCode 2 through its own local server (`opencode serve`) when
 Station has verified that version's API, and over the Agent Client Protocol
 otherwise. A chat keeps the engine it started with. The connection's engine
-reads `opencode` only while the preview is on. See
+reads `opencode` only while the preview is on. OpenCode 2.x supports host
+Never ask on both transports. Native chats can change models between turns;
+ACP fallback needs a new chat for another model. See
 [the decision](../decisions/opencode-native-transport.md).
 
-An engine Station did not find reads **Not installed**. Its card shows the
+An engine Station did not find reads **Not installed**. Choose **Set up** to see the
 vendor's install command for the operating system Station runs on, with a copy
 button and a link to the install guide, and **Check again** repeats the lookup
 after you install it, re-reading your login shell's `PATH` so a directory the
 installer added there is searched too. A paired device needs permission to
 operate Station for that re-read; without it, the card says so and shows what
-Station last found. Station shows the command and never runs it. On a paired
+Station last found. The standard install hint offers a copyable command. With
+**Guided engine setup** enabled on a personal Station, a supported installer can
+run in a reviewed terminal after the person confirms the exact command. On a paired
 device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
@@ -917,11 +957,11 @@ catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
 gets the same settings.
 
-Add engine opens one catalogue in the Engines detail pane, beside your
-engine list: saved engines that are **Not connected yet**, the native apps
+Add engine opens a focused page with a searchable catalogue: saved engines that are **Not connected yet**, the native apps
 Station supports, the built-in command engines (**Found, not connected** or
-**Not installed**), and a custom command. Everything that follows stays in
-that pane; a link to one entry (`/connections/engines/new/<id>`, or `custom`)
+**Not installed**), and a custom command. Search by name or command (for example, **Antigravity** or `agy`).
+Setup stays on this page; **Done** returns to Engines with the new engine selected.
+A deep link to one entry (`/connections/engines/new/<id>`, or `custom`)
 opens on that entry's first step.
 
 1. Choose an engine. An engine that is **Not installed** offers only its
@@ -971,11 +1011,24 @@ own Copilot CLI and its sign-in, and is separate from the ACP `copilot`
 connection; see [the decision](../decisions/copilot-sdk-engine.md) for what it
 binds and what it does not. Automatic adoption respects an engine's recorded
 removal and refuses an identity already bound to another connection. It does
-not sign the engine in. See
-[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+not sign the engine in. During shutdown, adoption stops waiting for a
+contended registry or Agent lock. Committed connections stay registered, and
+the next startup can create any default Agent whose write was interrupted.
+See [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
 and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
+
+Saved command connections that match a built-in launch appear under their
+existing IDs with the built-in marks. For example, a saved Antigravity
+connection called `agy` satisfies the Antigravity catalog card.
+
+To remove a saved ACP engine, open its management menu and choose **Remove
+engine**. On a phone, swipe the row to reveal **Remove** and then confirm.
+The dialog lists affected Agents when Station has their bindings. Removing
+the connection clears its saved setup and Station credentials. Existing
+conversations are readable. Use **Continue with another agent** to resume
+the conversation with a connected engine.
 
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
 one there explicitly connects the Engine and creates its default Agent binding.
@@ -999,6 +1052,37 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
+
+A Claude session loads the repository's `AGENTS.md` files as well as its `CLAUDE.md` files.
+On its own, Claude Code loads `AGENTS.md` only in a project that has no `CLAUDE.md`. For each
+session, Station sets Claude Code's `instructionFiles` option for its built-in `agents-md`
+plugin to `claude-md-and-agents-md`
+([source](../../src-server/providers/adapters/claude-instruction-files.ts)). Claude Code then
+loads each `AGENTS.md` wherever it would load a `CLAUDE.md`, at the root and in nested folders,
+in the same way. It does not load an `AGENTS.md` twice when a `CLAUDE.md` imports it
+(`@AGENTS.md`) or links to it. Station reads no instruction file itself.
+
+Station sets the option only for the session, as a `--settings` value, and never writes your
+settings. It leaves the option out when any settings file it can read already sets
+`instructionFiles`, or its older name `projectInstructions`, under
+`pluginConfigs["agents-md@builtin"].options`. It reads `settings.json` in the session's Claude
+configuration directory, resolving a relative `CLAUDE_CONFIG_DIR` against the session's working
+folder as Claude Code does. It also reads this machine's `managed-settings.json` and the drop-ins
+in `managed-settings.d` that Claude Code reads (files whose names end in `.json` and do not start
+with a dot), in Claude Code's managed settings folder
+(`/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
+`C:\Program Files\ClaudeCode` on Windows). It also leaves the option out when it cannot read
+one of those files as a regular JSON file of at most 1 MiB, or when `managed-settings.d` holds
+more than 256 such drop-ins. Then Claude Code's own setting applies.
+
+Managed settings that your organization delivers by MDM (a macOS configuration profile or the
+Windows policy registry) or from the server are not files Station can read. An
+`instructionFiles` value set there still takes precedence over the session's option. A
+`projectInstructions` value set only there does not, because Claude Code reads that older name
+only while `instructionFiles` is unset or at its default. Claude Code reports that older name as
+honoured only for now and asks for `instructionFiles` in its place, so set `instructionFiles` to
+keep a managed choice. A Claude Code version without the option ignores it and loads `CLAUDE.md`
+alone.
 
 ### Engines from the public registry
 
@@ -1293,7 +1377,9 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
 - `configHome` — an explicit engine config home (`~` allowed), applied as
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
-  profile still wins over both.
+  profile still wins over both. In **Advanced → App home**, a configured
+  home disables the Station-managed toggle and snapshot import. You can
+  still clear a leftover Station-managed home.
 
 On a machine whose [managed policy](managed-policy.md#pinned-launch-fields)
 locks the engine's environment, `env`, `configHome` and **Connect through** are
@@ -1478,7 +1564,10 @@ receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
 history. Ordinary resumes resolve the current connection/profile environment,
 so changing it can make an older transcript unavailable. Adopted sessions with
-a recorded source-home binding follow that binding instead. Saving silently
+a recorded source-home binding follow that binding instead. Station also lists
+Codex conversations found in the connection's config home and in each
+profile's home, not only in `CODEX_HOME`, and continues one in the home it was
+found in ([conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station)). Saving silently
 drops invalid `env` entries, including values containing
 NUL or longer than 32,768 JavaScript string code units. It retains at most the
 first 64 valid entries. These rules are also applied when spawning from
@@ -1491,7 +1580,9 @@ that require a newer client — with an error telling you to update your local
 engine, which is already current — or have newer request fields rejected as
 unknown. If a proxied connection fails with a client-version error, update
 the proxy first; Station cannot rewrite what the proxy sends upstream, and
-unproxied connections are unaffected.
+unproxied connections are unaffected. If Claude reports this client-version
+requirement while using an explicitly configured nondefault Anthropic API
+endpoint, the chat error points you to the proxy’s upstream client version.
 
 ### Give a credential profile its own routing
 
@@ -1535,7 +1626,9 @@ one an Agent pins, the one credential recovery is trying, or else the
 connection's active profile. The overlay reaches Claude Code, Codex and Muse
 session starts and Codex quota reads for that profile. Muse has no connection
 `env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
-discovery, adopted sessions and source-home resumes, login readiness checks,
+discovery, adopted sessions and source-home resumes (except a Codex
+conversation found in a profile's own home, which continues with that
+profile's overlay), login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
 profile home directly.
@@ -1612,6 +1705,38 @@ Omitting `allowancePreference` from a policy update preserves the saved
 preference; send `"allowancePreference": null` to clear it. The existing SDK
 `useSetCredentialRecoveryAutomaticPolicyMutation` accepts the same optional
 field. This policy remains opt-in and automatic recovery remains off by default.
+
+### Continue a usage-limited conversation on another account
+
+With automatic recovery off, a Codex conversation stopped by a usage limit
+still offers **Continue on <label>** on its usage-limit banner, one per
+enrolled profile that automatic recovery could select (same routing, not the
+active profile). The first takes the banner's free button slot; the rest sit in
+its actions menu. Choosing one runs the same stage, restart and replay as
+automatic recovery, with the click in place of the `automatic` opt-in, and
+switches the connection's active profile like any profile application: every
+chat that starts or restarts on that connection without its own pinned profile
+uses it, including other people's chats and restored ones. The button's
+tooltip and the resuming line say so.
+Station does not know whether that account is limited too; if it is, the
+replay stops on its own usage limit. An `allowancePreference` does not rank or
+exclude these choices. A profile that no longer qualifies leaves the stop
+waiting. So does a failure before the replay reaches the engine's send (for
+example the chosen account is signed out and its session cannot start):
+Station rolls the account back, restarts the session on the connection's
+account and keeps the reset. If that session cannot restart either, Station
+closes it and retires the stop ("the session has ended") rather than promising
+a resume; an automatic attempt that ends this way says the same. A failure after the send was called stops as
+"may not have gone through" and does not resume on its own, so the turn is
+never sent twice. Nothing is offered while automatic recovery is paused (see
+above).
+
+Claude Code offers no account here: its adapter declares profile application
+`unsupported`, because `CLAUDE_CONFIG_DIR` does not isolate the macOS Keychain
+sign-in, so Station cannot show a profile switch changed accounts. The offer
+needs the `access:manage` pairing scope, like the profile routes, and a hosted
+Station never makes it. Routes:
+[usage-limit recovery](../reference/session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
 
 The overlay is not secret. It is visible to the engine and to every tool it
 runs (an agent can read these variables, for example from a shell), and to
@@ -1705,8 +1830,8 @@ binding and model. It does not edit the saved Agent.
 
 ## Start a Project from a repository
 
-In **New Project**, open **Start from a Git repository**, enter the explicit
-HTTPS or SSH repository URL, and optionally choose a branch or tag and a
+In **New Project**, select **From a repository** and open **Start from a Git
+repository**. Enter the explicit HTTPS or SSH repository URL, and optionally choose a branch or tag and a
 repository-relative subdirectory such as `apps/web`. Choose
 **Acquire repository**, then **Use this checkout** to put the working copy into
 the Project draft. Station uses the repository name for an untouched name field.
@@ -1724,7 +1849,7 @@ working directory while the receipt retains the repository root and exact commit
 The directory must exist inside the checkout; traversal, Git metadata directories
 and symlink redirects are refused and rechecked at Project creation. It does not install dependencies or execute repository setup.
 
-**Choose from GitHub** and **Choose from GitLab** list accessible public/private
+The **GitHub** and **GitLab** tiles in New Project and **Sources → Add a repository** list accessible public/private
 repositories through this host's signed-in `gh` or `glab` account. A page holds
 at most 30 entries and shows the observed account, visibility and default branch.
 Choose HTTPS or SSH explicitly; selection fills editable URL/ref fields using
@@ -1733,8 +1858,18 @@ establish that the host's separate Git credentials can access that repository.
 Discovery checks the account before and after listing, withholds late results
 after Station authority changes, and never reads or returns provider tokens.
 If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
-or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
+or `glab auth login`, retry, or choose **Git URL** and paste the repository URL. Self-hosted forges remain an
 explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
+When Station can identify a missing CLI or a provider sign-in failure, the
+picker shows installation or sign-in steps for that Station. The sign-in
+card shows the exact command and the Station. **Copy command** puts it on the
+clipboard. **Run in terminal** starts the fixed provider command in a fresh
+interactive terminal when this Station and the current dock Project allow it.
+Complete provider authorization, then retry the repository list.
+
+The Project overview and Sources open the repository tiles directly.
+Repository names link to their Git host. The overview marks which repository
+new chats start in with **Default**.
 
 **Find existing checkouts** lists up to 20 retained acquisitions matching the
 entered repository identity, requested ref and subdirectory. These are historical
@@ -2522,7 +2657,11 @@ corrects two source-confirmed lifecycle errors in that exact upstream release:
 rejected goodbye could skip socket shutdown. The patch propagates probe and
 announcement failure (including empty or partially failed send sets) to the caller,
 closes sockets in shutdown's `finally`, and prevents pending binds from escaping
-shutdown. An owner withdraws its own service before releasing a shared responder.
+shutdown. It also removes the package's import-time `source-map-support/register`,
+which replaced the server's stack-trace formatter: the first stack read then
+parsed and cached the whole server bundle's source map, about 690 MB of heap
+held for the life of the process
+([test](../../src-server/services/connections/__tests__/ciao-stack-trace.test.ts)). An owner withdraws its own service before releasing a shared responder.
 The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
 exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five

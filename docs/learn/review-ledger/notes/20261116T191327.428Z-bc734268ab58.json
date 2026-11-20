@@ -1,0 +1,7 @@
+{
+  "revision": "b8b75c63ea3c2d1047f220f8e31f984ba7713296",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#2376 slice 2: station-docs-content.ts was regenerated with docs:mcp:generate after the Codex bound-channel doc edits and again on the merge of origin/main; the diff only carries those canonical-doc sentences into the shipped topics. Checked this page's description of the shipped docs bundle and its tools; nothing it states changed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

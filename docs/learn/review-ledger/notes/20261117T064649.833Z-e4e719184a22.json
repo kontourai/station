@@ -1,0 +1,23 @@
+{
+  "revision": "3f5c71bb421acb2a1a282ac63a5838fc68aef4a9",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Regenerated catalog only adds station.engine.workload_notices; abstraction-review's claims about the catalog remain accurate.","inputs":["docs/reference/metrics.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5113 changed only the Linux workload budgets section (engine workload notices); citing pages' links to that anchor and their summaries of it still hold.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5113 changed only the Linux workload budgets section (engine workload notices); citing pages' links to that anchor and their summaries of it still hold.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#5113 changed only the Linux workload budgets section (engine workload notices); citing pages' links to that anchor and their summaries of it still hold.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"#5113 changed only the Linux workload budgets section (engine workload notices); citing pages' links to that anchor and their summaries of it still hold.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#5113 changed only the Linux workload budgets section (engine workload notices); citing pages' links to that anchor and their summaries of it still hold.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/glossary.md","note":"Only two warning rows were added to the provider failure table; citing pages' references to contracts.md remain accurate.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only two warning rows were added to the provider failure table; citing pages' references to contracts.md remain accurate.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Only two warning rows were added to the provider failure table; citing pages' references to contracts.md remain accurate.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

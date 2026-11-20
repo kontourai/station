@@ -1,0 +1,7 @@
+{
+  "revision": "79c677596d077e961a5dad38a10cbe09a3d582e4",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"nightly-native-cohort.yml fix-round delta (#3593): the retention step's timeout drops from 15 to 5 minutes and its comment names vars precedence (native-release environment over repository); no other step, condition, output or permission changed. Asset/manifest statements concern Stable/Beta ring manifests; unaffected. No prose change.","inputs":["docs/guides/release-rings.md",".github/workflows/nightly-native-cohort.yml"]}
+  ]
+}
