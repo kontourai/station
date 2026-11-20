@@ -1,0 +1,7 @@
+{
+  "revision": "50c1d91159150975bd91de826a18741269da6d3f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the engine-neutral failures table against the registry and wire contract test. The disabled preview refusal maps to unavailable with retryable true, which permits a later caller-requested attempt and does not authorize replay.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}
