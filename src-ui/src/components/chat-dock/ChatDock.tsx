@@ -1158,7 +1158,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
-    toggleHistory,
     openInboxHistory,
     closeHistory,
     isInboxOpen,
@@ -3189,6 +3188,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const showOpeningIdentity =
     coveringStaleChat && !showNewChatModal && !importedSessionId;
   const openingLabel = openingConversationLabel(openingChat);
+  const showChatContent =
+    workspaceShown && !conversationOpenRecovery && !importedSessionId;
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -4211,7 +4212,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? 'Stop shaping this Task'
                         : 'New Task from this',
                       onOpenConversation: () => setShowSessionPicker(true),
-                      onToggleHistory: toggleHistory,
+                      onOpenInbox: mobileInboxShown
+                        ? undefined
+                        : toggleMobileInbox,
+                      onBrowseConversations:
+                        showChatContent &&
+                        !readerCovered &&
+                        !coveringStaleChat &&
+                        hostConversation
+                          ? openInboxHistory
+                          : undefined,
                       onOpenChatSettings: openChatSettings,
                       onOpenConversationHistory:
                         activeSession?.conversationId && !activeSession.replay
@@ -4963,9 +4973,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             {/* The chat the draft opened over stays mounted under it,
                       hidden and inert, so its form answers, reply text and
                       scroll survive a draft that is dismissed. */}
-                            {workspaceShown &&
-                            !conversationOpenRecovery &&
-                            !importedSessionId ? (
+                            {showChatContent ? (
                               <div
                                 className="chat-dock__covered-chat"
                                 hidden={showNewChatModal || coveringStaleChat}

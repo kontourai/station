@@ -4929,7 +4929,13 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   await expect(navigation).toBeVisible();
   await navigation.getByRole('button', { name: 'Close navigation' }).click();
   await expect(navigation).toBeHidden();
-  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  const chatActions = page.getByRole('button', {
+    name: 'Chat actions',
+    exact: true,
+  });
+  const menu = page.getByRole('menu', { name: 'Chat actions' });
+  await chatActions.click();
+  await menu.getByRole('menuitem', { name: 'Inbox', exact: true }).click();
   const sheet = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
@@ -4938,6 +4944,17 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
   await expect(sheet).not.toBeVisible();
+
+  await chatActions.click();
+  await menu
+    .getByRole('menuitem', { name: 'Browse all conversations' })
+    .click();
+  const closeHistory = page
+    .locator('.conversation-history')
+    .getByRole('button', { name: 'Close history' });
+  await expect(closeHistory).toBeVisible();
+  await closeHistory.click();
+  await expect(closeHistory).toBeHidden();
 });
 
 for (const width of [320, 431]) {

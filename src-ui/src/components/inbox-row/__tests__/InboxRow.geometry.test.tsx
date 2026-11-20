@@ -348,7 +348,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             onRestoreDock: vi.fn(),
             isDockMaximized: false,
             onOpenConversation: vi.fn(),
-            onToggleHistory: vi.fn(),
             onOpenChatSettings: vi.fn(),
             onOpenProject: null,
             openProjectName: null,

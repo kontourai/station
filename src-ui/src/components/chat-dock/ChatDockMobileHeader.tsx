@@ -34,7 +34,8 @@ export interface ChatDockMobileOverflowActions {
   onTurnIntoTask?: () => void;
   turnIntoTaskLabel?: string;
   onOpenConversation: () => void;
-  onToggleHistory: () => void;
+  onOpenInbox?: () => void;
+  onBrowseConversations?: () => void;
   onOpenChatSettings: () => void;
   onOpenConversationHistory?: () => void;
   /**
