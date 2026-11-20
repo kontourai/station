@@ -617,7 +617,9 @@ jobs:
     # rebuilds or re-signs: the bytes uploaded are the bytes that were audited.
     needs: [deliver, advisory]
     if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.advisory.result == 'success' || (inputs.channel == 'nightly' && needs.advisory.result == 'skipped')) && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
-    runs-on: macos-26
+    # Use the same hosted pool as the IPA build. The standard macOS ARM
+    # pool can cancel a queued upload before it reaches a runner.
+    runs-on: xcode-27
     timeout-minutes: 60
     environment: ${{ inputs.channel == 'stable' && 'native-release' || format('ios-{0}', inputs.channel) }}
     env:
