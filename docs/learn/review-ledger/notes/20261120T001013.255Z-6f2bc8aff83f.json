@@ -1,0 +1,7 @@
+{
+  "revision": "a1fc5f3e2a0a48e37a1a7a95ca34b4b783ff8840",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the paired Tauri 2.8.1 package and crates.io resolution, upstream Android permission completion fix, and Station notifier permission pre-check. Seven local notifier tests passed. No Android device or release behavior was validated.","inputs":["docs/design/native-capabilities.md","src-desktop/Cargo.toml"]}
+  ]
+}
