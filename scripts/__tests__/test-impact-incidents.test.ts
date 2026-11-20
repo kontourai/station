@@ -152,6 +152,14 @@ describe('Nightly regressions outside the import graph', () => {
       'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
     ],
     [
+      'src-server/adapters/node-pty-adapter.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    [
+      'src-server/services/infra/workload-resources.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    [
       'tests/interactive-workspace-performance-bridge.spec.ts',
       'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
     ],
