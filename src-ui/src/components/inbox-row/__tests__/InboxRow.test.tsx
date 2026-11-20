@@ -912,6 +912,7 @@ it('owned running chats can be dismissed while idle chats can be settled', () =>
           chrome="hover"
           onActivate={vi.fn()}
           onDismiss={dismiss}
+          onSnoozeWake={vi.fn()}
         />
       </QueryClientProvider>,
     );
