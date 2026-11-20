@@ -1012,7 +1012,8 @@ other integrations retain their own authorization instructions.
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
-aside while keeping your chosen workspace, Agent, Model, and selected context.
+aside and collapses the chat dock while keeping your chosen workspace, Agent,
+Model, and selected context.
 Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the

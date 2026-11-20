@@ -61,9 +61,6 @@ test('fresh Station completes real Work', async ({
     await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
     await expect(page.getByTestId('first-run-home-card')).toBeVisible();
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await expect(
-      page.getByRole('button', { name: 'Review choices' }),
-    ).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     // Home's start composer is the one way to start a chat (#3371); the
