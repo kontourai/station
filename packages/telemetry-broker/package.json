@@ -15,7 +15,7 @@
     "@kontourai/station-contracts": "workspace:*",
     "@kontourai/station-shared": "workspace:*",
     "@hono/node-server": "2.1.8",
-    "hono": "4.13.18",
+    "hono": "4.13.19",
     "pg": "8.23.1"
   },
   "devDependencies": {
