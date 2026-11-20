@@ -25,7 +25,10 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
+import type {
+  ProviderAdapterShape,
+  ProviderSessionStartInput,
+} from '../../../providers/adapter-shape.js';
 import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import {
   ConcurrentEngineStartCapacityError,
@@ -92,7 +95,9 @@ async function harness(
   const projectRoot = realpathSync(makeTempDir('engine-start-project-'));
   const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
   const eventBus = new EventBus();
-  const adapter = new GateTestAdapter();
+  const adapter = Object.assign(new GateTestAdapter(), {
+    preflightStart: vi.fn(async (_input: ProviderSessionStartInput) => {}),
+  });
   const backgroundGate = deferred();
   const backgroundEntered = deferred();
   const original = adapter.startSession.bind(adapter);
@@ -452,6 +457,37 @@ describe('a cold follow-up respawn (#4568)', () => {
       await lease.release();
     },
   );
+
+  test('Stop retires a cold follow-up while preflight is still pending', async () => {
+    const h = await harness();
+    await h.restoreDormant('parked');
+    const reached = deferred();
+    const preflight = deferred();
+    cleanups.push(preflight.release);
+    h.adapter.preflightStart.mockImplementationOnce(async (input) => {
+      expect(input.signal).toBeDefined();
+      reached.release();
+      await preflight.promise;
+    });
+
+    const turn = h.service.dispatch(
+      { type: 'sendTurn', input: { threadId: 'parked', input: 'continue' } },
+      { clientOrigin: operator },
+    );
+    const outcome = turn.catch((error: unknown) => error);
+    await reached.promise;
+    expect(
+      await h.service.dispatch({ type: 'interruptTurn', threadId: 'parked' }),
+    ).toMatchObject({ outcome: 'pending-turn-start' });
+    await vi.waitFor(async () =>
+      expect(
+        await Promise.race([outcome, Promise.resolve(null)]),
+      ).toBeInstanceOf(EngineStartCancelledError),
+    );
+    preflight.release();
+    await settle();
+    expect(h.startsFor('parked')).toBe(0);
+  });
 
   test('a person joining a refused automatic respawn starts again under their own intent', async () => {
     const h = await harness();

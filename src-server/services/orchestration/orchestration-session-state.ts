@@ -5,7 +5,7 @@ import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/run
 import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
 import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
-import { throwIfAborted } from '../../utils/bounded-async.js';
+import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { ReceiverExecutionRefusal } from '../projects/project-contribution-service.js';
 import { withEngineStartPreparation } from './engine-start-preparation.js';
 
@@ -1954,6 +1954,7 @@ export async function startRecoveredOrchestrationSession(options: {
   const { session, adapter, tenantExecutionContext } = options;
   const deps = options.options;
   try {
+    throwIfAborted(deps.signal);
     // Metadata reads can fail for one damaged persisted event. Keep them
     // inside this session's boundary so the caller sees one typed failure.
     const recoveredMetadata = deps.readSessionStartMetadata?.(session.threadId);
@@ -1972,9 +1973,13 @@ export async function startRecoveredOrchestrationSession(options: {
           }
         : {}),
       metadata: recoveredMetadata,
+      ...(deps.signal ? { signal: deps.signal } : {}),
     };
     if (deps.resolveSessionCwd) {
-      startInput = await deps.resolveSessionCwd(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.resolveSessionCwd(startInput)),
+        deps.signal,
+      );
     }
     startInput =
       deps.prepareModelLaunch?.(adapter, startInput, session.model) ??
@@ -1985,12 +1990,21 @@ export async function startRecoveredOrchestrationSession(options: {
       typeof recoveredMetadata?.connectionId === 'string'
         ? recoveredMetadata.connectionId
         : undefined;
-    await deps.assertAdapterReady(adapter, recoveredConnectionId);
+    await raceWithSignal(
+      deps.assertAdapterReady(adapter, recoveredConnectionId),
+      deps.signal,
+    );
     if (deps.applyApprovalPosture) {
-      startInput = await deps.applyApprovalPosture(adapter, startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.applyApprovalPosture(adapter, startInput)),
+        deps.signal,
+      );
     }
     if (deps.resolveSessionAgent) {
-      startInput = await deps.resolveSessionAgent(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.resolveSessionAgent(startInput)),
+        deps.signal,
+      );
     }
     const unavailableReason = sessionAgentStartUnavailableReason({
       agentSlug: startInput.metadata?.agentSlug,
@@ -2002,13 +2016,18 @@ export async function startRecoveredOrchestrationSession(options: {
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {
-      startInput = await deps.applyCredentialProfile(startInput);
+      startInput = await raceWithSignal(
+        Promise.resolve(deps.applyCredentialProfile(startInput)),
+        deps.signal,
+      );
     }
     // #4435: the adapter's governance check runs before the start boundary,
     // as it does for a fresh start. Inside the boundary, a definitive refusal
     // (OpenCode's approval rules could not be read) was recorded as a start
     // that may have happened, and every retry was refused behind it.
-    await adapter.preflightStart?.(startInput);
+    if (adapter.preflightStart)
+      await raceWithSignal(adapter.preflightStart(startInput), deps.signal);
+    throwIfAborted(deps.signal);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
