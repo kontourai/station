@@ -43,8 +43,6 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import {
   shouldRenderSetupLauncher,
-  shouldRenderUsageTelemetryDisclosure,
-  useFirstRunChapterOpen,
   useOnboardingSetupState,
 } from '../contexts/onboarding-setup-store';
 import { useToast } from '../contexts/ToastContext';
@@ -84,7 +82,6 @@ import { triggerHaptic } from '../platform/native/haptics';
 import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
 import { ManagedRemoteClientsNote } from './managed/ManagedRemoteClientsNote';
-import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 
 type ConnectionModalMode =
   | 'list'
@@ -250,7 +247,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     defer: deferSetupBanner,
     rearm: rearmSetupBanner,
   } = useOnboardingSetupState();
-  const firstRunChapterOpen = useFirstRunChapterOpen();
   // Identity-scoped recovery read (not the shared bare-key `useConfig`):
   // under the stable boundary a bare entry would survive its connection.
   const unconfiguredPhone =
@@ -789,18 +785,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       />
     ) : null;
 
-  // THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
-  // It is mounted after `{children}`, so wherever it renders it renders on
-  // top: over the launcher (which is why the first-run E2E specs used to have
-  // to answer it before they could click anything) and, on a fresh home, over
-  // the first-run chapter. A `pending` home shows it as the chapter's first
-  // step instead; nothing here changes for any other home.
-  const usageTelemetryDisclosureMounted = shouldRenderUsageTelemetryDisclosure({
-    firstRunStatus: config?.firstRun?.status,
-    setupLauncherVisible: Boolean(setupLauncherVisible),
-    firstRunChapterOpen,
-  });
-
   // The shell is invariant across ready, loading, and local-service repair
   // states. Service lifecycle is disclosed in chrome, never by withholding
   // local, cached, settings, or connection-management affordances.
@@ -880,9 +864,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       )}
       {connectedNotice}
       {children}
-      {!unconfiguredPhone && usageTelemetryDisclosureMounted ? (
-        <UsageTelemetryDisclosure firstRun />
-      ) : null}
       {stationSetup ? (
         <LazyBoundary
           key={stationSetupSession}

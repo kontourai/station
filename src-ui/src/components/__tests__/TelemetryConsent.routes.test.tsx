@@ -120,7 +120,6 @@ const { setGrantedPairingScope } = await import(
 
 import type { RecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { StationConfigSection } from '../../views/settings/StationConfigSection';
-import { FirstRunHomeChapter } from '../first-run/FirstRunHomeChapter';
 import { firstRunStore } from '../first-run/first-run-store';
 import { SHARING_LABELS } from '../UsageSharingChoices';
 import {
@@ -1115,7 +1114,21 @@ test.each(['off', 'dismiss'] as const)(
         expect(sent).toHaveLength(0);
         resumeChoice!();
         expect((await writeResponse!).status).toBe(200);
-      } else fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      } else {
+        const held = new Promise<void>((resolve) => {
+          resumeChoice = resolve;
+        });
+        bridge.request.mockImplementation(
+          async (url: string, init?: RequestInit) => {
+            if (url.endsWith('/lite-notices')) await held;
+            return request(url, init);
+          },
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect((await service.telemetryStatus()).liteNotices).toEqual({});
+        resumeChoice!();
+      }
       const now = new Date();
       vi.useRealTimers();
       vi.useFakeTimers({ toFake: ['Date'] });
@@ -1290,10 +1303,13 @@ test.each(['close', 'escape', 'backdrop'] as const)(
     });
     const view = render(
       <QueryClientProvider client={client}>
-        <FirstRunHomeChapter intentFirst />
+        <UsageTelemetryDisclosure firstRun offerOnHome />
       </QueryClientProvider>,
     );
     try {
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Review choices' }),
+      );
       const dialog = await screen.findByRole('dialog');
       const anonymous = await screen.findByRole('radio', {
         name: /Anonymous usage counts/,
@@ -1301,7 +1317,9 @@ test.each(['close', 'escape', 'backdrop'] as const)(
       await waitFor(() => expect(document.activeElement).toBe(anonymous));
       expect(calls('/lite-notices')).toHaveLength(0);
       if (exit === 'close')
-        fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Close usage sharing' }),
+        );
       else if (exit === 'escape') fireEvent.keyDown(dialog, { key: 'Escape' });
       else fireEvent.pointerDown(screen.getByRole('presentation'));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

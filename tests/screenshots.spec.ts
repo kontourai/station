@@ -1999,13 +1999,16 @@ function telemetryConsentScreens(): Screen[] {
         mode === 'dialog-dnt' ||
         mode === 'settings-dnt-after-fix' ||
         mode === 'settings-detailed-expanded';
+      const additionalEndpoint = endpoint
+        ? new URL('https://counts.example.test/events')
+        : undefined;
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       return {
         name: `telemetry-${mode}-${device}`,
         title: `Usage sharing — ${mode} (${device})`,
-        path: '/settings?view=telemetry',
+        path: dialogVisible ? '/' : '/settings?view=telemetry',
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
@@ -2063,9 +2066,8 @@ function telemetryConsentScreens(): Screen[] {
               async (route) => {
                 const body = structuredClone(configSnapshot);
                 body.data.telemetryTier = choices;
-                body.data.productTelemetryEndpoint = endpoint
-                  ? 'https://counts.example.test/events'
-                  : '';
+                body.data.productTelemetryEndpoint =
+                  additionalEndpoint?.href ?? '';
                 delete body.data.telemetryEnabled;
                 delete body.data.firstRun;
                 await route.fulfill({ json: body });
@@ -2079,6 +2081,7 @@ function telemetryConsentScreens(): Screen[] {
                   acknowledged: !dialogVisible,
                   telemetryEnabled: false,
                   endpointConfigured: endpoint,
+                  additionalHost: additionalEndpoint?.host,
                   publishers,
                 });
                 await route.fulfill({ json: body });
@@ -2154,6 +2157,9 @@ function telemetryConsentScreens(): Screen[] {
         },
         afterGoto: async (page) => {
           if (dialogVisible) {
+            await page
+              .getByRole('button', { name: 'Review choices', exact: true })
+              .click();
             const dialog = page.getByRole('dialog', {
               name: 'Usage sharing',
             });
@@ -2255,15 +2261,6 @@ function telemetryConsentScreens(): Screen[] {
               await button.click({ trial: true });
             }
             return;
-          }
-          if (dnt && endpoint) {
-            const dialog = page.getByRole('dialog', {
-              name: 'Usage sharing',
-            });
-            await dialog
-              .getByRole('button', { name: 'Not now', exact: true })
-              .click();
-            await expect(dialog).toHaveCount(0);
           }
           const choice = page
             .getByRole('region', { name: 'Usage sharing choices' })

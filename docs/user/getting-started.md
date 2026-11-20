@@ -778,6 +778,12 @@ engine. Those engines run on the computer hosting your Station, including when
 you use a phone.
 An agent's setup warning names that agent; other ready agents can still run.
 
+You can start from Home while setup and usage sharing are still undecided.
+Use **Review choices** to open usage sharing, or find it in **Settings →
+Privacy & sharing**. **Not now** returns you to Home. Recent work shows this
+Station's saved conversations under **Earlier in Station**. Read-only
+conversations discovered from other tools appear under **From other apps**.
+
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
 questions add no profile. If saving those answers fails, setup stays open so
@@ -1006,7 +1012,8 @@ other integrations retain their own authorization instructions.
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
-aside while keeping your chosen workspace, Agent, Model, and selected context.
+aside and collapses the chat dock while keeping your chosen workspace, Agent,
+Model, and selected context.
 Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the

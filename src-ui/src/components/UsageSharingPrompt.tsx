@@ -206,9 +206,9 @@ export function UsageSharingPrompt({
         queryKey: ['usage-telemetry-disclosure'],
       });
     },
-    onSuccess: async (target) => {
+    onSuccess: (target) => {
       if (!target.noticeSaved) return;
-      await Promise.all([
+      void Promise.all([
         client.invalidateQueries({ queryKey: ['config'] }),
         client.invalidateQueries({ queryKey: ['usage-telemetry-disclosure'] }),
         client.invalidateQueries({ queryKey: ['telemetry-status'] }),
@@ -289,31 +289,19 @@ export function UsageSharingPrompt({
       )}
     </section>
   );
-  const close = async () => {
-    if (save.isPending) {
-      onClose();
-      return;
-    }
-    try {
-      await notice.recordShown();
-    } finally {
-      if (save.data?.noticeSaved === false) {
-        void client.invalidateQueries({ queryKey: ['config'] });
-        void client.invalidateQueries({ queryKey: ['telemetry-status'] });
-      }
-      onClose();
+  const close = () => {
+    const recordShown = save.isPending ? undefined : notice.prepareShown();
+    onClose();
+    void recordShown?.().catch(() => {});
+    if (save.data?.noticeSaved === false) {
+      void client.invalidateQueries({ queryKey: ['config'] });
+      void client.invalidateQueries({ queryKey: ['telemetry-status'] });
     }
   };
   const actions = (
     <>
-      <Button
-        variant="secondary"
-        onClick={() => {
-          void close().catch(() => {});
-        }}
-        disabled={save.isPending}
-      >
-        Not now
+      <Button variant="secondary" onClick={close}>
+        {save.isPending ? 'Close' : 'Not now'}
       </Button>
       <Button
         variant="secondary"
@@ -332,9 +320,7 @@ export function UsageSharingPrompt({
       title="Usage sharing"
       eyebrow="Privacy & sharing"
       closeLabel="Close usage sharing"
-      onClose={() => {
-        void close().catch(() => {});
-      }}
+      onClose={close}
       size="lg"
       historyMode="none"
       panelClassName="usage-telemetry-disclosure"

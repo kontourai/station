@@ -156,18 +156,54 @@
     "personal-board-projects-unavailable-mobile": [
       "src-ui/src/views/PersonalBoardView.tsx"
     ],
-    "telemetry-dialog-default-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-default-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-mixed-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-mixed-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-dnt-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-endpoint-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-endpoint-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-detailed-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-detailed-mobile": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-light-desktop": ["src-ui/src/views/SettingsView.tsx"],
-    "telemetry-dialog-light-mobile": ["src-ui/src/views/SettingsView.tsx"],
+    "telemetry-dialog-default-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-default-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-mixed-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-mixed-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-dnt-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-dnt-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-endpoint-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-endpoint-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-detailed-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-detailed-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-light-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
+    "telemetry-dialog-light-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    ],
     "telemetry-settings-desktop": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-settings-mobile": ["src-ui/src/views/SettingsView.tsx"],
     "telemetry-settings-dnt-desktop": ["src-ui/src/views/SettingsView.tsx"],

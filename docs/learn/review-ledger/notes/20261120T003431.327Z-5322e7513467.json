@@ -1,0 +1,7 @@
+{
+  "revision": "bd2ab7146fbba9ff26f4014cb00413d6ee9c5801",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Checked the Home pane selection evidence. The fixture isolates privacy review so the existing assertions still exercise the selected Home renderer and the refusal path. All five pane selection cases passed.","inputs":["src-ui/src/__tests__/HomeViewPaneSelection.test.tsx"]}
+  ]
+}

@@ -250,19 +250,44 @@ async function openSetupWithoutTelemetryEndpoint(
     };
   };
   expect(telemetry.authorEndpoint ?? null).toBeNull();
+  const missingNotices: string[] = [];
   for (const id of ['kontour', 'operator']) {
     const publisher = telemetry.publishers[id];
     expect(publisher).toBeDefined();
     expect(['off', 'lite']).toContain(publisher?.tier);
     expect(publisher?.reason).not.toBe('DNT');
     expect(publisher?.userChoice).not.toBe('full');
-    if (publisher?.tier === 'lite')
-      expect(telemetry.liteNotices?.[id]?.inventoryRevision).toBe(
-        telemetry.liteInventoryRevision,
-      );
+    if (
+      publisher?.tier === 'lite' &&
+      telemetry.liteNotices?.[id]?.inventoryRevision !==
+        telemetry.liteInventoryRevision
+    )
+      missingNotices.push(id);
   }
 
-  // A dormant fresh home presents setup as an optional Home action.
+  await expect(
+    page.getByTestId('usage-telemetry-disclosure-modal'),
+  ).toHaveCount(0);
+  if (missingNotices.length) {
+    await page.getByRole('button', { name: 'Review choices' }).click();
+    const notice = page.getByTestId('usage-telemetry-disclosure-modal');
+    await notice.getByRole('button', { name: 'Not now' }).click();
+    await expect(notice).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const response = await request.get('/api/usage-telemetry/status');
+        const { data: current } = (await response.json()) as {
+          data: typeof telemetry;
+        };
+        return missingNotices.every(
+          (id) =>
+            current.liteNotices?.[id]?.inventoryRevision ===
+            current.liteInventoryRevision,
+        );
+      })
+      .toBe(true);
+  }
+
   await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
   await page
     .getByTestId('first-run-home-card')
