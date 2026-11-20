@@ -1,5 +1,158 @@
 [
   {
+    "timestampUtc": "2026-11-20T01:59:03Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261120",
+    "sha": "50f62275055756a905d706c389ab7fe2c7f4bc3a",
+    "artifactBuiltAt": "2026-11-20T01:01:57.700Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44649150986",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44649150986)"
+    ],
+    "changelog": {
+      "previousSha": "5d3733a47d59c8be420cc8d676fe5e99169d59c4",
+      "groups": {
+        "feat": [
+          "[#5334](https://github.com/kontourai/station/pull/5334) feat(ui): add quiet refresh for Inbox and work lists",
+          "[#5307](https://github.com/kontourai/station/pull/5307) feat(projects): preview the #general Task coordinator",
+          "[#5332](https://github.com/kontourai/station/pull/5332) feat(schedule): show the week, executions, and damaged jobs",
+          "[#4646](https://github.com/kontourai/station/pull/4646) feat(automations): scope authority changes and complete operator recovery"
+        ],
+        "fix": [
+          "[#5337](https://github.com/kontourai/station/pull/5337) fix(acp): make approvals and chat results consistent across engines",
+          "[#5315](https://github.com/kontourai/station/pull/5315) fix(startup): report observed Project and Engine readiness",
+          "[#5338](https://github.com/kontourai/station/pull/5338) fix(release): repair Stable candidate staging",
+          "[#5317](https://github.com/kontourai/station/pull/5317) fix(orchestration): preserve staged files and reviewer workspaces",
+          "[#5333](https://github.com/kontourai/station/pull/5333) fix(ci): recover transient source-evidence reads",
+          "[#5330](https://github.com/kontourai/station/pull/5330) fix(connect): distinguish Station access probe failures",
+          "[#5324](https://github.com/kontourai/station/pull/5324) fix(codex): refuse a send while the current turn is active",
+          "[#5326](https://github.com/kontourai/station/pull/5326) fix(ci): explain install timeouts and record pnpm audit attempts",
+          "[#5329](https://github.com/kontourai/station/pull/5329) fix(ci): sequence Nightly macOS and iOS staging",
+          "[#5309](https://github.com/kontourai/station/pull/5309) fix(chat): honor continued engine mode and approval controls",
+          "[#5320](https://github.com/kontourai/station/pull/5320) fix(automations): preserve Agent identity and confirmation results",
+          "[#5316](https://github.com/kontourai/station/pull/5316) fix(plugins): bind installed reads to selected package paths",
+          "[#5323](https://github.com/kontourai/station/pull/5323) fix(qualification): align the Agent guide and await valid fixture PIDs",
+          "[#5172](https://github.com/kontourai/station/pull/5172) fix(pull-requests): unify Task review and Project settings"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5331](https://github.com/kontourai/station/pull/5331) perf(bench): measure macOS idle wakeups",
+          "[#5327](https://github.com/kontourai/station/pull/5327) perf(orchestration): shorten the chat image instruction",
+          "[#5319](https://github.com/kontourai/station/pull/5319) test: stabilize smoke, browser control, and Session projection checks"
+        ]
+      },
+      "note": null,
+      "commitCount": 21
+    }
+  },
+  {
+    "timestampUtc": "2026-11-20T01:59:03Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261120",
+    "sha": "50f62275055756a905d706c389ab7fe2c7f4bc3a",
+    "artifactBuiltAt": "2026-11-20T01:08:10.927Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44649150986",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44649150986)"
+    ],
+    "changelog": {
+      "previousSha": "5d3733a47d59c8be420cc8d676fe5e99169d59c4",
+      "groups": {
+        "feat": [
+          "[#5334](https://github.com/kontourai/station/pull/5334) feat(ui): add quiet refresh for Inbox and work lists",
+          "[#5307](https://github.com/kontourai/station/pull/5307) feat(projects): preview the #general Task coordinator",
+          "[#5332](https://github.com/kontourai/station/pull/5332) feat(schedule): show the week, executions, and damaged jobs",
+          "[#4646](https://github.com/kontourai/station/pull/4646) feat(automations): scope authority changes and complete operator recovery"
+        ],
+        "fix": [
+          "[#5337](https://github.com/kontourai/station/pull/5337) fix(acp): make approvals and chat results consistent across engines",
+          "[#5315](https://github.com/kontourai/station/pull/5315) fix(startup): report observed Project and Engine readiness",
+          "[#5338](https://github.com/kontourai/station/pull/5338) fix(release): repair Stable candidate staging",
+          "[#5317](https://github.com/kontourai/station/pull/5317) fix(orchestration): preserve staged files and reviewer workspaces",
+          "[#5333](https://github.com/kontourai/station/pull/5333) fix(ci): recover transient source-evidence reads",
+          "[#5330](https://github.com/kontourai/station/pull/5330) fix(connect): distinguish Station access probe failures",
+          "[#5324](https://github.com/kontourai/station/pull/5324) fix(codex): refuse a send while the current turn is active",
+          "[#5326](https://github.com/kontourai/station/pull/5326) fix(ci): explain install timeouts and record pnpm audit attempts",
+          "[#5329](https://github.com/kontourai/station/pull/5329) fix(ci): sequence Nightly macOS and iOS staging",
+          "[#5309](https://github.com/kontourai/station/pull/5309) fix(chat): honor continued engine mode and approval controls",
+          "[#5320](https://github.com/kontourai/station/pull/5320) fix(automations): preserve Agent identity and confirmation results",
+          "[#5316](https://github.com/kontourai/station/pull/5316) fix(plugins): bind installed reads to selected package paths",
+          "[#5323](https://github.com/kontourai/station/pull/5323) fix(qualification): align the Agent guide and await valid fixture PIDs",
+          "[#5172](https://github.com/kontourai/station/pull/5172) fix(pull-requests): unify Task review and Project settings"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5331](https://github.com/kontourai/station/pull/5331) perf(bench): measure macOS idle wakeups",
+          "[#5327](https://github.com/kontourai/station/pull/5327) perf(orchestration): shorten the chat image instruction",
+          "[#5319](https://github.com/kontourai/station/pull/5319) test: stabilize smoke, browser control, and Session projection checks"
+        ]
+      },
+      "note": null,
+      "commitCount": 21
+    }
+  },
+  {
+    "timestampUtc": "2026-11-20T01:02:34Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261120.44649150986",
+    "sha": "50f62275055756a905d706c389ab7fe2c7f4bc3a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44649150986",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261120.44649150986 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "5d3733a47d59c8be420cc8d676fe5e99169d59c4",
+      "groups": {
+        "feat": [
+          "[#5334](https://github.com/kontourai/station/pull/5334) feat(ui): add quiet refresh for Inbox and work lists",
+          "[#5307](https://github.com/kontourai/station/pull/5307) feat(projects): preview the #general Task coordinator",
+          "[#5332](https://github.com/kontourai/station/pull/5332) feat(schedule): show the week, executions, and damaged jobs",
+          "[#4646](https://github.com/kontourai/station/pull/4646) feat(automations): scope authority changes and complete operator recovery"
+        ],
+        "fix": [
+          "[#5337](https://github.com/kontourai/station/pull/5337) fix(acp): make approvals and chat results consistent across engines",
+          "[#5315](https://github.com/kontourai/station/pull/5315) fix(startup): report observed Project and Engine readiness",
+          "[#5338](https://github.com/kontourai/station/pull/5338) fix(release): repair Stable candidate staging",
+          "[#5317](https://github.com/kontourai/station/pull/5317) fix(orchestration): preserve staged files and reviewer workspaces",
+          "[#5333](https://github.com/kontourai/station/pull/5333) fix(ci): recover transient source-evidence reads",
+          "[#5330](https://github.com/kontourai/station/pull/5330) fix(connect): distinguish Station access probe failures",
+          "[#5324](https://github.com/kontourai/station/pull/5324) fix(codex): refuse a send while the current turn is active",
+          "[#5326](https://github.com/kontourai/station/pull/5326) fix(ci): explain install timeouts and record pnpm audit attempts",
+          "[#5329](https://github.com/kontourai/station/pull/5329) fix(ci): sequence Nightly macOS and iOS staging",
+          "[#5309](https://github.com/kontourai/station/pull/5309) fix(chat): honor continued engine mode and approval controls",
+          "[#5320](https://github.com/kontourai/station/pull/5320) fix(automations): preserve Agent identity and confirmation results",
+          "[#5316](https://github.com/kontourai/station/pull/5316) fix(plugins): bind installed reads to selected package paths",
+          "[#5323](https://github.com/kontourai/station/pull/5323) fix(qualification): align the Agent guide and await valid fixture PIDs",
+          "[#5172](https://github.com/kontourai/station/pull/5172) fix(pull-requests): unify Task review and Project settings"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5331](https://github.com/kontourai/station/pull/5331) perf(bench): measure macOS idle wakeups",
+          "[#5327](https://github.com/kontourai/station/pull/5327) perf(orchestration): shorten the chat image instruction",
+          "[#5319](https://github.com/kontourai/station/pull/5319) test: stabilize smoke, browser control, and Session projection checks"
+        ]
+      },
+      "note": null,
+      "commitCount": 21
+    }
+  },
+  {
     "timestampUtc": "2026-11-19T18:23:21Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261119.3",
