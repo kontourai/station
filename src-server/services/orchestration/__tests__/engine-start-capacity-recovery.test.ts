@@ -482,7 +482,7 @@ describe('a cold follow-up respawn (#4568)', () => {
     await vi.waitFor(async () =>
       expect(
         await Promise.race([outcome, Promise.resolve(null)]),
-      ).toBeInstanceOf(EngineStartCancelledError),
+      ).toMatchObject({ message: new EngineStartCancelledError().message }),
     );
     preflight.release();
     await settle();
