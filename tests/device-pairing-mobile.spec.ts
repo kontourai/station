@@ -330,31 +330,24 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
   await context.close();
 });
 
-/**
- * The surfaces an UNPAIRED device actually has, and only those.
- *
- * A device with a saved Station and no access never reaches the shell: it
- * lands on the onboarding gate ("Connect to your Station host"), and its
- * request, its wait and the host's refusal are all reported by the request
- * panel that gate opens. The shell's own connection manager offers the same
- * journey per-row as "Request access to <name>"
- * (`connectionNeedsAccessRequest`) — but that row is for a device that HAS a
- * shell and lost access, which is a different scenario, so this one does not
- * pretend it might be there. That confusion is what archive#3753 was: the
- * phone context silently inherited the suite-wide device session, so it was
- * never unpaired, the shell rendered, and the leg waited for a per-row button
- * the product had no reason to offer.
- *
- * The shell's own wording for these same two states lives in
- * `src-ui/src/components/OnboardingGate.tsx` and
- * `src-ui/src/components/PendingPairingReconciler.tsx`; the panel's is in
- * `packages/connect/src/react/DevicePairingPanel.tsx`. Two components own one
- * fact — noted here so the next reader does not read this file's single
- * spelling as the only one.
- */
 async function openPhoneAccessRequest(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('heading', { name: 'Connect your phone', exact: true }),
+  ).toBeVisible({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(
+    new URL(page.url()).hostname,
+  );
+  if (loopback) {
+    // GuidedConnect offers the loopback request inside the native disclosure.
+    await page
+      .getByText('Other ways to connect', { exact: true })
+      .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  }
   await page
-    .getByRole('button', { name: 'Request access', exact: true })
+    .getByRole('button', {
+      name: loopback ? 'Request access' : 'Request access to this Station',
+      exact: true,
+    })
     .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
   await expect(page.getByRole('dialog')).toBeVisible();
 }
