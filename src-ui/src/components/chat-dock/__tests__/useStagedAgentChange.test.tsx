@@ -298,3 +298,25 @@ test('the staged Send refuses while a recorded approval choice needs to be carri
   expect(clear).not.toHaveBeenCalled();
   expect(result.current.selected?.agent.slug).toBe('agent-b');
 });
+
+test('a recovered request refused without a reservation releases the fence and keeps the draft', async () => {
+  const initial = mount();
+  act(() => initial.result.current.stage(agentB));
+  harness.post.mockRejectedValueOnce(new TypeError('request dropped'));
+  await act(async () => initial.result.current.send());
+  initial.unmount();
+
+  const restored = mount({ ...scope, authorityKey: 'reconnected' });
+  await act(async () => restored.result.current.send());
+  harness.post.mockRejectedValueOnce(
+    Object.assign(new Error('Source Session changed'), {
+      status: 409,
+      stationEnvelope: true,
+    }),
+  );
+  await act(async () => restored.result.current.send());
+  expect(harness.post).toHaveBeenCalledTimes(2);
+  expect(restored.result.current.pending).toBeUndefined();
+  expect(restored.clear).not.toHaveBeenCalled();
+  expect(harness.retained.size).toBe(0);
+});

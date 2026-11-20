@@ -250,7 +250,8 @@ controller; `/model` shares filtering, availability and choice memory with the p
 
 With **Stage chat Agent changes** enabled, choose an Agent and review what
 will carry over. The composer shows the destination engine and requested model
-for the next message. The Model picker uses the staged Agent's connection.
+for the next message. The Model picker uses the staged Agent's bound engine connection. A Station
+Agent uses its configured model defaults for this Send.
 Choose the original Agent or **Undo** to restore the current composer settings.
 The transcript and current Session remain in place until Send.
 

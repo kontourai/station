@@ -2443,9 +2443,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const stagedSelection = stagedAgentChange.selected;
   const stagedBinding =
     stagedSelection?.executionAgent ?? stagedSelection?.agent;
-  const stagedModelConnection =
-    stagedSelection?.connectionId ??
-    stagedBinding?.execution?.runtimeOptions?.providerId;
+  const stagedModelConnection = stagedSelection?.connectionId;
   const stagedComposer =
     stagedSelection || stagedAgentChange.pending
       ? {
@@ -5332,6 +5330,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   showToast,
                   refetchOrchestrationSessions,
                   continueOnStation,
+                  handoffAvailable:
+                    !stagedAgentChange.previewChecking &&
+                    !stagedAgentChange.pending,
                   onStageAgentChange: stagedAgentChange.enabled
                     ? stagedAgentChange.stage
                     : undefined,

@@ -121,8 +121,8 @@ export function useStagedAgentChange({
       '../../lib/staged-handoff-attempt-store'
     );
 
-    await stagedHandoffAttempts.remove(storageKey);
     localStorage.removeItem(storageKey);
+    await stagedHandoffAttempts.remove(storageKey);
     if (attempt.current?.key === key) attempt.current = undefined;
     setRetryKey(undefined);
   };
@@ -459,7 +459,7 @@ export function useStagedAgentChange({
       setPlan(undefined);
       onAccepted();
     } catch (error) {
-      if (scopeIsCurrent() && dispatched && !retry && isStationRefusal(error)) {
+      if (scopeIsCurrent() && dispatched && isStationRefusal(error)) {
         const exact = attempt.current;
         if (exact) {
           const { createStagedHandoffTransport } = await import(
@@ -493,8 +493,8 @@ export function useStagedAgentChange({
     enabled,
     previewChecking: Boolean(
       chat &&
-        scope &&
-        (previews.data === undefined ||
+        (!scope ||
+          previews.data === undefined ||
           (!recoveryAuthority &&
             previews.data.some(
               (preview) =>

@@ -1,5 +1,5 @@
 import type { handoffExecutionMessage } from '@kontourai/station-sdk/client';
-import { createStore, del, get, set } from 'idb-keyval';
+import { createStore, del, get, set, update } from 'idb-keyval';
 import type { DraftQuote } from '../utils/answer-quotes';
 
 export interface StagedHandoffAttempt {
@@ -10,6 +10,10 @@ export interface StagedHandoffAttempt {
   attachmentIds: string[];
 }
 
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+type RetainedAttempt = { attempt: StagedHandoffAttempt; expiresAt: number };
+
 let storage: ReturnType<typeof createStore> | undefined;
 
 function store() {
@@ -17,8 +21,19 @@ function store() {
 }
 
 export const stagedHandoffAttempts = {
-  read: (key: string) => get<StagedHandoffAttempt>(key, store()),
+  read: async (key: string) => {
+    const record = await get<RetainedAttempt>(key, store());
+    if (record && record.expiresAt > Date.now()) return record.attempt;
+    if (record)
+      await update<RetainedAttempt | undefined>(
+        key,
+        (current) =>
+          current && current.expiresAt > Date.now() ? current : undefined,
+        store(),
+      );
+    return undefined;
+  },
   write: (key: string, attempt: StagedHandoffAttempt) =>
-    set(key, attempt, store()),
+    set(key, { attempt, expiresAt: Date.now() + MAX_AGE_MS }, store()),
   remove: (key: string) => del(key, store()),
 };
