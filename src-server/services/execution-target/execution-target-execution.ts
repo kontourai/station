@@ -55,7 +55,11 @@ import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
 import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import { markCreateRequestStarting } from '../orchestration/create-request-claims.js';
-import { assertInheritedDelegationToolPolicy } from '../orchestration/delegation-tool-policy.js';
+import {
+  assertInheritedDelegationToolBinding,
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../orchestration/delegation-tool-policy.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -758,6 +762,10 @@ export async function executeForegroundMessage(
   }
 
   assertInheritedDelegationToolPolicy(input.delegation);
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   let resolved = await resolveExecutionTarget(input.target, deps);
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
@@ -1213,6 +1221,14 @@ export async function executeForegroundMessage(
           }
         : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  if (binding && !continuation?.startRequired) {
+    const retained = deps.readSessionStartMetadata?.(
+      resolved.access,
+      sessionId,
+    )?.delegation;
+    assertInheritedDelegationToolPolicy(retained);
+    assertInheritedDelegationToolBinding(input.delegation, retained);
+  }
   const transcriptSeed =
     readProviderDurabilityProfile(
       deps.getProviderAdapter(resolved.provider)?.metadata,
