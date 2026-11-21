@@ -1,0 +1,11 @@
+{
+  "revision": "883d56f8fd601ed583b1beac8aa648a12e6e5008",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the affected downstream contract references. Muse now checks the workspace reported by its native resume against Station's assigned directory. Session and workspace definitions, SDK interfaces, and the contract contribution guidance still apply.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the affected downstream contract references. Muse now checks the workspace reported by its native resume against Station's assigned directory. Session and workspace definitions, SDK interfaces, and the contract contribution guidance still apply.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the affected downstream contract references. Muse now checks the workspace reported by its native resume against Station's assigned directory. Session and workspace definitions, SDK interfaces, and the contract contribution guidance still apply.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
