@@ -1,0 +1,9 @@
+{
+  "revision": "6184d08a9b6462c427979dfe509736ab6afbf351",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"The merged map adds continuation_source_active and conversation_handoff_predecessor_busy, both busy and retryable; sdk.md's failure-kind claims are unchanged and contracts.md lists both.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The merged map adds continuation_source_active and conversation_handoff_predecessor_busy, both busy and retryable; sdk.md's failure-kind claims are unchanged and contracts.md lists both.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}

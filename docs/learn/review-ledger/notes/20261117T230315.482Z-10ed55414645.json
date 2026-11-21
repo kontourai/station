@@ -1,0 +1,11 @@
+{
+  "revision": "ea360a6a321a783e96b581ae44102de55f6b1b24",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed ea360a6a321 ownership regression against module-map, self-configuring-agent and contracts ownership explanations. The new case reaches detail, list and event-page summaries and verifies stale terminals, a subsequent turn and reopen. It failed before the fix because a finished child retained provider status running; 65 focused ownership/cancellation cases passed after repair. Existing cascade custody and cleanup semantics remain unchanged; no hosted or release claim.","inputs":["src-server/services/orchestration/__tests__/ownership-cascade.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed ea360a6a321 ownership regression against module-map, self-configuring-agent and contracts ownership explanations. The new case reaches detail, list and event-page summaries and verifies stale terminals, a subsequent turn and reopen. It failed before the fix because a finished child retained provider status running; 65 focused ownership/cancellation cases passed after repair. Existing cascade custody and cleanup semantics remain unchanged; no hosted or release claim.","inputs":["src-server/services/orchestration/__tests__/ownership-cascade.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed ea360a6a321 ownership regression against module-map, self-configuring-agent and contracts ownership explanations. The new case reaches detail, list and event-page summaries and verifies stale terminals, a subsequent turn and reopen. It failed before the fix because a finished child retained provider status running; 65 focused ownership/cancellation cases passed after repair. Existing cascade custody and cleanup semantics remain unchanged; no hosted or release claim.","inputs":["src-server/services/orchestration/__tests__/ownership-cascade.test.ts"]}
+  ]
+}

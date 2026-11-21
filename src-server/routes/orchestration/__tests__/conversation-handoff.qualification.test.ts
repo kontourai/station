@@ -84,7 +84,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
   test.each([
     {
-      label: 'Claude Code to Codex',
+      label: 'Staged Claude Code to Codex with a selected model',
+      staged: true,
       source: CLAUDE,
       target: CODEX,
       nativeReturn: false,
@@ -225,6 +226,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       source,
       target,
       preserveProfile,
+      staged = false,
       nativeReturn,
       failReturnSeed = false,
       repeatNativeReturn = false,
@@ -271,6 +273,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         nativeReturn,
         ownership,
       );
+      if (staged)
+        targetAdapter.metadata.capabilities = [
+          ...targetAdapter.metadata.capabilities,
+          'image-input',
+        ];
       const createService = () =>
         new OrchestrationService({
           adapterRegistry: continuityRegistry([sourceAdapter, targetAdapter]),
@@ -370,6 +377,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               ...(input.modelId ? { modelId: input.modelId } : {}),
               idempotencyKey: input.idempotencyKey,
               messageDigest: input.messageDigest,
+              stagedHandoff: input.stagedHandoff,
             },
           );
           if (
@@ -476,6 +484,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           },
           executionDeps,
         );
+      let stagedPreviewEnabled = false;
       const createApp = () => {
         const routes = createOrchestrationRoutes(service, {
           delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
@@ -489,6 +498,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               { ...input, userId: OWNER },
               executionDeps,
             ),
+          stagedHandoffEnabled: () => stagedPreviewEnabled,
           handoffConversation: (input) =>
             executeForegroundMessage(
               {
@@ -496,6 +506,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
                 userId: OWNER,
                 handoffIntent: createConversationHandoffIntent(
                   input.idempotencyKey,
+                  input.stagedHandoff,
                 ),
               },
               executionDeps,
@@ -560,21 +571,163 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       });
 
       const idempotencyKey = `handoff-${source.provider}-to-${target.provider}`;
+      const handoffPath = `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/${staged ? 'staged-handoff' : 'handoff'}`;
       const handoffBody = {
         message: ' Continue and recall the token. ',
         idempotencyKey,
+        ...(staged
+          ? {
+              attachments: [
+                {
+                  kind: 'image',
+                  name: 'pixel.png',
+                  mimeType: 'image/png',
+                  size: 68,
+                  dataUrl:
+                    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2foAAAAASUVORK5CYII=',
+                },
+              ],
+              stagedHandoff: {
+                expectedCurrentSessionId: conversationId,
+                contextPolicy: 'continue-from-history',
+              },
+            }
+          : {}),
         target: {
           environment: { kind: 'current' },
           agent: targetRef,
+          ...(staged
+            ? {
+                expectedEngine: {
+                  kind: 'connection',
+                  connectionId: target.connectionId,
+                },
+                model: { override: 'gpt-5.4' },
+              }
+            : {}),
         },
       };
+      if (staged) {
+        const disabled = await post(handoffPath, handoffBody);
+        expect(disabled.status).toBe(404);
+        expect(await disabled.json()).toMatchObject({
+          code: 'feature_preview_disabled',
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        stagedPreviewEnabled = true;
+
+        const withdrawnKey = 'withdraw-before-reservation';
+        const withdrawalPath = `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${withdrawnKey}`;
+        const withdrawn = await app.request(withdrawalPath, {
+          method: 'DELETE',
+        });
+        expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
+        expect(await withdrawn.json()).toMatchObject({
+          data: { outcome: 'withdrawn' },
+        });
+        const lateSend = await post(handoffPath, {
+          ...handoffBody,
+          idempotencyKey: withdrawnKey,
+        });
+        expect(lateSend.status).toBe(409);
+        expect(await lateSend.json()).toMatchObject({
+          code: 'conversation_handoff_withdrawn',
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
+        const dedicatedOverride = await post(handoffPath, {
+          ...handoffBody,
+          target: {
+            ...handoffBody.target,
+            agent: {
+              kind: 'agent-execution-override',
+              agent: source.agent,
+              executionAgent: target.agent,
+            },
+          },
+        });
+        expect(dedicatedOverride.status).toBe(409);
+        expect(await dedicatedOverride.json()).toMatchObject({
+          error: expect.stringContaining('Choose a different Agent'),
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
+
+        const unsupportedAttachment = await post(handoffPath, {
+          ...handoffBody,
+          attachments: [
+            {
+              kind: 'file',
+              name: 'note.txt',
+              mimeType: 'text/plain',
+              size: 4,
+              dataUrl: 'data:text/plain;base64,bm90ZQ==',
+            },
+          ],
+        });
+        expect(unsupportedAttachment.status).toBe(409);
+        expect(await unsupportedAttachment.json()).toMatchObject({
+          error: expect.stringContaining('does not support file attachments'),
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
+
+        const stale = await post(handoffPath, {
+          ...handoffBody,
+          stagedHandoff: {
+            ...handoffBody.stagedHandoff,
+            expectedCurrentSessionId: 'superseded-session',
+          },
+        });
+        expect(stale.status).toBe(409);
+        expect(await stale.json()).toMatchObject({
+          error: expect.stringContaining('The current Session changed'),
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
+
+        const repointed = await post(handoffPath, {
+          ...handoffBody,
+          target: {
+            ...handoffBody.target,
+            expectedEngine: {
+              kind: 'connection',
+              connectionId: source.connectionId,
+            },
+          },
+        });
+        expect(repointed.status).toBe(409);
+        expect(await repointed.json()).toMatchObject({
+          code: 'execution_engine_changed',
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
+        const inbox = store.threadInboxStore();
+        const queuedAt = Date.now();
+        const queued = inbox.submit({
+          conversationId,
+          clientTurnId: 'queued-for-source',
+          payload: {
+            message: 'This message was queued before switching Agents.',
+            actor: { userId: OWNER },
+          },
+          now: queuedAt,
+        });
+        expect(queued.kind).toBe('accepted');
+        const blocked = await post(handoffPath, handoffBody);
+        expect(blocked.status).toBe(409);
+        expect(await blocked.json()).toMatchObject({
+          code: 'conversation_handoff_predecessor_busy',
+          error: expect.stringContaining('queued messages'),
+        });
+        expect(store.conversationSessions(conversationId)).toHaveLength(1);
+        expect(targetAdapter.starts).toHaveLength(0);
+        inbox.cancel(conversationId, 'queued-for-source', queuedAt + 1);
+      }
       targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed !== undefined;
       if (failFirstHandoffSeed)
         targetAdapter.seedFailureMethod = failFirstHandoffSeed;
-      const handoff = await post(
-        `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
-        handoffBody,
-      );
+      const handoff = await post(handoffPath, handoffBody);
       expect(handoff.status, await handoff.clone().text()).toBe(200);
       const handoffReceipt = (await handoff.json()) as {
         data: {
@@ -588,6 +741,13 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           };
         };
       };
+      if (staged) {
+        const reserved = await app.request(
+          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${idempotencyKey}`,
+          { method: 'DELETE' },
+        );
+        expect(reserved.status).toBe(409);
+      }
       expect(handoffReceipt.data).toMatchObject({ sessionStarted: true });
       if (failFirstHandoffSeed) {
         try {
@@ -700,10 +860,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         });
       });
 
-      const replay = await post(
-        `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
-        handoffBody,
-      );
+      if (staged) app = createApp();
+      const replay = await post(handoffPath, handoffBody);
       expect(replay.status, await replay.clone().text()).toBe(200);
       const replayBody = (await replay.json()) as { data: unknown };
       expect(replayBody.data).toMatchObject({
@@ -745,10 +903,10 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           },
         },
       ]) {
-        const changedRaw = await post(
-          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
-          { ...handoffBody, ...change },
-        );
+        const changedRaw = await post(handoffPath, {
+          ...handoffBody,
+          ...change,
+        });
         expect(changedRaw.status, await changedRaw.clone().text()).toBe(409);
         expect(await changedRaw.json()).toMatchObject({
           code: 'client_turn_input_conflict',
@@ -764,10 +922,10 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             "UPDATE orchestration_turn_dedup SET input_digest = NULL, owner_json = json_remove(owner_json, '$.inputDigest') WHERE value = ?",
           )
           .run(`${target.provider}-handoff-turn-1`);
-        const legacyReplay = await post(
-          `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
-          { ...handoffBody, message: handoffBody.message.trim() },
-        );
+        const legacyReplay = await post(handoffPath, {
+          ...handoffBody,
+          message: handoffBody.message.trim(),
+        });
         expect(legacyReplay.status, await legacyReplay.clone().text()).toBe(
           200,
         );
@@ -784,6 +942,15 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       expect(targetAdapter.starts).toHaveLength(1);
       await eventually(() => expect(targetAdapter.turns).toHaveLength(1));
       expect(targetAdapter.turns[0]?.ambientContext).toContain(CONTEXT_TOKEN);
+      if (staged) {
+        expect(targetAdapter.starts[0]).toMatchObject({ modelId: 'gpt-5.4' });
+        expect(targetAdapter.starts[0]?.resumeCursor).toBeUndefined();
+        expect(targetAdapter.turns[0]).toMatchObject({
+          displayInput: handoffBody.message.trim(),
+          modelId: 'gpt-5.4',
+          attachments: handoffBody.attachments,
+        });
+      }
 
       await eventually(async () => {
         expect(

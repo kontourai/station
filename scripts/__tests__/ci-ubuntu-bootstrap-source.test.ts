@@ -112,9 +112,22 @@ describe.skipIf(process.platform === 'win32')(
         expect(readFileSync(staged, 'utf8')).toContain(
           'BOOTSTRAP_SELECTION_LOG',
         );
-        expect(readFileSync(transport, 'utf8').split('\n')).toContain(
+        expect(readFileSync(transport, 'utf8').trimEnd().split('\n')).toEqual([
+          '--fail',
+          '--silent',
+          '--show-error',
+          '--connect-timeout',
+          '10',
+          '--max-time',
+          '20',
+          '--retry',
+          '2',
+          '--retry-max-time',
+          '40',
           `https://raw.githubusercontent.com/kontourai/station/${workflowSha}/scripts/install-ci-ubuntu-packages.sh`,
-        );
+          '--output',
+          staged,
+        ]);
       },
     );
 

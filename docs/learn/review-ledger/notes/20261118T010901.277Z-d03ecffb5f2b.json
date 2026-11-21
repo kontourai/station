@@ -1,0 +1,9 @@
+{
+  "revision": "1879bd6a10b2347f72400746f1126dc9ff8bf82f",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed README Data and privacy and concepts data-flow links against the policy delta. Both continue to distinguish configured external services and declared inventory from verified delivery. The generated row now matches the inventory and existing Play wording for sealed Android/iOS Session references; no change to public-site approval or device-delivery claims.","inputs":["docs/privacy-policy.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed README Data and privacy and concepts data-flow links against the policy delta. Both continue to distinguish configured external services and declared inventory from verified delivery. The generated row now matches the inventory and existing Play wording for sealed Android/iOS Session references; no change to public-site approval or device-delivery claims.","inputs":["docs/privacy-policy.md"]}
+  ]
+}

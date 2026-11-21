@@ -1,0 +1,7 @@
+{
+  "revision": "0e1c592af16d85feab67db30a8883d96b0187a55",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"After merging main (#5140), the pin list differs from main only by the two #5113 workload-memory-pressure warning rows, which contracts.md lists.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

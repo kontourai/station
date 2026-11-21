@@ -9,9 +9,17 @@ import {
 import type { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 
 const change = z.object({ settled: z.boolean() }).strict();
-/** Preview-only personal inbox resolution; every write rechecks conversation admission. */
+const hiding = z.object({ hidden: z.boolean() }).strict();
+/**
+ * Preview-only personal inbox resolution; every write rechecks conversation
+ * admission. A third-party Session is not settled but hidden, by its thread
+ * id, behind the same person key and Session read check.
+ */
 export function createConversationWorkStateRoutes(deps: {
-  store: Pick<ConversationWorkStateStore, 'read' | 'set'>;
+  store: Pick<
+    ConversationWorkStateStore,
+    'read' | 'set' | 'readHidden' | 'setHidden'
+  >;
   preview: FeaturePreviewSelector;
   authorityFor(request: Request): SessionReadAuthority;
   isOwnerDevice: IsOwnerDevice;
@@ -19,6 +27,7 @@ export function createConversationWorkStateRoutes(deps: {
     conversationId: string,
     authority: SessionReadAuthority,
   ): Promise<boolean>;
+  canReadSession(sessionId: string, authority: SessionReadAuthority): boolean;
   current(request: Request): boolean;
 }) {
   const app = new Hono();
@@ -49,6 +58,7 @@ export function createConversationWorkStateRoutes(deps: {
   };
   app.use('/work-state', guard);
   app.use('/:id/work-state', guard);
+  app.use('/:id/inbox-hidden', guard);
   const person = (request: Request) =>
     conversationAcknowledgementKey(
       deps.authorityFor(request),
@@ -62,7 +72,13 @@ export function createConversationWorkStateRoutes(deps: {
         403,
       );
     c.header('Cache-Control', 'private, no-store');
-    return c.json({ success: true, data: { settled: deps.store.read(key) } });
+    return c.json({
+      success: true,
+      data: {
+        settled: deps.store.read(key),
+        hidden: deps.store.readHidden(key),
+      },
+    });
   });
   app.put('/:id/work-state', async (c) => {
     const key = person(c.req.raw);
@@ -91,6 +107,29 @@ export function createConversationWorkStateRoutes(deps: {
         403,
       );
     deps.store.set(key, id, parsed.data.settled, new Date().toISOString());
+    return c.json({ success: true });
+  });
+  app.put('/:id/inbox-hidden', async (c) => {
+    const key = person(c.req.raw);
+    if (!key)
+      return c.json(
+        { success: false, error: 'A person credential is required' },
+        403,
+      );
+    const id = c.req.param('id');
+    if (!id || id.length > 512)
+      return c.json({ success: false, error: 'Invalid session identity' }, 400);
+    const parsed = hiding.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success)
+      return c.json({ success: false, error: 'hidden must be a boolean' }, 400);
+    if (!deps.canReadSession(id, deps.authorityFor(c.req.raw)))
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    if (!deps.current(c.req.raw) || c.req.raw.signal.aborted)
+      return c.json(
+        { success: false, error: 'Request authority expired' },
+        403,
+      );
+    deps.store.setHidden(key, id, parsed.data.hidden, new Date().toISOString());
     return c.json({ success: true });
   });
   return app;

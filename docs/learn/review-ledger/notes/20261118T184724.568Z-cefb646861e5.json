@@ -1,0 +1,43 @@
+{
+  "revision": "6b7e7f7e988161a61f7bfb2afdb9d29253f22c07",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the revised catalog paragraph against the existing model listing command and dispatch and read paths. Linked CLI and integration documents retain their existing claims and examples.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the revised catalog paragraph against the existing model listing command and dispatch and read paths. Linked CLI and integration documents retain their existing claims and examples.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the revised catalog paragraph against the existing model listing command and dispatch and read paths. Linked CLI and integration documents retain their existing claims and examples.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the revised catalog paragraph against the existing model listing command and dispatch and read paths. Linked CLI and integration documents retain their existing claims and examples.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the revised catalog paragraph against the existing model listing command and dispatch and read paths. Linked CLI and integration documents retain their existing claims and examples.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the development guide’s provider test references. The local close assertion now verifies its fixed transport code without treating the close as quota exhaustion.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the final delegated ACP producer. The server’s task binding selects fixed unknown guidance before event storage and downstream conversation rendering, with co-reported raw messages excluded for that bound task. Other ACP paths keep their existing diagnostics; approval and execution policy are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

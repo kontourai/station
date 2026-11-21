@@ -196,20 +196,6 @@
   font-size: 12px;
 }
 
-/* Sheet-host count badge beside a group label (kontourai/station#3312). */
-/**
- * Compact chrome (kontourai/station#3314): the project sidebar's Open chats
- * mini-inbox — same row anatomy, tighter geometry for a rail.
- */
-.chat-dock-inbox--compact .inbox-row {
-  --inbox-row-pad-block: var(--space-1);
-  --inbox-row-pad-inline: var(--space-3);
-}
-
-.chat-dock-inbox--compact .chat-dock-inbox__item {
-  min-height: 44px;
-}
-
 .chat-dock-inbox__show-more {
   min-height: 44px;
   width: 100%;

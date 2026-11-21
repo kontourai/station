@@ -1,4 +1,7 @@
-import type { PullRequestFeedbackObservationResult } from './pull-request-feedback.js';
+import type {
+  PullRequestFeedbackObservationResult,
+  PullRequestsByHeadResult,
+} from './pull-request-feedback.js';
 
 /** Provider-neutral pull-request contract. Native ids and URLs stay opaque. */
 export type PullRequestCapability =
@@ -85,15 +88,19 @@ export interface PullRequestAvailability {
  * state cannot classify by prose. `no-remote` is the ordinary local repository
  * — nothing is broken and nothing is missing that the operator asked for — and
  * the panel rendered it as a warning-triangle error card, indistinguishable
- * from a forge that refused. Absent means "no cause was reported", never
+ * from a forge that refused. `unsupported-forge` means the repository has a
+ * recognized remote whose PR integration is not implemented. Absent means "no cause was reported", never
  * "some other cause".
  */
-export type PullRequestUnavailableCause = 'no-remote';
+export type PullRequestUnavailableCause = 'no-remote' | 'unsupported-forge';
 
 export type PullRequestClientContext =
   | {
       available: true;
       provider: string;
+      providerLabel?: string;
+      /** Actual operations supplied by this host's registered forge adapter. */
+      automation?: { feedback: boolean; taskBranchDiscovery: boolean };
       host: string;
       repository: { owner: string; name: string };
       /**
@@ -148,7 +155,15 @@ export interface PullRequest {
    * required check reads `blocked`. Absent: the provider did not report it.
    */
   mergeReadiness?: PullRequestMergeReadiness;
+  /**
+   * Whether the forge will merge this open pull request by itself (#5064):
+   * `auto-merge` (armed, waiting on its checks), `merge-queue` (in the merge
+   * queue), or `not-queued` (neither). Absent: not observed. Only the
+   * status read observes it, and only for an open pull request.
+   */
+  landing?: PullRequestLanding;
 }
+export type PullRequestLanding = 'auto-merge' | 'merge-queue' | 'not-queued';
 export type PullRequestMergeReadiness =
   | 'clean'
   | 'blocked'
@@ -335,6 +350,16 @@ export interface IPullRequestProvider {
     ref: string,
     signal?: AbortSignal,
   ): Promise<PullRequestFeedbackObservationResult>;
+  /**
+   * The repository's open pull requests whose head branch is named
+   * `branch` (at most 5), for agent feedback's Task-branch discovery.
+   * Optional: a provider without it never discovers one.
+   */
+  findOpenPullRequestsByHead?(
+    context: PullRequestRepositoryIdentityContext,
+    branch: string,
+    signal?: AbortSignal,
+  ): Promise<PullRequestsByHeadResult>;
   /**
    * The same exact read, narrowed to what a status surface (the Task board)
    * reads: state, title, branches, mergeability, draft, review decision and

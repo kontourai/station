@@ -396,8 +396,20 @@ export interface ChildWorkTranscriptPage {
   endOffset?: number;
 }
 
+/** Structured image input is rejected by hosts that only understand text steering. */
+export type ChildSteerMessage =
+  | string
+  | {
+      text: string;
+      attachmentRefs: import('./attachment-staging.js').StagedAttachmentReference[];
+    };
+
 /** Station-owned child instructions, independently paged from provider history. */
 export interface ChildWorkInstruction {
+  attachments?: Pick<
+    import('./attachment-staging.js').StagedAttachmentReference,
+    'name' | 'digest' | 'clientAttachmentId'
+  >[];
   childId: string;
   turnId: string;
   clientInputId: string;
@@ -481,7 +493,7 @@ export interface ChildWorkItem extends ChildWorkKey {
   /** A stop seam Station has actually wired for this child. */
   controls?: {
     stop?: 'delegate-interrupt' | 'provider-task-stop';
-    steer?: { turnId: string };
+    steer?: { turnId: string; images?: true };
   };
 }
 
@@ -775,7 +787,12 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
     turnId.length <= 512 &&
     turnId.trim() === turnId &&
     new TextEncoder().encode(turnId).length <= 512
-      ? { turnId }
+      ? {
+          turnId,
+          ...(item.controls?.steer?.images === true
+            ? { images: true as const }
+            : {}),
+        }
       : undefined;
   if (item.controls?.stop || steer) {
     next.controls = {

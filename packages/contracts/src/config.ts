@@ -446,6 +446,58 @@ export interface TemplateVariable {
   format?: string;
 }
 
+const templateDateTimeStringOptions = new Set([
+  'calendar',
+  'dateStyle',
+  'day',
+  'dayPeriod',
+  'era',
+  'formatMatcher',
+  'hour',
+  'hourCycle',
+  'localeMatcher',
+  'minute',
+  'month',
+  'numberingSystem',
+  'second',
+  'timeStyle',
+  'timeZone',
+  'timeZoneName',
+  'weekday',
+  'year',
+]);
+
+/** Parse authored Intl options without coercing JSON values or ignoring typos. */
+export function parseTemplateDateTimeFormat(
+  type: 'date' | 'time' | 'datetime',
+  format: unknown,
+  name: string,
+): Intl.DateTimeFormatOptions | undefined {
+  if (format === undefined || format === '') return undefined;
+  try {
+    if (typeof format !== 'string') throw new TypeError();
+    const options: unknown = JSON.parse(format);
+    if (!options || typeof options !== 'object' || Array.isArray(options))
+      throw new TypeError();
+    for (const [key, value] of Object.entries(options)) {
+      const valid =
+        (key === 'hour12' && typeof value === 'boolean') ||
+        (key === 'fractionalSecondDigits' && Number.isInteger(value)) ||
+        (templateDateTimeStringOptions.has(key) && typeof value === 'string');
+      if (!valid) throw new TypeError();
+    }
+    const date = new Date(0);
+    if (type === 'date') date.toLocaleDateString('en-US', options);
+    else if (type === 'time') date.toLocaleTimeString('en-US', options);
+    else date.toLocaleString('en-US', options);
+    return options;
+  } catch {
+    throw new Error(
+      `Format for "${name}" must be a JSON object with valid ${type} Intl.DateTimeFormat options.`,
+    );
+  }
+}
+
 /** Validate the JSON date/time options used by template-variable consumers. */
 export function templateVariableFormatError(
   variables: unknown,
@@ -454,23 +506,17 @@ export function templateVariableFormatError(
   for (const value of variables) {
     if (!value || typeof value !== 'object') continue;
     const variable = value as Record<string, unknown>;
-    const type = variable.type;
+    const { type, format, key } = variable;
     if (type !== 'date' && type !== 'time' && type !== 'datetime') continue;
-    if (variable.format === undefined || variable.format === '') continue;
     try {
-      if (typeof variable.format !== 'string')
-        throw new Error('invalid format');
-      const options: unknown = JSON.parse(variable.format);
-      if (!options || typeof options !== 'object' || Array.isArray(options))
-        throw new Error('invalid options');
-      const date = new Date(0);
-      if (type === 'date') date.toLocaleDateString(undefined, options);
-      else if (type === 'time') date.toLocaleTimeString(undefined, options);
-      else date.toLocaleString(undefined, options);
-    } catch {
-      const name =
-        typeof variable.key === 'string' ? variable.key : 'template variable';
-      return `Format for "${name}" must be a JSON object with valid ${type} options.`;
+      parseTemplateDateTimeFormat(
+        type,
+        format,
+        typeof key === 'string' ? key : 'template variable',
+      );
+    } catch (error) {
+      if (error instanceof Error) return error.message;
+      throw error;
     }
   }
   return undefined;

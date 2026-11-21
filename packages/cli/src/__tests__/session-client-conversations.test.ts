@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { runCoreCommand } from '../commands/core.js';
 import {
   buildApprovalsRespondCommand,
   createSessionClient,
@@ -146,4 +147,85 @@ describe('shellQuote', () => {
       'station approvals respond thr_1 req_1 <accept|acceptForSession|decline|cancel>',
     );
   });
+});
+
+test('sessions list selects an offline runtime by binding and filters by recorded Agent', async () => {
+  const server = createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    const send = (data: unknown) =>
+      response.end(JSON.stringify({ success: true, data }));
+    const binding = request.url?.match(/^\/api\/agents\/([^/]+)\/binding$/);
+    if (binding) {
+      const slug = binding[1];
+      if (slug === 'managed') {
+        return send({ agentConnectionId: 'station', engineId: 'station' });
+      }
+      if (slug === 'ambiguous') {
+        return send({ agentConnectionId: 'fixture-claude' });
+      }
+      return send({ agentConnectionId: 'fixture-claude', engineId: 'claude' });
+    }
+    if (request.url === '/api/connections/fixture-claude') {
+      return send({
+        kind: 'agent',
+        enabled: true,
+        status: 'missing_prerequisites',
+        capabilities: ['agent-runtime'],
+        config: { provider: 'claude' },
+      });
+    }
+    if (request.url?.match(/^\/agents\/(managed|ambiguous)\/conversations$/)) {
+      return send({ items: [{ id: 'managed-root' }], hasMore: false });
+    }
+    if (request.url !== '/api/orchestration/sessions/read-model') {
+      response.writeHead(404).end(JSON.stringify({ success: false }));
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        success: true,
+        data: [
+          {
+            threadId: 'root-alpha',
+            provider: 'claude',
+            assignedAgentSlug: 'alpha',
+          },
+          {
+            threadId: 'root-alpha:session:child',
+            provider: 'claude',
+            assignedAgentSlug: 'alpha',
+          },
+          {
+            threadId: 'beta-only',
+            provider: 'claude',
+            assignedAgentSlug: 'beta',
+          },
+          { threadId: 'unassigned-legacy', provider: 'claude' },
+        ],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    const apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const list = async (slug: string) => {
+      log.mockClear();
+      await runCoreCommand('sessions', ['list', slug, `--api-base=${apiBase}`]);
+      return JSON.parse(String(log.mock.calls.at(-1)?.[0])).map(
+        (row: { id: string }) => row.id,
+      );
+    };
+    await expect(list('alpha')).resolves.toEqual([
+      'root-alpha',
+      'root-alpha:session:child',
+    ]);
+    await expect(list('beta')).resolves.toEqual(['beta-only']);
+    await expect(list('claude')).resolves.toEqual(['unassigned-legacy']);
+    await expect(list('managed')).resolves.toEqual(['managed-root']);
+    await expect(list('ambiguous')).resolves.toEqual(['managed-root']);
+  } finally {
+    log.mockRestore();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

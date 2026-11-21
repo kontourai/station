@@ -25,6 +25,7 @@ export const STATION_INSTRUCTION_SECTION_MAX_BYTES = 3_500;
 export const STATION_INSTRUCTIONS_MAX_BYTES = 12_000;
 
 export type StationInstructionSectionId =
+  | 'engine-setup'
   | 'orchestration'
   | 'delegated-child'
   | 'sessions'
@@ -39,6 +40,7 @@ export interface StationInstructionCapabilities {
   browser: boolean;
   devices: boolean;
   delegated: boolean;
+  canDelegateFromChild?: boolean;
   harness: 'claude' | 'codex' | 'acp' | 'muse' | 'other';
   /** Claude, with Station turning its tool search on (`claude-tool-search.ts`). */
   toolSearch: boolean;
@@ -102,8 +104,6 @@ export function effectiveStationControlTools(
 const BROWSER_TOOLS: ReadonlySet<string> = new Set(STATION_BROWSER_TOOL_NAMES);
 const CONTROL_PREFIX = 'mcp__station-control__';
 const BROWSER_PREFIX = 'mcp__station-browser__';
-/** The two tools a delegated Task may not use (Station refuses them). */
-const DELEGATED_BLOCKED_TOOLS = ['delegate_task', 'send_message'] as const;
 
 type Section = { id: StationInstructionSectionId; text: string };
 
@@ -112,23 +112,24 @@ function orchestrationSection(
 ): Section | undefined {
   if (!has('delegate_task')) return undefined;
   const lines: string[] = [
-    'Ordinary coding needs no Station tools. Use them when the work needs another Agent, engine, model, Project or Station, or when the user asks.',
-    'For a quick helper on your own engine in this checkout, use your own subagent tool. Use `delegate_task` when the work needs another Agent or engine, a model you do not have, another Project or saved environment, or a resumable Task the user can open in Station.',
+    'Use Station tools when asked or when work crosses Agents, engines, models, Projects or Stations.',
+    'Use `delegate_task` for tracked child work. Use native subagents only when requested.',
   ];
   if (has('list_delegation_targets')) {
     lines.push(
-      `Before your first \`delegate_task\` in this conversation, call \`list_delegation_targets\` once: it lists Agents, readiness, engines and models. Call it again only after a refusal or when the user names another target. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
+      `Before the first \`delegate_task\`, call \`list_delegation_targets\` once for ready Agents and models; repeat only on refusal or target change. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
     );
   } else if (has('list_agents')) {
     lines.push(
-      'Before your first `delegate_task`, call `list_agents` once and delegate only to an Agent it lists or the user names; readiness and models cannot be checked from here.',
+      'Before the first `delegate_task`, call `list_agents` once. Use a listed or user-named Agent; readiness/models are unknown.',
     );
   } else {
     lines.push('Delegate only to an Agent the user named.');
   }
   lines.push(
-    'If the target is missing or not ready, say so. Never switch Agent or model unasked, and never fall back to running `station`, `claude` or `codex` in a shell.',
-    'Give each new `delegate_task` a fresh `clientTurnId`; reuse it only to retry the identical call. A new review or re-check is a new `delegate_task` with its own brief.',
+    'Report unavailable targets with catalog options. Change Agent or model only with user approval. Never delegate through a shell.',
+    'Brief one outcome. Pass `appearanceProposal: true` for local appearance handoffs.',
+    'Use a fresh `clientTurnId` except for identical retries. Start a new task for re-review.',
   );
   const follow: string[] = [];
   if (has('continue_task'))
@@ -136,7 +137,7 @@ function orchestrationSection(
   if (has('get_task')) {
     follow.push(
       has('get_task_events')
-        ? 'Read state with `get_task` and `get_task_events`, passing back `nextCursor`.'
+        ? 'Read status with `get_task`; inspect `get_task_events` only for missing details.'
         : 'Read state with `get_task`.',
     );
   } else if (has('get_task_events')) {
@@ -147,13 +148,11 @@ function orchestrationSection(
   if (follow.length > 0) lines.push(follow.join(' '));
   if (has('wait_session')) {
     lines.push(
-      'To wait for a task on this Station, call `wait_session` with its `sessionId` and `until: "turn-settled"`; when it times out, call it again. Never poll with sleep or shell loops.',
+      'Use `wait_session` until turn-settled; repeat on timeout. Report the result or blocker.',
     );
   }
   if (has('interrupt_task')) {
-    lines.push(
-      'Stop a task you replaced or no longer need with `interrupt_task`.',
-    );
+    lines.push('Use `interrupt_task` for replaced or unneeded tasks.');
   }
   return {
     id: 'orchestration',
@@ -161,13 +160,17 @@ function orchestrationSection(
   };
 }
 
-function delegatedChildSection(): Section {
+function delegatedChildSection(canDelegate: boolean): Section {
   return {
     id: 'delegated-child',
     text: [
       '## Station: you are a delegated task',
       '',
-      'Do the work yourself and put the result in your final reply; your parent reads it. Delegated sessions may not use `delegate_task` or `send_message`, and Station refuses them. Do not work around that with shell CLIs. If the work needs another Agent, say so in your reply.',
+      'Put the result in your final reply so Station can deliver it to your parent.',
+      canDelegate
+        ? 'If the task needs another Agent, start a new tracked child in this Project on this Station. Your depth and tool restrictions carry forward.'
+        : 'If the work needs another Agent, tell your parent in your reply.',
+      'Do not use shell CLIs to dispatch other Agents.',
     ].join('\n'),
   };
 }
@@ -178,12 +181,12 @@ function sessionsSection(
   const lines: string[] = [];
   if (has('send_to_session')) {
     lines.push(
-      "`send_to_session` messages a Session in your Project; it runs under that Session's own Agent settings. Give each new message a fresh `requestKey` and reuse it only to retry. `session_busy` means nothing was sent; `indeterminate` means it may have arrived, so do not resend under a new key.",
+      "`send_to_session` uses the Project Session's Agent settings. Fresh `requestKey` per message; reuse only to retry. `session_busy`: unsent. `indeterminate`: may have arrived; never resend with a new key.",
     );
   }
   if (has('wait_session')) {
     lines.push(
-      `${has('send_to_session') ? 'Then call' : 'Call'} \`wait_session\` with the returned \`sessionId\`, \`afterEventCursor\` set to its \`eventCursor\`, and \`until: "turn-settled"\`. If the answer is \`superseded\`, wait on \`currentSessionId\`.`,
+      `${has('send_to_session') ? 'Then call' : 'Call'} \`wait_session\` with \`sessionId\`, \`afterEventCursor\` = \`eventCursor\`, \`until: "turn-settled"\`; on \`superseded\`, wait on \`currentSessionId\`.`,
     );
   }
   if (has('interrupt_session')) {
@@ -204,7 +207,7 @@ function sessionsSection(
   if (lines.length === 0) return undefined;
   return {
     id: 'sessions',
-    text: bulleted('## Other Sessions in this Project', lines),
+    text: bulleted('## Project Sessions', lines),
   };
 }
 
@@ -212,7 +215,7 @@ function repliesSection(has: (...n: string[]) => boolean): Section | undefined {
   const lines: string[] = [];
   if (has('html_preview', 'html_render')) {
     lines.push(
-      'For a chart or visual the user should see here, reach for `html_preview` then `html_render` by default. If an Artifact tool refuses with an auth-token message, publish the same page with `html_render` instead of leaving a local file. Do not start a server for it.',
+      'For visuals, reach for `html_preview` then `html_render` by default. On Artifact auth-token refusal, use `html_render` for the same page; no local-file-only result or server.',
     );
   }
   if (has('schedule_wake_up')) {
@@ -233,7 +236,7 @@ function repliesSection(has: (...n: string[]) => boolean): Section | undefined {
   if (lines.length === 0) return undefined;
   return {
     id: 'replies',
-    text: bulleted('## Replying through Station', lines),
+    text: bulleted('## Station replies', lines),
   };
 }
 
@@ -243,7 +246,7 @@ function browserSection(): Section {
     text: [
       '## Station browser',
       '',
-      'When the task asks for browser work, the `browser_*` tools drive the Browser pane the user can watch. Call `browser_status` first and `browser_open` if you have no session. Read the page with `browser_snapshot` and act by its element refs, not coordinates. Do not open the browser just to check your own edit unless asked. Close sessions you opened with `browser_close` before you finish, unless the user is using them.',
+      'For requested browser work, use the visible Browser pane: `browser_status`, then `browser_open` if needed. Read with `browser_snapshot`; act by element refs, not coordinates. Never open it to check your edit unasked. Finish with `browser_close` for sessions you opened, unless the user uses them.',
     ].join('\n'),
   };
 }
@@ -252,7 +255,7 @@ function devicesSection(has: (...n: string[]) => boolean): Section | undefined {
   if (!has('device_open')) return undefined;
   const look = ['device_screenshot', 'device_snapshot'].filter((n) => has(n));
   const sentences: string[] = [
-    `For an iOS Simulator or Android Emulator, use the device tools so the user can watch in the Device pane: ${has('device_list') ? '`device_list`, then ' : ''}\`device_open\` with its id (call again while it reports starting).`,
+    `For a visible iOS Simulator/Android Emulator, use ${has('device_list') ? '`device_list`, then ' : ''}\`device_open\` with its id (call again while it reports starting).`,
   ];
   const lookAct: string[] = [];
   if (look.length > 0) {
@@ -263,11 +266,11 @@ function devicesSection(has: (...n: string[]) => boolean): Section | undefined {
   }
   if (lookAct.length > 0) sentences.push(`${lookAct.join('; ')}.`);
   sentences.push(
-    'Do not drive the UI with `xcrun simctl`, `adb` or ssh scripts; they stay fine for builds and logs. If a device tool is refused, quote the refusal and stop.',
+    'No UI driving via `xcrun simctl`, `adb` or ssh; builds/logs are fine. On device-tool refusal, quote it and stop.',
   );
   if (has('delegate_task')) {
     sentences.push(
-      'When you delegate device work, pass the device id and tell the child to use `device_open`.',
+      'When you delegate device work, pass its id; the child uses `device_open`.',
     );
   }
   return {
@@ -311,21 +314,33 @@ export function assertStationInstructionBounds(
 export function composeStationInstructions(
   c: StationInstructionCapabilities,
 ): { sections: Section[]; text: string; digest: string } | undefined {
-  // A delegated Task cannot use these two, so they are never offered to it.
   const offered = new Set(c.controlTools);
-  if (c.delegated) for (const n of DELEGATED_BLOCKED_TOOLS) offered.delete(n);
+  if (c.delegated) {
+    offered.delete('send_message');
+    if (!c.canDelegateFromChild) offered.delete('delegate_task');
+    offered.delete('list_delegation_environments');
+  }
   const has = (...names: string[]) => names.every((n) => offered.has(n));
 
   const sections: Section[] = [];
   const push = (s: Section | undefined) => {
     if (s) sections.push(s);
   };
-  if (c.delegated) {
-    if (DELEGATED_BLOCKED_TOOLS.some((n) => c.controlTools.has(n))) {
-      sections.push(delegatedChildSection());
-    }
-  } else {
-    push(orchestrationSection(has));
+  if (c.delegated && c.controlTools.has('delegate_task'))
+    push(delegatedChildSection(has('delegate_task')));
+  push(orchestrationSection(has));
+  if (has('list_engine_setup')) {
+    const lines = [
+      'For engine setup, call `list_engine_setup`; reuse its id/setupPath and saved connection. Preview off: give the Settings path; never enable it.',
+      has('open_engine_setup')
+        ? 'Use `open_engine_setup` for that id; check navigation or give setupPath.'
+        : 'Give setupPath to the person.',
+      'The person installs/signs in on the Station host (may differ from the client), reviews launch arguments in place, and chooses Add Station tools if needed. Never request OAuth codes/tokens in chat, edit Station home config, or bypass with shell login.',
+      'Ask the person to return here; re-read `list_engine_setup`. Handshake, sign-in, chat and Station-tool delivery are separate facts; report only observed facts.',
+    ];
+    if (has('list_agents'))
+      lines.push('Read `list_agents` after setup; use its actual Agent id.');
+    push({ id: 'engine-setup', text: bulleted('## Engine setup', lines) });
   }
   push(sessionsSection(has));
   push(repliesSection(has));

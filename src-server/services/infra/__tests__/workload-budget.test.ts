@@ -640,7 +640,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(scope, 0);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    const stop = engine.watchOomKills?.((kill) => kills.push(kill));
+    const stop = engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     try {
       await __workloadTestHooks.pollOomKills();
       expect(kills).toEqual([]);
@@ -970,7 +972,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(`${cgroupRoot}${group}`, 0);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     // The kernel kills the engine; one poll sees the count before Station
     // hears of the exit.
     await writeFile(
@@ -1001,7 +1005,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(`${cgroupRoot}${group}`, 1);
     trackChildWorkload(engine, exited.pid as number);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     await __workloadTestHooks.pollOomKills();
     await __workloadTestHooks.pollOomKills();
     expect(kills).toEqual([]);
@@ -1042,7 +1048,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(scope, 0);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     const pollAt = async (count: number) => {
       await writeFile(
         join(scope, 'memory.events'),
@@ -1085,7 +1093,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 1);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     // The process at the pid is alive, but it started at another time than
     // the engine Station launched.
     __workloadTestHooks.recordLeaderBirth('thread-reused-pid', 'another-start');

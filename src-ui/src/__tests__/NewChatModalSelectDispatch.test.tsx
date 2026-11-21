@@ -1440,7 +1440,7 @@ describe('the start composer in the dock', () => {
     fireEvent.click(screen.getByRole('button', { name: chip }));
     await screen.findByRole('dialog', { name: 'Choose agent' });
     clickAgent(slug);
-    fireEvent.click(screen.getByRole('button', { name: 'Close run setup' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close settings' }));
   }
 
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {

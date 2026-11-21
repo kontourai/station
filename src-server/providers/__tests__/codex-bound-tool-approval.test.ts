@@ -8,6 +8,7 @@
  */
 import { describe, expect, test, vi } from 'vitest';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import type { CodexSessionRecord } from '../adapters/codex-adapter-types.js';
 
@@ -38,6 +39,7 @@ function approve(
   adapter: CodexAdapter,
   session: CodexSessionRecord,
   tool: string,
+  evaluator = policy(),
 ) {
   const outcome = (
     adapter as unknown as {
@@ -51,7 +53,7 @@ function approve(
     'rpc-1',
     { provider: 'codex', threadId: 'thread-bound', agent: { slug: 'lab' } },
     `call-${tool}`,
-    policy(),
+    evaluator,
     () => true,
   );
   let settled: boolean | undefined;
@@ -71,6 +73,57 @@ describe('Codex bound tools under full access', () => {
     await flush();
     expect(call.settled()).toBe(true);
     expect(session.boundToolApprovals?.size ?? 0).toBe(0);
+  });
+
+  test('an enforce guardian defer denies the bound call when nobody can answer', async () => {
+    const adapter = new CodexAdapter({ processFactory: vi.fn() as never });
+    const session = record('auto');
+    const evaluator = createStagedPreToolPolicyEvaluator({
+      spec: { name: 'Engine lab' },
+      toolNameMapping: new Map(),
+      isGranted: () => false,
+      approvalGuardian: {
+        isEnabled: () => true,
+        getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
+        reviewToolCall: async () => ({
+          decision: 'defer',
+          reason: 'No confident verdict.',
+        }),
+      },
+      logger: { info: vi.fn(), warn: vi.fn() },
+    } as never);
+    await expect(
+      approve(adapter, session, 'browser_evaluate', evaluator).outcome,
+    ).resolves.toBe(false);
+    expect(session.boundToolApprovals?.size ?? 0).toBe(0);
+  });
+
+  test('a bound Codex approval publishes the reason only for a policy escalation', async () => {
+    const adapter = new CodexAdapter({ processFactory: vi.fn() as never });
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    const session = record('never');
+    const approval = approve(
+      adapter,
+      session,
+      'browser_evaluate',
+      async () => ({
+        behavior: 'ask',
+        required: true,
+        guardianReason: 'The only-if-asked rule requires a person.',
+      }),
+    );
+    const { value: opened } = await events.next();
+    expect(opened).toMatchObject({
+      method: 'request.opened',
+      turnId: 'turn-1',
+      guardianReason: 'The only-if-asked rule requires a person.',
+      payload: { toolName: 'mcp__station-browser__browser_evaluate' },
+    });
+    for (const pending of session.boundToolApprovals?.values() ?? [])
+      pending.resolve(false);
+    await expect(approval.outcome).resolves.toBe(false);
+    await events.return?.();
   });
 
   test('without full access the same call waits for a person', async () => {

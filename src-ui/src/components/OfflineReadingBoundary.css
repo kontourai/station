@@ -48,3 +48,36 @@
   );
   inset-block-end: auto;
 }
+:root:has(.app__main--mobile-dock-fullscreen > .chat-dock.is-maximized) {
+  .offline-reading-launcher:not([role="status"]) {
+    inset-block-end: calc(
+      var(--chat-visual-viewport-bottom, 0px) +
+      var(--safe-bottom, 0px) +
+      var(--k-space-4)
+    );
+  }
+
+  .offline-reading-launcher[role="status"] {
+    inset-block-start: calc(
+      var(--chat-visual-viewport-top, 0px) +
+      var(--app-toolbar-total-height, 0px) +
+      var(--k-space-4)
+    );
+    inset-block-end: auto;
+  }
+}
+
+/* Reserve space using the maximized dock's existing top clearance. */
+:root:has(.offline-reading-launcher[role="status"])
+  .app__main--mobile-dock-fullscreen
+  > .chat-dock.is-maximized {
+  --chat-dock-toolbar-clearance: calc(
+    var(--k-space-1) +
+    var(--touch-target-min) +
+    2 *
+    var(--k-space-2) +
+    2 *
+    var(--k-space-4) +
+    2px
+  );
+}

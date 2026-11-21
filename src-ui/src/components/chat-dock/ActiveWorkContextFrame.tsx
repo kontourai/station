@@ -11,6 +11,7 @@ import {
   useLayoutEffect,
   useRef,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { ChatSession, FileAttachment } from '../../types';
 import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import { ResponsiveDialogCloseButton } from '../ResponsiveDialogSurface';
@@ -196,9 +197,11 @@ export function ActiveWorkContextFrame({
 
   if (!isMobile) return panelContent;
 
-  return (
+  return createPortal(
     <div
       className="active-work-frame__overlay responsive-surface-overlay"
+      data-responsive-layer="dialog"
+      data-no-dock-drag=""
       style={visualViewportStyle}
     >
       <button
@@ -229,7 +232,8 @@ export function ActiveWorkContextFrame({
       >
         {panelContent}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

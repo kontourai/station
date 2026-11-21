@@ -478,10 +478,34 @@ pressure: it also counts routine page-cache reclaim at the limit, which a
 scope that reads many files hits continually. While the scope is near its
 limit, `GET /api/system/workload` and `/api/system/resource-posture` list its
 `pressure`, and the engine's own `workload_status` read returns it with the
-largest processes, so an engine that checks can back off. Station does not
-push the warning into the engine's turn. The
+largest processes. The
 `station.workload.scope.memory_pressure` metric counts `enter` and `exit`
 transitions.
+
+Station also tells the engine whose scope it is (#5113). Entering pressure,
+leaving it, and a kill announced while the engine lives each become one short
+notice, such as "This session's memory is at 91% of its 7.0 GiB limit;
+largest: fallow 5.1 GiB. Stop or serialize memory-heavy commands before the
+kernel kills one." It names only kernel command names (`comm`, sanitized),
+sizes and counts, at most 360 characters. The transcript shows it at once as a
+`runtime.warning` (`workload-memory-pressure`,
+`workload-memory-pressure-cleared` or `workload-command-oom-killed`). When the
+engine sees it depends on the adapter:
+
+- **Claude**: with the result of its next tool call, as the
+  `additionalContext` of Station's `PostToolUse` or `PostToolUseFailure` hook,
+  which Claude Code adds as a system reminder. When no tool runs first, it
+  arrives with the next prompt (`UserPromptSubmit`). A tool call in a subagent
+  delivers it to that subagent.
+- **Codex**: through a `turn/steer` into the running turn, which Codex reads at
+  its next model request. With no turn running, or a steer refused, it arrives
+  as an extra text item of the next `turn/start`.
+
+Undelivered notices are coalesced. Entering and leaving pressure before the
+engine hears of either says nothing, and kills add up into one notice. A
+notice still undelivered after 10 minutes is dropped, and none is delivered
+after the session ends. `station.engine.workload_notices` counts each one by
+`provider_family`, `kind` and `outcome`.
 
 Each poll also puts an engine's commands ahead of the engine for the OOM
 killer. Station does not start those commands (the engine does, inside its
@@ -813,6 +837,16 @@ separate two-minute bound — the earlier `node-pty` compile measurement was abo
 handset. Re-measure the current graph and host rather than treating it as a
 present build-time guarantee.
 
+An interrupted install retains `.station-dependency-install` with its receipt
+and any incomplete `node_modules` tree. A retry refuses while that guard
+exists. Recover the checkout only when you control it and have confirmed that
+the installer and its child processes stopped. Preserve any incomplete tree
+in an owned inspection directory while the guard still holds. Move the
+failed guard to the same directory last, then run `npm run dependencies:ci`
+to install and verify a fresh tree. Use a fresh sibling checkout when the
+original install's state is uncertain.
+
+
 ## Project Structure
 
 See [Repository layout](repository-layout.md) for directory ownership, naming,
@@ -997,6 +1031,15 @@ gh api repos/kontourai/station/rules/branches/main
   `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
   PR: a green PR that nobody armed sits forever, which is the usual reason a
   ready PR has not landed.
+- **With `STATION_PR_HEAVY_CHECKS=when-armed`, arming starts the heavy
+  checks.** An unarmed push then runs only the cheap part of `PR: CI`, and
+  `Source verification policy` stays pending with "heavy checks run once
+  armed" until the run that arming starts (`PR armed`) passes on that head;
+  a push to an armed PR runs everything. Arm at your final push as before. For
+  a full run before arming, add the `full-checks` label and push or use
+  **Re-run all jobs** (**Re-run failed jobs** repeats the old decision).
+  Unset or `every-push` (the default), every push runs everything. See
+  [heavy checks when armed](testing.md#heavy-checks-when-armed).
 - **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
   the strategy, and `gh pr merge --squash` is refused with `The merge strategy
   for main is set by the merge queue`. The `pull_request` rule's
@@ -1062,6 +1105,22 @@ host-coordinated lanes consume shared CPU and mutable-output leases.
 [host heavy-check slot](testing.md#host-heavy-check-slots) shared by every
 worktree, so concurrent runs from several agents serialize instead of sharing
 one memory limit. Let them wait rather than working around the queue.
+
+To check a branch's committed changes with Veritas readiness, go through
+Station's wrapper:
+
+```bash
+node scripts/run-veritas-readiness.mjs --changed-from origin/main --changed-to HEAD
+```
+
+Veritas diffs `--changed-from A --changed-to B` as the two-point range `A..B`.
+Once `origin/main` moves past the branch's base, that range includes files
+from newer `main` that the worktree doesn't have, and readiness fails with
+`ENOENT`. The wrapper replaces a `--changed-from` ref that is not an ancestor
+of `--changed-to` with their `git merge-base` (the `A...B` base) and passes an
+ancestor such as an explicit base SHA through unchanged. Calling
+`npx --no @kontourai/veritas readiness --changed-from origin/main` directly
+skips that step, so pass `$(git merge-base origin/main HEAD)` there instead.
 
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,

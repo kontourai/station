@@ -22,7 +22,11 @@
 
     "scripts/voice-realtime-live-smoke.mjs",
 
-    "src-ui/src/core/PluginRegistry.ts"
+    "src-ui/src/core/PluginRegistry.ts",
+
+    "examples/elevenlabs-voice/src/authorization.ts",
+
+    "examples/elevenlabs-voice/src/__tests__/protocol.test.ts"
   ],
 
   "checks": [

@@ -18,15 +18,16 @@ type ServerSelfGlobal = typeof globalThis & {
  * #2377 slice A: marks an internal request Station's OWN server code made to
  * its own API, as opposed to one a station-control tool made.
  *
- * Both carry the per-boot internal token, and that token is not a secret from
- * agents: every stdio station-control child receives it in its spawn env
- * (`withStationControlRuntimeEnv`), where a same-user process can read it.
+ * Both carry the per-boot internal token, and that token was not a secret from
+ * agents: stdio station-control children used to receive it in their spawn
+ * env, where a same-user process could read it (no child does since #2377
+ * slice D, but a copied token must still prove nothing).
  * Station's server also calls its own API with that token, from code no agent
  * drives directly — the execution-target dispatch a person's chat, a webhook,
  * a Discord message or a pane action runs in-process
  * (`executeExecutionTargetMessage` reading an Agent or a Connection back over
  * HTTP). The station-control authority guard must not refuse those, and it
- * cannot tell them from a pooled child by the internal token.
+ * cannot tell them from a copied token by the internal token alone.
  *
  * This value is minted in the server process's memory, only when the
  * authority guard is installed, and is never written to any environment,
@@ -85,6 +86,23 @@ export function runAsStationServer<T>(operation: () => T): T {
 
 /** Run `operation` outside any server scope it would otherwise inherit. */
 export function outsideStationServerScope<T>(operation: () => T): T {
+  return serverScope.exit(operation);
+}
+
+/**
+ * #2377 slice D hardening: start an engine's session, adoption or turn
+ * outside any server scope. A dispatch route handler runs in
+ * {@link runAsStationServer} so its request-prep hops (Agent and Connection
+ * reads, SSH connect, peer credential) pass the authority guard as server
+ * code. Without this, everything the engine does for the rest of that
+ * session's async lifetime would inherit the scope too, so any in-process,
+ * agent-driven `api()` call outside the station-control tool wrapper would
+ * carry the server-self attestation and reach Station as the operator. The
+ * orchestration service calls an adapter's start, adopt and send through
+ * this, so only the hops before it are server-scoped. Code that is genuinely
+ * Station's own (the built-in engine's relay) re-enters the scope itself.
+ */
+export function runEngineOutsideStationServerScope<T>(operation: () => T): T {
   return serverScope.exit(operation);
 }
 

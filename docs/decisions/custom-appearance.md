@@ -43,7 +43,7 @@ preferences. The document holds:
 - `revision`: a digest of `active` and `proposal` (not the report, so the
   browser that reported can still Keep with the revision it read).
 
-An appearance is `{ version: 1, name, palette, css }`. The name refuses
+An appearance is `{ version: 1, name, palette, css, visual? }`. The name refuses
 control and bidirectional formatting characters, which could reorder the
 preview bar's "proposed by an agent" line. The palette has an
 optional entry per mode (`dark`, `light`) with `roles`, a map over
@@ -57,7 +57,7 @@ Agents may read and propose. Keep, save, dismiss, turn off and the render
 report refuse any request that may be an agent's (`requestMayBeAnAgent`, 403
 `custom_appearance_person_only`), as the Personal Board routes do. Propose,
 save and keep compare the revision; a stale one is 409. A change that would
-take the stored document over its 512 KiB limit is 413
+take the stored document over its 16 MiB limit is 413
 `custom_appearance_store_full` and changes nothing.
 
 "Only the person" means only a request that is not recognizably an agent's:
@@ -315,3 +315,32 @@ the cache; a network failure keeps it.
   suspended.
 - No capability flag: the UI treats a 404 from an older Station as "not
   supported" and hides the Custom section; the agent tool reports the 404.
+
+## Appearance studio extension
+
+The off-by-default `appearance-studio` preview offers typed visual controls,
+bounded embedded raster images, a saved library and portable theme files.
+The person remains the only writer of saved/applied themes. New visual and
+library operations select the live preview choice inside the storage mutation
+lock. Existing reads and turn-off remain available, and already accepted
+appearances continue rendering after the preview is disabled.
+
+Images are PNG/JPEG/WebP base64 data with bounded file bytes, signatures,
+structural headers and dimensions; they are not decompressed by the contract
+parser. A browser decode can still reject malformed compressed pixels. A
+portable pack is strict versioned JSON with only the appearance payload.
+Library writes share the owner's atomic file and have their own revision;
+renames/edits return the ID of the resulting saved appearance.
+
+A successful `propose_appearance` result can render an inline conversation
+card. Its exact proposal ID, name and server-derived `sourceSessionId` survive
+history excerpts and content spill as bounded display metadata. Preview and
+Keep re-read that exact proposal using the conversation's current authority;
+source Session, actual Station route and local shell painter must agree. A
+relayed conversation cannot infer the target Station from its host credential
+scope. Dismiss and Keep use current revisions, and late render reports cannot
+restore a settled proposal in the query cache. The protected Keep bar remains
+the decision surface, reachable without navigating away from the chat.
+
+Source and tests establish contracts and exercised paths only. Desktop
+WKWebView, physical devices and deployed Nightly require separate qualification.

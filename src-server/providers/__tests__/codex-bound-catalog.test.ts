@@ -9,7 +9,11 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { createCodexBoundToolServer } from '../../runtime/mcp/station-control-in-process.js';
-import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  mintStationControlMcpHeaderAuth,
+  revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { codexResumeCursor } from '../adapters/codex-adapter-events.js';
@@ -41,10 +45,9 @@ function harness(
   options: { decision?: 'allow' | 'defer' } = {},
 ) {
   const child = new FakeCodexProcess();
-  const mint = vi.fn(() => ({
-    url: 'http://127.0.0.1:12345/mcp/station-control',
-    token: 'header-token',
-  }));
+  const mint = vi.fn((sessionId: string) =>
+    mintStationControlMcpHeaderAuth(12345, sessionId),
+  );
   const created: Record<string, unknown>[] = [];
   const calls: string[] = [];
   const adapter = new CodexAdapter({
@@ -73,6 +76,7 @@ function harness(
       };
     },
     mintStationControlMcpAuth: mint,
+    revokeStationControlMcpAuth: revokeStationControlMcpToken,
   });
   const events: any[] = [];
   const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -604,6 +608,13 @@ test('an adopted lineage keeps the header server and also serves persisted catal
   expect(JSON.stringify(request.params.config)).toContain('station-control');
   expect(h.created).toEqual([expect.objectContaining({ stationControl: {} })]);
   expect(session.resumeCursor).not.toHaveProperty('boundCatalog');
+  const headerToken = h.mint.mock.results[0]!.value.token;
+  expect(
+    verifyStationControlMcpToken(headerToken, {
+      channels: ['http-header-token'],
+      serverId: 'station-control',
+    }),
+  ).toMatchObject({ sessionId: 'catalog-adopted' });
   await openTurn(h, 'catalog-adopted', 'turn-ad');
   const reply = await callTool(h, 101, {
     threadId: 'native-ad',
@@ -615,4 +626,5 @@ test('an adopted lineage keeps the header server and also serves persisted catal
   expect(reply.result?.success).toBe(true);
   expect(h.calls).toEqual(['list_agents']);
   await h.adapter.stopSession('catalog-adopted');
+  expect(verifyStationControlMcpToken(headerToken)).toBeUndefined();
 });

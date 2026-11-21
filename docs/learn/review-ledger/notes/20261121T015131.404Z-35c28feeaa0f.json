@@ -1,0 +1,13 @@
+{
+  "revision": "04e018ad1b86ba5616d1188e635f9f087cb4d1af",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed Inbox open and close in the composer, placement, responsive and getting started guides. The returning chat header receives keyboard focus after the portalled actions menu closes. The isolated browser journey preserved the draft, chat identity and focus through repeated switches at both phone widths.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed Inbox open and close in the composer, placement, responsive and getting started guides. The returning chat header receives keyboard focus after the portalled actions menu closes. The isolated browser journey preserved the draft, chat identity and focus through repeated switches at both phone widths.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed Inbox open and close in the composer, placement, responsive and getting started guides. The returning chat header receives keyboard focus after the portalled actions menu closes. The isolated browser journey preserved the draft, chat identity and focus through repeated switches at both phone widths.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed Inbox open and close in the composer, placement, responsive and getting started guides. The returning chat header receives keyboard focus after the portalled actions menu closes. The isolated browser journey preserved the draft, chat identity and focus through repeated switches at both phone widths.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

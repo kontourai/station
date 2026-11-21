@@ -2,7 +2,9 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
-First run asks one usage-sharing question, with three equally presented choices.
+Home offers an optional **Review choices** action when usage sharing needs
+review. Opening it shows the combined choice. Detailed is unavailable in the
+combined choice when Kontour's build-provided receiver accepts Lite only.
 A fresh install preselects Anonymous usage counts. Reopened prompts use the
 existing saved choices, including a Detailed preference awaiting renewed
 confirmation. If the two destinations differ, no option is selected and Save
@@ -33,7 +35,10 @@ the required acknowledgements and writes the choice; the Settings intro does
 not send users back to the page they are already on.
 
 The primary choice applies to Kontour and the configured additional destination.
-Saving Detailed acknowledges each configured built-in destination separately
+With a Lite-only Kontour receiver, use **Advanced** to choose Detailed for a
+compatible additional destination. An existing Kontour Detailed preference
+uses anonymous daily counts, subject to the current Lite notice and policy.
+Saving an available Detailed choice acknowledges each selected destination separately
 before storing `full` for both. Kontour's acknowledgement is bound to its
 build-provided address as well as the displayed definition revision. Without a
 Kontour address, its stored choice cannot produce traffic; a newly configured
@@ -51,6 +56,9 @@ surface: Save choice, Not now, close, Escape or backdrop dismissal. Save first
 persists the chosen preference, then records the displayed notice revision;
 saving Don't share therefore cannot temporarily enable a count. Closing during
 a pending Save does not record early; that save owns the notice after persistence.
+Dismissal closes immediately. A visible-notice write can complete afterward.
+A usage-sharing-only save applies through the Station settings store without
+waiting for Agent configuration or nearby discovery.
 A failed choice
 save records no notice. A failed notice write leaves the saved preference intact,
 reports that separate failure and keeps counts paused. Viewing Privacy & sharing
@@ -118,6 +126,11 @@ environment defaults; DO_NOT_TRACK always wins.
 After migration only `telemetryTier` is persisted. Legacy boolean writes are
 translated into tier changes under the same authorization rules.
 
+
+Open **Settings → Privacy & sharing → What usage sharing includes** to review
+the fields this Station reports. The disclosure is separate from the sharing
+choice and does not change it.
+
 ## Disclosure and activation
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;
@@ -137,7 +150,8 @@ replaces the other. An empty author build constant is inert, including when a
 runtime environment variable of the same name is supplied. Source builds have
 no author address. Official release producers can bake the public endpoint only through the
 [owner-gated build variable](../guides/release-rings.md#author-telemetry-in-official-builds);
-leaving it unset preserves the empty constant. No real receiver is enabled by this change.
+leaving it unset preserves the empty constant. A build address under
+`/v1/lite/` only receives Lite daily counts and fixed-choice feedback.
 The existing Full acknowledgement covers operator only. Author Full requires a
 separate receipt bound to Kontour, the current inventory and the displayed
 build destination. The shared dialog and Settings save each required acknowledgement before
@@ -198,7 +212,7 @@ receipt remains Lite. These commands support the normal target/credential flags.
 returns the exact Lite field catalog alongside its revision so a notice consumer
 can display the server inventory rather than an older bundled copy. Use `station telemetry outbox` or
 `station telemetry outbox --publisher operator` to inspect the bounded ledger.
-Settings always exposes Kontour and Operator controls, plus any registered publisher. A failed status read is shown explicitly; Full stays disabled unless status reports `fullAvailable: true` for that publisher. Older servers without this field leave Full disabled.
+Settings always exposes Kontour and Operator controls, plus any registered publisher. A failed status read is shown explicitly; Full stays disabled unless status reports `fullAvailable: true` for that publisher. Older servers without this field leave Full disabled in Advanced. A configured Lite-only Kontour receiver reports `endpointConfigured: true` and `fullAvailable: false`. The acknowledgement endpoint refuses Detailed for that receiver with HTTP 409 and `telemetry_detailed_unavailable`.
 Settings exposes a collapsed **What was sent to {publisher}** section below each publisher’s tier row, showing
 the newest 50 records for that publisher and an explicit empty/error state.
 Sent entries have a collapsible JSON viewer. Unsent entries expose only their

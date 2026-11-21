@@ -1,0 +1,7 @@
+{
+  "revision": "be64c7c6fda5c9640cfc571a9a272d44c33587f6",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-checked after merging main: the still-running continuation paragraph (per-source signal, Not now, Continue anyway) still matches the derivation and AttachedSessionDetail; main's other edits to this file are unrelated.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

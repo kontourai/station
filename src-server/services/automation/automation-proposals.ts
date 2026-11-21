@@ -150,10 +150,8 @@ const ruleBodySchema = z
 
 /**
  * One Project/Agent pair a proposal names, as Station resolved it when the
- * chat proposed it. Agents have no identity beyond their slug, so the Agent
- * is pinned by its slug, its own Project and a digest of its whole
- * definition: a deleted Agent, one moved to another Project, or a slug
- * reused for a different definition no longer matches (#4830 review).
+ * chat proposed it. The Agent's incarnation survives a definition edit and
+ * changes on replacement, including a replacement with identical bytes.
  */
 export type AutomationTargetBinding = Readonly<{
   projectId: string;
@@ -162,6 +160,8 @@ export type AutomationTargetBinding = Readonly<{
   /** The Agent's own Project slug; `null` for a global Agent. */
   agentProject: string | null;
   agentDigest: string;
+  /** Older proposals can still be read or declined without this binding. */
+  agentIncarnation?: string;
 }>;
 
 /** What the proposing chat may do itself, decided by the dispatch scope rule. */
@@ -188,7 +188,9 @@ export function sameAutomationTargetBinding(
     current.projectSlug === recorded.projectSlug &&
     current.agentId === recorded.agentId &&
     current.agentProject === recorded.agentProject &&
-    current.agentDigest === recorded.agentDigest
+    current.agentDigest === recorded.agentDigest &&
+    recorded.agentIncarnation !== undefined &&
+    current.agentIncarnation === recorded.agentIncarnation
   );
 }
 
@@ -855,7 +857,10 @@ function isTargetBinding(value: unknown): value is AutomationTargetBinding {
     typeof value.projectSlug === 'string' &&
     typeof value.agentId === 'string' &&
     (value.agentProject === null || typeof value.agentProject === 'string') &&
-    typeof value.agentDigest === 'string'
+    typeof value.agentDigest === 'string' &&
+    (value.agentIncarnation === undefined ||
+      (typeof value.agentIncarnation === 'string' &&
+        value.agentIncarnation.length > 0))
   );
 }
 

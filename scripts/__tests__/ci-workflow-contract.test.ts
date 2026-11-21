@@ -387,6 +387,7 @@ describe('CI verification workflow contracts', () => {
       | {
           on?: { workflow_run?: { workflows?: unknown; branches?: unknown } };
           permissions?: unknown;
+          jobs?: Record<string, { steps?: { uses?: string }[] }>;
         }
       | undefined;
     // Both jobs require head_branch == 'main', so a branch filter on the
@@ -466,13 +467,22 @@ describe('CI verification workflow contracts', () => {
     expect(successJob).toContain(
       "github.event.workflow_run.conclusion == 'success'",
     );
+    const githubScriptActions = ['report-failure', 'close-after-success'].map(
+      (id) => {
+        const steps = parsedMainHealth?.jobs?.[id]?.steps?.filter(({ uses }) =>
+          uses?.startsWith('actions/github-script@'),
+        );
+        expect(steps, id).toHaveLength(1);
+        const action = steps?.[0]?.uses;
+        expect(action, id).toMatch(/^actions\/github-script@[0-9a-f]{40}$/);
+        return action;
+      },
+    );
+    expect(new Set(githubScriptActions).size).toBe(1);
     for (const job of [failureJob, successJob]) {
       expect(job).toContain("github.event.workflow_run.head_branch == 'main'");
       expect(job).toContain(
         'github.event.workflow_run.head_repository.full_name == github.repository',
-      );
-      expect(job).toContain(
-        'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
@@ -1137,8 +1147,10 @@ describe('CI verification workflow contracts', () => {
     // The head sha is part of the group identity, not decoration: without it
     // two runs for the same PR at different heads collide and
     // `cancel-in-progress` picks a winner by arrival order (#1445).
+    // An arming run (STATION_PR_HEAVY_CHECKS) gets its own identity, so it
+    // and the push run on the same head never cancel each other.
     expect(ci).toContain(
-      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
+      `group: ci-fast-\${{ github.event_name }}\${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
     );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
@@ -1236,46 +1248,62 @@ describe('CI verification workflow contracts', () => {
     expect(consumers).toEqual([]);
   });
 
-  it('runs the container smoke on a hosted runner with no fleet lease', () => {
-    // The heavy Linux listener went offline (2026-11-14 to 16: 91 cancelled
-    // runs, none reaching a runner; the last real smoke passed 2026-10-01,
-    // run 36894902120). With no shared physical host there is nothing to
-    // lease and no per-host Docker client state to isolate.
-    type Step = { name?: string; uses?: string; run?: string };
-    type Job = {
-      'runs-on'?: unknown;
-      'timeout-minutes'?: number;
-      steps?: Step[];
+  it('runs container smoke on an isolated hosted VM with the same Docker checks', () => {
+    type Step = {
+      id?: string;
+      name?: string;
+      if?: string;
+      uses?: string;
+      with?: Record<string, unknown>;
+      run?: string;
     };
     const document = readWorkflowDocuments().find(
       (entry) => entry.file === '.github/workflows/container-smoke.yml',
-    )?.document as { jobs?: Record<string, Job> } | undefined;
-    const smoke = document?.jobs?.smoke;
-    expect(smoke?.['runs-on']).toBe('ubuntu-22.04');
-    const uses = (smoke?.steps ?? []).map((step) => step.uses ?? '');
-    expect(
-      uses.filter(
-        (value) =>
-          value.startsWith(
-            'kontourai/.github/actions/physical-host-capacity@',
-          ) || value.startsWith('kontourai/.github/actions/runner-preflight@'),
-      ),
-    ).toEqual([]);
-    expect(
-      (smoke?.steps ?? []).map((step) => step.run ?? '').join('\n'),
-    ).not.toContain('DOCKER_CONFIG');
-    expect(
-      (smoke?.steps ?? []).some((step) =>
-        (step.run ?? '')
-          .split('\n')
-          .map((line) => line.trim())
-          .includes('scripts/container-smoke.sh'),
-      ),
-    ).toBe(true);
-    // 20-25 minutes on the fleet host; the bound leaves the hosted image
-    // build room without letting a hang hold a hosted slot for long.
-    expect(smoke?.['timeout-minutes']).toBeGreaterThanOrEqual(40);
-    expect(smoke?.['timeout-minutes']).toBeLessThanOrEqual(60);
+    )?.document as {
+      jobs: {
+        smoke: {
+          'runs-on': unknown;
+          'continue-on-error'?: boolean;
+          'timeout-minutes': number;
+          steps: Step[];
+        };
+      };
+    };
+    const smoke = document.jobs.smoke;
+    expect(smoke['runs-on']).toBe('ubuntu-24.04');
+    // 45, not #5350's 80: the run is a six-hour cadence and its phase
+    // timings land in the job summary (container-smoke-range.test.ts).
+    expect(smoke['timeout-minutes']).toBe(45);
+    expect(smoke['continue-on-error']).toBeUndefined();
+    expect(smoke.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uses: expect.stringMatching(/runner-preflight@[a-f0-9]{40}$/),
+          with: { 'require-docker': 'true' },
+        }),
+        expect.objectContaining({
+          run: expect.stringContaining(
+            'playwright install --with-deps chromium',
+          ),
+        }),
+        expect.objectContaining({
+          run: expect.stringContaining('scripts/container-smoke.sh'),
+        }),
+        expect.objectContaining({
+          run: expect.stringContaining('node deploy/public-ingress/smoke.mjs'),
+        }),
+      ]),
+    );
+
+    const isolate = smoke.steps.find(
+      (step) => step.name === 'Isolate Docker client state',
+    );
+    const remove = smoke.steps.find(
+      (step) => step.name === 'Remove isolated Docker client state',
+    );
+    expect(isolate?.id).toEqual(expect.any(String));
+    expect(remove?.if).toContain('always()');
+    expect(remove?.if).toContain(`steps.${isolate?.id}.outcome == 'success'`);
   });
 
   it('pins remaining desktop-win capacity leases to a bounded shared lifetime', () => {
@@ -1294,11 +1322,6 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
-    expect(
-      workflow('container-smoke.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toBeNull();
     // Only playwright-full holds the physical-host lease now (#2416):
     // coverage moved to hosted coverage-shard/coverage-merge jobs, which
     // need nothing from the fleet host.
@@ -1314,6 +1337,7 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      'container-smoke.yml',
       // #1645: the gallery capture moved to a digest-pinned Playwright
       // container on a hosted runner, so it no longer reserves half of
       // desktop-win for up to its owner lifetime. It held `lease-weight: "5"`
@@ -1713,6 +1737,12 @@ describe('CI verification workflow contracts', () => {
       'classify',
       'gallery-diff',
     ]);
+    const classifierRuns = (eventName: string) =>
+      evaluateJobIf(String(pr.jobs.classify.if ?? 'true'), {
+        github: { event_name: eventName },
+      });
+    expect(classifierRuns('pull_request_target')).toBe(true);
+    expect(classifierRuns('merge_group')).toBe(false);
     const classifyStep = pr.jobs.classify.steps.find(
       (step) => step.id === 'relevance',
     );
@@ -2042,11 +2072,12 @@ describe('CI verification workflow contracts', () => {
     };
     const job = document.jobs['ui-bundle-delta'];
     expect(job.if).toBe(
-      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}",
     );
     expect(job.if).not.toContain('merge_group');
-    // Parallel to fast-checks, never behind it.
-    expect(job.needs).toBeUndefined();
+    // Parallel to fast-checks, never behind it; only the heavy-check
+    // decision (STATION_PR_HEAVY_CHECKS) comes first.
+    expect(job.needs).toBe('pr-admission');
     expect(job['continue-on-error']).toBeUndefined();
     expect(job.concurrency?.group).toContain(
       'github.event.pull_request.head.sha',
@@ -2149,6 +2180,7 @@ describe('CI verification workflow contracts', () => {
         expect(job.name ?? id, id).not.toBe('fast-checks');
     expect(jobs['fast-checks'].needs).toEqual([
       'classify',
+      'pr-admission',
       'fast-checks-plan',
       'fast-checks-shard',
       'fast-checks-statics',
@@ -2201,9 +2233,10 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}",
     );
     expect(jobs['fast-checks-shard'].needs).toEqual([
+      'pr-admission',
       'fast-checks-plan',
       'actionlint-artifact',
     ]);
@@ -2267,9 +2300,8 @@ describe('CI verification workflow contracts', () => {
       FAST_CHECKS_SHARD_BUDGET_MS + boundedMs + 3 * 60_000,
     );
 
-    // The selection can include tests that exec zsh, which ubuntu-22.04
-    // lacks: the shard provisions it exactly as full-regression does, before
-    // the tests run.
+    // Only slices with a Linux zsh requirement use the full-regression
+    // preflight. An older slicer with no requirement output stays compatible.
     const zshName =
       'Provision and preflight zsh for process-heavy installer fixtures';
     const fullRegressionZsh = (
@@ -2280,6 +2312,10 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegressionZsh?.run).toContain('sudo bash "$bootstrap" zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ steps.slice.outputs.empty == 'false' && steps.slice.outputs.requires-zsh != 'false' }}",
+    );
     expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
     expect(shardSteps[shardZshIndex].env).toEqual({
       BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
@@ -2800,6 +2836,7 @@ describe('CI verification workflow contracts', () => {
     expect(performance).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
+    expect(workflow('container-smoke.yml')).not.toContain('self-hosted');
     expect(workflow('ci-extended.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
@@ -3985,6 +4022,10 @@ describe('hosted qualification workflow covers the full regression', () => {
     const { jobs } = document();
     const text = workflow('full-regression.yml');
     expect(text).not.toMatch(/:raw\b/);
+    expect(jobs['android-viewport'].steps?.[0]).toMatchObject({
+      uses: CHECKOUT_ACTION,
+      with: { ref: `\${{ inputs.source_sha }}` },
+    });
     const aggregate = jobs.qualification;
     expect(aggregate.name).toBe('Full source qualification');
     expect(aggregate.if).toBe('always() && !cancelled()');
@@ -4483,6 +4524,46 @@ describe('hosted qualification workflow covers the full regression', () => {
   it('includes quarantined files in every qualification corpus', () => {
     for (const { text } of selections(document().jobs))
       expect(text).not.toContain('--exclude-quarantined');
+  });
+
+  it('qualifies UI-only main pushes and routes completion through main health', () => {
+    const qualification = load(workflow('main-qualification.yml')) as {
+      name: string;
+      on: { push: unknown };
+    };
+    expect(qualification.on.push).toEqual({
+      branches: ['main'],
+      'paths-ignore': [
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ],
+    });
+    expect(qualification).toMatchObject({
+      jobs: {
+        qualification: {
+          if: "github.ref == 'refs/heads/main'",
+          uses: './.github/workflows/full-regression.yml',
+          with: { source_sha: `\${{ github.sha }}` },
+        },
+      },
+    });
+    const health = load(workflow('qualification-health.yml')) as {
+      name: string;
+    };
+    expect(health).toMatchObject({
+      on: {
+        workflow_run: { workflows: [qualification.name], types: ['completed'] },
+      },
+    });
+    expect(load(workflow('main-health.yml'))).toMatchObject({
+      on: {
+        workflow_run: {
+          workflows: expect.arrayContaining([health.name]),
+          types: ['completed'],
+          branches: ['main'],
+        },
+      },
+    });
   });
 
   it('keeps scheduled full qualification canonical, including quarantined files', () => {

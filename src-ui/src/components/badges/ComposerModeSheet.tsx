@@ -45,6 +45,7 @@ interface ComposerModeSheetProps {
   sourceNote?: string;
   /** Whether Station's own approvals reach this engine's tool calls. */
   policyNote?: string;
+  reviewerNote?: string;
   pendingNote?: string;
   /** The mode the engine reports it is running, as a label. */
   activeMode?: string;
@@ -91,6 +92,7 @@ function ComposerModeSheetContent({
   onSelect,
   sourceNote,
   policyNote,
+  reviewerNote,
   pendingNote,
   activeMode,
   chatOverride,
@@ -108,17 +110,18 @@ function ComposerModeSheetContent({
     target.station.capabilities.personalDefaults.state === 'allowed';
   const { aboveCeiling } = useManagedApprovalCeiling();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const defaultEngine =
+    engineConnectionId === 'codex' ||
+    engineConnectionId === 'claude' ||
+    engineConnectionId === 'muse'
+      ? engineConnectionId
+      : undefined;
+  const canSaveDefault = personalDefaults && account.status === 'account';
   const apply = (mode: ApprovalMode) => {
-    if (
-      personalDefaults &&
-      saveAsDefault &&
-      (engineConnectionId === 'codex' ||
-        engineConnectionId === 'claude' ||
-        engineConnectionId === 'muse')
-    ) {
+    if (canSaveDefault && saveAsDefault && defaultEngine) {
       account.save({
         interactiveApprovalModes: {
-          [engineConnectionId]: mode === 'connection-default' ? null : mode,
+          [defaultEngine]: mode === 'connection-default' ? null : mode,
         },
       });
     }
@@ -172,6 +175,9 @@ function ComposerModeSheetContent({
         {policyNote && (
           <p className="composer-mode-sheet__confirm-body">{policyNote}</p>
         )}
+        {reviewerNote && (
+          <p className="composer-mode-sheet__confirm-body">{reviewerNote}</p>
+        )}
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')
             ? 'Takes effect after the chat restarts'
@@ -181,14 +187,14 @@ function ComposerModeSheetContent({
                 ? 'Set for this chat · changes apply next turn'
                 : 'Changes apply next turn'}
         </p>
-        {personalDefaults && account.status === 'account' && (
+        {canSaveDefault && defaultEngine && (
           <div className="composer-mode-sheet__save-default">
             <Checkbox checked={saveAsDefault} onChange={setSaveAsDefault}>
               Save as my {engineProduct ?? 'engine'} default
             </Checkbox>
           </div>
         )}
-        {saveAsDefault && (
+        {saveAsDefault && canSaveDefault && defaultEngine && (
           <Button onClick={() => choose(effectiveMode)}>
             Save current mode as my default
           </Button>

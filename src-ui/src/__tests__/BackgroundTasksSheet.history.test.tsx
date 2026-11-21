@@ -45,7 +45,6 @@ const noop = () => {};
 /** The ⋯ sheet's required actions this test never presses. */
 const UNUSED_ACTIONS: ChatDockMobileOverflowActions = {
   onOpenConversation: noop,
-  onToggleHistory: noop,
   onOpenChatSettings: noop,
   onOpenProject: null,
   openProjectName: null,

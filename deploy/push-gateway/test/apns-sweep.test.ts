@@ -253,8 +253,35 @@ test('a run stays within its subrequest and delete caps and leaves the rest', as
   await tight.run();
   const tightRun = await measured(tight, { maxSubrequests: 5 });
   assert.equal(tightRun.spent, 5);
-  // One purge, one list and one triage, then two deletes.
-  assert.equal(tightRun.report.deleted, 2);
+  // One purge and two scoped list/triage pairs consume the tighter budget.
+  assert.equal(tightRun.report.deleted, 0);
+});
+
+test('Nightly deletes make progress while Stable maintains a large backlog', async () => {
+  const stable = `production:${OTHER_BUNDLE}`;
+  const nightly = `production:${IOS_BUNDLE}`;
+  const channel = (index: number) => Buffer.alloc(16, index).toString('base64');
+  const backlog = Array.from({ length: 60 }, (_, i) => channel(i + 1));
+  const listings = { [stable]: [...backlog], [nightly]: [ORPHAN_A] };
+  const { deletes, run } = await setup(listings, [
+    { environment: 'production', bundleId: OTHER_BUNDLE },
+    { environment: 'production', bundleId: IOS_BUNDLE },
+  ]);
+  await run();
+  const first = await run();
+  assert.equal(first.deleted, 40);
+  assert.ok(deletes.includes(ORPHAN_A));
+  assert.ok(listings[stable]!.length > 0);
+
+  listings[stable]!.push(
+    ...Array.from({ length: 60 }, (_, i) => channel(i + 100)),
+  );
+  listings[nightly]!.push(ORPHAN_B);
+  await run();
+  const second = await run();
+  assert.ok(second.deleted <= 40);
+  assert.ok(deletes.includes(ORPHAN_B));
+  assert.ok(listings[stable]!.length > 0);
 });
 
 test('purges expired records once per run, not once per scope', async () => {

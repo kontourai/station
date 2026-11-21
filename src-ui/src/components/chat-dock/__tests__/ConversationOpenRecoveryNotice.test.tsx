@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   ConversationOpenRecoveryNotice,
   type ConversationOpenRecoveryNoticeProps,
@@ -60,4 +60,22 @@ test('a notice with no Retry does not tell the reader to retry', () => {
   expect(screen.queryAllByRole('button')).toHaveLength(0);
   expect(notice.textContent).not.toContain('Retry');
   expect(notice.textContent).toContain('Sending is paused.');
+});
+
+test('a disconnected engine offers handoff while keeping the chat read-only', () => {
+  const onContinue = vi.fn();
+  render(
+    <ConversationOpenRecoveryNotice
+      title="Existing chat"
+      state="engine-disconnected"
+      onContinue={onContinue}
+    />,
+  );
+  expect(screen.getByRole('status').textContent).toContain(
+    'This chat is read-only.',
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Continue with another agent' }),
+  );
+  expect(onContinue).toHaveBeenCalledOnce();
 });

@@ -1,0 +1,45 @@
+{
+  "revision": "70e37ecc9d0eb8a9f33293c4ef905b2bfac52beb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the schedule and conversation owners. The server still publishes the earliest armed wake-up; the composer and child reader consume those existing records.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Updated and reviewed the mobile Basis entry, managed-folder tip, Working and Waiting priority, expandable child activity, and child instruction target against their UI owners.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The start composer receives the same engine and project selection. Its managed-folder explanation moves into the existing info tip.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Checked status entry, state changes and expanded activity placement. The pill retains its motion tokens and the portalled details use measured placement.","inputs":["docs/design/motion.md","src-ui/src/components/status/live-status.css"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed child navigation and return focus. The child still belongs to the chat pane and its opener remains on the navigation stack.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed dock sizing, chat inventory hosting and child navigation. The child origin and footer live in the existing chat pane.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the mobile message details caller. The Basis action uses the existing per-answer inventory target and preference owners.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ConversationBody still renders the common composer and sends through the bound conversation. The child editor uses the existing child-specific command.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked target binding and current authority. The child footer matches Station, authority and reporter before offering child steering.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The SDK reference clarifies the child transcript selector and separate operation authority. The integration route and SDK API stay the same.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed status popup placement, shared text entry, child origin, and resizing. Chromium exercised child footer geometry at phone and desktop widths.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/status/live-status.css"]},
+
+    {"path":"docs/reference/api.md","note":"The chat dock uses the existing child transcript, instruction history and steer endpoints. The API shape and caller grants are unchanged.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The managed chat folder still follows the existing configuration and workspace selection. Only the location of its explanation changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the child navigation and instruction sections. The SDK child selector addresses the transcript; sending separately validates child and turn identity.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat/ChildWorkInstructionPanel.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the Home, chat, and Task concepts against the revised start composer and activity. Their destinations and ownership are unchanged.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated the phone path to answer Basis. The chat inventory still opens for the exact answer or whole chat depending on its entry point.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed Build with chat. It still hands off a removable Board context into the existing start composer.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed checkpoint recovery and retained chat inputs. Moving Basis into mobile answer details leaves checkpoint selection and recovery unchanged.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The referenced SDK documentation clarifies child access. Workspace ownership and the public method signatures stay the same.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the shared conversation editor and instruction owner against the UI routing rules. The child form delegates transport and recovery to ChildWorkInstructionPanel.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

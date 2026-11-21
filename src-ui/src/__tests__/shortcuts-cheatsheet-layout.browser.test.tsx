@@ -107,3 +107,114 @@ test('the shortcuts cheatsheet is an opaque framed dialog with a reachable close
     await browser.close();
   }
 });
+
+const settingsFixture = `
+import React, { useState } from 'react';
+import {createRoot} from 'react-dom/client';
+import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
+import {ResponsiveDialogSurface} from './src-ui/src/components/ResponsiveDialogSurface';
+import {KeyboardShortcutsProvider, setShortcutContext} from './src-ui/src/contexts/KeyboardShortcutsContext';
+import {useKeyboardShortcut} from './src-ui/src/hooks/useKeyboardShortcut';
+import {KeyboardShortcutsSection} from './src-ui/src/views/settings/KeyboardShortcutsSection';
+function Host() {
+  const [runs, setRuns] = useState(0);
+  const [modal, setModal] = useState(false);
+  useKeyboardShortcut('app.preview', 'g', ['ctrl'], 'Preview note', () => setRuns((count) => count + 1), true, 0, 'composerFocused');
+  return <main>
+    <textarea aria-label="Composer" onFocus={() => setShortcutContext('composerFocused', true)} onBlur={() => setShortcutContext('composerFocused', false)} />
+    <output aria-label="Preview invocations">{runs}</output>
+    <button onClick={() => setModal(true)}>Open dialog</button>
+    <KeyboardShortcutsSection />
+    {modal && <ResponsiveDialogSurface layer="dialog" ariaLabel="Preview dialog" onClose={() => setModal(false)}>
+      <textarea aria-label="Modal composer" onFocus={() => setShortcutContext('composerFocused', true)} onBlur={() => setShortcutContext('composerFocused', false)} />
+      <button onClick={() => setModal(false)}>Close preview dialog</button>
+    </ResponsiveDialogSurface>}
+  </main>;
+}
+createRoot(document.getElementById('root')).render(
+  <DialogHistoryHostBoundary><KeyboardShortcutsProvider><Host/></KeyboardShortcutsProvider></DialogHistoryHostBoundary>);
+`;
+
+test('shortcut settings captures Space, reloads the binding, and honors the registered focus rule', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(
+    settingsFixture,
+    [],
+    { viewport: { width: 1440, height: 900 } },
+  );
+  try {
+    const composer = page.getByRole('textbox', { name: 'Composer' });
+    const binding = page.getByRole('button', {
+      name: 'Shortcut for Preview note',
+    });
+    const runs = page.getByRole('status', { name: 'Preview invocations' });
+    await composer.focus();
+    await page.keyboard.press('Control+g');
+    await expect.poll(() => runs.textContent()).toBe('1');
+    await binding.click();
+    await page.keyboard.press('Control+Space');
+    await expect.poll(() => binding.textContent()).toMatch(/Space$/);
+    expect(await runs.textContent()).toBe('1');
+
+    await page.reload();
+    for (const path of [
+      '../index.css',
+      '../views/settings/KeyboardShortcutsSection.css',
+    ]) {
+      await page.addStyleTag({
+        content: resolveCssImports(resolve(import.meta.dirname, path)),
+      });
+    }
+    await expect.poll(() => binding.textContent()).toMatch(/Space$/);
+    const advanced = page.locator('summary', { hasText: 'Advanced' });
+    await advanced.click();
+    await page
+      .getByText('"composerFocused"', { exact: true })
+      .waitFor({ state: 'visible' });
+    await page.keyboard.press('Control+Space');
+    expect(await runs.textContent()).toBe('0');
+    await composer.focus();
+    await page.keyboard.press('Control+Space');
+    await expect.poll(() => runs.textContent()).toBe('1');
+
+    await page.getByRole('button', { name: 'Open dialog' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Preview dialog' });
+    await dialog.getByRole('textbox', { name: 'Modal composer' }).focus();
+    await page.keyboard.press('Control+Space');
+    expect(await runs.textContent()).toBe('1');
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+
+    if (
+      !(await advanced.evaluate((summary) =>
+        summary.parentElement?.hasAttribute('open'),
+      ))
+    )
+      await advanced.click();
+    for (const width of [1440, 390]) {
+      const mobile = width === 390;
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(() => binding.isDisabled()).toBe(mobile);
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        expect(await binding.isVisible()).toBe(true);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBeLessThanOrEqual(width);
+        const captureDir = process.env.STATION_SHORTCUT_REVIEW_CAPTURE_DIR;
+        if (captureDir)
+          await page.screenshot({
+            path: resolve(
+              captureDir,
+              'shortcuts-' + width + '-' + theme + '.png',
+            ),
+          });
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

@@ -96,10 +96,14 @@ function fakeGh() {
   };
 }
 
-function providerWith(gh: ReturnType<typeof fakeGh>) {
+function providerWith(
+  gh: ReturnType<typeof fakeGh>,
+  options: { readMergeQueue?: () => boolean } = {},
+) {
   const clock = { now: 1_000_000 };
   const provider = new GitHubPullRequestProvider(gh.run, gh.run, {
     now: () => clock.now,
+    ...options,
   });
   return { provider, clock };
 }
@@ -528,5 +532,98 @@ describe('GitHubPullRequestProvider status reads for the Task board', () => {
       (await provider.getPullRequestStatusByIdentity(identity, '7')).available,
     ).toBe(true);
     expect(gh.count('pr view')).toBe(2);
+  });
+});
+
+describe('GitHub status read: armed or queued to merge (#5064)', () => {
+  const identity = {
+    host: 'github.com',
+    repository: { owner: 'kontourai', name: 'station' },
+  };
+  const queueAnswer = (isInMergeQueue: boolean, armed = false) =>
+    JSON.stringify({
+      data: {
+        repository: {
+          pullRequest: {
+            isInMergeQueue,
+            autoMergeRequest: armed
+              ? { enabledAt: '2026-11-16T00:00:00Z' }
+              : null,
+          },
+        },
+      },
+    });
+  const read = async (gh: ReturnType<typeof fakeGh>, readMergeQueue = true) =>
+    (
+      await providerWith(gh, {
+        readMergeQueue: () => readMergeQueue,
+      }).provider.getPullRequestStatusByIdentity(identity, '7')
+    ).data?.landing;
+
+  test('auto-merge armed is read from the same gh pr view, with no second call', async () => {
+    const gh = fakeGh();
+    gh.stdoutNext(
+      'pr view',
+      JSON.stringify({
+        ...openPullRequest,
+        autoMergeRequest: { enabledAt: '2026-11-16T00:00:00Z' },
+      }),
+    );
+    expect(await read(gh)).toBe('auto-merge');
+    expect(gh.count('pr graphql')).toBe(0);
+    const fields = gh.calls[0]?.[gh.calls[0].indexOf('--json') + 1] ?? '';
+    expect(fields.split(',')).toContain('autoMergeRequest');
+  });
+
+  test('an unarmed open pull request asks the merge queue once', async () => {
+    const queued = fakeGh();
+    queued.stdoutNext(
+      'pr view',
+      JSON.stringify({ ...openPullRequest, autoMergeRequest: null }),
+    );
+    queued.stdoutNext('pr graphql', queueAnswer(true));
+    expect(await read(queued)).toBe('merge-queue');
+    expect(queued.count('pr graphql')).toBe(1);
+    const args = queued.calls.find((call) => call[1] === 'graphql') ?? [];
+    expect(args).toEqual(
+      expect.arrayContaining(['--hostname', 'github.com', 'number=7']),
+    );
+
+    const idle = fakeGh();
+    idle.stdoutNext(
+      'pr view',
+      JSON.stringify({ ...openPullRequest, autoMergeRequest: null }),
+    );
+    idle.stdoutNext('pr graphql', queueAnswer(false));
+    expect(await read(idle)).toBe('not-queued');
+  });
+
+  test('a failed or unreadable queue read observes nothing, never "not queued"', async () => {
+    const failed = fakeGh();
+    failed.failNext('pr graphql');
+    expect(await read(failed)).toBeUndefined();
+    const garbled = fakeGh();
+    garbled.stdoutNext('pr graphql', JSON.stringify({ data: null }));
+    expect(await read(garbled)).toBeUndefined();
+  });
+
+  test('with the preview off, the queue is not asked and nothing is claimed', async () => {
+    const gh = fakeGh();
+    gh.stdoutNext(
+      'pr view',
+      JSON.stringify({ ...openPullRequest, autoMergeRequest: null }),
+    );
+    expect(await read(gh, false)).toBeUndefined();
+    expect(gh.count('pr graphql')).toBe(0);
+  });
+
+  test('a merged or closed pull request is not asked about the queue', async () => {
+    const gh = fakeGh();
+    gh.stdoutNext(
+      'pr view',
+      JSON.stringify({ ...openPullRequest, state: 'MERGED' }),
+    );
+    expect(await read(gh)).toBeUndefined();
+    expect(gh.count('pr graphql')).toBe(0);
   });
 });

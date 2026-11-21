@@ -1968,10 +1968,25 @@ export async function runServiceCommand(
     const target = existing ?? registration;
     // A unit with no manifest in this home is still an installed service.
     const unitWasPresent = fs.existsSync(target.unitPath);
+    const archiveLauncher =
+      existing?.platform === 'win32' &&
+      existing.kind === 'archive' &&
+      existing.installRoot !== undefined;
+    if (archiveLauncher) {
+      await stopAndWaitForWindowsSupervisorExit(
+        instanceId,
+        lifecycle.baseDir,
+        existing,
+        dependencies,
+        fs,
+        run,
+      );
+    }
     if (target.platform === 'darwin') uninstallLaunchd(target, { fs, run });
     else if (target.platform === 'linux') uninstallSystemd(target, { fs, run });
     else uninstallWindowsService(target, { fs, run });
-    stop({ instanceName: instanceId, stateHome: lifecycle.baseDir });
+    if (!archiveLauncher)
+      stop({ instanceName: instanceId, stateHome: lifecycle.baseDir });
     fs.rmSync(manifestPath, { force: true });
     console.log(
       existing

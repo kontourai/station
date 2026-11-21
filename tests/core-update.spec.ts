@@ -7,8 +7,9 @@
  * identity matches the identity route so the correlation-gated apply offer
  * can appear exactly as it does against a real server.
  */
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
+import { test } from './helpers/fixture-audit';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -48,6 +49,9 @@ function checkoutStatus(behind: number, currentHash: string): string {
 
 function seedRoutes(page: import('@playwright/test').Page) {
   return Promise.all([
+    page.route('**/api/system/core-update/running-turns', (route) =>
+      route.fulfill({ json: { turns: [], hiddenCount: 0 } }),
+    ),
     page.route('**/api/system/status', (r) =>
       r.fulfill({
         status: 200,
@@ -149,82 +153,102 @@ test.describe('Core Update Flow', () => {
         'Server checkout is 3 commits behind its configured upstream.',
       ),
     ).toBeVisible();
-    // Branch and hash info under the source-metadata labels.
+    // Branch and hash info are under Details.
+    await serverCard.getByText('Details', { exact: true }).click();
     await expect(serverCard.getByText('Branch: main')).toBeVisible();
     await expect(serverCard.getByText('Checkout: abc1234')).toBeVisible();
     await expect(serverCard.getByText('Source ref: def5678')).toBeVisible();
   });
 
-  test('executes core update and shows the restart verification', async ({
-    page,
-  }) => {
-    await seedRoutes(page);
+  for (const outcome of ['verified', 'no expectation', 'deadline'] as const) {
+    test(`checkout restart verification: ${outcome}`, async ({ page }) => {
+      await seedRoutes(page);
+      if (outcome === 'deadline') await page.clock.install();
 
-    let postCalled = false;
-    const restart = {
-      expectedHash: 'def5678',
-      expectedInstanceId: 'e2e-instance',
-      deadlineAt: new Date(Date.now() + 95_000).toISOString(),
-    };
-    await page.route('**/api/system/core-update/restart-status', (r) =>
-      r.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ status: 'pending', ...restart }),
-      }),
-    );
-    await routeCoreUpdateCheck(page, (r) => {
-      if (r.request().method() === 'GET') {
-        // After update, return up-to-date
-        if (postCalled) {
-          return r.fulfill({
-            status: 200,
+      let postCalled = false;
+      let verify = false;
+      let statusReads = 0;
+      const restart = {
+        expectedHash: 'def5678',
+        expectedInstanceId: ANSWER_IDENTITY.instanceId,
+        deadlineAt: '',
+      };
+      await page.route('**/api/system/core-update/restart-status', (route) => {
+        statusReads += 1;
+        return route.fulfill({
+          json: verify
+            ? {
+                status: 'verified',
+                ...restart,
+                resolvedAt: new Date().toISOString(),
+              }
+            : { status: 'pending', ...restart },
+        });
+      });
+      await routeCoreUpdateCheck(page, (route) => {
+        if (route.request().method() === 'GET') {
+          return route.fulfill({
             contentType: 'application/json',
-            body: checkoutStatus(0, 'def5678'),
+            body: postCalled
+              ? checkoutStatus(0, 'def5678')
+              : checkoutStatus(3, 'abc1234'),
           });
         }
-        return r.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: checkoutStatus(3, 'abc1234'),
-        });
+        if (route.request().method() === 'POST') {
+          postCalled = true;
+          restart.deadlineAt = new Date(Date.now() + 95_000).toISOString();
+          return route.fulfill({
+            json: {
+              success: true,
+              hash: 'def5678',
+              message: 'Server update started.',
+              restarting: true,
+              ...(outcome === 'no expectation' ? {} : { restart }),
+            },
+          });
+        }
+        return route.continue();
+      });
+
+      await page.goto('/settings?view=system');
+      await page
+        .getByRole('button', { name: /Check for server updates/ })
+        .click();
+      await page
+        .getByRole('button', { name: 'Update server checkout' })
+        .click();
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: 'Update and restart' })
+        .click();
+
+      const success = page.getByText('Server update verified: def5678.');
+      const failure = page.getByText(
+        /Could not verify the expected server after restart/,
+      );
+      if (outcome === 'no expectation') {
+        await expect(page.getByText(/Try again in a moment/)).toBeVisible();
+        expect(postCalled).toBe(true);
+        expect(statusReads).toBe(0);
+        await expect(success).toHaveCount(0);
+        return;
       }
-      if (r.request().method() === 'POST') {
-        postCalled = true;
-        return r.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            hash: 'def5678',
-            message: 'Server update started.',
-            restarting: true,
-            restart,
-          }),
-        });
+
+      await expect(
+        page.getByText('Server restart started. Verifying the expected build…'),
+      ).toBeVisible();
+      await expect.poll(() => statusReads).toBeGreaterThan(0);
+      await expect(success).toHaveCount(0);
+      if (outcome === 'verified') {
+        verify = true;
+        await expect(success).toBeVisible();
+      } else {
+        await page.clock.fastForward(96_000);
+        await expect(failure).toBeVisible();
+        await expect(success).toHaveCount(0);
       }
-      return r.continue();
     });
-
-    await page.goto('/settings?view=system');
-    await page
-      .getByRole('button', { name: /Check for server updates/ })
-      .click();
-    const apply = page.getByRole('button', { name: 'Update server checkout' });
-    await expect(apply).toBeVisible({ timeout: 10000 });
-
-    await apply.click();
-
-    // The restart line claims a START, never a verified success — archive#1903:
-    // only the detached server watchdog's correlated verdict can confirm the
-    // new server, so the client must not either.
-    await expect(
-      page.getByText('Server restart started. Verifying the expected build…'),
-    ).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.getByText(/Server update verified/)).toHaveCount(0);
-  });
+  }
 
   test('shows the checkout match when no updates', async ({ page }) => {
     await seedRoutes(page);
@@ -276,7 +300,7 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
   }, testInfo) => {
     await seedRoutes(page);
     let progress: unknown = { state: 'idle' };
-    await page.route('**/api/system/core-update/service-update', (r) =>
+    await page.route('**/api/system/core-update/service-update?staged=1', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -323,15 +347,16 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       exact: true,
     });
     await expect(apply).toBeVisible({ timeout: 10000 });
-    // The offer's resting background, compared against its hovered one below.
-    const offerBackground = await apply.evaluate(
-      (el) => getComputedStyle(el).backgroundColor,
-    );
+    await apply.hover();
+    const hoveredOfferBackground = await apply.evaluate(async (button) => {
+      await Promise.all(
+        button.getAnimations().map((animation) => animation.finished),
+      );
+      return getComputedStyle(button).backgroundColor;
+    });
     // The header carries the comparison: one badge, "current → latest".
-    await expect(serverCard.locator('.server-update__badge')).toHaveText(
-      'Update available',
-    );
-    await expect(serverCard.locator('.server-update__version')).toHaveText(
+    await expect(serverCard.getByRole('status')).toHaveText('Update available');
+    await expect(serverCard.locator('.status-summary__version')).toHaveText(
       /0\.8\.0-preview\.1\s*→\s*to 0\.8\.0-preview\.2/,
     );
     await expect(serverCard.getByText(/Source update/)).toHaveCount(0);
@@ -349,6 +374,10 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
     });
 
     await apply.click();
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: 'Update and restart' })
+      .click();
     await expect(
       serverCard.getByText(
         'Trying Station 0.8.0-preview.2 (attempt 1). The server restarts during the trial.',
@@ -378,10 +407,9 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       exact: true,
     });
     await expect(offers).toBeEnabled({ timeout: 10000 });
-    // The pointer still rests where it clicked: the hovered offer keeps its
-    // accent, not the global button hover's dark background.
+    // The recovered offer uses the same hover treatment as the original.
     await offers.hover();
-    await expect(offers).toHaveCSS('background-color', offerBackground);
+    await expect(offers).toHaveCSS('background-color', hoveredOfferBackground);
     await serverCard.screenshot({
       path: testInfo.outputPath('archive-update-rolled-back.png'),
     });

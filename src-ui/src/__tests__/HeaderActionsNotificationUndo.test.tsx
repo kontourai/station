@@ -67,7 +67,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useOrchestrationSessionsQuery: () => ({ data: [], isSuccess: true }),
-  useDismissNotificationMutation: () => ({ isPending: false, mutate: dismiss }),
+  useDismissNotificationMutation: () => ({
+    isPending: false,
+    mutateAsync: async (id: string) => dismiss(id),
+  }),
   useNotificationActionMutation: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 

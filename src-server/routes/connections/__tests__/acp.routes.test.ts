@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
@@ -8,6 +8,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
 
 let providerEntries: Array<{
   builtin?: boolean;
@@ -189,6 +190,214 @@ describe('ACP Routes', () => {
     const body = await json(await app.request('/status'));
     expect(body.success).toBe(true);
     expect(body.data.connected).toBe(false);
+  });
+
+  test('guided setup refuses a disabled preview or unsupported host before reading configuration', async () => {
+    const ctx = createMockRuntimeContext();
+    for (const options of [{ personalHost: false }, { personalHost: true }]) {
+      const response = await asOperator(
+        createACPRoutes(ctx as any, options),
+      ).request('/setup');
+      expect(response.status).toBe(404);
+      expect(await json(response)).toMatchObject({ success: false });
+    }
+    expect(ctx.configLoader.loadACPConfig).not.toHaveBeenCalled();
+    expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+  });
+
+  test('guided setup admits the owner through an external engine but refuses another principal before reading saved setup', async () => {
+    for (const owner of ['human:local:operator', 'human:other:member']) {
+      const ctx = createMockRuntimeContext();
+      const app = new Hono();
+      app.use('*', async (c, next) => {
+        bindStationControlRequestAuthority(c.req.raw, {
+          kind: 'caller',
+          boundOperator: false,
+          caller: {
+            sessionId: 'setup-session',
+            assurance: 'delegated-custody',
+            principal: {
+              id: owner,
+              source: 'session-owner',
+              elevationEligible: true,
+            },
+          },
+        });
+        await next();
+      });
+      app.route(
+        '/',
+        createACPRoutes(ctx as any, {
+          personalHost: true,
+          engineSetupPreview: { select: (branches) => branches.enabled() },
+        }),
+      );
+      const response = await app.request('/setup');
+      expect(response.status).toBe(
+        owner === 'human:local:operator' ? 200 : 403,
+      );
+      expect(ctx.configLoader.loadACPConfig).toHaveBeenCalledTimes(
+        owner === 'human:local:operator' ? 1 : 0,
+      );
+    }
+  });
+
+  test('guided setup reuses a saved alias and asks for a choice between different launch variants', async () => {
+    const ctx = createMockRuntimeContext();
+    providerEntries = [
+      {
+        builtin: true,
+        source: 'acpConnectionRegistry:core',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'antigravity',
+              name: 'Antigravity',
+              command: 'agy',
+              args: ['acp', '--process-per-session'],
+              detected: true,
+            },
+            {
+              id: 'kiro',
+              name: 'Kiro CLI',
+              command: 'kiro-cli',
+              args: ['acp', '--agent-engine', 'v2'],
+              detected: true,
+            },
+            {
+              id: 'kiro-kas',
+              name: 'Kiro KAS',
+              command: 'kiro-cli',
+              args: ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'],
+              detected: true,
+            },
+          ],
+        },
+      },
+    ];
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [
+        {
+          id: 'agy',
+          name: 'My Antigravity',
+          command: '/bin/agy',
+          args: ['acp'],
+          enabled: true,
+        },
+        {
+          id: 'kiro-cli',
+          name: 'My Kiro',
+          command: 'kiro-cli',
+          args: ['acp'],
+          enabled: true,
+        },
+      ],
+    });
+    const response = await asOperator(
+      createACPRoutes(ctx as any, {
+        personalHost: true,
+        engineSetupPreview: { select: (branches) => branches.enabled() },
+      }),
+    ).request('/setup');
+    const result = await json(response);
+    expect(result.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'antigravity',
+          connectionId: 'agy',
+          setupPath: '/connections/engines/agy',
+          nextAction: 'review-setup',
+        }),
+        expect.objectContaining({
+          id: 'kiro-kas',
+          connectionId: null,
+          setupPath: '/connections/engines',
+          nextAction: 'choose-existing',
+        }),
+      ]),
+    );
+  });
+
+  test('guided setup returns existing pane destinations and distinct handshake/tool evidence without executable or credential data', async () => {
+    const ctx = createMockRuntimeContext();
+    providerEntries = [
+      {
+        builtin: true,
+        source: 'acpConnectionRegistry:core',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'antigravity',
+              name: 'Google Antigravity',
+              command: 'agy',
+              args: ['acp', '--process-per-session'],
+              detected: true,
+            },
+            {
+              id: 'grok-build',
+              name: 'Grok Build',
+              command: 'grok',
+              args: ['agent', 'stdio'],
+              detected: true,
+            },
+          ],
+        },
+      },
+    ];
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [
+        {
+          id: 'antigravity',
+          name: 'Google Antigravity',
+          command: '/private/agy',
+          args: ['acp', '--process-per-session'],
+          enabled: true,
+          env: { TOKEN: 'private-value' },
+        },
+      ],
+    });
+    ctx.acpBridge.getStatus.mockReturnValue({
+      connected: true,
+      connections: [
+        {
+          id: 'antigravity',
+          status: 'available',
+          handshakeObservedAt: '2026-11-17T15:00:00Z',
+          capabilities: { mcpCapabilities: { http: true } },
+        },
+      ],
+    });
+    const response = await asOperator(
+      createACPRoutes(ctx as any, {
+        personalHost: true,
+        engineSetupPreview: { select: (branches) => branches.enabled() },
+      }),
+    ).request('/setup');
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    expect(body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'antigravity',
+          configured: true,
+          setupPath: '/connections/engines/antigravity',
+          httpTools: 'advertised',
+          handshakeObservedAt: '2026-11-17T15:00:00Z',
+        }),
+        expect.objectContaining({
+          id: 'grok-build',
+          configured: false,
+          setupPath: '/connections/engines/new/grok-build',
+          httpTools: 'unknown',
+          handshakeObservedAt: null,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(body)).not.toMatch(
+      /private-value|\/private\/agy|--process-per-session/,
+    );
+    expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
   });
 
   test('rejects an invalid engine identity before any durable write', async () => {
@@ -414,6 +623,60 @@ describe('ACP Routes', () => {
       ['plugin-ok', 'plugin'],
     ]);
     expect(body.data[0].hostInstall).toEqual({ command: 'official goose' });
+  });
+
+  test('a saved Grok launch satisfies the built-in catalog entry without changing its id', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'grok-build',
+              name: 'Grok Build',
+              command: 'grok',
+              args: ['agent', 'stdio'],
+              icon: 'brand:grok-build',
+            },
+          ],
+        },
+      },
+    ];
+    const ctx = createMockRuntimeContext();
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [
+        {
+          id: 'grok',
+          name: 'My Grok',
+          command: '/local/bin/grok',
+          args: ['agent', 'stdio'],
+          icon: '🔌',
+        },
+      ],
+    });
+    const app = asOperator(createACPRoutes(ctx as any));
+    const catalog = await json(await app.request('/registry'));
+    expect(catalog.data).toEqual([
+      expect.objectContaining({
+        id: 'grok-build',
+        installed: true,
+        installedSource: 'user',
+      }),
+    ]);
+    const connected = await json(await app.request('/connections'));
+    expect(connected.data).toEqual([
+      expect.objectContaining({
+        id: 'grok',
+        registryId: 'grok-build',
+        icon: 'brand:grok-build',
+      }),
+    ]);
+    const install = await app.request('/registry/grok-build/install', {
+      method: 'POST',
+    });
+    expect(install.status).toBe(409);
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
   });
 
   test('GET /registry reports an entry as not detected on a platform it does not launch on', async () => {
@@ -710,6 +973,72 @@ describe('ACP Routes', () => {
         installedSource: 'user',
       }),
     ]);
+  });
+
+  describe('built-in Antigravity connection', () => {
+    const preset = {
+      id: 'antigravity',
+      name: 'Antigravity',
+      command: 'agy',
+      args: ['acp', '--process-per-session'],
+      icon: 'brand:antigravity',
+    };
+    const saved = { ...preset, icon: 'AG', enabled: true };
+
+    beforeEach(() => {
+      providerEntries = [
+        {
+          source: 'acpConnectionRegistry:core',
+          builtin: true,
+          provider: { listAvailable: () => [preset] },
+        },
+      ];
+    });
+
+    test('keeps built-in presentation when a saved alias needs repair', async () => {
+      const { ctx, configLoader } = await createFilesystemRuntimeContext();
+      await configLoader.saveACPConfig({
+        connections: [{ ...saved, id: 'agy' }],
+      });
+      const app = asOperator(createACPRoutes(ctx));
+
+      expect(
+        (await json(await app.request('/connections/unregistered'))).data,
+      ).toMatchObject([
+        { id: 'agy', registryId: preset.id, icon: preset.icon },
+      ]);
+    });
+
+    test('refuses installation when an alias is supplied by a plugin', async () => {
+      providerEntries.push({
+        source: 'acpConnections:plugin',
+        provider: { getConnections: () => [{ ...saved, id: 'agy' }] },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/antigravity/install', {
+        method: 'POST',
+      });
+      expect(response.status).toBe(409);
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+    });
+
+    test('retries installation of a canonical preset with its former stock icon', async () => {
+      const ctx = createMockRuntimeContext();
+      ctx.configLoader.loadACPConfig.mockResolvedValue({
+        connections: [saved],
+      });
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/antigravity/install', {
+        method: 'POST',
+      });
+      expect(response.status).toBe(200);
+      expect(ctx.configLoader.saveACPConfig).toHaveBeenCalledWith({
+        connections: [saved],
+      });
+    });
   });
 
   test('POST /registry/:id/install saves an ACP registry entry as a user connection', async () => {
@@ -1679,7 +2008,130 @@ describe('ACP Routes', () => {
     });
   });
 
-  test('POST /connections/:id/reconnect returns 404 for a connection the bridge does not hold', async () => {
+  test('reconnect onboards a saved connection without deleting its setup or replacing its Agent', async () => {
+    const { ctx, configLoader, home } = await createFilesystemRuntimeContext();
+    const saved = {
+      id: 'agy',
+      name: 'Antigravity',
+      command: 'agy',
+      args: ['acp', '--process-per-session'],
+      enabled: true,
+    };
+    await configLoader.saveACPConfig({ connections: [saved] });
+    const agentDir = join(home, 'agents', 'agy');
+    mkdirSync(agentDir, { recursive: true });
+    const authored = {
+      name: 'My Antigravity',
+      prompt: 'Keep this instruction',
+      execution: { agentConnectionId: 'agy' },
+    };
+    writeFileSync(join(agentDir, 'agent.json'), JSON.stringify(authored));
+    ctx.acpBridge = probeOutcomeBridge({ ok: true });
+    const response = await asOperator(createACPRoutes(ctx)).request(
+      '/connections/agy/reconnect',
+      { method: 'POST' },
+    );
+    expect(response.status).toBe(200);
+    expect(ctx.acpBridge.getStatus().connections[0]).toMatchObject({
+      id: 'agy',
+      status: 'available',
+    });
+    expect(
+      ctx.acpBridge.getStatus().connections[0].handshakeObservedAt,
+    ).toBeTruthy();
+    expect(await configLoader.loadACPConfig()).toEqual({
+      connections: [saved],
+    });
+    expect(await configLoader.loadAgent('agy')).toMatchObject(authored);
+    expect(ctx.acpBridge.removeConnection).not.toHaveBeenCalled();
+  });
+
+  test('reconnect registers a saved engine after a failed live first-contact probe', async () => {
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    const saved = {
+      id: 'agy',
+      name: 'Antigravity',
+      command: 'agy',
+      args: ['acp'],
+      enabled: true,
+    };
+    await configLoader.saveACPConfig({ connections: [saved] });
+    const outcome = { ok: false };
+    ctx.acpBridge = probeOutcomeBridge(outcome);
+    await ctx.acpBridge.addConnection(saved);
+    expect(ctx.acpBridge.getStatus().connections[0].status).toBe('unavailable');
+    outcome.ok = true;
+    const response = await asOperator(createACPRoutes(ctx)).request(
+      '/connections/agy/reconnect',
+      { method: 'POST' },
+    );
+    expect(response.status).toBe(200);
+    expect(
+      (await loadOrCreateAgentRegistry(configLoader)).engineConnections.some(
+        (entry) => entry.id === 'agy',
+      ),
+    ).toBe(true);
+    expect(await configLoader.loadAgent('agy')).toMatchObject({
+      execution: { agentConnectionId: 'agy' },
+    });
+  });
+
+  test('reconnect refuses a disabled saved connection without spawning it', async () => {
+    const ctx = createMockRuntimeContext();
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [
+        { id: 'agy', name: 'Antigravity', command: 'agy', enabled: false },
+      ],
+    });
+    const response = await asOperator(createACPRoutes(ctx as any)).request(
+      '/connections/agy/reconnect',
+      { method: 'POST' },
+    );
+    expect(response.status).toBe(409);
+    expect(await json(response)).toMatchObject({
+      success: false,
+      code: 'engine-disabled',
+    });
+    expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+    expect(ctx.acpBridge.reconnect).not.toHaveBeenCalled();
+  });
+
+  test('reconnect does not register setup replaced while its handshake was running', async () => {
+    const { ctx, configLoader } = await createFilesystemRuntimeContext();
+    const saved = {
+      id: 'agy',
+      name: 'Antigravity',
+      command: 'agy',
+      args: ['acp'],
+      enabled: true,
+    };
+    await configLoader.saveACPConfig({ connections: [saved] });
+    ctx.acpBridge.addConnection.mockImplementationOnce(async () => {
+      await configLoader.saveACPConfig({
+        connections: [{ ...saved, args: ['different'] }],
+      });
+      return true;
+    });
+    const response = await asOperator(createACPRoutes(ctx)).request(
+      '/connections/agy/reconnect',
+      { method: 'POST' },
+    );
+    expect(response.status).toBe(409);
+    expect(await json(response)).toMatchObject({
+      success: false,
+      code: 'engine-setup-changed',
+    });
+    expect(
+      (await loadOrCreateAgentRegistry(configLoader)).engineConnections.some(
+        (entry) => entry.id === 'agy',
+      ),
+    ).toBe(false);
+    expect((await configLoader.loadACPConfig()).connections[0].args).toEqual([
+      'different',
+    ]);
+  });
+
+  test('POST /connections/:id/reconnect returns 404 for a genuinely absent connection', async () => {
     const ctx = createMockRuntimeContext();
     const app = asOperator(createACPRoutes(ctx as any));
 

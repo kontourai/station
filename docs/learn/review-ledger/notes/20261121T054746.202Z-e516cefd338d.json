@@ -1,0 +1,9 @@
+{
+  "revision": "26a7c2a62bcfaede964e3221cb798a48a89b474b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the claim owner and API replay guidance against the added regression. The original input replays the same result after caller lookup, changed input conflicts, and the effect runs once. The focused owner, process, and route suites pass 41 cases.","inputs":["src-server/services/orchestration/__tests__/create-request-claims.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the claim owner and API replay guidance against the added regression. The original input replays the same result after caller lookup, changed input conflicts, and the effect runs once. The focused owner, process, and route suites pass 41 cases.","inputs":["src-server/services/orchestration/__tests__/create-request-claims.test.ts"]}
+  ]
+}

@@ -4,6 +4,7 @@ import type { QueryConfig } from '../query-core';
 
 export * from './workspaceConnections';
 export * from './workspaceCredentialRecovery';
+export * from './workspaceProjectMutations';
 export * from './workspaceProjects';
 export * from './workspaceWorkflows';
 

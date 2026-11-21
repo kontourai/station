@@ -92,6 +92,14 @@ const SHAPES: Array<[string, Shape, boolean]> = [
     { clientOrigin: childResult, authoredBy: 'person' },
     false,
   ],
+  [
+    'a marked turn with an explicitly null persisted sender',
+    {
+      clientOrigin: JSON.parse(JSON.stringify({ ...person, sender: null })),
+      authoredBy: 'person',
+    },
+    false,
+  ],
   ['a turn recorded before the mark', {}, false],
 ];
 
@@ -131,13 +139,17 @@ describe('isPersonAuthoredTurn', () => {
 
   test('the store selects exactly what the predicate accepts', () => {
     const store = openStore();
-    for (const [index, [, shape, expected]] of SHAPES.entries()) {
+    for (const [index, [, shape]] of SHAPES.entries()) {
       const threadId = `shape-${index}`;
-      store.appendEvent(
-        started(threadId, 'turn', shape, `2026-11-12T00:00:0${index}Z`),
+      const event = started(
+        threadId,
+        'turn',
+        shape,
+        `2026-11-12T00:00:0${index}Z`,
       );
+      store.appendEvent(event);
       expect(store.personAuthoredTurnPrompts([threadId], 1).length > 0).toBe(
-        expected,
+        isPersonAuthoredTurn(event),
       );
     }
   });

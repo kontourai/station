@@ -67,7 +67,13 @@ server's reason, server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or **Add a
 model connection**. For Station's own agent, **Choose AI for Station** opens the
 existing engine chooser, including ready external engines, before requiring a
-new model connection. Installation commands are display guidance, never automatic execution. The
+new model connection. Detection never runs installation commands. With the
+**Guided engine setup** preview enabled, the person can review a built-in
+installer and run it in a host terminal from the focused Add engine journey.
+The journey keeps installation, connection, sign-in and explicit Station-tool
+selection together; Done returns to Engines with a connected engine selected.
+See the [ACP setup guide](../guides/acp.md#set-up-an-engine-from-chat) for
+permissions, retained attempts and evidence limits. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.
@@ -146,7 +152,7 @@ and CLI behavior below retains the probe's original version scope.
 | Claude Code | SDK `query()` in `claude-adapter.ts` (`startTrackedSession` → `buildOptions`) — **verified-in-code** | Inherited full server env until this wave; now optionally layered with the app-home profile — **verified-in-code**. SDK contract: `Options.env` REPLACES the subprocess environment entirely (never merges with `process.env`) | `CLAUDE_CONFIG_DIR` (plain env var; default `~/.claude`) — **verified-in-code** | `claude-auth.ts` (injectable `env` param); `claude-transcript-session-source.ts`; in-process SDK helpers `listSessions`/`forkSession`/`deleteSession` resolve the config root from the *server's* `process.env` and have no per-call config-dir override — **verified-in-code** |
 | Codex | `spawnCodexProcess()` in `codex-adapter-transport.ts` (via `CodexAdapter.startReservedSession` → `resolveAppHomeEnv`) — **verified-in-code** | Full inherit by default; layered with the app-home profile (`{ CODEX_HOME: dir }`) when the `codex` connection's `config.useAppHome` is `true` — **verified-in-code** (archive#896 wave 2). Model discovery (`listModelCatalog`) deliberately keeps the byte-identical global env — the profile is scoped to the session's own process only | `CODEX_HOME` (plain env var; default `~/.codex`) — **verified-in-code**, now wired end-to-end (spawn seam, import allowlist, auth detection) | `filesystem-skill-registry.ts`'s `defaultSkillRoots()` now also lists both engines' app-home profile `skills/` dirs (`<STATION_HOME>/app-homes/{codex,claude}/skills`), alongside the pre-existing `~/.codex/skills`/`~/.claude/.agents/skills` — **verified-in-code** (archive#896 wave 2, closing §1.1's previously-named gap) |
 | Muse Code | `muse serve` host per session (`createMuseServeHost`) or a `muse exec` process per turn, both in `muse-adapter.ts` — **verified-in-code** (#1942) | Full inherit, layered with the selected credential profile's `{ XDG_CONFIG_HOME: dir }` through the shared `createCredentialProfileAppHomeEnvResolver`; a named profile that cannot be prepared refuses the start. A profile run drops an inherited `META_API_KEY`, which would otherwise sign every profile in as the key's account. Muse has no per-connection env layer. `XDG_DATA_HOME` (sessions) is not moved, and every tool the session runs inherits the overridden `XDG_CONFIG_HOME` — **verified-in-code** | `XDG_CONFIG_HOME` is a ROOT; the binary reads `<root>/muse` (default `~/.config/muse`). `MUSE_AUTH_PATH` is launcher-only — **verified-in-code**, live-observed on 1.4.18 | `muse-auth.ts` (credential presence only, never opened); import allowlist `settings.json` and `skills/`, `auth.json` opt-in, `trust.json` refused (`app-home-profiles.ts`) — **verified-in-code** |
-| opencode / ACP CLIs | `ACPProcess.start()` in `acp-process.ts` — `spawn(bin, args, {stdio, cwd, windowsHide, detached})`, no `env` key ⇒ full inherit — **verified-in-code** | Full inherit — **verified-in-code**. #3290: once Station applies an approval mode to the chat, an `opencode` command additionally gets `OPENCODE_CONFIG_CONTENT`, the inherited value merged under Station's approval rules (until then, and for other commands, the environment is unchanged) ([`opencode-approval-launch.ts`](../../src-server/services/acp/opencode-approval-launch.ts)) | XDG (`XDG_CONFIG_HOME`/`XDG_DATA_HOME`) + `OPENCODE_CONFIG` — **to-probe**: spawn the CLI with overridden `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in a temp home and observe where config/auth are actually read/written; Windows XDG honoring is unknown and also **to-probe** | none |
+| opencode / ACP CLIs | `ACPProcess.start()` in `acp-process.ts` — `spawn(bin, args, {stdio, cwd, windowsHide, detached})`, no `env` key ⇒ full inherit — **verified-in-code** | Full inherit — **verified-in-code**. #3290: once Station applies an approval mode to an OpenCode 1.x chat, its `opencode` command additionally gets `OPENCODE_CONFIG_CONTENT`, the inherited value merged under Station's approval rules (OpenCode 2.x host Never ask sends no overlay; confined 2.x modes over ACP are refused; until a mode applies, and for other commands, the environment is unchanged) ([`opencode-approval-launch.ts`](../../src-server/services/acp/opencode-approval-launch.ts)) | XDG (`XDG_CONFIG_HOME`/`XDG_DATA_HOME`) + `OPENCODE_CONFIG` — **to-probe**: spawn the CLI with overridden `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in a temp home and observe where config/auth are actually read/written; Windows XDG honoring is unknown and also **to-probe** | none |
 
 **The profile-dir contract:** `<STATION_HOME>/app-homes/<engineId>/`, keyed by the stable
 engine id (`claude`, `codex` — also the built-in `AppConfig.agentConnections` keys and
@@ -157,8 +163,9 @@ are wired to a live spawn path (archive#896 wave 2 wires Codex, mirroring wave 1
 `ClaudeAdapterOptions.getAppHomeEnv`, threaded through `startSession` → `buildOptions`, and
 `CodexAdapterOptions.getAppHomeEnv`, threaded through `startReservedSession` →
 `processFactory` (`spawnCodexProcess`) — each applied only when that connection's
-`config.useAppHome` is `true` — absent/false is the default, same "never silent" hygiene
-rule as `provideSkills`. Both adapters report `appHome: 'profile'|'global'` on
+`config.useAppHome` is `true` and a valid explicit `configHome` is absent.
+An explicitly selected credential profile takes precedence over both for a
+fresh session. Both adapters report `appHome: 'profile'|'global'` on
 `session.configured` and record the `station.providers.app_home_sessions` counter
 (attrs: `provider`, `applied`). A legacy base-profile lookup failure (or an absent `getAppHomeEnv`) degrades to
 `undefined` — global config — on both adapters, never blocking session start. Adoption
@@ -284,9 +291,11 @@ that refuses if ANY component from the station home down to the profile dir is i
 symlink — the resolved-path check alone cannot catch a symlinked app-homes ROOT, since both
 sides of that comparison resolve through it consistently and still report "contained." The
 clear route 409s with `Turn off "Run sessions in a Station-managed app home" for this
-connection before clearing its app home.` while the connection's SAVED `useAppHome` is still
-`true` — a proxy for "no session should currently be relying on this profile," not a
-live-session check (Ambiguity F, accepted gap below). That 409 check is also not atomic with
+connection before clearing its app home.` while the saved connection still
+opts in and has no valid explicit `configHome`. The same precedence controls
+availability in **Advanced → App home**, where a configured home disables the
+toggle and snapshot import. The server guard checks the saved settings. Active
+sessions can still exist (Ambiguity F, accepted gap below). That 409 check is also not atomic with
 a concurrent connection save (security review 1a028fde MED, accepted — no serialization
 built): the window self-heals, since `getAppHomeEnv` recreates the profile lazily at the
 next session start, and the only actor able to race it is the user's own UI acting on their
@@ -579,7 +588,7 @@ into one.
 | `firstRun` | Means | Home |
 | --- | --- | --- |
 | absent | This home's config predates the field — it has already been in use | Nothing |
-| `pending` | The home was created and nobody has answered yet | Chapter opens; card present |
+| `pending` | The home was created and nobody has answered yet | Card opens setup on request |
 | `skipped` | Offered, and deferred with "Not now" | Card only |
 | `completed` | Answered | Nothing |
 
@@ -602,13 +611,10 @@ the raw OS checkboxes are gone. A row Station cannot act on renders as a state
 and a reason rather than as a disabled control, so the reason stays in the
 document instead of behind a skipped tab stop.
 
-**Ordering.** The connect launcher still goes first: while it covers the screen
-the chapter does not auto-open (the same suppression `ProjectNewViewGate`
-applies to the New Project modal). That decides only **when**, within one page
-load, an already-decided run opens — never **whether** — and because the
-auto-open is a one-shot latch it can only ever delay an open, never close a
-chapter that is already up. So a flapping status probe changes what the
-chapter's list says and nothing else.
+**Ordering.** Home leaves setup and usage sharing available as separate
+actions. The connect launcher offers help when the Station needs an engine
+connection. Opening setup or dismissing usage sharing leaves the saved
+connection and Home layout intact.
 
 **Enabling the engines.** Every ticked row goes through the one server path the
 New Chat picker's per-row Enable uses: `POST /api/agents/materialize-engine`

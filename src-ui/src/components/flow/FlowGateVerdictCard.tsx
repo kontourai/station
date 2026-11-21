@@ -1,11 +1,14 @@
+import { isUnevaluatedFlowGateObservation } from '@kontourai/station-contracts/runtime-events';
 import type { FlowGateVerdictInfo } from '../../contexts/active-chats-state';
+import { FlowGateDiagnostics } from './FlowGateDiagnostics';
 import './flow-events.css';
 
 const VERDICT_TITLES: Record<FlowGateVerdictInfo['verdict'], string> = {
-  pass: 'Flow gates passed',
+  pass: 'Flow gate passed',
   'route-back': 'Flow gate routed work back',
   block: 'Flow gate blocked completion',
   wait: 'Flow gate waiting on expectations',
+  'not-evaluated': 'No gate evaluation',
 };
 
 interface FlowGateVerdictCardProps {
@@ -17,6 +20,12 @@ export function FlowGateVerdictCard({
   verdict,
   onCopy,
 }: FlowGateVerdictCardProps) {
+  const unevaluated = isUnevaluatedFlowGateObservation(verdict);
+  const observed = unevaluated ? 'not-evaluated' : verdict.verdict;
+  const summary =
+    unevaluated && verdict.verdict === 'pass'
+      ? 'No gate outcome was recorded.'
+      : verdict.summary;
   const attemptLabel =
     verdict.attempt != null && verdict.maxAttempts != null
       ? `attempt ${verdict.attempt} of ${verdict.maxAttempts}`
@@ -26,21 +35,21 @@ export function FlowGateVerdictCard({
 
   return (
     <section
-      className={`flow-gate-card flow-gate-card--${verdict.verdict}`}
-      aria-label={`Flow gate verdict: ${verdict.verdict}`}
+      className={`flow-gate-card flow-gate-card--${observed}`}
+      aria-label={`Flow gate verdict: ${observed}`}
     >
       <div className="flow-gate-card__header">
         <span className="flow-gate-card__title">
-          {VERDICT_TITLES[verdict.verdict]}
+          {VERDICT_TITLES[observed]}
         </span>
         {verdict.verdict === 'route-back' && attemptLabel && (
           <span className="flow-gate-card__attempt">{attemptLabel}</span>
         )}
       </div>
 
-      {verdict.summary && (
-        <p className="flow-gate-card__summary">{verdict.summary}</p>
-      )}
+      {summary && <p className="flow-gate-card__summary">{summary}</p>}
+
+      <FlowGateDiagnostics details={verdict.diagnostics} />
 
       {verdict.verdict === 'route-back' && (
         <>
@@ -74,20 +83,21 @@ export function FlowGateVerdictCard({
           </>
         )}
 
-      {verdict.verdict === 'pass' && verdict.reportPaths && (
-        <div className="flow-gate-card__reports">
-          <ReportPathRow
-            label="Run report (markdown)"
-            path={verdict.reportPaths.markdown}
-            onCopy={onCopy}
-          />
-          <ReportPathRow
-            label="Run report (json)"
-            path={verdict.reportPaths.json}
-            onCopy={onCopy}
-          />
-        </div>
-      )}
+      {(verdict.verdict === 'pass' || verdict.verdict === 'not-evaluated') &&
+        verdict.reportPaths && (
+          <div className="flow-gate-card__reports">
+            <ReportPathRow
+              label="Run report (markdown)"
+              path={verdict.reportPaths.markdown}
+              onCopy={onCopy}
+            />
+            <ReportPathRow
+              label="Run report (json)"
+              path={verdict.reportPaths.json}
+              onCopy={onCopy}
+            />
+          </div>
+        )}
 
       {verdict.gateId && (
         <div className="flow-gate-card__meta">Gate: {verdict.gateId}</div>

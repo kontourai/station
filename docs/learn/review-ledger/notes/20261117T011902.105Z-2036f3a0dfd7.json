@@ -1,0 +1,9 @@
+{
+  "revision": "1e21a6478680606801a5d95cb7e73d24305310c2",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md scheduler owner paragraph edited (override excludes owner devices, cannot set a target, run record stays the owner's, fixed pre-owner migration set). Pages citing api.md (terminal design, integrating-station) cite unrelated sections; unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md scheduler owner paragraph edited (override excludes owner devices, cannot set a target, run record stays the owner's, fixed pre-owner migration set). Pages citing api.md (terminal design, integrating-station) cite unrelated sections; unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

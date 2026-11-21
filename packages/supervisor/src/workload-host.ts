@@ -32,6 +32,7 @@ export type WorkloadReply = DistributiveOmit<
 
 const OPS = new Set([
   'spawn',
+  'capabilities',
   'write',
   'resize',
   'signal',
@@ -120,13 +121,13 @@ export class WorkloadHost {
       forward(this.child);
       return;
     }
-    // Only a spawn starts the host. With no host, there is nothing to list
-    // and no workload to address.
+    // A spawn or explicit capability negotiation starts the host. With no
+    // host, there is nothing to list and no workload to address.
     if (op === 'list') {
       reply({ ok: true, result: [] });
       return;
     }
-    if (op !== 'spawn') {
+    if (op !== 'spawn' && op !== 'capabilities') {
       reply(failure('not-found', 'no such workload'));
       return;
     }

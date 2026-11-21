@@ -14,10 +14,11 @@ import {
   createStationDocsMcpServer,
   findStationDocsTopic,
   listStationDocsTopics,
-  STATION_DOCS_VERSION,
   type StationDocsTopic,
   searchStationDocs,
 } from '../station-docs-mcp-server.js';
+import { STATION_DOCS_VERSION } from '../station-docs-tools.js';
+import { callTool } from './station-docs-mcp-fixture.js';
 
 // Every topic as get_station_docs_topic serves it: the bundle mapped back to
 // the fields the tools have always returned.
@@ -37,9 +38,7 @@ const STATION_DOCS_TOPICS: StationDocsTopic[] = listStationDocsTopics().map(
  * `src-server/runtime/agents/__tests__/runtime-default-agent.test.ts`.
  */
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 type RegisteredTool = {
-  handler: (...args: any[]) => Promise<ToolResult>;
   description?: string;
 };
 
@@ -50,17 +49,11 @@ function registeredTools(): Record<string, RegisteredTool> {
   )._registeredTools;
 }
 
-async function callTool(name: string, args: unknown): Promise<any> {
-  const tool = registeredTools()[name];
-  expect(tool, `tool '${name}' is not registered`).toBeDefined();
-  const result = await tool.handler(args, {} as any);
-  return JSON.parse(result.content[0].text);
-}
-
 const SOURCE_FILES = [
   'station-docs-content.ts',
   'station-docs-mcp-server.ts',
   'station-docs-server.ts',
+  'station-docs-tools.ts',
 ] as const;
 
 function readSource(file: string): string {
@@ -424,6 +417,10 @@ describe('station-docs plugin-authoring topic', () => {
         'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person\u2019s approval of its preview), with an install lifecycle that includes updates and removal.',
       ],
       [
+        'plugins',
+        'The installed view shows the stored verification for the selected plugin.',
+      ],
+      [
         'plugin-authoring',
         'Pane ids and renderer ids are opaque strings, but they are global across every installed plugin: follow the `pane:plugin%3A<plugin-name>:<group>:<name>` and `renderer:plugin%3A<plugin-name>:<renderer kind>:<name>` pattern above so yours cannot collide, write the parts you choose in lowercase, and give every pane its own `id` and its own `rendererId`.',
       ],
@@ -735,6 +732,7 @@ describe('station-docs structural properties (AC2)', () => {
       '../../package.json',
       './station-docs-content.js',
       './station-docs-mcp-server.js',
+      './station-docs-tools.js',
     ]);
     for (const file of SOURCE_FILES) {
       const source = readSource(file);

@@ -36,6 +36,9 @@ const loadSkillExperiencePanel = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  transcriptSnapshotRef?: ComponentProps<
+    typeof ChatDockBody
+  >['transcriptSnapshotRef'];
   connection?: import('../../connections/station-connection').StationConnection;
   workingDirectory?: string | null;
   /**
@@ -72,6 +75,7 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['toolPolicyDelivery'];
   availableModels: ComponentProps<typeof ChatDockBody>['availableModels'];
+  stagedAgentChange?: ComponentProps<typeof ChatDockBody>['stagedAgentChange'];
   executionModels?: ComponentProps<typeof ChatDockBody>['executionModels'];
   onExecutionModelSelect?: ComponentProps<
     typeof ChatDockBody
@@ -116,6 +120,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  transcriptSnapshotRef,
   connection,
   workingDirectory,
   activeOrchestrationSession,
@@ -141,6 +146,7 @@ function ChatDockContentAreaImpl({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  stagedAgentChange,
   executionModels,
   onExecutionModelSelect,
   modelsLoading,
@@ -210,7 +216,10 @@ function ChatDockContentAreaImpl({
                   </div>
                 </div>
                 <div className="conversation-history__list">
-                  <LazyBoundaryError onRetry={onRetry} />
+                  <LazyBoundaryError
+                    onRetry={onRetry}
+                    surface={{ id: 'conversation-history', label: 'History' }}
+                  />
                 </div>
               </div>
             )}
@@ -259,6 +268,7 @@ function ChatDockContentAreaImpl({
             <ChatDockBody
               connection={connection}
               activeSession={activeSession}
+              transcriptSnapshotRef={transcriptSnapshotRef}
               workingDirectory={workingDirectory}
               activeOrchestrationSession={activeOrchestrationSession}
               activeOrchestrationSessionRead={activeOrchestrationSessionRead}
@@ -278,6 +288,7 @@ function ChatDockContentAreaImpl({
               stationApprovalModeDefault={stationApprovalModeDefault}
               toolPolicyDelivery={toolPolicyDelivery}
               availableModels={availableModels}
+              stagedAgentChange={stagedAgentChange}
               executionModels={executionModels}
               onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}

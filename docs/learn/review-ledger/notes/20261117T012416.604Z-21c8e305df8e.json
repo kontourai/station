@@ -1,0 +1,7 @@
+{
+  "revision": "1e21a6478680606801a5d95cb7e73d24305310c2",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Threat model edit adds only the voice loopback cookie failure budget (#2377 slice D round 3); the automations design cites the threat model for automation authority, which is unchanged.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

@@ -1,0 +1,247 @@
+{
+  "revision": "302e44af260ff91df616478c5e0dcd95969d9c52",
+
+  "notes": [
+    {"path":"deploy/push-gateway/README.md","note":"Checked Stable and Nightly scope admission against the manifest and runtime sweep. Each admitted scope is listed and ledger-triaged before fair delete rounds, within the same call and delete ceilings. The synthetic Apple fixture demonstrates progress with sustained demand; Apple quotas and deployed admission remain separate.","inputs":["deploy/push-gateway/README.md","deploy/push-gateway/src/apns-sweep.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the notification record timer/expiry owner, Web Push paused/replaced registrations and APNs sweep. Controlled paths verify generation ownership, persistence-before-exposure, long deadlines and fair delete opportunities. Deployment and live device delivery are outside these receipts.","inputs":["docs/design/notification-delivery.md","deploy/push-gateway/src/apns-sweep.ts","src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Traced the authenticated discovery response and exact browser/Station fingerprint match through the SDK, App authority scope, hook and Settings. HTTP and persistence fixtures cover delayed gone, replacement and same-endpoint refresh; Chromium exercises distinct discovery refusals. Physical push delivery stays separately qualified.","inputs":["docs/guides/web-push-notifications.md","packages/sdk/src/query-domains/chatRuntimeDevice.ts","src-server/routes/operations/push-routes.ts","src-server/runtime/__tests__/push-routes.test.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/notifications/notification-service.ts","src-server/services/notifications/web-push-channel.ts","src-server/services/ssh/device-pairing-service.ts","src-ui/src/App.tsx","src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","src-ui/src/hooks/usePushNotifications.ts","src-ui/src/views/settings/VoiceFeaturesSection.tsx","src-ui/src/views/settings/BrowserPushStatus.tsx","src-ui/src/hooks/web-push-browser-registration.ts","src-ui/src/__tests__/browser-push-settings.browser.test.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the public discovery export and transport request options through the real client wire parser. The VAPID read retains HTTP status and the paired-device response contains an opaque fingerprint. The timer information describes service-owned persisted deadlines rather than a transport promise.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked notification lifecycle types against the persisted scheduler and expiry paths. A bounded timer rechecks its own revision and deadline, and delivering does not imply downstream display. The native timer and controlled-clock tests establish the claimed behavior.","inputs":["docs/reference/shared.md","src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the browser Web Push description against the selected Station scope, actual Settings status component and App-level default reset. Disabling revokes the local subscription. A remote cleanup failure is visible and remains distinct from the local outcome.","inputs":["docs/user/settings.md"]},
+
+    {"path":"deploy/push-gateway/README.md","note":"Checked Stable/Nightly listing and fail-closed ledger triage before interleaved deletes. Repeated early-scope demand in the synthetic Apple fixture does not consume the later scope’s opportunity. Global subrequests, deletes, grace, and deployment limits retain their established owners.","inputs":["deploy/push-gateway/src/apns-sweep.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked Stable/Nightly listing and fail-closed ledger triage before interleaved deletes. Repeated early-scope demand in the synthetic Apple fixture does not consume the later scope’s opportunity. Global subrequests, deletes, grace, and deployment limits retain their established owners.","inputs":["deploy/push-gateway/src/apns-sweep.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the linked design change for bounded timer and fair sweep evidence. Provider and deployment prerequisites remain separately established by their own owners.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the revised guide against the original replacement and stale-state audit. Exact generation cleanup, identity-scoped discovery, the feature-off decision and structured read errors now have source and fixture evidence.","inputs":["docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the linked SDK additions on status discovery and long server deadlines. Scoped transport, provider presentation and broader SDK integration follow their existing contracts.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the linked SDK additions on status discovery and long server deadlines. Scoped transport, provider presentation and broader SDK integration follow their existing contracts.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the linked Settings addition against the existing preview and Device preference tiers. The Web Push controls describe the selected registration and the local unsubscribe outcome, and do not change feature preview routing.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the linked Settings addition against the existing preview and Device preference tiers. The Web Push controls describe the selected registration and the local unsubscribe outcome, and do not change feature preview routing.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the canonical fingerprint input added beside the private Web Push subscription shape. Pairing, peer route and authority contracts elsewhere in the file retain their semantics. The wire discovery response carries only the digest.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the additive fetchWebPushRegistration barrel export. Existing package components and scoped connection/query helpers remain routed through their existing exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the query barrel delta. The new registration reader exposes only the VAPID route data and does not redefine other query, presentation or connection contracts.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the query barrel delta. The new registration reader exposes only the VAPID route data and does not redefine other query, presentation or connection contracts.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the query barrel delta. The new registration reader exposes only the VAPID route data and does not redefine other query, presentation or connection contracts.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the query barrel delta. The new registration reader exposes only the VAPID route data and does not redefine other query, presentation or connection contracts.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the query barrel delta. The new registration reader exposes only the VAPID route data and does not redefine other query, presentation or connection contracts.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the actual discovery and optional scope transport fields in SDK fixtures. The status distinguishes 401, explicit pairing-required 403, ordinary 403, 404 and transport errors. Old responses with no registration status still decode without inventing confirmation.","inputs":["packages/sdk/src/query-domains/chatRuntimeDevice.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the new isolated Chromium Settings fixture is classified with the existing host-resource browser suite. Its VAPID HTTP routes are controlled and no provider or deployment is contacted.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the new isolated Chromium Settings fixture is classified with the existing host-resource browser suite. Its VAPID HTTP routes are controlled and no provider or deployment is contacted.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked discovery and writes under the same paired-device credential rule. The current read supplies a no-store opaque fingerprint, and a stale endpoint cannot clear the replacement. Runtime authentication and hosted suppression remain authoritative.","inputs":["src-server/routes/operations/push-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the real runtime HTTP paired fixture plus delivery channel and registry store. It verifies selected-device discovery, successful and revoked sends, same-endpoint renewal, replacement during a pending gone, and durable outcomes after reload.","inputs":["src-server/runtime/__tests__/push-routes.test.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed the exact Web Push composition hunk against the citing records. It passes through an endpoint for conditional cleanup and provides the paired-device fingerprint reader using the current DevicePairingService. Other registered route, tenant, realtime, Browser, Terminal and settings contracts retain their method boundaries.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the bounded Node wakeup and expiry changes against persisted revision ownership. The real native timer assertion, controlled clock/restart test, and existing provider/action suites passed. Timer callbacks no longer retire a newer owner or infer downstream delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the bounded Node wakeup and expiry changes against persisted revision ownership. The real native timer assertion, controlled clock/restart test, and existing provider/action suites passed. Timer callbacks no longer retire a newer owner or infer downstream delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the bounded Node wakeup and expiry changes against persisted revision ownership. The real native timer assertion, controlled clock/restart test, and existing provider/action suites passed. Timer callbacks no longer retire a newer owner or infer downstream delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the bounded Node wakeup and expiry changes against persisted revision ownership. The real native timer assertion, controlled clock/restart test, and existing provider/action suites passed. Timer callbacks no longer retire a newer owner or infer downstream delivery.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked exact generation capture before provider send, unchanged gone cleanup with a live registration, and replacement/revocation before late results. The HTTP and persistence fixture exercises the real pairing service; no notification delivery to an external endpoint is involved.","inputs":["src-server/services/notifications/web-push-channel.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Checked exact generation capture before provider send, unchanged gone cleanup with a live registration, and replacement/revocation before late results. The HTTP and persistence fixture exercises the real pairing service; no notification delivery to an external endpoint is involved.","inputs":["src-server/services/notifications/web-push-channel.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Checked exact generation capture before provider send, unchanged gone cleanup with a live registration, and replacement/revocation before late results. The HTTP and persistence fixture exercises the real pairing service; no notification delivery to an external endpoint is involved.","inputs":["src-server/services/notifications/web-push-channel.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the pairing assertions retain the expected persisted subscription while allowing private per-process metadata used only during sends. Exact delivery generation and replacement behavior are pinned by real pairing/HTTP integration.","inputs":["src-server/services/ssh/__tests__/device-pairing-service.test.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed only the Web Push registration and in-flight generation delta against the citing owners. Registry writes are still persisted before exposure. The fingerprint and late cleanup are exact, and no device credential, authority, relay policy, or public PairedDevice shape is widened.","inputs":["src-server/services/ssh/device-pairing-service.ts"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Reviewed the app-wide Web Push caller now using the selected host authority scope. App default reset and Settings consume one lifecycle; the change does not affect Activity, shell navigation, setup, or workspace provider boundaries.","inputs":["src-ui/src/App.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the app-wide Web Push caller now using the selected host authority scope. App default reset and Settings consume one lifecycle; the change does not affect Activity, shell navigation, setup, or workspace provider boundaries.","inputs":["src-ui/src/App.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the app-wide Web Push caller now using the selected host authority scope. App default reset and Settings consume one lifecycle; the change does not affect Activity, shell navigation, setup, or workspace provider boundaries.","inputs":["src-ui/src/App.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed exact-matching mount/reconnect, same-URL authority change, failed POST/remount, feature disable, and independent browser/Station cleanup controls. Tests use an actual hook and controlled SDK responses.","inputs":["src-ui/src/hooks/__tests__/usePushNotifications.test.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed scoped observation, exact positive read/POST, and dismissal/activation handling. Stale authority replies cannot publish success; local and Station cleanup outcomes are separate. The browser fixture uses a controlled VAPID response.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed scoped observation, exact positive read/POST, and dismissal/activation handling. Stale authority replies cannot publish success; local and Station cleanup outcomes are separate. The browser fixture uses a controlled VAPID response.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed scoped observation, exact positive read/POST, and dismissal/activation handling. Stale authority replies cannot publish success; local and Station cleanup outcomes are separate. The browser fixture uses a controlled VAPID response.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked BrowserPushStatus is the production caller for enabled/registered state from the App hook. The switch explains local unsubscribe; authentication, unsupported and cleanup feedback is rendered separately.","inputs":["src-ui/src/views/settings/VoiceFeaturesSection.tsx"]}
+  ]
+}

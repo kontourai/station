@@ -4,8 +4,35 @@ import {
   type TauriEventHandler,
   TauriNativePlatformAdapter,
 } from '../tauri';
+import { completeNativeCapabilityReport } from './completeNativeCapabilityReportFixture';
 
 describe('Tauri tray navigation replay', () => {
+  it.each(['android', 'ios'] as const)(
+    'does not subscribe to tray IPC on %s',
+    async (platform) => {
+      const bridge: TauriEventBridge = {
+        invoke: vi.fn(
+          async () =>
+            completeNativeCapabilityReport(platform, {
+              'desktop-tray': { state: 'disabled', reason: 'desktop only' },
+            }) as never,
+        ),
+        listen: vi.fn().mockResolvedValue(vi.fn()),
+      };
+      const adapter = new TauriNativePlatformAdapter(bridge);
+      expect((await adapter.getCapabilityReport()).status).toBe('ok');
+
+      const subscription = adapter.subscribeToTrayNavigation(vi.fn());
+      await Promise.resolve();
+      subscription.dispose();
+
+      expect(bridge.listen).not.toHaveBeenCalled();
+      expect(bridge.invoke).toHaveBeenCalledExactlyOnceWith(
+        'native_capability_report',
+      );
+    },
+  );
+
   it('subscribes before draining a destination queued before the renderer mounted', async () => {
     let wake: TauriEventHandler<unknown> | undefined;
     const calls: string[] = [];

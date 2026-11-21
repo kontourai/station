@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   mergeRuntimeACPConnections,
-  scheduleRuntimeDailyReload,
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
 } from '../runtime-background-tasks.js';
@@ -230,29 +229,6 @@ describe('scheduleRuntimeEngineSpawnTmpReaping', () => {
       expect(acpBridge.startAll).not.toHaveBeenCalled();
     },
   );
-});
-
-describe('scheduleRuntimeDailyReload', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-04-10T18:30:00'));
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  test('schedules reload for the next midnight and reschedules after running', async () => {
-    const timers: NodeJS.Timeout[] = [];
-    const reloadAgents = vi.fn(async () => {});
-
-    scheduleRuntimeDailyReload({ timers, reloadAgents });
-
-    expect(timers).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(5.5 * 60 * 60 * 1000);
-    expect(reloadAgents).toHaveBeenCalledTimes(1);
-    expect(timers.length).toBeGreaterThanOrEqual(2);
-  });
 });
 
 describe('scheduleRuntimePluginUpdateCheck', () => {

@@ -73,7 +73,7 @@ import {
   PROJECT_HOME,
   resolveLifecycleHomeTarget,
 } from './commands/helpers.js';
-import { importConfig } from './commands/import.js';
+import { importConfig, readConfigImportStatus } from './commands/import.js';
 import { createPlugin, init } from './commands/init.js';
 import {
   info,
@@ -428,6 +428,8 @@ const CORE_COMMANDS = [
   'secret-bindings',
   'mcp-clients',
   'conversation',
+  'board',
+  'boards',
   'claims',
   'chat',
 ] as const;
@@ -825,7 +827,25 @@ function buildProgram(
     shortcut();
   });
   register('import', async (rawArgs) => {
-    await importConfig(rawArgs[0]);
+    if (rawArgs.length === 1 && rawArgs[0] === '--status') {
+      console.log(JSON.stringify(readConfigImportStatus(), null, 2));
+      return;
+    }
+    const [file, resume, ...extra] = rawArgs;
+    const resumePrefix = '--resume=';
+    if (
+      extra.length > 0 ||
+      (resume !== undefined &&
+        (!resume.startsWith(resumePrefix) ||
+          resume.length === resumePrefix.length))
+    ) {
+      throw new Error('Usage: station import <file> [--resume=<operation-id>]');
+    }
+    if (resume !== undefined) {
+      await importConfig(file, { resumeId: resume.slice(resumePrefix.length) });
+    } else {
+      await importConfig(file);
+    }
   });
   register('stations', async (rawArgs) => {
     await runStationsCommand(rawArgs);

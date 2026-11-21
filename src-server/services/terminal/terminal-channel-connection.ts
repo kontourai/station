@@ -52,6 +52,12 @@ const launchProfile = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('shell') }).strict(),
   z
     .object({
+      kind: z.literal('repository-sign-in'),
+      provider: z.enum(['github', 'gitlab']),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal('agent'),
       connectionId: z.string().min(1).max(128),
       mode: z.string().min(1).max(128),

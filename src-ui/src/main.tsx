@@ -38,7 +38,7 @@ installVisualViewportInset();
 installFoldGeometry();
 
 import App from './App';
-import { MobileWelcomeBoundary } from './components/MobileWelcomeBoundary';
+import { NativeConnectionStartup } from './components/NativeConnectionStartup';
 import { OfflineReadingBoundary } from './components/OfflineReadingBoundary';
 import { WebOfflineShell } from './components/WebOfflineShell';
 import './components/editor-controls.css';
@@ -115,10 +115,28 @@ import './providers/context/index';
 // Connection onboarding is mounted after the provider shell has booted. Keep
 // its recovery/pairing machinery out of the first-paint graph; the gate itself
 // preserves the shell once it resolves.
+const loadConnectionOwner = () => import('./components/OnboardingGate');
 const loadOnboardingGate = () =>
-  import('./components/OnboardingGate').then((module) => ({
+  loadConnectionOwner().then((module) => ({
     default: () => <module.OnboardingGate>{null}</module.OnboardingGate>,
   }));
+
+const loadMobileConnectionStartup = async () => {
+  const [{ OnboardingGate }, { MobileWelcomeBoundary }] = await Promise.all([
+    loadConnectionOwner(),
+    import('./components/MobileWelcomeBoundary'),
+  ]);
+  return {
+    default: ({ children }: { children: React.ReactNode }) => (
+      <>
+        <RecoveryQueryBoundary>
+          <OnboardingGate>{null}</OnboardingGate>
+        </RecoveryQueryBoundary>
+        <MobileWelcomeBoundary>{children}</MobileWelcomeBoundary>
+      </>
+    ),
+  };
+};
 
 // Voice providers subscribe through VoiceProviderContext, so they can load off
 // the startup bundle and notify the mounted tree when registration completes.
@@ -347,22 +365,26 @@ function renderApp(): void {
                   the selected Station changes. */}
                       <NavigationProvider>
                         <ScopedToastProvider>
-                          <RecoveryQueryBoundary>
-                            <DeferredCapabilityBoundary
-                              id="connection-recovery"
-                              load={loadOnboardingGate}
-                              copy={{
-                                // The title renders as the banner's badge, which
-                                // is uppercased and sits beside two-word badges —
-                                // a sentence here reads as shouting. The full
-                                // statement is the message below.
-                                failureTitle: 'Recovery unavailable',
-                                failure:
-                                  'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
-                              }}
-                            />
-                          </RecoveryQueryBoundary>
-                          <MobileWelcomeBoundary>
+                          <NativeConnectionStartup
+                            load={loadMobileConnectionStartup}
+                            nonMobileRecovery={
+                              <RecoveryQueryBoundary>
+                                <DeferredCapabilityBoundary
+                                  id="connection-recovery"
+                                  load={loadOnboardingGate}
+                                  copy={{
+                                    // The title renders as the banner's badge, which
+                                    // is uppercased and sits beside two-word badges —
+                                    // a sentence here reads as shouting. The full
+                                    // statement is the message below.
+                                    failureTitle: 'Recovery unavailable',
+                                    failure:
+                                      'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
+                                  }}
+                                />
+                              </RecoveryQueryBoundary>
+                            }
+                          >
                             <AuthorityQueryProvider
                               localUiApiBase={localUiApiBase}
                             >
@@ -432,7 +454,7 @@ function renderApp(): void {
                                 </AccountPreferencesProvider>
                               </TranscriptAppWorkspaceProvider>
                             </AuthorityQueryProvider>
-                          </MobileWelcomeBoundary>
+                          </NativeConnectionStartup>
                         </ScopedToastProvider>
                       </NavigationProvider>
                     </QueryClientProvider>

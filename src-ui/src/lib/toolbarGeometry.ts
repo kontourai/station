@@ -16,13 +16,7 @@ export function readToolbarHeight(): number {
   if (toolbar) {
     const { height } = toolbar.getBoundingClientRect();
     if (height > 0) return height;
-    // A full-screen mobile chat hides the toolbar outright
-    // (`app__main--mobile-dock-fullscreen`). It then occupies nothing but the
-    // safe-area inset, which is exactly what the CSS in that mode reduces
-    // `--app-toolbar-total-height` to — so agree with it instead of falling
-    // through to the pre-mount fallback and over-reserving a whole 52px bar.
-    // Checked explicitly rather than inferred from `height === 0`, because a
-    // jsdom test has no layout and must still get the summed fallback below.
+    // Embedded shells can omit their toolbar. Only the safe inset contributes then.
     if (getComputedStyle(toolbar).display === 'none') {
       return (
         Number.parseFloat(

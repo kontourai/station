@@ -1,5 +1,10 @@
+import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import {
+  type ContextType,
   memo,
+  type ReactNode,
+  type RefObject,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -7,14 +12,22 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useAnchoredPopup } from '../../hooks/useAnchoredPopup';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { motionTokenMs, prefersReducedMotion } from '../../lib/reduced-motion';
 import { formatDuration } from '../../utils/relativeTime';
+import { useIsChildChatCovered } from '../chat-dock/ChildChatNavigationContext';
+import { ArrowDownGlyph, ArrowUpGlyph, CloseGlyph } from '../icons/Glyph';
+import {
+  ChatActivityChildren,
+  ChatActivityMarks,
+} from './ChatActivityChildren';
 import type { ChatStatus } from './chatStatus';
 import {
   LiveStatusGlyph,
   trackPageVisibilityForStatusMotion,
 } from './LiveStatusGlyph';
+import type { ScheduledCheckBackContext } from './ScheduledCheckBackContext';
 
 /** How long a one-shot confirmation ("Resumed") stays before the pill moves on. */
 export const CHAT_STATUS_CELEBRATE_MS = 1_100;
@@ -38,13 +51,56 @@ const PillClock = memo(function PillClock({ from }: { from: number }) {
 function PillDetails({
   id,
   lines,
+  children,
+  host,
+  onDismiss,
 }: {
   id: string;
   lines: ChatStatus['details'];
+  children?: ReactNode;
+  host: RefObject<HTMLElement | null>;
+  onDismiss(): void;
 }) {
   const now = useElapsedClock();
-  return (
-    <div id={id} className="chat-status-pill__details">
+  const panel = useRef<HTMLDivElement>(null);
+  const anchor = useRef(
+    host.current?.closest<HTMLElement>('.chat-input') ?? null,
+  );
+  const { popupStyle, renderPopup } = useAnchoredPopup(
+    anchor.current ? anchor : undefined,
+    host,
+    360,
+  );
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !panel.current?.contains(event.target) &&
+        !host.current?.contains(event.target)
+      )
+        onDismiss();
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDismiss();
+      host.current?.querySelector('button')?.focus();
+    };
+    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('keydown', onEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('keydown', onEscape, true);
+    };
+  }, [host, onDismiss]);
+  return renderPopup(
+    <div
+      ref={panel}
+      id={id}
+      className="chat-status-pill__details"
+      style={popupStyle}
+    >
       {lines.map((line) => (
         <p key={line.text}>
           {line.since === undefined
@@ -52,7 +108,8 @@ function PillDetails({
             : `${line.text} · ${formatDuration(now - line.since)}`}
         </p>
       ))}
-    </div>
+      {children}
+    </div>,
   );
 }
 
@@ -72,12 +129,20 @@ function PillDetails({
  */
 export function ChatStatusPill({
   status,
+  checkBack,
+  runningChildren,
+  activeTurnSince,
+  stopControl,
   onRevealApproval,
   onRepair,
   onResync,
   onRecoveryFocus,
 }: {
   status: ChatStatus | undefined;
+  checkBack?: ContextType<typeof ScheduledCheckBackContext>;
+  runningChildren?: readonly ChildWorkItem[];
+  activeTurnSince?: number;
+  stopControl?: ReactNode;
   onRevealApproval?: () => void;
   onRepair?: () => void;
   /** Re-reads this conversation's status and history from the Station. */
@@ -86,6 +151,7 @@ export function ChatStatusPill({
   onRecoveryFocus?: () => boolean;
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
+  const covered = useIsChildChatCovered();
   const detailsId = useId();
   const hostRef = useRef<HTMLElement>(null);
   const resyncControl = useRef<HTMLButtonElement | null>(null);
@@ -95,6 +161,7 @@ export function ChatStatusPill({
   const resizeAnimation = useRef<Animation | undefined>(undefined);
   useEffect(() => () => resizeAnimation.current?.cancel(), []);
   const [expanded, setExpanded] = useState(false);
+  const closeDetails = useCallback(() => setExpanded(false), []);
 
   // A decision the user made lands as a brief "Resumed" before the pill
   // shows whatever comes next — the approval did not just vanish.
@@ -166,7 +233,14 @@ export function ChatStatusPill({
     return () => clearTimeout(timer);
   }, [isShown]);
 
-  const shownAction = shown?.action;
+  const hasCheckBack =
+    !!checkBack && (shown?.kind === 'waiting' || shown?.kind === 'working');
+  const children =
+    shown?.kind === 'working' && runningChildren?.length
+      ? runningChildren
+      : undefined;
+  const hasDetails = !!children || hasCheckBack;
+  const shownAction = hasDetails ? 'details' : shown?.action;
   useEffect(() => {
     if (shownAction !== 'details') setExpanded(false);
   }, [shownAction]);
@@ -246,7 +320,7 @@ export function ChatStatusPill({
     if (current.action === 'reveal-approval') onRevealApproval?.();
     else if (current.action === 'repair') onRepair?.();
     else if (current.action === 'resync') onResync?.();
-    else if (current.action === 'details') setExpanded((open) => !open);
+    else if (shownAction === 'details') setExpanded((open) => !open);
   };
   const actionable = Boolean(
     current &&
@@ -254,7 +328,8 @@ export function ChatStatusPill({
       ((current.action === 'reveal-approval' && onRevealApproval) ||
         (current.action === 'repair' && onRepair) ||
         (current.action === 'resync' && onResync) ||
-        (current.action === 'details' && current.details.length > 0)),
+        (shownAction === 'details' &&
+          (current.details.length > 0 || hasDetails))),
   );
   const body = current && (
     <span
@@ -265,6 +340,9 @@ export function ChatStatusPill({
     >
       <LiveStatusGlyph kind={current.glyph} />
       <span className="chat-status-pill__label">{current.label}</span>
+      {hasCheckBack && current.kind === 'waiting' && (
+        <span className="chat-status-pill__clock">{checkBack?.nextTime}</span>
+      )}
       {current.count !== undefined && (
         <span className="chat-status-pill__count" aria-hidden="true">
           {current.count}
@@ -273,6 +351,13 @@ export function ChatStatusPill({
       {current.clockFrom !== undefined && (
         <PillClock from={current.clockFrom} />
       )}
+      {children && <ChatActivityMarks items={children} />}
+      {shownAction === 'details' &&
+        (hasDetails || current.details.length > 0) && (
+          <span aria-hidden="true" className="chat-activity-caret">
+            {expanded ? <ArrowDownGlyph /> : <ArrowUpGlyph />}
+          </span>
+        )}
       {current.action === 'resync' && onResync && (
         <span className="chat-status-pill__action" aria-hidden="true">
           {current.pending ? 'Resyncing…' : 'Resync'}
@@ -309,45 +394,91 @@ export function ChatStatusPill({
         tabIndex={-1}
         aria-label="Conversation status"
       >
+        <div
+          className="chat-status-pill__island"
+          data-active={!!current || !!stopControl || undefined}
+        >
+          {current &&
+            (actionable ? (
+              <button
+                type="button"
+                {...common}
+                aria-label={
+                  current.action === 'reveal-approval'
+                    ? current.count !== undefined
+                      ? `${current.label} (${current.count}) — show the requests`
+                      : `${current.label} — show the request`
+                    : current.action === 'repair'
+                      ? `${current.label} — repair the connection`
+                      : current.action === 'resync'
+                        ? `${current.label} — resync this conversation`
+                        : hasCheckBack && current.kind === 'waiting'
+                          ? `Waiting · ${checkBack?.nextTime}`
+                          : current.label
+                }
+                aria-expanded={shownAction === 'details' ? expanded : undefined}
+                aria-controls={
+                  shownAction === 'details' && expanded ? detailsId : undefined
+                }
+                disabled={current.action === 'resync' && current.pending}
+                aria-busy={
+                  current.action === 'resync' ? current.pending : undefined
+                }
+                ref={current.action === 'resync' ? resyncControl : undefined}
+                onClick={activate}
+              >
+                {body}
+              </button>
+            ) : (
+              <div {...common} aria-hidden="true">
+                {body}
+              </div>
+            ))}
+          {stopControl}
+        </div>
         {current &&
-          (actionable ? (
-            <button
-              type="button"
-              {...common}
-              aria-label={
-                current.action === 'reveal-approval'
-                  ? current.count !== undefined
-                    ? `${current.label} (${current.count}) — show the requests`
-                    : `${current.label} — show the request`
-                  : current.action === 'repair'
-                    ? `${current.label} — repair the connection`
-                    : current.action === 'resync'
-                      ? `${current.label} — resync this conversation`
-                      : current.label
-              }
-              aria-expanded={
-                current.action === 'details' ? expanded : undefined
-              }
-              aria-controls={
-                current.action === 'details' && expanded ? detailsId : undefined
-              }
-              disabled={current.action === 'resync' && current.pending}
-              aria-busy={
-                current.action === 'resync' ? current.pending : undefined
-              }
-              ref={current.action === 'resync' ? resyncControl : undefined}
-              onClick={activate}
+          expanded &&
+          !covered &&
+          !leaving &&
+          shownAction === 'details' &&
+          (current.details.length > 0 || hasDetails) && (
+            <PillDetails
+              id={detailsId}
+              lines={current.details}
+              host={hostRef}
+              onDismiss={closeDetails}
             >
-              {body}
-            </button>
-          ) : (
-            <div {...common} aria-hidden="true">
-              {body}
-            </div>
-          ))}
-        {current && expanded && !leaving && current.details.length > 0 && (
-          <PillDetails id={detailsId} lines={current.details} />
-        )}
+              {children && (
+                <div className="chat-activity-heading">
+                  <strong>Conversation activity</strong>
+                  <button
+                    type="button"
+                    aria-label="Close activity"
+                    onClick={() => {
+                      closeDetails();
+                      hostRef.current?.querySelector('button')?.focus();
+                    }}
+                  >
+                    <CloseGlyph />
+                  </button>
+                </div>
+              )}
+              {children && activeTurnSince !== undefined && (
+                <p>
+                  Current turn · <PillClock from={activeTurnSince} /> elapsed
+                </p>
+              )}
+              {children && (
+                <ChatActivityChildren
+                  items={children}
+                  returnFocus={() =>
+                    hostRef.current?.querySelector('button') ?? undefined
+                  }
+                />
+              )}
+              {hasCheckBack && checkBack?.notes}
+            </PillDetails>
+          )}
       </section>
     </>
   );

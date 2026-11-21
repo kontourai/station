@@ -1,0 +1,49 @@
+{
+  "revision": "232d8bcc37dccbb351691fd1213025d9e52f3060",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#5066: the pull-request-watch paragraph now names the four barrel React hooks; checked against packages/sdk/src/query-domains/pullRequestWatch.ts and the barrel export.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"#5066 adds four barrel exports (usePullRequestFeedbackCapability, useTaskPullRequestWatchQuery, useSetTaskPullRequestWatchMutation, useSetProjectPullRequestWatchMutation). Checked: no existing export, entry or claim these pages cite changed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#5066 re-exports the four pull request watch hooks from query-domains/pullRequestWatch. Checked: no existing query hook these pages cite changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#5066 re-exports the four pull request watch hooks from query-domains/pullRequestWatch. Checked: no existing query hook these pages cite changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#5066 re-exports the four pull request watch hooks from query-domains/pullRequestWatch. Checked: no existing query hook these pages cite changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#5066 re-exports the four pull request watch hooks from query-domains/pullRequestWatch. Checked: no existing query hook these pages cite changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 re-exports the four pull request watch hooks from query-domains/pullRequestWatch. Checked: no existing query hook these pages cite changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 classifies the new pullRequestWatch query domain as public. Checked: the barrel guard these pages describe is unchanged.","inputs":["packages/sdk/src/__tests__/publicBarrel.test.ts"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"#5066 stubs the three pull request watch hooks in this suite's SDK mock (the host does not serve it here). Checked: no behaviour these pages cite from this suite changed.","inputs":["src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#5066 stubs the three pull request watch hooks in this suite's SDK mock (the host does not serve it here). Checked: no behaviour these pages cite from this suite changed.","inputs":["src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#5066 stubs the Project pull request watch mutation in the SDK mock and adds two Pull requests section tests. Checked: no behaviour this page cites from this suite changed.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5066 names the pull request watch React hooks in one paragraph; checked the citing pages' claims are unaffected.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#5066 names the pull request watch React hooks in one paragraph; checked the citing pages' claims are unaffected.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

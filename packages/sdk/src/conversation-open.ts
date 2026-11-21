@@ -77,9 +77,13 @@ function parseConversationOpenResolution(
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   if (
-    !['resolved', 'fork-ready', 'missing-session', 'unavailable'].includes(
-      String(record.status),
-    ) ||
+    ![
+      'resolved',
+      'fork-ready',
+      'fresh-context-ready',
+      'missing-session',
+      'unavailable',
+    ].includes(String(record.status)) ||
     typeof record.canContinue !== 'boolean' ||
     !Array.isArray(record.recoveryActions) ||
     !record.conversation ||
@@ -127,6 +131,23 @@ function parseConversationOpenResolution(
     )
   )
     return false;
+  if (record.status === 'fresh-context-ready') {
+    return (
+      record.currentSessionId === undefined &&
+      record.execution === undefined &&
+      record.nextTurnStartsSession === undefined &&
+      typeof record.predecessorSessionId === 'string' &&
+      record.predecessorSessionId.length > 0 &&
+      typeof record.reservedSessionId === 'string' &&
+      record.reservedSessionId.length > 0 &&
+      record.reservedSessionId !== record.predecessorSessionId &&
+      transcript.available === true &&
+      transcript.owner === 'runtime' &&
+      actions.length === 0 &&
+      (record.continuationPending === undefined ||
+        (!record.canContinue && record.continuationPending === true))
+    );
+  }
   if (record.status === 'fork-ready') {
     return (
       record.currentSessionId === undefined &&

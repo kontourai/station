@@ -63,15 +63,9 @@ jobs:
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: false
-    # GitHub-hosted: the self-hosted heavy Linux listener this job used to
-    # require has been offline since at least 2026-11-14, so every run queued
-    # until a newer landing superseded it and none ever reached a runner. The
-    # hosted image ships Docker and Compose; Chromium is installed below.
-    # There is no shared physical host left to lease, so the capacity
-    # reservation and the per-host Docker client isolation went with it.
-    # (Run 33228038600's device-pairing timeout, once blamed on the hosted
-    # environment, was the anonymous-browser premise gap fixed in #917.)
-    runs-on: ubuntu-22.04
+    # GitHub-hosted (#5350): the VM owns its Docker daemon, and there is no
+    # shared desktop-win host capacity to reserve.
+    runs-on: ubuntu-24.04
     # Not yet measured hosted. The smoke job took 8-15 minutes on the fleet
     # host (six passing runs on 2026-10-01, e.g. run 36850091547 at 15 min)
     # with a warm Docker cache and installed browsers; a hosted runner builds
@@ -84,6 +78,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+        with:
+          require-docker: "true"
+      - id: isolate-docker
+        name: Isolate Docker client state
+        # Use job-owned Docker configuration and retain guarded cleanup.
+        run: |
+          umask 077
+          docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
+          echo "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
       - name: Report runner capacity
         # Disk is the hosted runner's tightest resource for an image build;
         # print it so a disk-full failure is diagnosable from the log alone.
@@ -107,7 +111,7 @@ jobs:
         run: |
           echo "SMOKE_T_CHROMIUM=$(date +%s)" >> "$GITHUB_ENV"
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install --with-deps chromium
       - name: Build, pair, persist, and clean up
         env:
           STATION_RELEASE_SHA: ${{ github.sha }}
@@ -159,3 +163,11 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Remove isolated Docker client state
+        # Earlier setup failures leave no Docker configuration to clean up.
+        if: always() && steps.isolate-docker.outcome == 'success'
+        run: |
+          case "$DOCKER_CONFIG" in
+            "$RUNNER_TEMP"/station-docker-config.*) rm -rf -- "$DOCKER_CONFIG" ;;
+            *) echo "Refusing unexpected DOCKER_CONFIG: $DOCKER_CONFIG" >&2; exit 1 ;;
+          esac

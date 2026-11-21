@@ -1246,20 +1246,12 @@ describe('intent-first Home', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open setup' }));
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
   });
-  test('returns to the task after the usage decision without asking engine or profile questions', async () => {
+  test('keeps Home usable when usage sharing still needs a choice', () => {
     disclosureState.outstanding = true;
     render(<FirstRunHomeChapter intentFirst />);
-    expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
-    expect(screen.getByText('Step 1 of 1')).toBeTruthy();
-    await act(async () =>
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Keep usage telemetry on' }),
-      ),
-    );
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
-    expect(recordFirstRunDecision).not.toHaveBeenCalledWith({
-      status: 'completed',
-    });
+    expect(screen.getByRole('button', { name: 'Open setup' })).toBeTruthy();
+    expect(recordFirstRunDecision).not.toHaveBeenCalled();
   });
 });

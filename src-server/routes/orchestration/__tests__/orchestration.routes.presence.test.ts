@@ -58,6 +58,7 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
 function makeMinimalService() {
   return {
     listSessionReadModel: vi.fn().mockResolvedValue([]),
+    readableEngineStartWaits: () => [],
     canUserReadSession: vi.fn().mockReturnValue(true),
     readEventStreamHead: () => 0,
     retainSessionDeletionReader: () => () => {},

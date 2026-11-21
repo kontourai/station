@@ -418,6 +418,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
+    'tests/guided-engine-setup.spec.ts',
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
@@ -462,6 +463,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   ],
   sharedInstanceExclusive: [
     'tests/station-connection-chat.spec.ts',
+    'tests/station-conversation-handoff.spec.ts',
     // Creates real Projects, channels and read markers on the instance.
     'tests/project-channel-navigation.spec.ts',
     // Starts its own Station with local accounts and sharing, pairs browsers
@@ -471,6 +473,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/project-room-live.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
+    // Copies opt-in UI review captures to a shared output directory.
+    'tests/engine-app-home-override.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
@@ -542,6 +546,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/station-conversation-handoff.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Station connections',
+    tierTarget: 'partial',
+    primary: false,
+    rationale:
+      'Two disposable real Stations and real delegation pairing: a host conversation continues on the paired Station with its history carried, the first turn goes through the relay, and a same-key retry reuses the receiver conversation. Deterministic local HTTP model; no conversation route mocks.',
+    exceptions: [],
+  },
   {
     path: 'tests/station-connection-chat.spec.ts',
     bucket: 'product',
@@ -1096,6 +1110,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/enterprise-pane-lifecycle.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'On an isolated clean Station, previews and installs Enterprise and its real provider dependency, opens Dashboard and Notes from server-issued Project Pane occurrences, checks filesystem-backed Notes and unscoped retrieval with deterministic embeddings, and proves dependency ownership on uninstall.',
+    exceptions: [],
+  },
+  {
     path: 'tests/layout-stack-parity.spec.ts',
     bucket: 'extended',
     surface: 'Plugins',
@@ -1383,6 +1407,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/guided-engine-setup.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Guided engine setup at phone and desktop widths in both themes: installer review/cancel, detection refresh, connect and explicit Station tools. Fixture-backed UI; no vendor installation or account qualification.',
+    exceptions: [],
+  },
+  {
     path: 'tests/connections-crud.spec.ts',
     bucket: 'product',
     surface: 'Connections',
@@ -1390,6 +1424,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Connections CRUD plus Agent app discovery hit, miss, Add-catalog placement, and Model-only first-run honesty.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/engine-app-home-override.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Engine connection details show the effective App home and available actions on phone and desktop in both themes. Fixture-backed configuration and profile status.',
     exceptions: [],
   },
   {
@@ -2043,7 +2087,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, immutable account-bound Device approval, restricted Project/shared Task reads, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, account-bound Device approval and promotion through the operator API, landing on the exact shared brief, two-way Task discussion, draft preservation, return after reload, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
     exceptions: [],
   },
   {
@@ -2412,7 +2456,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — the section navigation's rows measured against the 44px touch floor at 390x844 with no horizontal document scroll, a nav-only row really leaving /settings for its destination's route, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
+      "#2144 slice 4 promotion (#2146). The move is not about how often the spec runs: `product` and `extended` are both weighted buckets of `scripts/run-e2e-coverage.mjs`, which `verify:e2e:full` drives, so the same lane executes either one. It is about isolation being DECLARED. Settings SAVES — its journeys drive real PUT /config/app writes and read the value back — so it must not share its instance with a concurrent sibling. `product` is the only bucket where that requirement is written down and enforced: `PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive` above, checked by `validateE2EManifest`, which refuses a product spec carrying no execution class. In `extended` the same isolation happens to hold, because `scripts/run-e2e-suite.mjs` runs every non-product suite as a single `workers: 1` phase — but nothing declares it, nothing validates it, and no test pins that worker count, so a later parallelization of `extended` would withdraw it silently. This spec did carry a stale 'Review' assertion naming a Manage-group destination #2065 had retired; that is a grep-every-bucket failure of the change that retired it — `docs/guides/testing.md` records the same thing happening to this same file at #190/#205 — and the bucket it sits in does not fix that. The assertions themselves are ones only a browser can make — Customize links measured against the 44px CSS floor, rendered size, and hit area at 390x844 after entering Settings through the account menu, Settings section navigation with no horizontal document scroll, a Customize link opening its actual destination, the scope captions each section's persistence rule is written in, and the highlight/view deep-link round-trips landing on a rendered row — and they are made against an instance no sibling spec is writing to.",
     exceptions: [],
   },
   {

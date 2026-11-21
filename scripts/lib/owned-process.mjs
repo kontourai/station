@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
+import { setImmediate as nextCheckPhase } from 'node:timers/promises';
 import {
   isWindowsRoundTripUtcIso,
   resolveOwnProcessIdentity,
@@ -117,12 +118,8 @@ export function runWindowsTaskkill(
 }
 
 /**
- * Whether Node has reaped `child`. libuv reaps the children that exited in
- * one pass and then runs each one's exit callback, which records the status,
- * so from a timer or I/O callback a child with no status recorded is not
- * reaped. Only code running inside another child's exit callback of the same
- * pass could see a reaped child without its status. Until it is reaped the
- * pid, and so the process group the child leads, cannot be reused.
+ * Whether Node recorded the child's reaping. The strict caller checks only
+ * after the current batch of libuv exit callbacks has finished.
  */
 const leaderReaped = (child) =>
   child.exitCode != null || child.signalCode != null;
@@ -136,6 +133,10 @@ async function sendTreeSignal(
   { onlyWhileLeaderUnreaped = false } = {},
 ) {
   if (onlyWhileLeaderUnreaped) {
+    // libuv can reap several children before invoking any exit callback.
+    // Wait past that batch so a sibling's handler cannot authorize a signal
+    // while the target's exit status is still pending (#4920).
+    await nextCheckPhase();
     // The group was created by this spawn (detached: setsid on POSIX, so its
     // id is the leader's pid). A session leader cannot change its group, and
     // its pid stays allocated while it is a zombie, so while Node has not
@@ -290,13 +291,8 @@ export function executeOwnedProcess(
      * signals the group id whatever happened to the leader (descendants
      * that outlive it are the point of a tree kill), and resolves undefined.
      *
-     * With `onlyWhileLeaderUnreaped`, call it only from a timer, an I/O
-     * callback or a continuation of one, never from code that runs inside
-     * another child's `exit` handler, including the microtasks and
-     * `nextTick`s that handler queues. libuv reaps every child that exited
-     * in one pass before it runs their exit callbacks, so there this leader
-     * may already be reaped with `exitCode` and `signalCode` still null,
-     * and its group id signalled after it could have been reused (#4920).
+     * Strict mode waits past the current batch of child exit callbacks
+     * before checking the leader. The POSIX signal follows synchronously.
      * @param {{ onlyWhileLeaderUnreaped?: boolean }} [options]
      */
     forceTerminate: (options) =>

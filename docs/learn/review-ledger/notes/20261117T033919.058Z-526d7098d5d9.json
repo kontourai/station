@@ -1,0 +1,7 @@
+{
+  "revision": "5e65c2c126aab3fc4469d11a1fbe00e987026053",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#5066: regenerated content only; it now carries the module map's Task-owned pull requests paragraph and the concepts, glossary and settings edits. Checked: this page's claims about how the bundle is compiled, served and versioned are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

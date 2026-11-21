@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Documented ConversationWorkState.hidden (absent from hosts that cannot hide) and setConversationInboxHidden; matches packages/sdk/src/client/conversations.ts. typecheck:sdk passes; the UI consumer (useConversationWorkState) is covered by inbox-hide-and-window.test.tsx.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/conversations.ts","src-server/routes/chat/__tests__/conversation-work-state.test.ts","src-server/routes/chat/conversation-work-state.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

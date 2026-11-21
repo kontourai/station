@@ -1,0 +1,87 @@
+{
+  "revision": "a6741680ffad9650b8702dbedca1ea20349d53f0",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Documented at most two transient retries within the retry window, per-attempt time limits and exit before script execution when download fails. Verified the workflow SHA pin, all six call sites, and real local curl behavior on transient and terminal HTTP responses.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml",".github/workflows/gallery-pr-check.yml",".github/workflows/nightly-gallery.yml","scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":".veritas/README.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the fast-checks shard bootstrap, exact workflow-SHA source, bounded transient download retry, failure exit and zsh preflight. The test routing, job permissions and qualification gates still apply.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":".veritas/README.md","note":"Reviewed the ordinary, process-heavy and exclusive callers. The helper download now retries transient HTTP failures. Workflow-source binding, package installation, zsh checks and the full source verdict still apply.","inputs":[".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the ordinary, process-heavy and exclusive callers. The helper download now retries transient HTTP failures. Workflow-source binding, package installation, zsh checks and the full source verdict still apply.","inputs":[".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the ordinary, process-heavy and exclusive callers. The helper download now retries transient HTTP failures. Workflow-source binding, package installation, zsh checks and the full source verdict still apply.","inputs":[".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the ordinary, process-heavy and exclusive callers. The helper download now retries transient HTTP failures. Workflow-source binding, package installation, zsh checks and the full source verdict still apply.","inputs":[".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the ordinary, process-heavy and exclusive callers. The helper download now retries transient HTTP failures. Workflow-source binding, package installation, zsh checks and the full source verdict still apply.","inputs":[".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery PR toolchain step. Its pinned workflow helper is staged and only executed after successful download, with bounded retries. The renderer and capture inputs still match the documented workflow.","inputs":[".github/workflows/gallery-pr-check.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the Nightly Gallery toolchain step. Its trusted helper download retries transient errors and exits on failure before execution. The renderer and scheduled Gallery evidence path still match the documentation.","inputs":[".github/workflows/nightly-gallery.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the fast-checks zsh allowlist against the changed shell step. Its exact string check still requires the workflow-SHA pin, bounded retry, failure exit and zsh preflight. No permission or release admission changed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the executable workflow fixture. Its recorded curl arguments enforce the existing workflow source binding and bounded retries, while failed fetch still refuses a staged file. The loopback HTTP control verified real curl behavior locally.","inputs":["scripts/__tests__/ci-ubuntu-bootstrap-source.test.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the bounded download rule against shell callers and local HTTP controls. Repository-specific qualification, security and release gate descriptions still apply.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the bounded download rule against shell callers and local HTTP controls. Repository-specific qualification, security and release gate descriptions still apply.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the bounded download rule against shell callers and local HTTP controls. Repository-specific qualification, security and release gate descriptions still apply.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the bounded download rule against shell callers and local HTTP controls. Repository-specific qualification, security and release gate descriptions still apply.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the bounded download rule against shell callers and local HTTP controls. Repository-specific qualification, security and release gate descriptions still apply.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the bounded download rule against shell callers and local HTTP controls. Repository-specific qualification, security and release gate descriptions still apply.","inputs":["docs/guides/testing.md"]}
+  ]
+}

@@ -351,19 +351,22 @@ describe('New Chat repair and return', () => {
     expect(view.onClose).not.toHaveBeenCalled();
   });
 
-  test('phone setup reveals its page and restores the original full chat on return', async () => {
-    screenSize.mobile = true;
-    act(() =>
-      navigationStore.navigate('/', { dock: 'open', maximize: 'true' }),
-    );
-    harness();
-    await openSetup();
-    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
-    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
-    await returnToChat();
-    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
-    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
-  });
+  test.each([false, true])(
+    'setup reveals its page and restores the original full chat on return (mobile: %s)',
+    async (mobile) => {
+      screenSize.mobile = mobile;
+      act(() =>
+        navigationStore.navigate('/', { dock: 'open', maximize: 'true' }),
+      );
+      harness();
+      await openSetup();
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+      await returnToChat();
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    },
+  );
   test('retains intentional Project and Model through repair without selecting or sending', async () => {
     const view = harness();
     fireEvent.click(screen.getByRole('button', { name: 'Project: Alpha' }));

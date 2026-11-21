@@ -1,0 +1,11 @@
+{
+  "revision": "a62a16c852384f252b59f9395d29344d9d23399a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared settled transcript at desktop and mobile widths. The OpenCode regression mounts child work between the folded activity and answer, and the adjacent background command regression verifies that related command cards still group.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked renderer boundaries for UI blocks, MCP app candidates, and published HTML. The child-card grouping change preserves their independent rendering and does not change UI emission or trust checks.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the mounted pending grant case and shared activity renderer. Actionable grants remain accessible outside settled summaries. The new case exercises OpenCode child cards as transcript boundaries without changing approval delivery.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"]}
+  ]
+}

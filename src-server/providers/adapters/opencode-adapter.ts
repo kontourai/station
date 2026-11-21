@@ -44,6 +44,7 @@ import {
 } from '../../security/managed-engine-limits.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
 import {
+  OPENCODE_SESSION_MOVE_ACTION,
   type OpenCodeNativeFloor,
   type OpenCodeNativeRule,
   type OpenCodeSavedApproval,
@@ -54,12 +55,16 @@ import {
 import {
   findOpenCodeProjectCode as defaultFindProjectCode,
   openCodeProjectCodeRefusal,
+  realish,
 } from '../../services/acp/opencode-project-config.js';
+import { openCodeSteerCustody } from '../../services/acp/opencode-steer-custody.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   sharedUntrustedContentLedger,
   untrustedContentAncestry,
 } from '../../services/plugins/untrusted-content-policy.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import {
   ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
@@ -107,7 +112,7 @@ import {
 } from './engine-command-dispatch.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
-import { readString } from './opencode-native-events.js';
+import { openCodeMcpStatus, readString } from './opencode-native-events.js';
 import {
   type OpenCodeNativeMcp,
   openCodeMcpDigest,
@@ -169,6 +174,16 @@ const ENGINE_NAME = 'OpenCode';
  */
 const PREFLIGHT_LEASE_HOLD_MS = 60_000;
 
+function nativeSessionRules(
+  floor: OpenCodeNativeFloor | undefined,
+  projectBound: boolean,
+): OpenCodeNativeRule[] {
+  if (floor === 'confined') return openCodeNativeApprovalRules(floor);
+  return projectBound
+    ? [{ action: OPENCODE_SESSION_MOVE_ACTION, resource: '*', effect: 'deny' }]
+    : [];
+}
+
 /** What the server a plan runs on is keyed by, less its tool servers. */
 function nativePlanKey(plan: NativePlan): string {
   return JSON.stringify([plan.config.id, plan.binary, plan.cwd, plan.env]);
@@ -218,7 +233,8 @@ export function isOpenCodeResumeCursor(
 /** OpenCode's data home (`$XDG_DATA_HOME/opencode`), where its sessions live. */
 function openCodeDataHome(env: NodeJS.ProcessEnv): string {
   return join(
-    env.XDG_DATA_HOME || join(homedir(), '.local', 'share'),
+    env.XDG_DATA_HOME ||
+      join(env.HOME || env.USERPROFILE || homedir(), '.local', 'share'),
     'opencode',
   );
 }
@@ -264,6 +280,7 @@ interface NativeRecord {
   readonly lease: OpenCodeServeLease;
   session: ProviderSession;
   readonly cursor: OpenCodeResumeCursor;
+  readonly projectBound: boolean;
   /** The OpenCode agent the session runs (undefined: OpenCode's default). */
   agent: string | undefined;
   /**
@@ -280,6 +297,7 @@ interface NativeRecord {
   dirty: boolean;
   /** A turn is being set up (settings, prompt): a second one is refused. */
   busy: boolean;
+  modelUnconfirmed?: boolean;
   /**
    * The server's key carries this session's own credentials
    * (`OpenCodeNativeMcp.sessionScoped`): no other session can share it, so
@@ -322,6 +340,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     engineId: engineId('opencode'),
     connectionBacking: 'acp-registry',
     approvalAcknowledgement: 'engine',
+    // Native sessions apply a catalog-checked model before the next prompt.
+    // ACP fallback keeps its original model and refuses a changed selector.
+    modelLaunch: {
+      defaultAtStart: 'engine-selected',
+      omissionAtResume: 'engine-selected',
+      omissionPerTurn: 'engine-selected',
+      overrideAtStart: true,
+      overrideAtResume: false,
+      overridePerTurn: true,
+    },
   };
 
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
@@ -335,6 +363,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       lease: OpenCodeServeLease;
       planKey: string;
       timer: ReturnType<typeof setTimeout>;
+      detachAbort?: () => void;
     }
   >();
   private readonly inner: ProviderAdapterShape;
@@ -659,11 +688,17 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     }
   }
 
-  /**
-   * A.5: a governed start's rules must be what OpenCode will enforce. The
-   * project's own OpenCode code runs outside any mode (#3924), and a saved
-   * approval outranks the session's rules.
-   */
+  private async assertInspectableProjectConfig(cwd: string): Promise<void> {
+    const findings = await (
+      this.options.findProjectCode ?? defaultFindProjectCode
+    )(cwd);
+    if (findings.length > 0)
+      throw new ApprovalGovernanceRefusedError(
+        `Station can't apply its approval mode to OpenCode, so the chat was not started: ${openCodeProjectCodeRefusal(findings)}.`,
+      );
+  }
+
+  /** A.5: saved approvals must not outrank a governed session's rules. */
   private async assertGovernable(
     client: OpenCodeServeClient,
     cwd: string,
@@ -671,13 +706,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     agent: string,
   ): Promise<OpenCodeNativeRule[]> {
     if (floor !== 'confined') return [];
-    const code = await (this.options.findProjectCode ?? defaultFindProjectCode)(
-      cwd,
-    );
-    if (code.length > 0)
-      throw new ApprovalGovernanceRefusedError(
-        `Station can't apply its approval mode to OpenCode, so the chat was not started: ${openCodeProjectCodeRefusal(code)}.`,
-      );
+    await this.assertInspectableProjectConfig(cwd);
     const [agentRules, savedAnswer] = await Promise.all([
       this.agentRules(client, agent),
       client.request<{ data?: unknown }>('GET', '/api/permission/saved'),
@@ -710,8 +739,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   }
 
   async preflightStart(input: ProviderSessionStartInput): Promise<void> {
+    input.signal?.throwIfAborted();
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
+    input.signal?.throwIfAborted();
     if (!plan) {
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
@@ -725,31 +756,38 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const agent = requestedAcpSessionMode(input.modelOptions);
     if (agent && !isOpenCodeGovernedMode(agent))
       throw new ApprovalGovernanceRefusedError(governedModeRefusal(agent));
+    // The pool can spawn OpenCode in this directory.
+    if (floor === 'confined')
+      await this.assertInspectableProjectConfig(plan.cwd);
     // The governance check needs no tool servers; it reads from a server
     // that has none added.
+    input.signal?.throwIfAborted();
     const lease = await this.verifiedLease(
       plan,
       input.threadId,
       openCodeMcpDigest([]),
     );
     if (!lease) {
+      input.signal?.throwIfAborted();
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
     }
     try {
+      input.signal?.throwIfAborted();
       await this.assertGovernable(
         lease.client,
         lease.cwd,
         floor,
         agent ?? 'build',
       );
+      input.signal?.throwIfAborted();
     } catch (error) {
       lease.release();
       throw error;
     }
     // Nothing was added to it: the start takes it over for its own tool
     // servers (`startLease`) instead of starting a second server.
-    this.keepPreflightLease(input.threadId, plan, lease);
+    this.keepPreflightLease(input.threadId, plan, lease, input.signal);
   }
 
   async startSession(
@@ -761,6 +799,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       !isOpenCodeResumeCursor(input.resumeCursor)
     )
       throw new Error('This OpenCode resume cursor is not one Station wrote.');
+    const preflight = this.preflightLeases.get(input.threadId);
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
     const unsupported = this.nativeUnsupported(input);
@@ -770,6 +809,26 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         OPENCODE_NATIVE_UNSUPPORTED_SETTING,
         `Station runs this OpenCode chat over ACP: ${unsupported}.`,
       );
+    // Direct starts and starts reusing a preflight both check the launch cwd.
+    const floor = acpApprovalFloor(
+      acpAppliedApprovalMode(
+        readApprovalMode(input.modelOptions),
+        input.confinement,
+      ),
+    );
+    if (plan && floor === 'confined') {
+      try {
+        await this.assertInspectableProjectConfig(plan.cwd);
+      } catch (error) {
+        if (
+          preflight?.planKey === nativePlanKey(plan) &&
+          this.preflightLeases.get(input.threadId) === preflight
+        )
+          this.takePreflightLease(input.threadId)?.lease.release();
+        throw error;
+      }
+    }
+
     // Station's tool servers decide which server the session may share.
     let mcp: OpenCodeNativeMcp | undefined;
     if (plan) {
@@ -836,6 +895,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     if (!held) return undefined;
     this.preflightLeases.delete(threadId);
     clearTimeout(held.timer);
+    held.detachAbort?.();
     return held;
   }
 
@@ -844,18 +904,23 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     threadId: string,
     plan: NativePlan,
     lease: OpenCodeServeLease,
+    signal?: AbortSignal,
   ): void {
     this.takePreflightLease(threadId)?.lease.release();
-    const timer = setTimeout(() => {
+    const release = () => {
       if (this.preflightLeases.get(threadId)?.lease !== lease) return;
-      this.preflightLeases.delete(threadId);
-      lease.release();
-    }, PREFLIGHT_LEASE_HOLD_MS);
+      this.takePreflightLease(threadId)?.lease.release();
+    };
+    const timer = setTimeout(release, PREFLIGHT_LEASE_HOLD_MS);
     timer.unref?.();
+    signal?.addEventListener('abort', release, { once: true });
     this.preflightLeases.set(threadId, {
       lease,
       planKey: nativePlanKey(plan),
       timer,
+      ...(signal
+        ? { detachAbort: () => signal.removeEventListener('abort', release) }
+        : {}),
     });
   }
 
@@ -876,6 +941,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     mcp: OpenCodeNativeMcp,
   ): Promise<void> {
     const failed: string[] = [];
+    const registered = new Set<string>();
     for (const server of mcp.servers) {
       try {
         await client.request(
@@ -883,18 +949,39 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           `/api/experimental/mcp/${encodeURIComponent(server.name)}`,
           { config: server.config },
         );
+        registered.add(server.name);
       } catch (error) {
         failed.push(
           `${server.name} (${error instanceof OpenCodeServeHttpError ? error.status : 'no answer'})`,
         );
       }
     }
+    const deadline = Date.now() + 2_000;
+    while (registered.size > 0 && Date.now() < deadline) {
+      try {
+        const answer = await client.request<{ data?: unknown }>(
+          'GET',
+          '/api/mcp',
+          undefined,
+          { timeoutMs: Math.max(1, deadline - Date.now()) },
+        );
+        for (const { name, state } of openCodeMcpStatus(answer?.data)) {
+          if (state === 'starting' || !registered.delete(name)) continue;
+          if (state !== 'ready') failed.push(`${name} (${state})`);
+        }
+      } catch {
+        break;
+      }
+      if (registered.size > 0) await sleep(100);
+    }
+    for (const name of registered)
+      failed.push(`${name} (readiness unconfirmed)`);
     const skipped = mcp.undelivered.map((entry) => entry.id ?? entry.reason);
     if (failed.length > 0 || skipped.length > 0)
       this.warn(
         threadId,
         'OPENCODE_TOOL_SERVERS_UNDELIVERED',
-        `Some tool servers were not given to OpenCode: ${[...failed, ...skipped].join(', ')}.`,
+        `Some tool servers could not be confirmed ready in OpenCode: ${[...failed, ...skipped].join(', ')}.`,
       );
   }
 
@@ -965,10 +1052,34 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderSession> {
     this.pumpInner();
     const acpInput = this.acpStartInput(input, config);
-    const bindingKey = this.bindingKey(
-      await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
-      input,
+    const effective = managedEngineLaunch(
+      'acp',
+      {
+        command: config.command,
+        args: [],
+        env: await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
+      },
+      'user',
     );
+    const bindingKey = this.bindingKey(effective.env, input);
+    if (
+      isOpenCodeResumeCursor(input.resumeCursor) &&
+      input.resumeCursor.bindingKey !== bindingKey
+    )
+      throw new Error(
+        'This OpenCode session belongs to another OpenCode data home or profile, so it cannot resume here.',
+      );
+    const resumedId = isOpenCodeResumeCursor(input.resumeCursor)
+      ? input.resumeCursor.sessionId
+      : isAcpResumeCursor(input.resumeCursor)
+        ? input.resumeCursor.acpSessionId
+        : undefined;
+    if (resumedId)
+      openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        bindingKey,
+        resumedId,
+      ).assertClear();
     this.overAcp.add(input.threadId);
     let session: ProviderSession;
     try {
@@ -1003,10 +1114,19 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     lease: OpenCodeServeLease,
     mcp: OpenCodeNativeMcp,
   ): Promise<ProviderSession> {
+    const projectBound =
+      typeof input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY] ===
+      'string';
     const cursor = isOpenCodeResumeCursor(input.resumeCursor)
       ? input.resumeCursor
       : undefined;
     const bindingKey = this.bindingKey(plan.env, input);
+    if (cursor)
+      openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        bindingKey,
+        cursor.sessionId,
+      ).assertClear();
     if (cursor && cursor.bindingKey !== bindingKey)
       throw new Error(
         'This OpenCode session belongs to another OpenCode data home or profile, so it cannot resume here.',
@@ -1030,10 +1150,22 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         `/api/session/${sessionId}`,
       );
       stored = readString(ownRecord(existing?.data)?.agent);
+      const inbox = await lease.client.request<{ data?: unknown }>(
+        'GET',
+        `/api/session/${sessionId}/inbox`,
+      );
+      if ((ownArray(inbox?.data) ?? []).length > 0)
+        throw new Error(
+          'OpenCode still has queued input for this session. Resolve it in OpenCode before resuming here.',
+        );
       cwd =
         readString(ownRecord(ownRecord(existing?.data)?.location)?.directory) ??
         cwd;
     }
+    if (projectBound && realish(cwd) !== realish(lease.cwd))
+      throw new Error(
+        'OpenCode moved this session outside its Station Project workspace.',
+      );
     // A governed session runs a named agent, whose denies its rules keep.
     const sessionAgent = agent ?? stored ?? (floor ? 'build' : undefined);
     if (floor && sessionAgent && !isOpenCodeGovernedMode(sessionAgent))
@@ -1046,8 +1178,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       floor === 'confined' && sessionAgent
         ? await this.assertGovernable(lease.client, cwd, floor, sessionAgent)
         : undefined;
-    const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
+    const permissions = nativeSessionRules(floor, projectBound);
     const model = readModelRef(input.modelId);
+    if (input.modelId && !cursor)
+      await this.assertModel(lease.client, input.modelId);
     // Before the session runs, so its first step sees them.
     await this.addMcpServers(input.threadId, lease.client, mcp);
     if (cursor) {
@@ -1060,7 +1194,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       // `permissions: null` (the old rules stay; 2.3.0 mode-switch capture),
       // so a start without a mode sends `[]`, which clears them.
       await lease.client.request('PATCH', `/api/session/${sessionId}`, {
-        permissions: permissions ?? [],
+        permissions,
       });
     } else {
       const created = await lease.client.request<{ data?: unknown }>(
@@ -1070,7 +1204,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           location: { directory: lease.cwd },
           ...(sessionAgent ? { agent: sessionAgent } : {}),
           ...(model ? { model } : {}),
-          ...(permissions && permissions.length > 0 ? { permissions } : {}),
+          ...(permissions.length > 0 ? { permissions } : {}),
         },
       );
       const id = readString(ownRecord(created?.data)?.id);
@@ -1090,6 +1224,11 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       () => undefined;
     let onMustStop: () => void = () => undefined;
     const native = new OpenCodeNativeSession({
+      steerCustody: openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        bindingKey,
+        sessionId!,
+      ),
       threadId: input.threadId,
       provider: this.provider,
       engineName: ENGINE_NAME,
@@ -1163,7 +1302,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       cursor: resumeCursor,
       agent: sessionAgent,
       cwd,
-      rules: permissions ?? [],
+      rules: permissions,
+      projectBound,
       dirty: false,
       busy: false,
       serverIsSessions: mcp.sessionScoped,
@@ -1231,6 +1371,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     if (this.native.get(threadId) !== record) return;
     const own = move.sessionId === record.cursor.sessionId;
+    if (own && record.projectBound && move.directory !== realish(record.cwd)) {
+      this.warn(
+        threadId,
+        'OPENCODE_PROJECT_WORKSPACE_MOVED',
+        'Station stopped OpenCode after it moved this session outside its Project workspace.',
+        { directory: move.directory },
+      );
+      await this.stopSession(threadId);
+      return;
+    }
     if (own) {
       record.cwd = move.directory;
       record.cursor.cwd = move.directory;
@@ -1290,6 +1440,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     if (this.overAcp.has(input.threadId)) {
+      if (input.modelId) {
+        const session = (await this.inner.listSessions()).find(
+          (item) => item.threadId === input.threadId,
+        );
+        if (input.modelId !== session?.model)
+          throw new SendTurnRefusedError(
+            'Changing the model in this chat requires the OpenCode native transport. Start a new chat with the selected model.',
+            'input_unsupported',
+          );
+      }
       const result = await this.inner.sendTurn(input);
       const binding = this.acpBindings.get(input.threadId);
       return binding
@@ -1329,6 +1489,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     record.native.assertIdle();
     record.busy = true;
     try {
+      const configured = (await this.options.getConnections()).some(
+        (connection) => connection.id === record.cursor.connectionId,
+      );
+      if (!configured || this.native.get(input.threadId) !== record)
+        throw new SendTurnRefusedError(
+          'This engine is disconnected. Continue with another agent.',
+          'session_gone',
+        );
       return await this.sendNativeTurn(
         record,
         input,
@@ -1342,12 +1510,87 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     }
   }
 
+  private async assertModel(
+    client: OpenCodeServeLease['client'],
+    modelId: string,
+  ) {
+    const model = readModelRef(modelId);
+    if (!model)
+      throw new SendTurnRefusedError(
+        `OpenCode requires a provider/model selector: ${modelId}`,
+        'input_unsupported',
+      );
+    const available = await client.request<{ data?: unknown }>(
+      'GET',
+      '/api/model',
+    );
+    if (
+      !(ownArray(available?.data) ?? []).some((entry) => {
+        const candidate = ownRecord(entry);
+        return (
+          candidate?.id === model.id &&
+          candidate?.providerID === model.providerID &&
+          candidate?.enabled !== false
+        );
+      })
+    )
+      throw new SendTurnRefusedError(
+        `OpenCode model is unavailable: ${modelId}`,
+        'input_unsupported',
+      );
+    return model;
+  }
+
   private async sendNativeTurn(
     record: NativeRecord,
     input: ProviderSendTurnInput,
     files: Array<{ uri: string; name: string }>,
   ): Promise<ProviderTurnStartResult> {
+    const assertCurrent = () => {
+      if (this.native.get(input.threadId) !== record || record.native.isStopped)
+        throw new SendTurnRefusedError(
+          'This OpenCode session has stopped.',
+          'unavailable',
+        );
+    };
+    assertCurrent();
+    if (record.modelUnconfirmed && !input.modelId)
+      throw new SendTurnRefusedError(
+        'Select a model again to confirm the OpenCode session model before sending.',
+        'unavailable',
+      );
+    if (input.modelId) {
+      const model = await this.assertModel(record.lease.client, input.modelId);
+      assertCurrent();
+      try {
+        await record.lease.client.request(
+          'POST',
+          `/api/session/${record.cursor.sessionId}/model`,
+          { model },
+        );
+      } catch (error) {
+        record.modelUnconfirmed = true;
+        throw new SendTurnRefusedError(
+          `OpenCode did not confirm the model change, so this message was not sent: ${errorMessage(error)}`,
+          'unavailable',
+        );
+      }
+      assertCurrent();
+      record.modelUnconfirmed = false;
+      record.session.model = input.modelId;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: input.threadId,
+        model: input.modelId,
+      });
+    }
+    assertCurrent();
     await this.applyTurnSettings(record, input);
+    assertCurrent();
     const turnId = crypto.randomUUID();
     const displayText = input.displayInput ?? input.input;
     // A turn with attachments is a prompt, never a command (as on ACP).
@@ -1471,7 +1714,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           ? await this.assertGovernable(client, record.cwd, floor, sessionAgent)
           : await this.agentRules(client, sessionAgent)
         : undefined;
-    const rules = floor ? openCodeNativeApprovalRules(floor) : [];
+    const rules = nativeSessionRules(floor, record.projectBound);
     if (sessionAgent && agentChanged) {
       try {
         await client.request('POST', `/api/session/${sessionId}/agent`, {
@@ -1615,10 +1858,30 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           id: selector,
           name: readString(model?.name) ?? selector,
           originalId: selector,
+          catalogRoute: {
+            providerId,
+            modelId: id,
+            displayName: readString(model?.name),
+          },
         },
       ];
     });
     return options?.maxEntries ? models.slice(0, options.maxEntries) : models;
+  }
+
+  sessionDurability(threadId: string) {
+    if (this.overAcp.has(threadId))
+      return this.inner.sessionDurability?.(threadId);
+    if (!this.native.has(threadId)) return undefined;
+    return {
+      ...ACP_ENGINE_DURABILITY,
+      steerPlacement: {
+        state: 'native' as const,
+        boundary: 'engine-defined' as const,
+        detail:
+          'Additional input is acknowledged when OpenCode delivers it to the active execution.',
+      },
+    };
   }
 
   async steerTurn(

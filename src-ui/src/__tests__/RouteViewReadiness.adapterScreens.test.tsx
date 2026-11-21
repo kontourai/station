@@ -12,10 +12,7 @@ import {
   chromiumIsInstalled,
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
-import {
-  countVisibleLazyBoundaryErrors,
-  waitForLazySurface,
-} from '../../../tests/helpers/lazy-surface-readiness';
+import { waitForLazySurface } from '../../../tests/helpers/lazy-surface-readiness';
 import {
   FULL_SCREEN_ERROR_SELECTOR,
   fullScreenLoaderLabel,
@@ -138,45 +135,6 @@ describe.skipIf(!chromiumAvailable)(
 
     const TARGET =
       '<button type="button" class="target-surface">Arrived</button>';
-
-    /**
-     * A `Page` that counts `locator()` calls, which is how RE-ENTRY becomes
-     * observable at all.
-     *
-     * The lazy adapter's anti-spin ternary cannot be guarded by elapsed time:
-     * spinning and waiting both end at the deadline with the same message, so a
-     * duration assertion passes either way and the ternary sits there reading
-     * like something to tidy up. What differs is how many times the loop is
-     * re-entered, and each re-entry re-reads the boundary count through
-     * `page.locator`. Counting those calls is the cheapest thing that
-     * distinguishes the two.
-     *
-     * Methods are bound to the real page, never to the proxy, so Playwright's
-     * own internals are untouched by the wrapper.
-     */
-    function countingPage(page: Page): {
-      page: Page;
-      locatorCalls: () => number;
-    } {
-      let locatorCalls = 0;
-      const counting = new Proxy(page, {
-        get(target, property) {
-          const value = Reflect.get(target, property);
-          if (typeof value !== 'function') return value;
-          if (property === 'locator') {
-            return (...args: unknown[]) => {
-              locatorCalls += 1;
-              return (value as (...rest: unknown[]) => unknown).apply(
-                target,
-                args,
-              );
-            };
-          }
-          return value.bind(target);
-        },
-      }) as Page;
-      return { page: counting, locatorCalls: () => locatorCalls };
-    }
 
     /** Real `RoutePendingSkeleton`, which is what publishes the named live region. */
     const PENDING = () => markupOf(<RoutePendingSkeleton />);
@@ -426,45 +384,40 @@ describe.skipIf(!chromiumAvailable)(
 
     const SHEET = '<div role="menu" aria-label="Chat actions">Sheet</div>';
 
-    async function lazyBoundaryFailureMarkup(): Promise<string> {
+    const chatActions = { id: 'chat-actions', label: 'Chat actions' };
+    const mobileInbox = { id: 'mobile-inbox', label: 'Inbox' };
+
+    async function lazyBoundaryFailureMarkup(surface: typeof chatActions) {
       const { LazyBoundary } = await import('../components/LazyBoundary');
-      // The REAL boundary in its real failure state: a rejecting import, caught by
-      // `LazyImportErrorBoundary`, rendering the default failure. Not a hand-copied
-      // approximation of its markup — that would prove only that I can retype a
-      // class name.
-      const failing = () =>
-        Promise.reject(new Error('fixture: chunk rejected')) as Promise<{
-          default: React.ComponentType<Record<string, never>>;
-        }>;
+      const failing = async () => {
+        throw new Error('fixture: chunk rejected');
+      };
       const { container, unmount } = render(
-        <LazyBoundary load={failing} componentProps={{}} pending={null} />,
+        <LazyBoundary
+          load={failing}
+          componentProps={{}}
+          pending={null}
+          surface={surface}
+        />,
       );
-      // Settle the rejected import INSIDE `act`, or the snapshot below is taken
-      // before the boundary has committed its error state and the fixture is an
-      // empty string — which reads as "the selector does not match" rather than
-      // as "nothing was rendered yet". React says so on stderr; it is worth
-      // heeding rather than filtering.
-      await act(async () => {
-        await new Promise((done) => setTimeout(done, 0));
-      });
+      await act(async () => {});
       const markup = container.innerHTML;
-      expect(markup).toContain('lazy-boundary__error');
+      expect(markup).toContain(`data-lazy-surface="${surface.id}"`);
       unmount();
       return markup;
     }
 
-    test("the real LazyBoundary failure is what the adapter's selector matches", async () => {
-      const failure = await lazyBoundaryFailureMarkup();
-      const { page, close } = await pageWith(failure);
-      try {
-        expect(
-          await page.locator(LAZY_BOUNDARY_ERROR_SELECTOR).count(),
-        ).toBeGreaterThan(0);
-        expect(await countVisibleLazyBoundaryErrors(page)).toBe(1);
-      } finally {
-        await close();
-      }
-    });
+    function watchChatActions(page: Page, timeoutMs = 600) {
+      return waitForLazySurface(
+        page,
+        {
+          surfaceName: 'The Chat actions sheet',
+          surfaceId: chatActions.id,
+          surface: page.getByRole('menu', { name: 'Chat actions' }),
+        },
+        timeoutMs,
+      );
+    }
 
     test('a mounted surface is observed as ready', async () => {
       const { page, close } = await pageWith(SHEET);
@@ -474,7 +427,7 @@ describe.skipIf(!chromiumAvailable)(
           {
             surfaceName: 'The fixture sheet',
             surface: page.getByRole('menu', { name: 'Chat actions' }),
-            baselineUnavailableCount: 0,
+            surfaceId: 'chat-actions',
           },
           2_000,
         );
@@ -515,7 +468,7 @@ describe.skipIf(!chromiumAvailable)(
           {
             surfaceName: 'The fixture sheet',
             surface,
-            baselineUnavailableCount: 0,
+            surfaceId: 'chat-actions',
           },
           600,
         );
@@ -525,175 +478,69 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
-    test('the quoted failure text is a VISIBLE failure, not index zero', async () => {
-      const failure = await lazyBoundaryFailureMarkup();
-      // A decoy carrying DIFFERENT words, because otherwise this cannot be
-      // discriminated at all: every real boundary renders the same constant, so
-      // quoting index zero is unobservable today and becomes a wrong name the
-      // moment #1712 gives the failure an identity. The visible failure is the
-      // real component's markup; only the hidden decoy's text is synthetic, and
-      // it is synthetic precisely to stand in for the identity that does not
-      // exist yet.
-      const decoy = failure.replace(
-        'Unable to load this part of Station.',
-        'DECOY hidden boundary',
+    test('reports the visible named failure beside other and hidden errors', async () => {
+      const inbox = await lazyBoundaryFailureMarkup(mobileInbox);
+      const actions = await lazyBoundaryFailureMarkup(chatActions);
+      const hidden = actions.replace(
+        'Unable to load Chat actions.',
+        'Hidden decoy',
       );
-      expect(decoy).toContain('DECOY hidden boundary');
+      expect(hidden).toContain('Hidden decoy');
       const { page, close } = await pageWith(
-        decoy + failure,
-        '.lazy-boundary__error:first-of-type { display: none; }',
+        inbox + `<section hidden>${hidden}</section>` + actions,
       );
       try {
-        // THE PREMISE. `countVisibleLazyBoundaryErrors === 1` is satisfied
-        // identically by a page carrying one failure and NO decoy, which would
-        // make the `not.toThrow(/DECOY/)` below vacuous — it would pass because
-        // there was nothing to quote wrongly. So assert the decoy is present,
-        // hidden, and carries the discriminating words. `textContent` rather than
-        // `innerText`: the latter respects rendering and returns empty for a
-        // hidden node.
-        const boundaries = page.locator(LAZY_BOUNDARY_ERROR_SELECTOR);
-        expect(await boundaries.count()).toBe(2);
-        expect(await boundaries.first().isVisible()).toBe(false);
-        expect(await boundaries.first().textContent()).toContain('DECOY');
-        // One VISIBLE failure, so it is attributable to this interaction.
-        expect(await countVisibleLazyBoundaryErrors(page)).toBe(1);
-
-        const observed = waitForLazySurface(
-          page,
-          {
-            surfaceName: 'The fixture sheet',
-            surface: page.getByRole('menu', { name: 'Chat actions' }),
-            baselineUnavailableCount: 0,
-          },
-          400,
-        );
-        await expect(observed).rejects.toThrow(
-          /appeared across this interaction, reading "Unable to load this part of Station\./s,
-        );
-        await expect(observed).rejects.not.toThrow(/DECOY/);
-      } finally {
-        await close();
-      }
-    });
-
-    test('a boundary failure that APPEARED is reported as this surface unavailable', async () => {
-      const failure = await lazyBoundaryFailureMarkup();
-      const { page, close } = await pageWith(failure);
-      try {
-        const observed = waitForLazySurface(
-          page,
-          {
-            surfaceName: 'The fixture sheet',
-            surface: page.getByRole('menu', { name: 'Chat actions' }),
-            baselineUnavailableCount: 0,
-          },
-          2_000,
-        );
-        await expect(observed).rejects.toThrow(
-          /The fixture sheet is unavailable.*appeared across this interaction.*React caches a rejected `lazy` import/s,
+        const matches = page.locator('[data-lazy-surface="chat-actions"]');
+        expect(await matches.count()).toBe(2);
+        expect(await matches.first().isVisible()).toBe(false);
+        await expect(watchChatActions(page)).rejects.toThrow(
+          /The Chat actions sheet is unavailable.*Unable to load Chat actions\./s,
         );
       } finally {
         await close();
       }
     });
 
-    test('a PRE-EXISTING boundary failure is not attributed to this surface', async () => {
-      const failure = await lazyBoundaryFailureMarkup();
-      const { page, close } = await pageWith(failure);
+    test('ignores an unrelated failure that arrives while waiting for Chat actions', async () => {
+      const inbox = await lazyBoundaryFailureMarkup(mobileInbox);
+      const { page, close } = await pageWith('<div id="error-slot"></div>');
       try {
-        // Blocking defect one, and the sharper of the two. `LazyBoundary`'s failure
-        // text is one constant, so nothing in the sentence could have distinguished
-        // this surface's failure from any other's — and the collision is reachable:
-        // the dock's prewarmed boundary rejects exactly when the host is
-        // unreachable, and these portaled sheets sort after it. A 20 s allowance
-        // ended in milliseconds on a red naming the wrong component.
-        const { page: counting, locatorCalls } = countingPage(page);
-        const baseline = await countVisibleLazyBoundaryErrors(counting);
-        expect(baseline).toBe(1);
-        const callsBefore = locatorCalls();
+        const result = expect(watchChatActions(page)).rejects.toThrow(
+          /did not load within.*neither the surface nor its failure appeared/s,
+        );
+        await page.locator('#error-slot').evaluate((slot, markup) => {
+          slot.innerHTML = markup;
+        }, inbox);
+        await result;
+      } finally {
+        await close();
+      }
+    });
 
-        const startedAt = Date.now();
-        await expect(
-          waitForLazySurface(
-            counting,
-            {
-              surfaceName: 'The fixture sheet',
-              surface: page.getByRole('menu', { name: 'Chat actions' }),
-              baselineUnavailableCount: baseline,
-            },
-            400,
-          ),
-        ).rejects.toThrow(/did not load within.*cannot distinguish/s);
-        // It waited rather than failing instantly on someone else's error: the
-        // honest "I could not tell", which is worth more than a confident wrong
-        // name. The pre-fix adapter returned in single-digit milliseconds.
-        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(350);
-
-        // AND it waited rather than SPUN, which the duration above cannot tell.
-        // With the boundary back in the settled union, the old error resolves it
-        // instantly on every pass, each pass re-reads the count, and the loop
-        // burns the budget re-entering.
-        //
-        // Correct behaviour reaches `page.locator` exactly TWICE, and it is
-        // worth naming which two, because the union is not one of them: with a
-        // baseline the union IS `surface`, which the caller built. Call one is
-        // the unconditional `const unavailable = page.locator(...)` the adapter
-        // constructs and, on this branch, discards. Call two is the single
-        // `countVisibleLazyBoundaryErrors` in the one classification on the way
-        // out.
-        //
-        // Pinned exactly rather than bounded: `toBeLessThanOrEqual` passes for 0
-        // and 1 as readily as for 2, so a change that short-circuited
-        // `classifySettled` before `newUnavailableCount()` would drop the count
-        // and leave this green while measuring nothing. A spin is around 330 on
-        // this host — load-dependent, and two orders away from either number.
-        expect(locatorCalls() - callsBefore).toBe(2);
-
-        // And the sentence names what it declined to attribute. Without this the
-        // message says no failure was seen while a rendered boundary failure is
-        // on the page — true about attribution, and read as a claim about the
-        // page.
-        await expect(
+    test('reports Inbox failure when another error clears and the count stays flat', async () => {
+      const actions = await lazyBoundaryFailureMarkup(chatActions);
+      const inbox = await lazyBoundaryFailureMarkup(mobileInbox);
+      const { page, close } = await pageWith(
+        `<div id="error-slot">${actions}</div>`,
+      );
+      try {
+        const result = expect(
           waitForLazySurface(
             page,
             {
-              surfaceName: 'The fixture sheet',
-              surface: page.getByRole('menu', { name: 'Chat actions' }),
-              baselineUnavailableCount: baseline,
+              surfaceName: 'The Inbox',
+              surfaceId: mobileInbox.id,
+              surface: page.getByRole('region', { name: 'Inbox' }),
             },
-            300,
+            600,
           ),
-        ).rejects.toThrow(
-          /1 boundary failure\(s\) were visible before this interaction and are excluded from attribution for the whole wait; if one of them cleared while this surface's own boundary failed, the count stayed flat and this wait cannot tell\./,
-        );
-      } finally {
-        await close();
-      }
-    });
-
-    test('a failure that appeared BESIDE one already up reports both counts', async () => {
-      const failure = await lazyBoundaryFailureMarkup();
-      const { page, close } = await pageWith(failure + failure);
-      try {
-        // The arrangement neither suite had: a non-zero baseline AND a new
-        // failure at the same time. Every earlier case had one or the other, so
-        // the baseline clause of `unavailableDetail` was never reached and could
-        // be deleted with both suites still green. Two failures are on the page
-        // and one of them was already up when the interaction started.
-        expect(await countVisibleLazyBoundaryErrors(page)).toBe(2);
-
-        await expect(
-          waitForLazySurface(
-            page,
-            {
-              surfaceName: 'The fixture sheet',
-              surface: page.getByRole('menu', { name: 'Chat actions' }),
-              baselineUnavailableCount: 1,
-            },
-            400,
-          ),
-        ).rejects.toThrow(
-          /1 boundary failure\(s\) appeared across this interaction.*1 were already visible before it, so this page had other surfaces failing already/s,
+        ).rejects.toThrow(/The Inbox is unavailable.*Unable to load Inbox\./s);
+        await page.locator('#error-slot').evaluate((slot, markup) => {
+          slot.innerHTML = markup;
+        }, inbox);
+        await result;
+        expect(await page.locator(LAZY_BOUNDARY_ERROR_SELECTOR).count()).toBe(
+          1,
         );
       } finally {
         await close();
@@ -714,11 +561,11 @@ describe.skipIf(!chromiumAvailable)(
               openIndicator: page.locator(
                 'button[aria-label="Chat actions"][aria-expanded="true"]',
               ),
-              baselineUnavailableCount: 0,
+              surfaceId: 'chat-actions',
             },
             300,
           ),
-        ).rejects.toThrow(/its trigger does report the surface open/);
+        ).rejects.toThrow(/its trigger does report the surface open/i);
       } finally {
         await close();
       }
@@ -753,11 +600,11 @@ describe.skipIf(!chromiumAvailable)(
               surfaceName: 'The fixture sheet',
               surface: page.getByRole('menu', { name: 'Chat actions' }),
               openIndicator,
-              baselineUnavailableCount: 0,
+              surfaceId: 'chat-actions',
             },
             300,
           ),
-        ).rejects.toThrow(/its trigger does report the surface open/);
+        ).rejects.toThrow(/its trigger does report the surface open/i);
       } finally {
         await close();
       }
@@ -776,30 +623,11 @@ describe.skipIf(!chromiumAvailable)(
             {
               surfaceName: 'The fixture sheet',
               surface: page.getByRole('menu', { name: 'Chat actions' }),
-              baselineUnavailableCount: 0,
+              surfaceId: 'chat-actions',
             },
             300,
           ),
         ).rejects.toThrow(/publishes no open state/);
-      } finally {
-        await close();
-      }
-    });
-
-    test('the baseline count sees only painted boundary failures', async () => {
-      const failure = await lazyBoundaryFailureMarkup();
-      const { page, close } = await pageWith(
-        failure + failure,
-        '.lazy-boundary__error:first-of-type { display: none; }',
-      );
-      try {
-        expect(await page.locator(LAZY_BOUNDARY_ERROR_SELECTOR).count()).toBe(
-          2,
-        );
-        // Visible, not present: an unpainted boundary error is not a failure
-        // anyone is being shown, and one that becomes visible later should still
-        // register as new.
-        expect(await countVisibleLazyBoundaryErrors(page)).toBe(1);
       } finally {
         await close();
       }

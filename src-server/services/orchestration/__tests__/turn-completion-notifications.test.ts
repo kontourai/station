@@ -247,6 +247,9 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
   let resolveSessionPresenceSubject: (
     threadId: string,
   ) => OrchestrationStreamPresenceSubject | undefined;
+  /** #5072: the Project a session recorded at its start. */
+  let projectOf: (threadId: string) => string | undefined;
+  let chatTitleOf: (threadId: string) => string | undefined;
   let logger: {
     warn: ReturnType<
       typeof vi.fn<(message: string, meta?: Record<string, unknown>) => void>
@@ -260,6 +263,8 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     notificationService = new NotificationService(bus, dir, 999_999);
     resolveSessionPresenceSubject = () =>
       orchestrationStreamPresenceSubjectForSession('owner-1');
+    projectOf = () => undefined;
+    chatTitleOf = () => undefined;
     logger = {
       warn: vi.fn<(message: string, meta?: Record<string, unknown>) => void>(),
     };
@@ -279,7 +284,11 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       },
       notificationService,
       logger,
-      { setTimer: timers.setTimer },
+      {
+        setTimer: timers.setTimer,
+        resolveProjectId: (threadId) => projectOf(threadId),
+        resolveChatTitle: (threadId) => chatTitleOf(threadId),
+      },
     );
     await notificationService.start();
   });
@@ -416,6 +425,24 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     );
   });
 
+  test('an ACP request-limit stop delivers attention instead of a finished notice', async () => {
+    await emit('orchestration:event', {
+      event: baseEvent({
+        provider: 'acp',
+        method: 'turn.completed',
+        finishReason: 'other',
+        stopReason: 'max_turn_requests',
+      }),
+    });
+    expect(await notificationService.list()).toEqual([
+      expect.objectContaining({
+        category: 'turn-failed',
+        title: 'Your agent needs attention',
+        priority: 'high',
+      }),
+    ]);
+  });
+
   test('schedules a "failed" notification for turn.aborted', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ method: 'turn.aborted', reason: 'crashed' }),
@@ -458,9 +485,38 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       expect.objectContaining({
         category: 'turn-stopped',
         title: 'Your agent stopped',
-        body: 'Agent stopped in session thread-1',
+        body: 'Open the chat to see where work stopped.',
         priority: 'normal',
       }),
+      expect.anything(),
+    );
+  });
+
+  test('a Codex abort followed by its interrupted terminal only notifies Stop', async () => {
+    const schedule = vi
+      .spyOn(notificationService, 'scheduleEnveloped')
+      .mockResolvedValue({} as never);
+    const event = (overrides: Record<string, unknown>) =>
+      baseEvent({ provider: 'codex', ...overrides });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.started' }),
+    });
+    await emit('orchestration:event', {
+      event: event({
+        method: 'session.stop-settled',
+        outcome: 'cooperative',
+        initiatedBy: 'user',
+      }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.aborted', reason: 'interrupted' }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.completed', finishReason: 'cancelled' }),
+    });
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(
+      'turn-completion',
+      expect.objectContaining({ category: 'turn-stopped' }),
       expect.anything(),
     );
   });
@@ -471,7 +527,9 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       turnId: 'provider:p',
     };
 
-    test('its completion notifies "Your agent replied"', async () => {
+    test('its completion names the chat and points to the reply', async () => {
+      chatTitleOf = (id) =>
+        id === 'thread-1' ? 'Review the importer' : undefined;
       const schedule = vi
         .spyOn(notificationService, 'scheduleEnveloped')
         .mockResolvedValue({} as never);
@@ -487,7 +545,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         expect.objectContaining({
           category: 'turn-completed',
           title: 'Your agent replied',
-          body: 'Agent replied in session thread-1',
+          body: 'Open “Review the importer” to read the reply.',
           priority: 'normal',
           dedupeTag: 'turn-completion:thread-1:provider:p',
         }),
@@ -515,7 +573,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
         expect.objectContaining({
           category: 'turn-failed',
           title: "Your agent's reply failed",
-          body: "Your agent's reply on its own failed in session thread-1",
+          body: 'Open the chat to review the error.',
         }),
         expect.anything(),
       );
@@ -830,13 +888,39 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     },
   );
 
+  test('names the session’s Project on the record, so its settings apply (#5072)', async () => {
+    projectOf = (threadId) =>
+      threadId === 'thread-1' ? 'project-alpha' : undefined;
+    await emit('orchestration:event', { event: baseEvent() });
+    const [notification] = await notificationService.list();
+    expect(
+      (notification.metadata!.envelope as { source: unknown }).source,
+    ).toEqual({
+      kind: 'system',
+      subsystem: 'turn-completion',
+      projectId: 'project-alpha',
+    });
+  });
+
+  test('a Project lookup that throws still delivers the record, without a Project', async () => {
+    projectOf = () => {
+      throw new Error('project store unavailable');
+    };
+    await emit('orchestration:event', { event: baseEvent() });
+    const [notification] = await notificationService.list();
+    expect(
+      (notification.metadata!.envelope as { source: unknown }).source,
+    ).toEqual({ kind: 'system', subsystem: 'turn-completion' });
+  });
+
   test('never leaks response text into the push body', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ outputText: 'THE SECRET ANSWER IS 42' }),
     });
     const [notification] = await notificationService.list();
     expect(notification.body).not.toContain('THE SECRET ANSWER IS 42');
-    expect(notification.body).toContain('thread-1');
+    expect(notification.body).toBe('Open the chat to see the result.');
+    expect(notification.metadata?.threadId).toBe('thread-1');
   });
 
   test('ignores non-terminal orchestration events (e.g. content deltas)', async () => {

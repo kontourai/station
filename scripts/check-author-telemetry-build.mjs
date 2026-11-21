@@ -9,7 +9,7 @@ import { createPackagedReleaseManifest } from './lib/container-release-metadata.
 
 const root = resolve(import.meta.dirname, '..');
 const directory = mkdtempSync(join(tmpdir(), 'station-author-build-'));
-const endpoint = 'https://telemetry.example.invalid/station';
+const endpoint = 'https://telemetry.kontourai.io/v1/lite/station';
 const inherited = Object.fromEntries(
   Object.entries(process.env).filter(
     ([key]) => !key.startsWith('GITHUB_') && !key.startsWith('STATION_'),

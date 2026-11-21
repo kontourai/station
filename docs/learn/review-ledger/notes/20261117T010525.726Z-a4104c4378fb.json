@@ -1,0 +1,9 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked: the open read is keyed on conversation and connection only; a landed answer binds at once and a saved model choice stays pending until the catalog loads, then reconciles without a second /open. Composer gating claims unchanged.","inputs":["src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked: the open read is keyed on conversation and connection only; a landed answer binds at once and a saved model choice stays pending until the catalog loads, then reconciles without a second /open. Composer gating claims unchanged.","inputs":["src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx"]}
+  ]
+}

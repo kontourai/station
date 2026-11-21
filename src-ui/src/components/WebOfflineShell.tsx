@@ -7,22 +7,17 @@ export function WebOfflineShell() {
   const profile = usePlatformProfile();
   const [updateReady, setUpdateReady] = useState(false);
   useEffect(() => {
-    if (
-      profile.isTauri ||
-      !window.isSecureContext ||
-      !('serviceWorker' in navigator) ||
-      !import.meta.env.PROD
-    )
-      return;
+    const worker = navigator.serviceWorker;
+    if (profile.isTauri || !worker || !import.meta.env.PROD) return;
     let registration: ServiceWorkerRegistration | undefined;
     let cancelled = false;
-    let controlled = navigator.serviceWorker.controller !== null;
+    let controlled = !!worker.controller;
     const changed = () => {
       if (controlled) setUpdateReady(true);
       controlled = true;
     };
-    navigator.serviceWorker.addEventListener('controllerchange', changed);
-    void navigator.serviceWorker
+    worker.addEventListener('controllerchange', changed);
+    void worker
       .register('/sw.js', { updateViaCache: 'none' })
       .then((value) => {
         if (cancelled) return;
@@ -38,13 +33,16 @@ export function WebOfflineShell() {
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', refresh);
-      navigator.serviceWorker.removeEventListener('controllerchange', changed);
+      worker.removeEventListener('controllerchange', changed);
     };
   }, [profile.isTauri]);
-  return updateReady ? (
-    <aside className="offline-reading-launcher" role="status">
-      Station update ready.{' '}
-      <Button onClick={() => window.location.reload()}>Reload to update</Button>
-    </aside>
-  ) : null;
+  return (
+    updateReady && (
+      <aside className="offline-reading-launcher" role="status">
+        <Button onClick={() => window.location.reload()}>
+          Reload to update
+        </Button>
+      </aside>
+    )
+  );
 }

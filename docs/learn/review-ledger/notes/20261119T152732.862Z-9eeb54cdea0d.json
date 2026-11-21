@@ -1,0 +1,7 @@
+{
+  "revision": "08086609fe726283ad2f3b9d8b2880f9b4195dd9",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked docs/guides/development.md after adding KAS permission regression tests in acp-adapter.test.ts; development guidance remains accurate.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]}
+  ]
+}

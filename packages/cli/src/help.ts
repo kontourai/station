@@ -13,7 +13,10 @@
  * in-terminal short form.
  */
 
-import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
+import {
+  AUTOMATION_OPERATOR_OPERATIONS,
+  AUTOMATION_OPERATOR_SURFACE,
+} from '@kontourai/station-contracts/automation';
 import { REVIEW_EVIDENCE_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/review-evidence';
 import { SCHEDULER_OPERATOR_OPERATIONS } from '@kontourai/station-contracts/scheduler';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
@@ -572,6 +575,8 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Import a previously exported configuration file',
     usage: [
       'station import <file>  (requiredEnvNames is an untrusted informational hint; Station fails closed when a configured stored credential reference is missing during hydration)',
+      'station import --status  (show local progress and the expected receipt path)',
+      'station import <file> --resume=<operation-id>  (acknowledge retry or recover a completed receipt)',
     ],
   },
   plugin: {
@@ -711,10 +716,10 @@ const VERBS: Record<string, VerbSpec> = {
       'the option and target, never silently dropped. Changed options apply from',
       'the next turn when resuming a session with --session=<id>.',
       '',
-      'Use --model-option=key=value; the spaced form is not supported.',
-      'The source launcher changes cwd to the checkout; pass --cwd explicitly',
-      'for new directory-based work elsewhere. On continuation, --cwd and',
-      '--project are currently omitted without a warning; the binding is retained.',
+      'Use --model-option=key=value. A bare or spaced flag is a usage error.',
+      'New local chats default to the invocation directory. For other targets,',
+      'omit workspace flags to use the target default. --project uses the',
+      'configured Project directory. Continuations reject --cwd and --project.',
       'Chat acceptance has the SDK request deadline. Its separate observation',
       'stream has no overall turn deadline.',
       'Each new user turn gets a UUID unless --client-turn-id is supplied.',
@@ -733,8 +738,9 @@ const VERBS: Record<string, VerbSpec> = {
       '--on-request=wait (default) keeps waiting for the request to be resolved',
       'out-of-band; --on-request=fail exits 4 instead, leaving the session alive',
       'and resumable (never torn down just because a request is open). --json',
-      'carries a typed pendingRequest field (requestId/requestType/title/',
-      'respondCommand) plus lifecycleState when either is present.',
+      'reports lastObservedRequest and lifecycleState when observed. It includes',
+      'pendingRequest with a respond command when Station confirms the exact',
+      'request is still open and answerable.',
     ],
   },
   sessions: {
@@ -796,17 +802,43 @@ const VERBS: Record<string, VerbSpec> = {
       'Needs the Session reads from the station CLI Feature Preview.',
     ],
   },
-  conversation: {
+  board: {
     group: 'Core Workspace',
-    summary: 'Export, fork, settle or reopen a conversation',
+    summary: 'Read or arrange widgets on a Session or Task Board',
     targets: true,
     usage: [
+      'station board read <session|task> <id> [--project=<slug>]',
+      'station board pin <session|task> <id> <name> [--project=<slug>] [--data=<block-json>|--file=<path>] [--tab=<id>] [--tab-title=<title>] [--size=<sm|md|lg|full>] [--after=<name>]',
+      'station board unpin <session|task> <id> <name> [--project=<slug>]',
+      'station board move <session|task> <id> <name> [--project=<slug>] [--tab=<id>] [--after=<name>]',
+    ],
+    actions: ['read', 'pin', 'unpin', 'move'],
+    detail: [
+      'Task references require --project. Session references use the Session ID alone.',
+      'Pin also reads block JSON from stdin. Data claims require source references.',
+      '--after places a widget after another widget by its stable name.',
+    ],
+  },
+  boards: {
+    group: 'Core Workspace',
+    summary: 'Read your saved Personal Boards',
+    targets: true,
+    usage: ['station boards list', 'station boards get <slug>'],
+    actions: ['list', 'get'],
+  },
+  conversation: {
+    group: 'Core Workspace',
+    summary: 'Search, delete, export, fork, settle or reopen conversations',
+    targets: true,
+    usage: [
+      'station conversation delete <agent> <conversationId> --confirm',
+      'station conversation search <phrase> [--project=<slug>] [--agent=<slug>] [--limit=<n>]',
       'station conversation export <agent> <conversationId>',
       'station conversation fork <agent> <conversationId> [--json]',
       'station conversation settle <conversationId> [--json]',
       'station conversation reopen <conversationId> [--json]',
     ],
-    actions: ['export', 'fork', 'settle', 'reopen'],
+    actions: ['delete', 'export', 'fork', 'settle', 'reopen', 'search'],
     detail: [
       'export:',
       '  --format=<fmt>        thread (default), anthropic-messages, openai-chat, gemini, markdown',
@@ -1228,15 +1260,35 @@ const VERBS: Record<string, VerbSpec> = {
   },
   automation: {
     group: 'Core Workspace',
-    summary: 'Read Automation delivery history (observe-only)',
+    summary: 'Manage Automation sources, rules and episodes; read deliveries',
     targets: true,
-    actions: [AUTOMATION_OPERATOR_SURFACE.deliveries.cli],
+    actions: AUTOMATION_OPERATOR_OPERATIONS.map(
+      (operation) => AUTOMATION_OPERATOR_SURFACE[operation].cli,
+    ),
     detail: [
       'station automation deliveries [--limit=<1-200>]',
+      'station automation episodes [--limit=<1-200>]',
+      'station automation retry-episode <rule-id> <episode-id>',
+      'station automation sources',
+      'station automation source-create --data=<json>|--file=<path>',
+      'station automation source-enable <source-id> [--expected-fingerprint=<sha256>]',
+      'station automation source-disable <source-id>',
+      'station automation source-delete <source-id>',
+      'station automation rules',
+      'station automation rule-create --data=<json>|--file=<path>',
+      'station automation rule-update <rule-id> --data=<json>|--file=<path>',
+      'station automation enable <rule-id> [--expected-fingerprint=<sha256>]',
+      'station automation disable <rule-id>',
+      'station automation delete <rule-id>',
       '',
-      'Lists the newest recorded deliveries, newest first (default 50).',
-      'Each row is a bounded projection: outcome, reason, rule and episode',
-      'ids. Station records matches but starts no Automation work yet.',
+      'Deliveries are bounded projections: outcome, reason, rule and episode',
+      'ids. A delivery held by a limit reads suppressed with its reason.',
+      'Changes need the operator in person (never an agent session). This',
+      'surface creates and edits dispatch-task rules only; isolated repair',
+      'rules keep their own surface. Sources are created disabled and rules',
+      'in observe mode. enable/source-enable/rule-update read the current',
+      'configuration fingerprint unless you pin one. retry-episode gives an',
+      'exhausted episode exactly one more attempt under the current rule.',
     ],
   },
   runs: {
@@ -1355,9 +1407,11 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Core Workspace',
     summary: 'Manage ACP status, commands, and connections',
     targets: true,
-    actions: ['status', 'commands', 'command-options', 'connections'],
+    actions: ['setup', 'status', 'commands', 'command-options', 'connections'],
     usage: [
+      'station acp setup',
       'station acp connections list',
+      'station acp connections reconnect <id>',
       'station acp connections create --id=<id> --command=<cmd> [--args=<arg>]... [--name=<name>] [--cwd=<path>]',
       'station acp connections create --data=<json>',
       'station acp connections delete <id>',
@@ -1409,7 +1463,8 @@ const VERBS: Record<string, VerbSpec> = {
       'station checkpoints prune --all [--gc]',
       'station checkpoints history --thread=<threadId> [--json]',
       'station checkpoints retention --thread=<threadId> [--json]',
-      'station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] --confirm',
+      'station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] [--station=<name>|--api-base=<url>] [--json]',
+      'station checkpoints restore --thread=<threadId> --turn=<turnId> --confirm --preview-id=<id> --expected-current-tree-sha=<sha> [--station=<name>|--api-base=<url>] [--json]',
     ],
     detail: [
       'Workspace checkpoints (the workspaceCheckpoints setting) snapshot a',
@@ -1418,11 +1473,9 @@ const VERBS: Record<string, VerbSpec> = {
       'this command reports per-thread disk usage across checkpointed',
       'repositories and prunes them. prune --gc also runs the git gc that',
       'actually frees the space.',
-      'restore currently bypasses shared target/credential handling and sends',
-      'no authorization, so a protected Station refuses it. It defaults to',
-      '127.0.0.1:3141 unless --api-base is given and has no SDK deadline.',
-      'It also does not display its preview before submitting confirmation.',
-      'Use the authenticated checkpoint UI/API; see issue #2734.',
+      'Restore uses the selected Station and its credential. Run without',
+      '--confirm to review the paths. Confirm separately using the preview ID',
+      'and current-tree hash from the same Station, thread and turn.',
     ],
   },
   link: {

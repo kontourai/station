@@ -42,7 +42,6 @@ export interface OpenChatsNavigation {
     > &
       ChatFocusTarget,
   ) => void | Promise<void>;
-  openCollection: () => void;
 }
 
 class OpenChatsStore {
@@ -119,10 +118,6 @@ class OpenChatsStore {
           : { revealDock: options.revealDock },
       )) ?? false
     );
-  }
-
-  openCollection() {
-    this.navigation?.openCollection();
   }
 
   registerNavigation(navigation: OpenChatsNavigation) {

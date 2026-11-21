@@ -36,7 +36,13 @@
 
     "src-ui/src/hooks/useServerCapabilities.ts",
 
-    "src-ui/src/providers/voice/index.ts"
+    "src-ui/src/providers/voice/index.ts",
+
+    "packages/sdk/src/agent/index.ts",
+
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "src-ui/src/__tests__/meeting-transcription-bundle.test.tsx"
   ],
 
   "checks": [

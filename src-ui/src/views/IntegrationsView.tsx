@@ -155,25 +155,28 @@ export function IntegrationsView({
 
   useEffect(() => {
     if (detailData) {
-      const summary = integrations.find((item) => item.id === detailData.id);
-      setEditForm({ ...summary, ...detailData, tools: summary?.tools });
+      setEditForm(detailData);
       setPendingDisabledTools(detailData.disabledTools ?? []);
     }
-  }, [detailData, integrations]);
+  }, [detailData]);
 
   const saveMutation = useSaveIntegrationMutation({
     onSuccess: (_, variables) => {
-      setEditForm((current) =>
-        current
-          ? {
-              ...current,
-              secretEnv: undefined,
-              removeSecretEnvKeys: undefined,
-            }
-          : current,
-      );
+      if (variables.isNew) {
+        setEditForm(null);
+        (selection?.saved ?? select)(variables.id);
+      } else {
+        setEditForm((current) =>
+          current
+            ? {
+                ...current,
+                secretEnv: undefined,
+                removeSecretEnvKeys: undefined,
+              }
+            : current,
+        );
+      }
       setMessage({ type: 'success', text: 'Saved' });
-      if (variables.isNew) (selection?.saved ?? select)(variables.id);
       saveMutation.reset();
       removeSettledSecretMutation(variables);
     },
@@ -290,7 +293,11 @@ export function IntegrationsView({
   );
 
   const isNew = selectedId === 'new';
-  const renderedEditForm = formForSelectedIntegration(selectedId, editForm);
+  const draft = formForSelectedIntegration(selectedId, editForm);
+  const summary = integrations.find((item) => item.id === selectedId);
+  const renderedEditForm = draft
+    ? { ...summary, ...draft, tools: summary?.tools }
+    : null;
   const locked = !!(renderedEditForm?.plugin && isLocked && !isNew);
   const hasUnsavedIntegrationDraft =
     isNew ||

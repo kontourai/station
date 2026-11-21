@@ -7,6 +7,7 @@ interface ReasoningSectionProps {
   fontSize: number;
   show: boolean;
   hasAnswerText: boolean;
+  autoExpand?: boolean;
 }
 
 type DisclosureIntent = 'automatic' | 'user-open' | 'user-closed';
@@ -68,6 +69,7 @@ export function ReasoningSection({
   fontSize,
   show,
   hasAnswerText,
+  autoExpand = true,
 }: ReasoningSectionProps) {
   const detailsId = useId();
   const summaryId = `${detailsId}-summary`;
@@ -93,7 +95,8 @@ export function ReasoningSection({
   if (!show) return null;
 
   const isOpen =
-    intent === 'user-open' || (intent === 'automatic' && !hasAnswerText);
+    intent === 'user-open' ||
+    (intent === 'automatic' && autoExpand && !hasAnswerText);
   const wordCount = countWords(content);
   const summary = `Reasoning · ${wordCount.toLocaleString()} ${
     wordCount === 1 ? 'word' : 'words'

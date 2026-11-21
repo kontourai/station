@@ -1,6 +1,6 @@
 /**
  * THE one time format for the work surfaces (Home, the inboxes, Activity,
- * the hover card and Details sheet): relative, compact, no "ago". `now`
+ * the hover card and Details sheet). The default compact form uses `now`
  * under a minute, then `2m`, `41m`, `1h`, `2d`, and a short date (`Sep 12`)
  * once a week has passed, because "9d" stops being a duration anyone reads.
  * The absolute instant belongs in a tooltip (`absoluteTime`), never in body
@@ -22,7 +22,18 @@ import { parseEpochMs } from './parseEpochMs';
 const DAY_MS = 24 * 60 * 60_000;
 const SHORT_DATE_AFTER_MS = 7 * DAY_MS;
 
-export function relativeTime(updatedAt: number, now: number): string {
+export function relativeTime(
+  updatedAt: number,
+  now: number,
+  form: 'compact' | 'explicit' = 'compact',
+): string {
+  const compact = compactRelativeTime(updatedAt, now);
+  if (form === 'compact') return compact;
+  if (compact === 'now') return 'just now';
+  return /^\d+[mhd]$/.test(compact) ? `${compact} ago` : `on ${compact}`;
+}
+
+function compactRelativeTime(updatedAt: number, now: number): string {
   if (!Number.isFinite(updatedAt) || updatedAt <= 0) return 'now';
   const elapsed = Math.max(0, now - updatedAt);
   const minutes = Math.floor(elapsed / 60_000);
@@ -112,13 +123,11 @@ export function messageTime(at: number, now: number): string {
 
 /**
  * "2m ago" / "just now": the sentence form, for prose that needs a clause
- * ("checked just now"). Never on a row, a card or a status line — those use
- * `relativeTime`; the vocabulary test pins that none of them says "ago".
+ * ("checked just now"). The compact work row also uses this wording
+ * to distinguish recency from its elapsed and scheduled clocks.
  */
 export function relativeTimeAgo(updatedAt: number, now: number): string {
-  const compact = relativeTime(updatedAt, now);
-  if (compact === 'now') return 'just now';
-  return /^\d+[mhd]$/.test(compact) ? `${compact} ago` : `on ${compact}`;
+  return relativeTime(updatedAt, now, 'explicit');
 }
 
 /**

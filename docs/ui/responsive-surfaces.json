@@ -72,6 +72,12 @@
       "evidence": "tests/mobile-chat-composer.spec.ts"
     },
     {
+      "path": "src-ui/src/components/chat-dock/ChildChatActionsSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "The child header opens the shared dialog and restores focus to its trigger. The 320px and 390px Chromium child-reader journeys exercise its transcript-only inventory state."
+    },
+    {
       "path": "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
@@ -108,6 +114,7 @@
     {
       "path": "src-ui/src/components/coding-layout/NewTerminalModal.tsx",
       "strategy": "covered",
+      "contract": "Dialog",
       "evidence": "tests/coding-layout-plan-panel.spec.ts"
     },
     {

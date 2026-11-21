@@ -36,6 +36,7 @@ import { LAZY_BOUNDARY_ERROR_SELECTOR } from './lazy-surface-readiness';
  * - `route-chunk-error`: `RouteViewBoundary`'s `ErrorState` (`.error-state`)
  *   for a route whose chunk failed, titled with the catalog's
  *   `route.chunk.title` or `route.chunk.offlineTitle`.
+ * - `route-pending-recovery`: the route fallback after its loading window expires.
  *
  * NOT detected, because none has a shared hook: `WorkspacePaneFrame` and
  * `HomeRolePane` boundaries, `RequiredSlotHost` rendering nothing,
@@ -52,6 +53,7 @@ const APP_ERROR_SURFACES = {
   'lazy-boundary-row': LAZY_BOUNDARY_ERROR_SELECTOR,
   'extension-registry-toast': '[data-testid="toast-card"]',
   'route-chunk-error': '.error-state',
+  'route-pending-recovery': '.route-pending-recovery',
 } as const;
 export type AppErrorSurfaceName = keyof typeof APP_ERROR_SURFACES;
 const ROUTE_CHUNK_TITLES = [
@@ -75,6 +77,8 @@ export const READ_APP_ERROR_SURFACES = `(() => {
   const routes = Array.from(document.querySelectorAll(${JSON.stringify(APP_ERROR_SURFACES['route-chunk-error'])}))
     .filter((state) => titles.some((title) => textOf(state).includes(title))).length;
   if (routes > 0) found['route-chunk-error'] = routes;
+  const stalled = document.querySelectorAll(${JSON.stringify(APP_ERROR_SURFACES['route-pending-recovery'])}).length;
+  if (stalled > 0) found['route-pending-recovery'] = stalled;
   return found;
 })()`;
 

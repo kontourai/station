@@ -1,0 +1,9 @@
+{
+  "revision": "f91b85f21e1d09b17d2ceb5f1f0d246746848cdc",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"terminal.md and integrating-station.md link the API reference for other sections (terminal routes, source APIs, the reference index); the added inbox-hidden text is confined to Personal conversation resolution.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"terminal.md and integrating-station.md link the API reference for other sections (terminal routes, source APIs, the reference index); the added inbox-hidden text is confined to Personal conversation resolution.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1,3 +1,7 @@
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 /**
  * @vitest-environment jsdom
  */
@@ -17,6 +21,8 @@ import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { hostActionCopy } from '../components/host-action/host-action-copy';
+
+const removeAcp = vi.hoisted(() => ({ mutate: vi.fn(), reset: vi.fn() }));
 
 const operatorScope = {
   apiBase: 'https://operator.example.test',
@@ -98,7 +104,7 @@ function museMissingBinaryConnection() {
       {
         id: 'muse-cli',
         name: 'Muse Code CLI',
-        description: 'Required to launch the Muse Code runtime.',
+        description: 'Required to launch the Muse Code engine.',
         status: 'missing',
         category: 'required',
         installGuide: {
@@ -197,6 +203,8 @@ let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
  * exercise the ACP half set this explicitly.
  */
 let acpRegistryEntries: unknown[] = [];
+let acpRegistryPending = false;
+let acpRegistryError: Error | null = null;
 /**
  * The ACP bridge's live connection set — the projection that gates (and the
  * reconnect route 404s against) the detail header's Reconnect action. Empty
@@ -238,6 +246,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useDeleteACPConnectionMutation: () => ({
+    ...removeAcp,
     mutateAsync: vi.fn(),
     isPending: false,
   }),
@@ -253,7 +262,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: agentConnectionsQueryError,
     refetch: refetchAgentConnections,
   }),
-  useAgentConnectionCatalogQuery: () => ({ data: agentCatalog }),
+  useAgentConnectionCatalogQuery: () => ({
+    data: agentCatalog,
+    refetch: vi.fn(),
+  }),
   useAgentConnectionQuery: (id: unknown, config?: { enabled?: boolean }) => {
     connectionReads.push([id, config?.enabled]);
     return { data: connectionQueryData };
@@ -406,6 +418,8 @@ vi.mock('../hooks/useACPConnections', () => ({
   useACPConnectionProbeStatuses: () => ({ data: undefined }),
   useACPConnectionRegistry: () => ({
     data: acpRegistryEntries,
+    isPending: acpRegistryPending,
+    error: acpRegistryError,
     refetch: refetchRegistry,
     isFetching: false,
   }),
@@ -415,6 +429,8 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    acpRegistryPending = false;
+    acpRegistryError = null;
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -430,6 +446,8 @@ describe('AgentConnectionView', () => {
           new Response(JSON.stringify(data), {
             headers: { 'Content-Type': 'application/json' },
           });
+        if (path === '/api/feature-previews')
+          return reply({ success: true, data: [] });
         if (path.endsWith('/sign-in/attempt'))
           return reply({ success: true, data: null });
         if (path.endsWith('/sign-in'))
@@ -718,14 +736,16 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Choose an engine' }),
+    ).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
     // #592 slice 2: the bespoke Detected/Available chip retired in favor of
     // the same ProviderReadiness vocabulary every other picker uses —
     // `setup.state: 'available', detected: true` reads "Found, not
     // connected" everywhere else on Connections.
     expect(screen.getByText('Found, not connected')).toBeTruthy();
-    expect(screen.getByText('Station engine')).toBeTruthy();
+    expect(screen.queryByText('Station engine')).toBeNull();
 
     // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
     // in the catalogue — the accessible name carries the engine's own name.
@@ -767,7 +787,10 @@ describe('AgentConnectionView', () => {
     // No route jump on the way: the result is in the add pane.
     expect(onNavigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-engine-edit',
+      id: 'claude',
+    });
   });
 
   // A native row the catalogue labels "Setup required" still adds the engine
@@ -883,13 +906,11 @@ describe('AgentConnectionView', () => {
     // The always-available manual escape hatch.
     expect(screen.getByText('Custom engine')).toBeTruthy();
 
-    // An engine that is not installed is installed first: its row offers
-    // the install hint and Check again, never a way to connect it.
     expect(
-      screen.getByRole('button', { name: 'Check again for OpenCode' }),
+      screen.getByRole('button', { name: 'Set up OpenCode' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Set up OpenCode' }),
+      screen.queryByRole('button', { name: 'Check again for OpenCode' }),
     ).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Connect OpenCode' }),
@@ -914,6 +935,55 @@ describe('AgentConnectionView', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
   });
 
+  test.each([undefined, 'antigravity'])(
+    'engine setup %s waits for discovery and offers retry after a failed read',
+    async (addChoiceId) => {
+      acpRegistryEntries = [];
+      acpRegistryPending = true;
+      const mounted = await render(
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={addChoiceId}
+          onNavigate={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole('heading', { name: 'Choose an engine' }),
+      ).toBeNull();
+      expect(screen.queryByText('Engine not found')).toBeNull();
+      acpRegistryPending = false;
+      acpRegistryError = new Error('Discovery failed');
+      mounted.rerender(
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={addChoiceId}
+          onNavigate={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Couldn't load engine setup")).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(refetchRegistry).toHaveBeenCalled();
+      expect(acpInstall).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a missing engine setup target offers the catalog without substituting a custom command', async () => {
+    acpRegistryEntries = [];
+    agentCatalog = [];
+    const onNavigate = vi.fn();
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="missing"
+        onNavigate={onNavigate}
+      />,
+    );
+    expect(screen.getByText('Engine not found')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse engines' }));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(acpInstall).not.toHaveBeenCalled();
+  });
+
   test('a deep link to one entry opens its confirm step in the same pane', async () => {
     acpRegistryEntries = [
       {
@@ -936,7 +1006,9 @@ describe('AgentConnectionView', () => {
       screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Choose an engine' }),
+    ).toBeTruthy();
   });
 
   test('an undetected catalogue engine shows its host install recipe and re-checks on demand; a detected one does not', async () => {
@@ -973,6 +1045,8 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    expect(screen.queryByTestId('engine-install-hint')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const hints = screen.getAllByTestId('engine-install-hint');
     expect(hints).toHaveLength(1);
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
@@ -1027,6 +1101,7 @@ describe('AgentConnectionView', () => {
     await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
     fireEvent.click(
       within(goose).getByRole('button', { name: 'Check again for Goose' }),
@@ -1060,6 +1135,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Acme Agent' }));
     const hint = screen.getByRole('group', {
       name: 'How to install Acme Agent',
     });
@@ -1083,6 +1159,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
     expect(
       within(goose).getByText(
@@ -1245,7 +1322,7 @@ describe('AgentConnectionView', () => {
 
     expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
     expect(
-      screen.getAllByText('Required to launch the Muse Code runtime.'),
+      screen.getAllByText('Required to launch the Muse Code engine.'),
     ).not.toHaveLength(0);
     expect(screen.queryByText('Sign in required')).toBeNull();
     expect(screen.queryByText('Sign in to finish connecting.')).toBeNull();
@@ -1331,7 +1408,7 @@ describe('AgentConnectionView', () => {
         {
           id: 'muse-cli',
           name: 'Muse Code CLI',
-          description: 'Required to launch the Muse Code runtime.',
+          description: 'Required to launch the Muse Code engine.',
           status: 'installed',
           category: 'required',
         },
@@ -1997,6 +2074,50 @@ describe('AgentConnectionView', () => {
     },
   );
 
+  test('a configured home overrides the app-home opt-in and leaves an unused profile clearable', async () => {
+    connectionQueryData = {
+      id: 'claude',
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Code',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { configHome: '  ~/.custom-claude  ', useAppHome: true },
+      setup: { state: 'ready', detected: true, configured: false },
+    };
+    appHomeProfileQueryData = {
+      profileDir: '/station/app-homes/claude',
+      exists: true,
+      seededFrom: 'empty',
+      authState: 'unauthenticated',
+      keychainAuthPossible: false,
+      usage: { sizeBytes: 2048, entryCount: 3, truncated: false },
+    };
+
+    await render(
+      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByText('Advanced'));
+
+    const appHomeCheckbox = screen.getByRole<HTMLInputElement>('checkbox', {
+      name: /Run sessions in a Station-managed app home/,
+    });
+    expect(appHomeCheckbox.checked).toBe(false);
+    expect(appHomeCheckbox.disabled).toBe(true);
+    expect(screen.getByText(/custom home is configured/)).toBeTruthy();
+    expect(screen.queryByText(/custom-claude/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Import a snapshot/ }),
+    ).toBeNull();
+    expect(screen.getByText(/across 3 items/)).toBeTruthy();
+    const clearButton = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Clear this app home',
+    });
+    expect(clearButton.disabled).toBe(false);
+  });
+
   // archive#896: bounded profile GC — usage report + explicit clear.
   test('the app home clear action confirms before calling the clear mutation', async () => {
     connectionQueryData = {
@@ -2051,6 +2172,47 @@ describe('AgentConnectionView', () => {
     expect(clearMutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(clearMutate).toHaveBeenCalledWith('claude');
+  });
+
+  test('removing a connected ACP engine requires confirmation and names affected Agents', async () => {
+    removeAcp.mutate.mockClear();
+    connectionQueryData = {
+      id: 'agy',
+      kind: 'agent',
+      type: 'acp',
+      name: 'Antigravity',
+      enabled: true,
+      status: 'ready',
+      capabilities: [],
+      prerequisites: [],
+      config: { icon: 'brand:antigravity' },
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    acpBridgeConnections = [{ id: 'agy', name: 'Antigravity' }];
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="agy"
+        onNavigate={vi.fn()}
+        agents={[
+          {
+            slug: agentId('drafting'),
+            name: 'Drafting',
+            execution: { agentConnectionId: engineConnectionId('agy') },
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Antigravity' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove engine' }));
+    const confirmation = screen.getByRole('alertdialog', {
+      name: 'Remove engine',
+    });
+    expect(confirmation.textContent).toContain('Drafting');
+    expect(removeAcp.mutate).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(confirmation).getByRole('button', { name: 'Remove' }),
+    );
+    expect(removeAcp.mutate).toHaveBeenCalledWith('agy');
   });
 
   test('credential recovery is manual-first, safely exposes credential entry labels, and requires explicit enrollment', async () => {

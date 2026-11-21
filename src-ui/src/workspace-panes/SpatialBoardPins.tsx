@@ -190,6 +190,12 @@ export function SpatialPin({
     <article
       className={`spatial-board__pin ${active ? 'spatial-board__pin--selected' : ''}`}
       aria-label={`${referenceKindLabel(pin.reference)} pin ${referenceLabel(pin.reference)}`}
+      onFocus={() => setSelected(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setSelected(false);
+        }
+      }}
       style={{
         left: displayed.x,
         top: displayed.y,
@@ -207,8 +213,6 @@ export function SpatialPin({
             : {})}
           disabled={replace.isPending || remove.isPending}
           aria-label={`Move ${referenceLabel(pin.reference)}. Arrow keys move; Shift plus Arrow keys resize.`}
-          onFocus={() => setSelected(true)}
-          onBlur={() => setSelected(false)}
           onKeyDown={onKeyDown}
           onPointerDown={(event) => begin(event, 'move')}
           onPointerMove={movePointer}
@@ -231,8 +235,6 @@ export function SpatialPin({
             : {})}
           disabled={replace.isPending || remove.isPending}
           aria-label={`Resize ${referenceLabel(pin.reference)}`}
-          onFocus={() => setSelected(true)}
-          onBlur={() => setSelected(false)}
           onPointerDown={(event) => begin(event, 'resize')}
           onPointerMove={movePointer}
           onPointerUp={(event) => finish(event, true)}
@@ -252,12 +254,7 @@ export function SpatialPin({
           Remove
         </Button>
       </footer>
-      {replace.error || remove.error ? (
-        <p className="spatial-board__mutation-error" role="alert">
-          The Board change could not be confirmed. Refresh the Board before
-          deciding whether to try again.
-        </p>
-      ) : null}
+      <BoardMutationError error={replace.error || remove.error} />
     </article>
   );
 }

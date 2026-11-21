@@ -1,0 +1,7 @@
+{
+  "revision": "48a7ba5b2e4049037d7253912826d764d2b1f5ca",
+
+  "notes": [
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed the remote-apply-only driver repair against Plan/TaskRoomEditorPane, the adapter binding, pre-armed exact edit-plan/batch receipt observation, revision/text-bound apply/layout marks and editor-bound Saved adoption. The primary suite mounts the production editor with controlled transport; 60 focused controls, e2e types, fixture policy, lint and hygiene passed. Debounce and input-to-Saved are disclosed separately; five warmups/100 samples, p95 16ms and the 50ms task bound remain unchanged. Local-input/diff/transcript and other reference-driver journeys are outside this repair. Untimed isolated browser control pending; Windows physical/native/ADEMark and timed reference evidence NOT_VERIFIED. Added the two primary test sources to this existing contract owner; no separate product documentation owner is needed.","inputs":["docs/reference/interactive-workspace-performance.md","scripts/interactive-workspace-playwright-adapter.mjs","src-ui/src/performance/interactive-workspace-performance-bridge.ts","tests/interactive-workspace-performance-bridge.spec.ts","scripts/__tests__/interactive-workspace-playwright-adapter.test.ts","src-ui/src/performance/__tests__/interactive-workspace-performance-bridge.test.ts"]}
+  ]
+}

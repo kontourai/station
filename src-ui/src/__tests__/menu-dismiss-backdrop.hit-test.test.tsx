@@ -89,6 +89,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { execFileSyncBounded } from '../../../scripts/lib/bounded-capture.mjs';
 import {
   assertNoImportsSurvive,
   chromiumIsInstalled,
@@ -1099,6 +1100,195 @@ describe.skipIf(!chromiumAvailable)(
         ).toBe(true);
       },
     );
+
+    test('active phone modals own the approval overlap, Tab, and Escape', async () => {
+      const harnessSource = `
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { ActiveWorkContextFrame } from './src-ui/src/components/chat-dock/ActiveWorkContextFrame';
+import { CommandLauncher } from './src-ui/src/components/chat-dock/CommandLauncher';
+import { ComposerActionsMenu } from './src-ui/src/components/chat-dock/ComposerActionsMenu';
+
+const surface = document.body.dataset.auditSurface;
+const session = {
+  id: 'sample-chat', agentSlug: agentId('builder'), agentName: 'Builder', title: 'Sample task',
+  source: 'manual', messages: [], input: '', attachments: [], queuedMessages: [],
+  status: 'idle', createdAt: 1, updatedAt: 2, inputHistory: [], projectSlug: 'sample',
+};
+
+function DockFixture() {
+  const [open, setOpen] = useState(false);
+  const opener = useRef(null);
+  const close = () => setOpen(false);
+  return (
+    <section className="chat-dock chat-dock--bottom is-maximized" data-region="bottom">
+      {surface === 'composer actions' ? (
+        <ComposerActionsMenu
+          triggerRef={opener}
+          commandLauncherDisabled={false}
+          commandLauncherShortcut=""
+          onOpenCommandLauncher={() => {}}
+          onOpenDelegation={() => {}}
+        />
+      ) : (
+        <button ref={opener} type="button" onClick={() => setOpen(true)}>
+          {'Open ' + surface}
+        </button>
+      )}
+      {open && surface === 'command launcher' && (
+        <CommandLauncher
+          context={{ project: 'Station', agent: 'Builder', model: undefined, mode: 'bottom', attachments: [] }}
+          returnFocusTarget={opener.current}
+          onClose={close}
+          onConfirm={() => {}}
+        />
+      )}
+      {open && surface === 'task context' && (
+        <ActiveWorkContextFrame
+          panel="context"
+          isMobile
+          session={session}
+          gitStatus={null}
+          canOpenFiles={false}
+          returnFocusTarget={opener.current}
+          onClose={close}
+          onOpenFile={() => {}}
+          onOpenProjectContext={() => {}}
+        />
+      )}
+    </section>
+  );
+}
+
+createRoot(document.getElementById('phone-modal-fixture')).render(<DockFixture />);
+`;
+      // Build in Node so esbuild's binary types belong to the same realm.
+      const bundle = execFileSyncBounded(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `
+          import { readFileSync } from 'node:fs';
+          import { build } from 'esbuild';
+          const built = await build({
+            stdin: { contents: readFileSync(0, 'utf8'), resolveDir: process.cwd(), loader: 'tsx' },
+            bundle: true,
+            jsx: 'automatic',
+            define: { 'process.env.NODE_ENV': '"production"' },
+            loader: { '.css': 'empty' },
+            write: false,
+            platform: 'browser',
+          });
+          process.stdout.write(built.outputFiles[0].text);
+        `,
+        ],
+        {
+          cwd: REPO_ROOT,
+          input: harnessSource,
+          encoding: 'utf8',
+          windowsHide: true,
+          maxBuffer: 16 * 1024 * 1024,
+        },
+      );
+      harness.isMobile = true;
+      toastStore.clear();
+      toastStore.showToolApproval({
+        sessionId: 'session-approval',
+        toolName: 'write_file',
+        agentName: 'Builder',
+        actions: [],
+      });
+      render(
+        <NavigationProvider>
+          <ToastProvider>
+            <NotificationContainer />
+          </ToastProvider>
+        </NavigationProvider>,
+      );
+      const notification = document.body.innerHTML;
+      cleanup();
+      toastStore.clear();
+
+      for (const surface of [
+        'command launcher',
+        'task context',
+        'composer actions',
+      ]) {
+        const page = await browser.newPage({ viewport: PHONE });
+        try {
+          await page.setContent(
+            fixtureHtml(notification + '<div id="phone-modal-fixture"></div>'),
+          );
+          await applyViewportVars(page, PHONE);
+          await page.evaluate((value) => {
+            document.body.dataset.auditSurface = value;
+          }, surface);
+          await page.addScriptTag({ content: bundle });
+          const opener = page.getByRole('button', {
+            name:
+              surface === 'composer actions'
+                ? 'Composer actions'
+                : `Open ${surface}`,
+            exact: true,
+          });
+          const overlay = page.locator('.responsive-surface-overlay');
+          await opener.click();
+          await overlay.waitFor({ state: 'visible' });
+          const modal = overlay.locator('[aria-modal="true"]');
+          const controls = await modal
+            .locator('button, input, [role="menuitem"]')
+            .count();
+          for (let step = 0; step <= controls; step++) {
+            expect(
+              await modal.evaluate((node) =>
+                node.contains(document.activeElement),
+              ),
+              `${surface} keeps focus inside on Tab step ${step}`,
+            ).toBe(true);
+            await page.keyboard.press('Tab');
+          }
+          await page.keyboard.press('Escape');
+          await overlay.waitFor({ state: 'detached' });
+          await page.waitForFunction(
+            (trigger) => trigger === document.activeElement,
+            await opener.elementHandle(),
+          );
+
+          await opener.click();
+          await overlay.waitFor({ state: 'visible' });
+          const pill = await page
+            .locator('.notification-approval-queue__trigger')
+            .boundingBox();
+          if (!pill)
+            throw new Error('the pending approval pill did not render');
+          const point = {
+            x: pill.x + pill.width / 2,
+            y: pill.y + pill.height / 2,
+          };
+          const hit = await overlay.evaluate((element, point) => {
+            const target = document.elementFromPoint(point.x, point.y);
+            return {
+              withinModal: element.contains(target),
+              target: target?.outerHTML.slice(0, 180),
+            };
+          }, point);
+          expect(
+            hit.withinModal,
+            `${surface} receives the press: ${hit.target}`,
+          ).toBe(true);
+          await page.mouse.click(point.x, point.y);
+          await overlay.waitFor({ state: 'detached' });
+          await page.waitForFunction(
+            (trigger) => trigger === document.activeElement,
+            await opener.elementHandle(),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    });
 
     /**
      * The toolbar's region controls end the header row (pane workspace

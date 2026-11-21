@@ -23,9 +23,11 @@
  * from the contracts package, which import nothing themselves.
  *
  * What the guard enforces centrally:
- *  - caller presence (decision 4: a caller-less internal request may reach
- *    only read-only routes that are not principal-scoped), assurance, the
- *    operator role (decisions 1 and 2), and person-only actions;
+ *  - caller presence (decision 4, slice D: every station-control tool call
+ *    carries a verified caller, Station's own engine included, so a
+ *    caller-less internal request is refused whatever it asks for),
+ *    assurance, the operator role (decisions 1 and 2), and person-only
+ *    actions;
  *  - for `role: 'self'` and `role: 'project'` (slice B): a verified caller
  *    whose session has a recorded owner. The SCOPE itself is enforced where
  *    the data is: the guard records who the request acts for
@@ -75,12 +77,14 @@ export type StationControlAssuranceRequirement =
  * - `self`: scoped to the caller's own session or principal. The guard
  *   requires that principal; the route reads as it (slice B).
  * - `none`: no principal requirement beyond the assurance, and nothing the
- *   route returns is principal-scoped, so a caller-less request may read it.
+ *   route returns is principal-scoped, so any verified caller may read it,
+ *   including a session with no recorded owner.
  */
 export type StationControlRoleRequirement =
   | 'operator'
   | 'project'
   | 'self'
+  | 'appearance'
   | 'none';
 
 /** The approval class the auto-approve and platform-mutation gates read. */
@@ -220,8 +224,8 @@ const del = (
 });
 
 /**
- * Any verified caller may read; a caller-less request may too (decision 4),
- * because nothing it returns is principal-scoped.
+ * Any verified caller may read, because nothing it returns is
+ * principal-scoped. A caller-less request may not (decision 4, slice D).
  */
 const READ: Pick<
   StationControlToolPolicy,
@@ -496,10 +500,14 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // ── appearance ─────────────────────────────────────────────────────────
   // The person's own custom appearance. An agent reads and proposes; the
   // route refuses it every other step (keep, save, dismiss, report).
-  get_appearance: { ...SELF_READ, routes: [get('/api/me/appearance')] },
+  get_appearance: {
+    ...SELF_READ,
+    role: 'appearance',
+    routes: [get('/api/me/appearance')],
+  },
   propose_appearance: {
     assurance: 'any',
-    role: 'self',
+    role: 'appearance',
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [post('/api/me/appearance/proposal')],
@@ -519,8 +527,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   update_skill: { ...OPERATOR_MUTATION, routes: [put('/api/skills/:name')] },
   // Slice B: a skill's run and outcome counters are one Station-wide tally
   // with no per-person state to scope, and they reveal nothing back but the
-  // counts. Any verified caller may bump them (a caller-less one may not:
-  // they are writes).
+  // counts. Any verified caller may bump them.
   track_skill_run: {
     assurance: 'any',
     role: 'none',
@@ -568,6 +575,27 @@ export const STATION_CONTROL_TOOL_POLICY = {
     role: 'project',
     projectAction: 'view',
     routes: [get('/api/projects/:projectSlug/reviews/:receiptId')],
+  },
+
+  // ── operations: automations (#4513) ───────────────────────────────────
+  // Station-wide operator configuration and its ledger: operator-wide reads.
+  // No Automation mutation has a tool (the contract's `mcp` is null), so an
+  // agent can never create, widen, enable or retry its own triggers.
+  list_automation_sources: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/sources')],
+  },
+  list_automation_rules: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/rules')],
+  },
+  list_automation_deliveries: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/deliveries')],
+  },
+  list_automation_episodes: {
+    ...OPERATOR_READ,
+    routes: [get('/automations/episodes')],
   },
 
   // ── operations: scheduler ──────────────────────────────────────────────
@@ -751,6 +779,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // bundled playbook; a redacted, bounded issue-form link) and call nothing.
   get_troubleshoot_playbook: { ...READ, routes: [] },
   draft_troubleshoot_report: { ...READ, routes: [] },
+  list_engine_setup: { ...SELF_READ, routes: [get('/acp/setup')] },
+  open_engine_setup: {
+    ...SELF_READ,
+    routes: [get('/acp/setup'), NAVIGATE_ROUTE],
+  },
   // Delivered only to the owner's own Station clients (`/events`).
   navigate_to: {
     ...SELF_READ,
@@ -798,18 +831,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/environments/ssh'), get('/api/environments/peers')],
   },
   list_delegation_targets: {
-    // Decision 1: discovery may reconnect a saved SSH environment. Since
-    // slice C2b the tool asks this Station's route for a saved Environment
-    // (`POST /api/orchestration/delegations/options`), which refuses a
-    // caller that is not a bound operator before it connects anything. The
-    // rest it shares with dispatch, which the server enforces only as
-    // loosely as dispatch.
-    ...OPERATOR_MUTATION,
-    tightenedBy: ['C'],
-    routes: [
-      post('/api/orchestration/delegations/options'),
-      ...DISPATCH_ROUTES,
-    ],
+    // Local discovery shares dispatch's Project scope. A saved Environment
+    // can reconnect an SSH host, so the route requires a bound operator
+    // before it does any remote work.
+    ...DISPATCH,
+    routes: [post('/api/orchestration/delegations/options')],
   },
   list_delegated_tasks: { ...DISPATCH, routes: DISPATCH_ROUTES },
   delegate_task: {
@@ -1174,6 +1200,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/api/orchestration/station-control/task-brief')],
   },
+  // #5067: the caller's OWN Project Library. The route reads the Project
+  // Station recorded for the verified caller's Session; no argument names it.
+  list_project_library: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-library')],
+  },
+  read_project_library_file: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-library/file')],
+  },
   // #4003: write the Task memory of the caller's OWN Session's Task: one
   // summary revision, or one keyed record version. The routes read the
   // Session from the verified caller and the Task from its immutable room
@@ -1193,6 +1229,36 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'bounded-write',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/task-record')],
+  },
+
+  // #5065: the memory of the caller Session's OWN Project. The routes read
+  // the Session from the verified caller and the Project from that Session's
+  // start, never the arguments, and hold it to the one scope rule. list and
+  // read are reads. remember is a bounded write: it appends one note, capped
+  // in count and size, and never overwrites or deletes; a note is never an
+  // instruction or a grant. forget deletes a note (possibly one a person
+  // wrote), so it is mutating and keeps the normal approval posture.
+  list_project_notes: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-memory')],
+  },
+  read_project_note: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-memory/:id')],
+  },
+  remember_project_note: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/project-memory')],
+  },
+  forget_project_note: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [del('/api/orchestration/station-control/project-memory/:id')],
   },
 
   task_thread_list: {
@@ -1365,7 +1431,7 @@ export function stationControlRefusalBody(refusal: StationControlRefusal): {
 
 const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
   station_control_caller_required:
-    "This action needs a verified calling session, and this engine's station-control connection does not carry one. Without one, only read-only station-control tools whose answers belong to no particular person work.",
+    'Station tools need a verified calling session, and this request does not carry one. They work only from inside a Station session.',
   station_control_assurance_insufficient:
     "This action needs a credential that stayed inside Station. This engine's station-control credential could have been copied by another process, so Station will not take this action on its word. Ask the person to do it in Station, or run it from an engine Station hosts in-process.",
   station_control_role_required:
@@ -1427,6 +1493,7 @@ export interface StationControlPolicyCaller {
   /** Its own session, and that session's conversation when it has one. */
   readonly sessionId?: string;
   readonly conversationId?: string;
+  readonly appearanceOwnerId?: string;
   readonly principal?: {
     readonly id: string;
     readonly elevationEligible: boolean;
@@ -1664,9 +1731,10 @@ export function stationControlToolListable(
  *
  * Order: a person-only action is refused whoever asks (no agent can take it,
  * so "ask the person" is the actionable answer even for a caller-less
- * request); then a caller-less request may only read what is not
- * principal-scoped (decision 4); then the assurance; then a recorded owner
- * for a principal-scoped action; then the operator role.
+ * request); then a caller-less request is refused (decision 4, slice D),
+ * also for a route that decides the rest itself (`enforcedBy: 'route'`);
+ * then the assurance; then a recorded owner for a principal-scoped action;
+ * then the operator role.
  */
 export function evaluateStationControlPolicy(
   policy: StationControlToolPolicy,
@@ -1686,26 +1754,29 @@ function evaluatePolicyRequirements(
   policy: StationControlToolPolicy,
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
-  if (policy.enforcedBy === 'route') return undefined;
   if (personOnlyApplies(policy, context.body))
     return stationControlRefusal('station_control_person_only');
   const caller = context.caller;
-  if (!caller) {
-    // Decision 4, read with decision 2 (slice B): a caller-less request acts
-    // for no one, so it may read only what is not principal-scoped.
-    return policy.toolClass === 'read-only' && policy.role === 'none'
-      ? undefined
-      : stationControlRefusal('station_control_caller_required');
-  }
+  // Decision 4 (slice D): Station's own engine now calls as its session, so
+  // a request with no verified caller is a copied internal token or a stray
+  // child. It acts for no one and may do nothing.
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  if (policy.enforcedBy === 'route') return undefined;
   if (ASSURANCE_RANK[caller.assurance] < REQUIREMENT_RANK[policy.assurance])
     return stationControlRefusal('station_control_assurance_insufficient');
   // Decision 2: a principal-scoped action reads or writes as the principal
   // the session acts for; a session with no recorded owner acts for no one.
   if (
-    (policy.role === 'self' || policy.role === 'project') &&
-    !caller.principal
+    !caller.principal &&
+    (policy.role === 'self' ||
+      policy.role === 'project' ||
+      (policy.role === 'appearance' && !caller.appearanceOwnerId))
   )
-    return stationControlRefusal('station_control_role_required');
+    return {
+      code: 'station_control_role_required',
+      message:
+        'This session has no verified person to act for. Ask from the original chat or have the person complete the action in Station.',
+    };
   if (policy.role === 'operator') {
     const principal = caller.principal;
     const isOperator =
@@ -2108,6 +2179,11 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'list_projects',
     'get_project',
     'list_project_layouts',
+    // #5065: the caller Session's own Project memory, bounded notes.
+    'list_project_notes',
+    'read_project_note',
+    'remember_project_note',
+    'forget_project_note',
     'wait_session',
     'list_walkthroughs',
     'get_walkthrough',
@@ -2144,6 +2220,8 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'read_pull_request_guide',
     'declare_pull_request',
     'get_task_brief',
+    'list_project_library',
+    'read_project_library_file',
     'task_summary_update',
     'task_record',
     'task_thread_list',

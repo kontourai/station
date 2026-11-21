@@ -13,12 +13,13 @@ keeps the durable correlation. Runtime composition mounts this personal-home
 feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
 
-New Project's start intent is a separate setup choice. **Documents and
-knowledge** and **Connected tools** create a Project without a folder/starter
-prompt, then open Sources or Tools. **Repository or folder** keeps the existing
-starter recommendation; **Blank Project** may select a layout explicitly. The
-creation recovery pointer retains this intent alongside its selected starter.
-Neither an intent nor an installed layout is a dispatched Task or readiness proof.
+New Project starts with **Blank workspace** or **From a repository**. Both
+can choose an installed layout. Blank workspace puts that choice under **More
+options**. Selecting a Git checkout keeps the Coding
+recommendation when it is available. Add documents and connected tools after
+creation in **Files & connections**. Saved creation requests retain their
+original destination and starter, including earlier requests that open Sources
+or Tools. Creating a Project or choosing a layout does not dispatch a Task.
 All Starter launch routes require the home’s first-run status to be completed.
 
 The technical behavior below accompanies the shorter
@@ -138,7 +139,11 @@ inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
 Session links open the Chat reader on the verified Station. Attached continuation
-still asks for confirmation before creating and sending into its continuation.
+asks first only when the original is still mid-turn in its own app: Station
+refuses a launch for a source that reads as still running
+(`code: "continuation_source_active"`, `retrySafe: true`) until it is
+repeated with `continueWhileSourceActive`, which the reader's **Continue
+anyway** sends with the same operation identity.
 
 An attached terminal Session stays read only. The first eligible continuation
 launches the bounded `continue-session` Starter: Station

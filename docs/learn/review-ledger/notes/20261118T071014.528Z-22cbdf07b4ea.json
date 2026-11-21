@@ -1,0 +1,169 @@
+{
+  "revision": "42d21ba101fa8db221d1f680cdfd57537eb9b478",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared row in Home, the desktop Inbox and the phone Inbox. The button’s name now follows the visible content, with only off-screen context appended. A distinct explanation and coarse elapsed time can be described without announcing the visible status twice. Existing opening, identity, touch, and keyboard routes stay as documented.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared row in Home, the desktop Inbox and the phone Inbox. The button’s name now follows the visible content, with only off-screen context appended. A distinct explanation and coarse elapsed time can be described without announcing the visible status twice. Existing opening, identity, touch, and keyboard routes stay as documented.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the shared row in Home, the desktop Inbox and the phone Inbox. The button’s name now follows the visible content, with only off-screen context appended. A distinct explanation and coarse elapsed time can be described without announcing the visible status twice. Existing opening, identity, touch, and keyboard routes stay as documented.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the shared status line and its consumers. The Inbox name includes the visible status and detail; its separate references carry only the off-screen reason or coarse duration. Other status hosts keep their existing display and description. The per-second number remains visual.","inputs":["src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared status line and its consumers. The Inbox name includes the visible status and detail; its separate references carry only the off-screen reason or coarse duration. Other status hosts keep their existing display and description. The per-second number remains visual.","inputs":["src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared status line and its consumers. The Inbox name includes the visible status and detail; its separate references carry only the off-screen reason or coarse duration. Other status hosts keep their existing display and description. The per-second number remains visual.","inputs":["src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the shared status line and its consumers. The Inbox name includes the visible status and detail; its separate references carry only the off-screen reason or coarse duration. Other status hosts keep their existing display and description. The per-second number remains visual.","inputs":["src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the shared status line and its consumers. The Inbox name includes the visible status and detail; its separate references carry only the off-screen reason or coarse duration. Other status hosts keep their existing display and description. The per-second number remains visual.","inputs":["src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the shared status line and its consumers. The Inbox name includes the visible status and detail; its separate references carry only the off-screen reason or coarse duration. Other status hosts keep their existing display and description. The per-second number remains visual.","inputs":["src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the narrow-row wrapping comment against the accessible name and description. Visible actionable text retains its existing fit and details; the full wording remains available even if the layout truncates it.","inputs":["src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the bounded tool-call status footer style. The existing shared normal text token now supplies legible success text on light chat cards. Error status and all other theme and shell rules stay as documented. Browser contrast evidence measures the mounted active, parent, and child cards.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the row name check and impacted Gallery captures. The actual active status, Project and draft cue are checked in reading order. The selected 37 screens show zero unallowlisted findings; this does not renew unrelated archived captures.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the row name check and impacted Gallery captures. The actual active status, Project and draft cue are checked in reading order. The selected 37 screens show zero unallowlisted findings; this does not renew unrelated archived captures.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the row name check and impacted Gallery captures. The actual active status, Project and draft cue are checked in reading order. The selected 37 screens show zero unallowlisted findings; this does not renew unrelated archived captures.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Reviewed the successful tool records and live light card contrast across direct, parent-return and child paths. Restoring the original shared color fails the active and parent threshold. Existing breadcrumb, focus, mobile hit-target and transcript checks retain their intended scope.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Reviewed the successful tool records and live light card contrast across direct, parent-return and child paths. Restoring the original shared color fails the active and parent threshold. Existing breadcrumb, focus, mobile hit-target and transcript checks retain their intended scope.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Reviewed the successful tool records and live light card contrast across direct, parent-return and child paths. Restoring the original shared color fails the active and parent threshold. Existing breadcrumb, focus, mobile hit-target and transcript checks retain their intended scope.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Reviewed the successful tool records and live light card contrast across direct, parent-return and child paths. Restoring the original shared color fails the active and parent threshold. Existing breadcrumb, focus, mobile hit-target and transcript checks retain their intended scope.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the successful tool records and live light card contrast across direct, parent-return and child paths. Restoring the original shared color fails the active and parent threshold. Existing breadcrumb, focus, mobile hit-target and transcript checks retain their intended scope.","inputs":["tests/child-transcript-chat.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Inbox caller selector against the visible title and source Project label. The selected browser journey completes its row switch and Escape route and focus assertions. Its separate standalone fixture reads remain tracked by the mobile composer qualification work.","inputs":["tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the shared Inbox owner assertions against the revised accessible name. They still confirm the same chat, Project and actionable approval status. No lifecycle classifier or delivery behavior changes.","inputs":["src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"]}
+  ]
+}

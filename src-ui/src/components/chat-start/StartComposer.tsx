@@ -26,6 +26,7 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
 import { ComposerRunControl } from '../ComposerRunControl';
+import { InfoTip } from '../InfoTip';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -169,6 +170,9 @@ export type StartAgentChip =
       approvalProjectDefaultUnavailable?: boolean;
       /** This start's own approval pick, if one was made. */
       approvalPick?: ApprovalMode;
+      approvalConnections?: Parameters<
+        typeof StartApprovalSummary
+      >[0]['acpConnections'];
       /** Present: the Permissions chip is a picker for `approvalPick`. */
       onApprovalPick?: (mode: ApprovalMode) => void;
     };
@@ -187,6 +191,7 @@ export type StartProjectChip =
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
       folderTitle?: string;
+      folderIsHelp?: boolean;
     };
 
 export interface StartContextItem {
@@ -273,6 +278,7 @@ export function StartComposer({
   compact = false,
   layout = 'hero',
   heading,
+  headingLevel = 2,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -305,6 +311,7 @@ export function StartComposer({
    */
   layout?: 'hero' | 'draft';
   heading?: string;
+  headingLevel?: 1 | 2;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -366,6 +373,7 @@ export function StartComposer({
       ? (agent.agent?.name ?? 'Choose agent')
       : startAgentChipText(agent);
   const draft = layout === 'draft';
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const projectControl = (
     <>
       {project.status === 'ready' && (
@@ -419,23 +427,23 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>
-          {heading ?? (compact ? 'Start work' : 'What would you like to do')}
-          {!compact && (
+        <Heading>
+          {heading ?? 'What would you like to do'}
+          {!heading && (
             <>
               {project.status === 'ready' && !project.isGlobal && (
                 <> in {projectControl}</>
               )}
-              {!heading && '?'}
+              ?
             </>
           )}
-        </h2>
-        {compact ||
+        </Heading>
+        {heading ||
         project.status === 'loading' ||
         (project.status === 'ready' && project.isGlobal)
           ? projectControl
           : null}
-        {!compact &&
+        {!heading &&
           !projectFixed &&
           project.status === 'ready' &&
           !project.isGlobal &&
@@ -660,6 +668,7 @@ export function StartComposer({
                     <StartApprovalSummary
                       agent={agent.agent}
                       executionAgentId={agent.executionAgentId}
+                      acpConnections={agent.approvalConnections}
                       projectDefault={agent.approvalProjectDefault}
                       projectDefaultUnavailable={
                         agent.approvalProjectDefaultUnavailable
@@ -700,14 +709,18 @@ export function StartComposer({
       </div>
       <div className="start-composer__location">
         {stationControl}
-        {project.status === 'ready' && project.folder && (
-          <span
-            className="start-composer__folder"
-            title={project.folderTitle ?? project.folder}
-          >
-            {project.folder}
-          </span>
-        )}
+        {project.status === 'ready' &&
+          project.folder &&
+          (project.folderIsHelp ? (
+            <InfoTip label="this chat’s folder">{project.folder}</InfoTip>
+          ) : (
+            <span
+              className="start-composer__folder"
+              title={project.folderTitle ?? project.folder}
+            >
+              {project.folder}
+            </span>
+          ))}
       </div>
       {note && <p className="start-composer__note">{note}</p>}
       {children}

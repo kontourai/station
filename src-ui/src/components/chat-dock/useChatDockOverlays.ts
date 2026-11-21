@@ -248,7 +248,6 @@ export function useChatDockOverlays({
   // rAF-coalesced frame while a resize drag is live, and inline arrow props
   // would defeat React.memo by changing identity on every one of those
   // renders even though the callbacks themselves never change behavior.
-  const toggleHistory = useCallback(() => setIsHistoryOpen((v) => !v), []);
   const toggleInbox = useCallback(
     () => setDeviceSetting('inboxOpen', !isInboxOpen),
     [isInboxOpen, setDeviceSetting],
@@ -273,7 +272,6 @@ export function useChatDockOverlays({
     reportNewChatDraft,
     setShowNewChatModal,
     isHistoryOpen,
-    toggleHistory,
     openInboxHistory,
     closeHistory,
     isInboxOpen,

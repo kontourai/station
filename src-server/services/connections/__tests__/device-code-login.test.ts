@@ -37,7 +37,7 @@ class FakeChild implements DeviceCodeChildProcess {
   readonly stderr = new FakeStream() as unknown as NodeJS.ReadableStream & {
     write(text: string): void;
   };
-  readonly signals: string[] = [];
+  readonly stop = vi.fn<() => Promise<void>>(async () => undefined);
   #exit?: (code: number | null) => void;
   #error?: (error: Error) => void;
 
@@ -45,10 +45,6 @@ class FakeChild implements DeviceCodeChildProcess {
     if (event === 'exit') this.#exit = listener;
     else this.#error = listener;
     return this;
-  }
-  kill(signal?: NodeJS.Signals) {
-    this.signals.push(signal ?? 'SIGTERM');
-    return true;
   }
   emitExit(code: number | null) {
     this.#exit?.(code);
@@ -121,7 +117,6 @@ function harness(
     command: string;
     args: string[];
     env: NodeJS.ProcessEnv;
-    windowsHide: boolean;
   }> = [];
   const scheduler = manualScheduler();
   // The engine is asked twice in a login's life: before the spawn (is this
@@ -234,7 +229,6 @@ describe('starting a login', () => {
     expect(spawned).toHaveLength(1);
     expect(spawned[0].command).toBe('codex');
     expect(spawned[0].args).toEqual(['login', '--device-auth']);
-    expect(spawned[0].windowsHide).toBe(true);
     // The child's environment is the base environment plus exactly one key.
     expect(spawned[0].env).toEqual({ ...BASE_ENV, CODEX_HOME: PROFILE_DIR });
     expect(JSON.stringify(spawned[0].env)).not.toMatch(
@@ -292,6 +286,31 @@ describe('starting a login', () => {
       phase: 'awaiting-approval',
       ...CODEX_DEVICE_CODE_EXPECTED,
     });
+  });
+
+  test('a stderr warning cannot corrupt a chunked stdout prompt', async () => {
+    const { manager, children } = harness();
+    await manager.start('codex', PROFILE_DIR);
+    const split = CODEX_DEVICE_CODE_STDOUT.indexOf('/device');
+
+    children[0].stdout.write(CODEX_DEVICE_CODE_STDOUT.slice(0, split));
+    children[0].stderr.write('Update available.\n');
+    children[0].stdout.write(CODEX_DEVICE_CODE_STDOUT.slice(split));
+
+    expect(manager.status(PROFILE_DIR)).toMatchObject({
+      phase: 'awaiting-approval',
+      ...CODEX_DEVICE_CODE_EXPECTED,
+    });
+  });
+
+  test('prompt fragments across different streams do not establish a code', async () => {
+    const { manager, children } = harness();
+    await manager.start('codex', PROFILE_DIR);
+
+    children[0].stdout.write(CODEX_DEVICE_CODE_EXPECTED.verificationUri);
+    children[0].stderr.write(`\n${CODEX_DEVICE_CODE_EXPECTED.userCode}\n`);
+
+    expect(manager.status(PROFILE_DIR)?.phase).toBe('starting');
   });
 
   test('a second start while one is live returns the same login and spawns nothing', async () => {
@@ -423,7 +442,7 @@ describe('a login cannot outlive its bounds', () => {
 
     scheduler.fire(DEVICE_CODE_PROMPT_TIMEOUT_MS);
 
-    expect(children[0].signals).toContain('SIGTERM');
+    expect(children[0].stop).toHaveBeenCalledOnce();
     expect(manager.status(PROFILE_DIR)).toMatchObject({
       phase: 'failed',
       reason: expect.stringMatching(/did not print a verification code/),
@@ -437,7 +456,7 @@ describe('a login cannot outlive its bounds', () => {
 
     scheduler.fire(DEVICE_CODE_LOGIN_TIMEOUT_MS);
 
-    expect(children[0].signals).toContain('SIGTERM');
+    expect(children[0].stop).toHaveBeenCalledOnce();
     expect(manager.status(PROFILE_DIR)).toMatchObject({
       phase: 'failed',
       reason: 'The device code expired before it was approved.',
@@ -451,7 +470,7 @@ describe('a login cannot outlive its bounds', () => {
 
     scheduler.fire(DEVICE_CODE_PROMPT_TIMEOUT_MS);
 
-    expect(children[0].signals).toEqual([]);
+    expect(children[0].stop).not.toHaveBeenCalled();
     expect(manager.status(PROFILE_DIR)?.phase).toBe('awaiting-approval');
   });
 
@@ -464,7 +483,7 @@ describe('a login cannot outlive its bounds', () => {
     manager.cancel(PROFILE_DIR);
 
     expect(scheduler.liveCount()).toBeLessThan(armed);
-    expect(children[0].signals).toContain('SIGTERM');
+    expect(children[0].stop).toHaveBeenCalledOnce();
   });
 });
 
@@ -477,7 +496,7 @@ describe('cancelling', () => {
     const cancelled = manager.cancel(PROFILE_DIR);
 
     expect(cancelled?.phase).toBe('cancelled');
-    expect(children[0].signals).toContain('SIGTERM');
+    expect(children[0].stop).toHaveBeenCalledOnce();
   });
 
   test('a cancelled login is not revised into a completion by a late exit', async () => {
@@ -502,16 +521,90 @@ describe('cancelling', () => {
     expect(manager.cancel(PROFILE_DIR)).toBeUndefined();
   });
 
-  test('a cancelled profile can start a new login', async () => {
+  test('allows a replacement after the prior process tree confirms exit', async () => {
     const { manager, children, spawnLogin } = harness();
     await manager.start('codex', PROFILE_DIR);
+    let confirmExit: (() => void) | undefined;
+    children[0].stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          confirmExit = resolve;
+        }),
+    );
     manager.cancel(PROFILE_DIR);
+    expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('busy');
+    expect(spawnLogin).toHaveBeenCalledOnce();
+    confirmExit?.();
 
-    const restarted = await manager.start('codex', PROFILE_DIR);
-
-    expect(restarted.kind).toBe('started');
+    await vi.waitFor(async () => {
+      expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('started');
+    });
     expect(spawnLogin).toHaveBeenCalledTimes(2);
-    expect(children).toHaveLength(2);
+  });
+
+  test('active, stopping, and unconfirmed logins share the host limit', async () => {
+    const { manager, children, spawnLogin } = harness();
+    const profiles = Array.from(
+      { length: DEVICE_CODE_MAX_LIVE_LOGINS },
+      (_, index) => `${PROFILE_DIR}-${index}`,
+    );
+    for (const profile of profiles) {
+      expect((await manager.start('codex', profile)).kind).toBe('started');
+    }
+
+    children[1].stop.mockRejectedValueOnce(new Error('synthetic stop failure'));
+    manager.cancel(profiles[1]);
+    const confirmExit = new Map<string, () => void>();
+    for (const [index, profile] of profiles.entries()) {
+      if (index < 2) continue;
+      children[index].stop.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirmExit.set(profile, resolve);
+          }),
+      );
+      manager.cancel(profile);
+    }
+    try {
+      const replacements = await Promise.all(
+        profiles.map((profile) => manager.start('codex', `${profile}-new`)),
+      );
+      expect(replacements.map(({ kind }) => kind)).toEqual(
+        profiles.map(() => 'busy'),
+      );
+      expect(spawnLogin).toHaveBeenCalledTimes(DEVICE_CODE_MAX_LIVE_LOGINS);
+
+      confirmExit.get(profiles[2])?.();
+      await vi.waitFor(async () => {
+        expect((await manager.start('codex', `${profiles[2]}-new`)).kind).toBe(
+          'started',
+        );
+      });
+      expect((await manager.start('codex', `${profiles[3]}-new`)).kind).toBe(
+        'busy',
+      );
+      expect(spawnLogin).toHaveBeenCalledTimes(DEVICE_CODE_MAX_LIVE_LOGINS + 1);
+    } finally {
+      for (const resolve of confirmExit.values()) resolve();
+    }
+  });
+
+  test('an unconfirmed stop blocks only the affected credential profile', async () => {
+    const { manager, children, spawnLogin } = harness();
+    await manager.start('codex', PROFILE_DIR);
+    children[0].stop.mockRejectedValueOnce(new Error('synthetic stop failure'));
+    expect(manager.cancel(PROFILE_DIR)?.phase).toBe('cancelled');
+
+    await vi.waitFor(async () => {
+      expect(await manager.start('codex', PROFILE_DIR)).toMatchObject({
+        kind: 'busy',
+        reason: expect.stringContaining('could not confirm'),
+      });
+    });
+    expect(spawnLogin).toHaveBeenCalledOnce();
+    const other = await manager.start('codex', `${PROFILE_DIR}-other`);
+    expect(other.kind).toBe('started');
+    expect(spawnLogin).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -770,12 +863,11 @@ describe('a cancel or shutdown during the pre-spawn checks is honoured', () => {
 
     const pending = manager.start('codex', PROFILE_DIR);
     await vi.waitFor(() => expect(gate.release).toBeTypeOf('function'));
-    // Nothing is registered yet, so there is no record to hand back...
-    expect(manager.cancel(PROFILE_DIR)).toBeUndefined();
+    const cancelled = manager.cancel(PROFILE_DIR);
+    expect(cancelled?.phase).toBe('cancelled');
     gate.release?.();
 
-    // ...but the start honours the cancel instead of spawning after it.
-    expect((await pending).kind).toBe('cancelled');
+    expect(await pending).toEqual({ kind: 'cancelled', record: cancelled });
     expect(spawnLogin).not.toHaveBeenCalled();
     expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('started');
     expect(spawnLogin).toHaveBeenCalledTimes(1);

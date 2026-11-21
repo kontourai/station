@@ -1,4 +1,7 @@
-import { classifyConnectionFailure } from './connectionFailureClassification';
+import {
+  classifyConnectionFailure,
+  connectionProbeFailureReason,
+} from './connectionFailureClassification';
 import type { EndpointCompatibilityContext } from './environmentProfiles';
 import { rankCompatibleEndpoints } from './environmentProfiles';
 import type {
@@ -62,10 +65,28 @@ export interface ConnectionHealthSnapshot {
   completedProbes: number;
 }
 
+export type ConnectionHealthFailureEvidence =
+  | {
+      kind: 'http';
+      phase: 'handshake' | 'authenticated';
+      status: number;
+      code?: string;
+    }
+  | {
+      kind: 'local-authority';
+      code:
+        | 'station_application_authority_required'
+        | 'station_application_authority_invalid';
+    };
+
 export type ConnectionHealthCheckResult =
   | boolean
   | { ok: true; bootId?: string }
-  | { ok: false; reason: ConnectionFailureReason };
+  | {
+      ok: false;
+      reason: ConnectionFailureReason;
+      evidence?: ConnectionHealthFailureEvidence;
+    };
 
 export interface ConnectionHealthCoordinatorOptions {
   endpoints: () => readonly AccessEndpoint[];
@@ -234,7 +255,7 @@ export class ConnectionHealthCoordinator {
         reason =
           result === false || typeof result !== 'object'
             ? 'undetermined'
-            : result.reason;
+            : connectionProbeFailureReason(result);
         routes.set(endpoint.id, {
           endpointId: endpoint.id,
           state: 'failed',

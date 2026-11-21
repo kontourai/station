@@ -108,6 +108,13 @@ describe('app error surfaces', { timeout: 60_000 }, () => {
     );
     expect(await surfaces()).toEqual({ 'route-chunk-error': 2 });
   });
+
+  it('records a stalled route even without a failed request or English copy', async () => {
+    await open(
+      '<div class="error-state route-pending-recovery" role="alert"></div>',
+    );
+    expect(await surfaces()).toEqual({ 'route-pending-recovery': 1 });
+  });
 });
 
 /**

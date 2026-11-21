@@ -1,0 +1,7 @@
+{
+  "revision": "c03d1264dfd2a53ee778cbb2c2b07d8dbfedb1e0",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Traced shipped manual compilation through the unchanged Corpus bundle and exact generated-byte comparison. The formatter now uses the pinned native Biome binary and one bounded retry on timeout. This affects build liveness and does not change the indexed topics, source content, or reading interfaces.","inputs":["docs/reference/station-docs.md","scripts/generate-station-docs.mjs"]}
+  ]
+}

@@ -70,7 +70,12 @@ const authority = {
   operator: async () => {},
 };
 
-async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
+async function fixture(
+  options: {
+    codeReviewCheckout?: boolean;
+    legacyConversationRead?: () => Promise<unknown[]>;
+  } = {},
+) {
   const root = realpathSync(makeTempDir('task-room-members-'));
   const home = join(root, 'data');
   mkdirSync(join(home, 'security'), { recursive: true, mode: 0o700 });
@@ -163,7 +168,11 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     agentTools: new Map(),
     agentStats: new Map(),
     agentStatus: new Map(),
-    memoryAdapters: new Map(),
+    memoryAdapters: new Map(
+      options.legacyConversationRead
+        ? [['legacy', { queryConversations: options.legacyConversationRead }]]
+        : [],
+    ),
     metricsLog: [],
     monitoringEvents: [],
   });
@@ -194,7 +203,7 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     projectId: project.id,
     title: 'Unshared task',
   });
-  membership.sharedTasks.share({
+  const publication = membership.sharedTasks.share({
     scope,
     taskId: task.id,
     taskCreatedAt: task.createdAt,
@@ -329,10 +338,42 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     scope,
     task,
     privateTask,
+    publication,
     people,
     request,
   };
 }
+
+test('legacy Project conversations stay unavailable without reading unbound records', async () => {
+  const legacyRead = vi.fn(async () => [
+    { id: 'unbound-conversation', title: 'Private legacy conversation' },
+  ]);
+  const f = await fixture({ legacyConversationRead: legacyRead });
+  const member = f.people[0]!;
+  const base = `/api/projects/${f.project.slug}`;
+  expect((await f.request(member, base)).status).toBe(200);
+  const path = `${base}/conversations`;
+  const accountBoundDevice = await f.request(member, path);
+  expect(accountBoundDevice.status).toBe(403);
+
+  const operatorHeaders = {
+    Authorization: `Bearer ${f.operatorCredential}`,
+  };
+  expect(
+    (await f.app.request(`${origin}${base}`, { headers: operatorHeaders }))
+      .status,
+  ).toBe(200);
+  const response = await f.app.request(`${origin}${path}`, {
+    headers: operatorHeaders,
+  });
+  expect(response.status, await response.clone().text()).toBe(503);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    code: 'project_conversations_unavailable',
+    error: 'Project conversation history is unavailable',
+  });
+  expect(legacyRead).not.toHaveBeenCalled();
+});
 
 test('Project readers hide Task reviews from members while preserving ordinary Project evidence', async () => {
   const f = await fixture({ codeReviewCheckout: true });
@@ -652,12 +693,34 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
   const base = `/api/tasks/${f.task.id}/room`;
   const opened = await f.request(alice!, base);
   expect(opened.status, await opened.clone().text()).toBe(200);
+  for (const expectedMember of [
+    { principalId: bob!.principal.id, shareId: f.publication.shareId },
+    {
+      principalId: alice!.principal.id,
+      shareId: 'eeeeeeee-1111-4111-8111-000000000000',
+    },
+  ]) {
+    const result = await f.request(alice!, `${base}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proposalId: 'stale-reply',
+        text: 'From the wrong account or publication',
+        expectedMember,
+      }),
+    });
+    expect(result.status).toBe(404);
+  }
   for (const person of [alice!, bob!]) {
     const result = await f.request(person, `${base}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         proposalId: `message-${person.name}`,
+        expectedMember: {
+          principalId: person.principal.id,
+          shareId: f.publication.shareId,
+        },
         text: `From ${person.name}`,
       }),
     });

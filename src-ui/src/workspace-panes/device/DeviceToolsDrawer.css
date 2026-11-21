@@ -30,21 +30,22 @@
 }
 
 .device-tools__header {
+  --icon-button-size: 44px;
+
   align-items: center;
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   flex: 0 0 auto;
-  gap: var(--space-2, 8px);
-  padding: var(--space-2, 8px);
+  gap: var(--k-space-1);
+  padding: var(--k-space-2) var(--k-space-3);
 }
 
 .device-tools__title {
   flex: 1 1 auto;
-  font-size: 0.875rem;
+  font-size: var(--k-text-md);
   margin: 0;
 }
 
-.device-tools__header .button,
 .device-tools__actions .button {
   min-height: 44px;
   min-width: 44px;
@@ -54,16 +55,27 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--space-3, 12px);
+  gap: var(--k-space-3);
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-2, 8px) var(--space-3, 12px) var(--space-4, 16px);
+  padding: var(--k-space-2) var(--k-space-3) var(--k-space-4);
+}
+
+.device-pane__workspace[data-tools-cover-stage] > .device-tools--overlay {
+  border-left: 0;
+  box-shadow: none;
+  max-width: none;
+}
+
+.device-pane__workspace[data-tools-cover-stage] .device-tools__header,
+.device-pane__workspace[data-tools-cover-stage] .device-tools__body {
+  padding-inline: var(--k-space-4);
 }
 
 .device-tools__section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-3);
 }
 
 .device-tools__logs {
@@ -75,11 +87,8 @@
 }
 
 .device-tools__section-title {
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
+  font-size: var(--k-text-sm);
   margin: 0;
-  opacity: 0.75;
-  text-transform: uppercase;
 }
 
 /* Device settings folds each section behind its title: the whole title row
@@ -92,17 +101,17 @@
 .device-tools__row {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--k-space-1);
   min-width: 0;
 }
 
 .device-tools__label {
-  font-size: 0.75rem;
-  opacity: 0.75;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
 }
 
 .device-tools__value {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -110,7 +119,7 @@
 .device-tools__muted,
 .device-tools__notice,
 .device-tools__error {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   margin: 0;
 }
 
@@ -123,30 +132,33 @@
 }
 
 .device-tools__actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-2);
+}
+
+.device-tools__location-actions {
+  justify-content: flex-end;
 }
 
 .device-tools__field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--k-space-2);
   min-width: 0;
 }
 
-.device-tools__field input,
-.device-tools__field select,
-.device-tools__field textarea {
+:where(.device-tools__field) :is(input, select, textarea) {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md, 6px);
   color: var(--text-primary);
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   min-height: 44px;
   min-width: 0;
-  padding: var(--space-1, 4px) var(--space-2, 8px);
+  padding: var(--k-space-1) var(--k-space-2);
 }
 
 .device-tools__field textarea {
@@ -156,14 +168,14 @@
 
 .device-tools__coordinates {
   display: grid;
-  gap: var(--space-2, 8px);
-  grid-template-columns: 1fr 1fr;
+  gap: var(--k-space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .device-tools__list {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   margin: 0;
-  padding-left: var(--space-4, 16px);
+  padding-left: var(--k-space-4);
 }
 
 /* The overlay's frames: drawn over the device screen, never interactive. */
@@ -199,5 +211,9 @@
   border: 0;
   margin: 0;
   min-width: 0;
+  padding: 0;
+}
+
+.device-tools__fieldset > legend {
   padding: 0;
 }

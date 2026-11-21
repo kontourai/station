@@ -9,7 +9,13 @@ import {
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   CONVERSATION_HANDOFF_RESET_FIELDS,
 } from '@kontourai/station-contracts/orchestration';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -216,6 +222,34 @@ describe('ConversationHandoffDialog', () => {
         source: 'agent default',
       }),
     });
+  });
+
+  test('staging confirms the context disclosure and closes without dispatching', () => {
+    const onStage = vi.fn();
+    const prepareDraft = vi.fn();
+    const dialog = renderDialog(
+      'claude',
+      'http://station.test',
+      [claude, codex],
+      'conversation-a',
+      {
+        onStage,
+        prepareDraft,
+      },
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    expect(
+      screen.getByText(
+        'Send starts a fresh Session with recent conversation text.',
+      ),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use Codex reviewer on Send' }),
+    );
+    expect(onStage).toHaveBeenCalledWith(codex, undefined, undefined, false);
+    expect(dialog.onClose).toHaveBeenCalledTimes(1);
+    expect(prepareDraft).not.toHaveBeenCalled();
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
   });
 
   test('engine selection keeps the authored Agent through handoff, response loss, reload and acceptance', async () => {
@@ -666,8 +700,11 @@ describe('ConversationHandoffDialog', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /^Model / }));
-    expect(await screen.findByRole('option', { name: /GPT-5/ })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: /GPT locked/ })).toBeNull();
+    const models = within(
+      await screen.findByRole('group', { name: /^Models$/ }),
+    );
+    expect(models.getByRole('button', { name: /^GPT-5/ })).toBeTruthy();
+    expect(models.queryByRole('button', { name: /^GPT locked/ })).toBeNull();
   });
 
   test('handoff uses the shared model picker and sends its runtime settings', async () => {

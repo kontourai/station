@@ -1,0 +1,9 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: read() gains an optional prefetched-events argument; lookup, authorization and single in-order replay unchanged. Module map Interface line updated; other citing claims hold.","inputs":["src-server/services/orchestration/session-query-module.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: read() gains an optional prefetched-events argument; lookup, authorization and single in-order replay unchanged. Module map Interface line updated; other citing claims hold.","inputs":["src-server/services/orchestration/session-query-module.ts"]}
+  ]
+}

@@ -56,6 +56,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+test('retains the original create intent while resolving the caller', async () => {
+  const { claims } = setup();
+  const request = input();
+  const effect = vi.fn(async (id: string) => handle(id));
+  const creating = claims.run(request, effect);
+  request.intent.message = 'changed after entry';
+  const original = await creating;
+
+  await expect(claims.run(input(), effect)).resolves.toEqual(original);
+  await expect(claims.run(request, effect)).rejects.toMatchObject({
+    code: 'create_request_conflict',
+  });
+  expect(effect).toHaveBeenCalledTimes(1);
+});
+
 test('completed receipts replay for seven days, then expire without removing unresolved claims', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));

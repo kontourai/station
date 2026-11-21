@@ -150,6 +150,39 @@ describe('EventStore session projection cache (#4992)', () => {
     ).toContain('thread-b-turn2-started');
   });
 
+  test('a scan larger than the cache returns every projection and keeps the same warm set', () => {
+    const threads = Array.from({ length: 2050 }, (_, index) => `scan-${index}`);
+    for (const threadId of threads)
+      append({
+        eventId: `${threadId}-started`,
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId: 'owner-user' },
+      });
+    const read = () => {
+      const observeEvents = vi.fn();
+      const observeCounts = vi.fn();
+      const projections = store.listSessionProjectionEventsForThreads(
+        threads,
+        observeEvents,
+      );
+      const counts = store.countEventsByThreads(threads, observeCounts);
+      expect([...projections.keys()]).toEqual(threads);
+      for (const threadId of threads) {
+        expect(ids(projections.get(threadId))).toEqual([`${threadId}-started`]);
+        expect(counts.get(threadId)).toBe(1);
+      }
+      return [observeEvents, observeCounts];
+    };
+    store.listSessionProjectionEventsForThreads(threads.slice(0, 2048));
+    read();
+    for (const observe of read())
+      expect(observe).toHaveBeenCalledWith({ refreshed: 2, reused: 2048 });
+    for (const observe of read())
+      expect(observe).toHaveBeenCalledWith({ refreshed: 2, reused: 2048 });
+  });
+
   test('a fact that changes without a new prompt (a request opening and resolving) is folded again', () => {
     seedThread('thread-r');
     expectMatchesFreshRead(['thread-r']);

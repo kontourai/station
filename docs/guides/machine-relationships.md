@@ -301,7 +301,8 @@ flow already provides restricted Project catalogue/detail views and bounded,
 read-only access to explicitly published shared Task lists, history, and
 documents. Current membership and publication are rechecked through response
 delivery. A collaborator does not need to contribute a computer, checkout, or
-provider credentials to read that shared work.
+provider credentials to read that shared work. A Commenter can also reply when
+their browser has the **Participate in shared Projects** grant.
 
 The guest entry also mounts Project access controls. Administration requires
 the appropriate current membership plus a separately approved Device

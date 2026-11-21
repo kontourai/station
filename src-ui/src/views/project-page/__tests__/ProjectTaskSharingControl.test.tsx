@@ -120,7 +120,7 @@ describe('ProjectTaskSharingControl', () => {
         screen
           .getByRole('button', { name: 'Share' })
           .getAttribute('aria-description'),
-      ).toBe('Sharing is off for this Station'),
+      ).toBe('Task sharing is unavailable here'),
     );
     const control = screen.getByRole('button', { name: 'Share' });
     expect(control.hasAttribute('disabled')).toBe(true);
@@ -155,12 +155,12 @@ describe('ProjectTaskSharingControl', () => {
       expect(
         await screen.findByText('Unable to check Task sharing'),
       ).toBeTruthy();
-      expect(screen.queryByText('Sharing is off for this Station')).toBeNull();
+      expect(screen.queryByText('Task sharing is unavailable here')).toBeNull();
       expect(screen.queryByRole('button', { name: 'Share Task' })).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       if (compact)
         fireEvent.click(
-          await screen.findByText('Share', { selector: 'summary' }),
+          await screen.findByText('Share · Private', { selector: 'summary' }),
         );
       expect(
         await screen.findByRole('button', { name: 'Share Task' }),

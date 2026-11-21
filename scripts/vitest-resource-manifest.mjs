@@ -47,6 +47,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4441: standalone scaffolds retain their real synchronous npm install
+  // and esbuild output under an explicit 30-second guard.
+  'packages/shared/src/__tests__/plugin-scaffold.test.ts',
+
   // Checks prompt closure and the room's real 15-second idle recheck bound.
   'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
@@ -206,11 +210,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
+  // Fresh Node children import VoltAgent and record which modules load.
+  'src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts',
   // Fake startup/cleanup owners and real Windows ConPTY releases;
   // an owned child exercises 30 concurrent native shell exits and resizes.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  'src-server/routes/connections/__tests__/engine-setup-actions.routes.test.ts',
   // Real node-pty shells in a private home; one loopback server on port 0.
   'src-server/services/terminal/__tests__/terminal-retention.process.test.ts',
   // Production route/auth composition opens real terminal PTYs in a private home.
@@ -255,6 +262,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Fake systemd manager; reaps one real short-lived process for a dead pid.
   'src-server/services/infra/__tests__/workload-scope-cleanup.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
+  // #5120: runs a copy of the readiness wrapper as a node child against a
+  // disposable Git repository with short-lived git children; no wall-clock assertion.
+  'scripts/__tests__/run-veritas-readiness.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Runs the UI copy length gate as a node child against a disposable Git tree.
   'scripts/__tests__/ui-copy-length.process.test.ts',
@@ -315,6 +325,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.
   'src-server/__tests__/telemetry.test.ts',
+  'src-server/__tests__/telemetry-span-privacy.test.ts',
   // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
   'packages/shared/src/__tests__/skill-experience-author.test.ts',
   // Exercises the health CLI refusal before any GitHub request.
@@ -368,6 +379,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
+  // Real MCP stdio child and a loopback Station session-read fixture.
+  'examples/station-sessions-mcp/__tests__/server.process.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.
   'scripts/__tests__/portable-smoke-diagnostics.test.ts',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
@@ -468,8 +481,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // see that seam; under the ordinary four-worker corpus two of its cases
   // timed out at canonical phase load.
   'packages/shared/src/__tests__/plugin-build.test.ts',
-  // #4831: builds the docs server bundle, which starts esbuild's service
-  // child; the file imports no child_process itself.
+  // Builds the docs bundle with esbuild and invokes the verified stdio child
+  // through the Claude SDK server's MCP interface.
   'src-server/tools/__tests__/station-docs-bundle.test.ts',
   // Parses each fixture bundle with esbuild, which starts esbuild's service
   // child; the file imports no child_process itself.
@@ -549,6 +562,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/evidence/__tests__/git-review-workspace-source.test.ts',
   'src-server/services/evidence/__tests__/review-lens-router.test.ts',
   'src-server/services/evidence/__tests__/repo-map-review-selection.test.ts',
+  // Builds a throwaway Project repository (and a second clone for a head
+  // that is not local) with real Git; the head reviewer runs Git in it.
+  'src-server/services/pull-requests/__tests__/pull-request-head-review.test.ts',
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',
@@ -575,9 +591,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
   // A same-user Node child replays copied Codex tool headers over loopback.
   'src-server/runtime/mcp/__tests__/codex-bound-tools.test.ts',
-  // #2377: one bounded Node child runs the stdio entry's credential install
-  // and the stdio tools' own REST helper against an in-process guard, proving
-  // a real pooled child reaches reads only; no real services.
+  // #2377: one bounded Node child runs the stdio entry's install and the
+  // stdio tools' own REST helper with a copied internal token against an
+  // in-process guard, proving a real caller-less child is refused every
+  // route (slice D); no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // #3160: one bounded Node child registers the real station-control server
   // as a caller-less stdio child and calls the three Session tools over an
@@ -920,6 +937,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repository to prove its base snapshot lands in the Station
   // temp root rather than the system temp directory.
   'scripts/__tests__/fallow-base-cache.test.ts',
+  // #5111: runs a fake analyzer through the fallow memory-scope wrapper (and,
+  // where a systemd user manager exists, a real 192 MiB user scope whose
+  // kernel OOM kill it provokes) to prove the budget refusal end to end.
+  // Single-shot children, each bounded by its budget or the fallow watchdog.
+  'scripts/__tests__/fallow-memory-bound.test.ts',
   // Runs `install-script-generated.mjs --check` as a child against this
   // checkout and a stale scratch copy, so the gate's exit status is proven.
   'scripts/__tests__/install-script-generated.test.ts',
@@ -1019,6 +1041,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // resource classification the manifest gate requires for any direct
   // child_process importer.
   'src-server/services/connections/__tests__/credential-enrolment.integration.test.ts',
+  // #2036: runs a synthetic launcher and a TERM-resistant child in a private profile.
+  'src-server/services/connections/__tests__/device-code-login.process.test.ts',
   // #2787: drives the bounded-capture helper against real single-shot
   // children, one of which writes 64 MiB to prove the rejection path. It
   // imports no child_process itself; the helper under test does.
@@ -1692,6 +1716,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
   // Mounted local restart notice recovery owns a Chromium instance.
   'src-ui/src/__tests__/local-restart-notice.browser.test.tsx',
+  // Owns Chromium to render Project brief, memory, models and usage (#5062).
+  'src-ui/src/__tests__/project-coordination-settings.browser.test.tsx',
   // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.
@@ -1770,6 +1796,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // into the outcome they report, with the stylesheet resolved so the
   // presence-not-visibility guardrail is exercised rather than assumed.
   'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+  // Real Chromium verification of Web Push Settings with controlled VAPID responses.
+  'src-ui/src/__tests__/browser-push-settings.browser.test.tsx',
+  // Real React remount in Chromium isolates a possible renderer livelock.
+  'src-ui/src/__tests__/LazyBoundary.browser.test.tsx',
   // #1536 B2: same shape again — launches a real Chromium via
   // `@playwright/test` to prove the Task picker's dialog is not trapped by the
   // animating message row it opens from (containing block and stacking

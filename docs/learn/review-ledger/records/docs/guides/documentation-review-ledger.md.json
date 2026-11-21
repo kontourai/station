@@ -32,7 +32,11 @@
 
     "scripts/lib/review-git.mjs",
 
-    "scripts/lib/review-note-privacy.mjs"
+    "scripts/lib/review-note-privacy.mjs",
+
+    "scripts/lib/release-versioning-review.mjs",
+
+    "scripts/lib/changeset-note-commits.mjs"
   ],
 
   "checks": [

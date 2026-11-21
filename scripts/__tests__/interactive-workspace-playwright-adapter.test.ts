@@ -6,6 +6,7 @@ import {
   performWorkBoardInteraction,
   reconnectDocumentGate,
   reconnectRequestFence,
+  typeRemoteApplyBrief,
 } from '../interactive-workspace-playwright-adapter.mjs';
 
 const boardConfig = {
@@ -13,6 +14,50 @@ const boardConfig = {
   fixtureCorpus: { id: 'board', sha256: 'a'.repeat(64) },
   fixtures: [{ id: 'work-board-200-pins-v1' }],
 };
+
+test.each(['writable', 'hidden', 'read-only', 'wrong-task', 'stale-revision'])(
+  'Brief keyboard driver requires its visible writable Task binding: %s',
+  async (state) => {
+    const revision = `swsr-v2:${'a'.repeat(64)}`;
+    const press = vi.fn();
+    const click = vi.fn();
+    const editor = {
+      isVisible: async () => state !== 'hidden',
+      isEditable: async () => state !== 'read-only',
+      getAttribute: async (key: string) =>
+        key === 'data-station-task-id'
+          ? state === 'wrong-task'
+            ? 'task-other'
+            : 'task-1'
+          : state === 'stale-revision'
+            ? `swsr-v2:${'b'.repeat(64)}`
+            : revision,
+      inputValue: async () => 'base',
+      click,
+      press,
+    };
+    const page = {
+      url: () => 'http://fixture.invalid/tasks/task-1',
+      getByRole: () => ({ getByRole: () => editor }),
+    };
+    const operation = typeRemoteApplyBrief(page, 'task-1', {
+      iteration: 0,
+      workingRevision: revision,
+      text: 'base0',
+    });
+    if (state === 'writable') {
+      await expect(operation).resolves.toEqual({
+        kind: 'brief-input-completed',
+      });
+      expect(click).toHaveBeenCalledOnce();
+      expect(press.mock.calls).toEqual([['ControlOrMeta+End'], ['0']]);
+    } else {
+      await expect(operation).rejects.toThrow('identity or writability');
+      expect(click).not.toHaveBeenCalled();
+      expect(press).not.toHaveBeenCalled();
+    }
+  },
+);
 
 test('rejects missing and wrong native Last-Event-ID headers', async () => {
   const missing = reconnectRequestFence();

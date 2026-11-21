@@ -1,3 +1,7 @@
+import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import type {
   FetchSseConnection,
   FetchSseOptions,
@@ -27,7 +31,8 @@ const mocks = vi.hoisted(() => ({
   capturedOnError: undefined as ((error: unknown) => void) | undefined,
   fetchSSE: vi.fn(),
 }));
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk')>()),
   fetchSSE: mocks.fetchSSE,
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
@@ -37,6 +42,7 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   },
 }));
 
+import { readEngineStartWait } from '../engineStartWaits';
 import {
   ensureOrchestrationEventStream,
   registerOrchestrationStreamQueryClient,
@@ -121,6 +127,53 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       release();
       releaseScope();
       releaseRetired();
+      client.clear();
+      retired.clear();
+    }
+  });
+
+  test('refreshes only the exact current session detail after an attached boundary commits', async () => {
+    const apiBase = 'https://attached-detail-refresh.example.test';
+    const client = new QueryClient();
+    const retired = new QueryClient();
+    const target = ['orchestration-session', 'attached'];
+    const sibling = ['orchestration-session', 'another'];
+    const releaseOld = ensureOrchestrationEventStream(
+      apiBase,
+      retired,
+      'current',
+    );
+    const releaseScope = registerOrchestrationStreamQueryClient(
+      apiBase,
+      client,
+      'current',
+    );
+    const release = ensureOrchestrationEventStream(apiBase, client);
+    try {
+      client.setQueryData(target, { session: {} });
+      client.setQueryData(sibling, { session: {} });
+      retired.setQueryData(target, { session: {} });
+      capturedOnMessage()({
+        event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+        data: JSON.stringify({ threadId: 'attached' }),
+      });
+      expect(client.getQueryState(target)?.isInvalidated).toBe(false);
+      capturedOnMessage()({
+        event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+        data: JSON.stringify({
+          threadId: 'attached',
+          reason: ATTACHED_SESSION_CONTINUATION_REFRESH,
+        }),
+      });
+      await vi.waitFor(() =>
+        expect(client.getQueryState(target)?.isInvalidated).toBe(true),
+      );
+      expect(client.getQueryState(sibling)?.isInvalidated).toBe(false);
+      expect(retired.getQueryState(target)?.isInvalidated).toBe(false);
+    } finally {
+      release();
+      releaseScope();
+      releaseOld();
       client.clear();
       retired.clear();
     }
@@ -651,6 +704,44 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
       conversationId: 'root',
       asOfSequence: 9,
     });
+  });
+
+  test("#4568: wait frames set and clear a Station's waits, and a reopened stream starts from none", () => {
+    const apiBase = 'https://engine-start-wait.example.test';
+    const release = ensureOrchestrationEventStream(apiBase);
+    try {
+      const options = mocks.fetchSSE.mock.calls.at(-1)?.[1] as FetchSseOptions;
+      const open = () => options.onOpen?.(new Response(null));
+      const frame = (wait: { since: string } | null) =>
+        capturedOnMessage()({
+          event: 'orchestration:engine-start-wait',
+          data: JSON.stringify({ threadId: 'fresh', wait }),
+        });
+      open();
+      frame({ since: '2026-11-06T12:00:00.000Z' });
+      expect(readEngineStartWait(apiBase, [undefined, 'fresh'])).toEqual({
+        since: '2026-11-06T12:00:00.000Z',
+      });
+      // Another Station's chat with the same id sees nothing.
+      expect(
+        readEngineStartWait('https://other.example.test', ['fresh']),
+      ).toBeUndefined();
+      frame(null);
+      expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+      frame({ since: '2026-11-06T12:00:05.000Z' });
+      capturedOnMessage()({
+        event: 'orchestration:snapshot',
+        data: JSON.stringify({ sessions: [] }),
+      });
+      expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+      frame({ since: '2026-11-06T12:00:06.000Z' });
+      // A reconnect: Station re-sends whatever still waits, so nothing stale
+      // survives the reopen.
+      open();
+      expect(readEngineStartWait(apiBase, ['fresh'])).toBeUndefined();
+    } finally {
+      release();
+    }
   });
 
   test('station#2301: the orchestration stream sets a stall deadline of 2.5 server keepalives', () => {

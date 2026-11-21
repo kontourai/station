@@ -881,6 +881,14 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(rows[1]!.textContent).toContain('Please rebase onto main.');
     expect(rows[1]!.textContent).not.toContain('[Station:');
     expect(within(rows[1]!).queryByText('You')).toBeNull();
+    expect(
+      within(rows[1]!).getByRole('button', {
+        name: /^Copy message$/,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(rows[1]!).queryByRole('button', { name: 'Copy your message' }),
+    ).toBeNull();
   });
 
   test('a coordinator wake is labelled as Station input', () => {
@@ -904,6 +912,13 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     const [row] = screen.getAllByTestId('session-transcript-message');
     expect(row!.getAttribute('aria-label')).toBe('Update from Station');
     expect(row!.textContent).toContain('Update from Station');
+    expect(
+      within(row!).getByRole('button', { name: /^Copy message$/ }),
+    ).toBeTruthy();
+    expect(
+      within(row!).queryByRole('button', { name: 'Copy your message' }),
+    ).toBeNull();
+
     expect(within(row!).queryByText('You')).toBeNull();
   });
 
@@ -1303,6 +1318,15 @@ test('the durable incoming cause follows canonical phone state and expands full 
   fireEvent.click(details.querySelector('summary')!);
   expect(details.open).toBe(true);
   expect(details.textContent).toContain('Please inspect the login patch.');
+  expect(
+    within(details).getAllByRole('button', {
+      name: /^Copy message$/,
+    }),
+  ).toHaveLength(1);
+  expect(
+    within(details).queryByRole('button', { name: 'Copy your message' }),
+  ).toBeNull();
+
   expect(details.querySelector('a')?.href).toContain(
     'messageRequest=phone-key',
   );

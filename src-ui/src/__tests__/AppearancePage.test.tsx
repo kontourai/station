@@ -27,6 +27,12 @@ import { AppearancePage, themePreview } from '../pages/AppearancePage';
 vi.mock('../pages/CustomAppearanceSection', () => ({
   CustomAppearanceSection: () => null,
 }));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('../hooks/useAppearanceStudioEnabled', () => ({
+  useAppearanceStudioEnabled: () => false,
+}));
 
 /**
  * The Appearance page against the REAL settings store and lane A's real

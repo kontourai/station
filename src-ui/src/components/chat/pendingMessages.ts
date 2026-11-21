@@ -29,7 +29,7 @@ export function outboxNeedsReview(turn: PendingOutboxTurn): boolean {
 
 /** A Station-held row Station sends itself when the turn ends, in position order. */
 export function heldSendsInOrder(entry: ConversationInboxEntry): boolean {
-  return entry.state === 'queued';
+  return entry.state === 'queued' && entry.position !== undefined;
 }
 
 /**
