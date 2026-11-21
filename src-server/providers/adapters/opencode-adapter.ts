@@ -44,6 +44,7 @@ import {
 } from '../../security/managed-engine-limits.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
 import {
+  OPENCODE_SESSION_MOVE_ACTION,
   type OpenCodeNativeFloor,
   type OpenCodeNativeRule,
   type OpenCodeSavedApproval,
@@ -54,8 +55,10 @@ import {
 import {
   findOpenCodeProjectCode as defaultFindProjectCode,
   openCodeProjectCodeRefusal,
+  realish,
 } from '../../services/acp/opencode-project-config.js';
 import { openCodeSteerCustody } from '../../services/acp/opencode-steer-custody.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   sharedUntrustedContentLedger,
   untrustedContentAncestry,
@@ -171,6 +174,16 @@ const ENGINE_NAME = 'OpenCode';
  */
 const PREFLIGHT_LEASE_HOLD_MS = 60_000;
 
+function nativeSessionRules(
+  floor: OpenCodeNativeFloor | undefined,
+  projectBound: boolean,
+): OpenCodeNativeRule[] {
+  if (floor === 'confined') return openCodeNativeApprovalRules(floor);
+  return projectBound
+    ? [{ action: OPENCODE_SESSION_MOVE_ACTION, resource: '*', effect: 'deny' }]
+    : [];
+}
+
 /** What the server a plan runs on is keyed by, less its tool servers. */
 function nativePlanKey(plan: NativePlan): string {
   return JSON.stringify([plan.config.id, plan.binary, plan.cwd, plan.env]);
@@ -267,6 +280,7 @@ interface NativeRecord {
   readonly lease: OpenCodeServeLease;
   session: ProviderSession;
   readonly cursor: OpenCodeResumeCursor;
+  readonly projectBound: boolean;
   /** The OpenCode agent the session runs (undefined: OpenCode's default). */
   agent: string | undefined;
   /**
@@ -1100,6 +1114,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     lease: OpenCodeServeLease,
     mcp: OpenCodeNativeMcp,
   ): Promise<ProviderSession> {
+    const projectBound =
+      typeof input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY] ===
+      'string';
     const cursor = isOpenCodeResumeCursor(input.resumeCursor)
       ? input.resumeCursor
       : undefined;
@@ -1145,6 +1162,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         readString(ownRecord(ownRecord(existing?.data)?.location)?.directory) ??
         cwd;
     }
+    if (projectBound && realish(cwd) !== realish(lease.cwd))
+      throw new Error(
+        'OpenCode moved this session outside its Station Project workspace.',
+      );
     // A governed session runs a named agent, whose denies its rules keep.
     const sessionAgent = agent ?? stored ?? (floor ? 'build' : undefined);
     if (floor && sessionAgent && !isOpenCodeGovernedMode(sessionAgent))
@@ -1157,7 +1178,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       floor === 'confined' && sessionAgent
         ? await this.assertGovernable(lease.client, cwd, floor, sessionAgent)
         : undefined;
-    const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
+    const permissions = nativeSessionRules(floor, projectBound);
     const model = readModelRef(input.modelId);
     if (input.modelId && !cursor)
       await this.assertModel(lease.client, input.modelId);
@@ -1173,7 +1194,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       // `permissions: null` (the old rules stay; 2.3.0 mode-switch capture),
       // so a start without a mode sends `[]`, which clears them.
       await lease.client.request('PATCH', `/api/session/${sessionId}`, {
-        permissions: permissions ?? [],
+        permissions,
       });
     } else {
       const created = await lease.client.request<{ data?: unknown }>(
@@ -1183,7 +1204,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           location: { directory: lease.cwd },
           ...(sessionAgent ? { agent: sessionAgent } : {}),
           ...(model ? { model } : {}),
-          ...(permissions && permissions.length > 0 ? { permissions } : {}),
+          ...(permissions.length > 0 ? { permissions } : {}),
         },
       );
       const id = readString(ownRecord(created?.data)?.id);
@@ -1281,7 +1302,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       cursor: resumeCursor,
       agent: sessionAgent,
       cwd,
-      rules: permissions ?? [],
+      rules: permissions,
+      projectBound,
       dirty: false,
       busy: false,
       serverIsSessions: mcp.sessionScoped,
@@ -1349,6 +1371,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     if (this.native.get(threadId) !== record) return;
     const own = move.sessionId === record.cursor.sessionId;
+    if (own && record.projectBound && move.directory !== realish(record.cwd)) {
+      this.warn(
+        threadId,
+        'OPENCODE_PROJECT_WORKSPACE_MOVED',
+        'Station stopped OpenCode after it moved this session outside its Project workspace.',
+        { directory: move.directory },
+      );
+      await this.stopSession(threadId);
+      return;
+    }
     if (own) {
       record.cwd = move.directory;
       record.cursor.cwd = move.directory;
@@ -1682,7 +1714,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           ? await this.assertGovernable(client, record.cwd, floor, sessionAgent)
           : await this.agentRules(client, sessionAgent)
         : undefined;
-    const rules = floor ? openCodeNativeApprovalRules(floor) : [];
+    const rules = nativeSessionRules(floor, record.projectBound);
     if (sessionAgent && agentChanged) {
       try {
         await client.request('POST', `/api/session/${sessionId}/agent`, {
