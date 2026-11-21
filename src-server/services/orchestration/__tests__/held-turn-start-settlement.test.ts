@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { TURN_ENGINE_ENDED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -268,6 +269,33 @@ describe('a turn start held over an engine exit', () => {
     expect(after.kind === 'failed' ? after.message : '').toMatch(BUSY);
     expect(replacement.sends).toHaveLength(0);
     expect(original.sends).toHaveLength(1);
+    expect(h.banner()).toBeUndefined();
+    expect(h.warned('Held turn start settled')).toHaveLength(0);
+  });
+
+  test('a current adapter that never dispatched the held start is not asked, even once the thread is bound to it', async () => {
+    const original = new EngineFake();
+    const replaced = replaceableRegistry(original);
+    const h = await boot(original, replaced.registry);
+    original.onSend = async () => {
+      throw new Error('Timed out waiting for the engine to accept the turn');
+    };
+    expect(await h.outcome('slow')).toMatchObject({ code: MAY_HAVE_STARTED });
+    // The replacement is the registry's current adapter and the provider
+    // listing binds the thread to it, but it never saw the held start's
+    // engine (which still runs) and answers "ended".
+    const replacement = new EngineFake();
+    await replacement.startSession({ threadId: THREAD, provider: 'claude' });
+    replacement.engineEnded = () => true;
+    replaced.replace(replacement);
+    open.unshift(async () => replacement.events.close());
+    await h.service.listProviders(INTERNAL_SESSION_READ_SCOPE);
+    const after = await h.outcome('after the rebind');
+    expect(after).toMatchObject({
+      kind: 'failed',
+      code: 'turn_start_held_until_restart',
+    });
+    expect(replacement.sends).toHaveLength(0);
     expect(h.banner()).toBeUndefined();
     expect(h.warned('Held turn start settled')).toHaveLength(0);
   });

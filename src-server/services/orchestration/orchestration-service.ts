@@ -2467,6 +2467,12 @@ export class OrchestrationService {
   >();
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
+  /**
+   * The adapter instance whose `sendTurn` left a thread's turn start held:
+   * the only one that knows the engine that start may have reached. Asked by
+   * `settleHeldTurnStarts`, never re-bound by later events.
+   */
+  private readonly heldStartAdapters = new Map<string, ProviderAdapterShape>();
   private readonly coordinatorToolGenerations = new Map<string, number>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
@@ -10953,6 +10959,8 @@ export class OrchestrationService {
                 result = await startTurn();
               }
             } catch (error) {
+              if (error instanceof SessionTurnStartIndeterminateError)
+                this.heldStartAdapters.set(turnInput.threadId, adapter);
               if (!(error instanceof SessionTurnStartIndeterminateError)) {
                 this.options.eventStore?.releaseAttachmentCapacity(
                   turnInput.threadId,
@@ -14562,12 +14570,12 @@ export class OrchestrationService {
     threadId: string,
     held: readonly SessionTurnBoundaryRecord[],
   ): Promise<{ settled: boolean; engineObservable: boolean }> {
-    // Only the adapter instance the thread is bound to (the one whose events
-    // it last observed) knows that thread's engine, and only while it is
-    // still the registry's adapter: a replaced adapter may still be stopping
-    // its engines, and its replacement has never seen them, so "no record"
-    // from either proves nothing.
-    const adapter = this.sessionAdapters.get(threadId);
+    // Only the adapter instance that dispatched the held start knows the
+    // engine it may have reached, and only while it is still the registry's
+    // adapter: a replaced adapter may still be stopping its engines, and any
+    // other instance has never seen them, so "no record" from either proves
+    // nothing. No recorded dispatcher: nothing can tell, so it stays held.
+    const adapter = this.heldStartAdapters.get(threadId);
     const engineObservable =
       adapter !== undefined &&
       this.options.adapterRegistry.get(adapter.provider) === adapter &&
@@ -14595,6 +14603,7 @@ export class OrchestrationService {
         'Held turn start settled: the engine process for this Session ended, so the turn is recorded as interrupted and the Session takes new turns',
         { threadId, boundaryId, provider, reason: 'engine-ended' },
       );
+    if (remaining.size === 0) this.heldStartAdapters.delete(threadId);
     return { settled: released.length > 0, engineObservable };
   }
 
