@@ -840,8 +840,9 @@ explicit choice such as **All work** stays selected as you navigate. If work nee
 you outside the filter, choose **Show all** from the notice; on a computer, a
 count badge on the scope picker does the same. On a computer the scope picker
 sits beside search, **Browse all conversations** is at the end of the list,
-and each row is two lines: its title and time, then the agent's icon, its
-status and its project. Hover the icon to read the agent's name. To browse
+and each card shows the title above its project. Read the status and time on the
+right. Click a task row to open it, or expand its work-chat count to see the linked
+conversations. Hover an agent icon to read its name. To browse
 chats from a side dock, open **More dock actions** and choose **Open chat…**.
 The picker opens over the current dock placement.
 

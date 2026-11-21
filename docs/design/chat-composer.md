@@ -1669,15 +1669,13 @@ picker, which shows all work (2026-11-16); the phone keeps its "Show all"
 notice. Search also finds dismissed work; there is no Dismissed shelf in
 the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
-Station restores their normal status handling. Task family summaries use an
-explicit Open task control; chat rows open chats. Browse all conversations
+Station restores their normal status handling. A task row opens its Overview. Its work-chat disclosure expands the linked conversations. Browse all conversations
 sits at the end of the list and retains paginated history, rename and delete.
 The inbox has no overflow menu: a failed read offers Retry, disabled while the
-re-read runs. A card row reads its title and time first. On a hover row the
-second and last line is the agent's mark, the status and the project (the
-project gives way first); the mark's tooltip and the hover card name the
-agent, and a row with no mark keeps the agent in words. A touch row keeps
-the agent named in words beside its mark (#4266). Dismissal offers a
+re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
+column. Status and one time align on the right. Hover or keyboard focus exposes
+the desktop row actions. A touch row keeps the agent named beside its mark.
+Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 
