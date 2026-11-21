@@ -273,6 +273,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
       'packages/contracts/src/__tests__/agent-capability-profile.test.ts',
       'src-server/providers/__tests__/child-work-conformance.test.ts',
+      'src-server/providers/__tests__/engine-durability-profile.test.ts',
       'src-server/providers/__tests__/engine-image-input-declaration.test.ts',
       'src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts',
       'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
@@ -281,9 +282,8 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx',
     ],
     reason:
-      'engine capability declarations: own-behaviour suites; the import ' +
-      'graph is too broad for the fast lane, so consumers run in the ' +
-      'main/release full qualification (#2458)',
+      'engine capability declarations and adapter parity; the full consumer ' +
+      'graph runs in main/release qualification (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
