@@ -189,13 +189,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 6.3.0
@@ -635,7 +635,7 @@ importers:
         specifier: 0.15.0
         version: 0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/station-sdk':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -687,10 +687,10 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^6.3.0
@@ -733,10 +733,10 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../sdk
       '@kontourai/ui':
         specifier: ^1.19.0
@@ -771,13 +771,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../shared
       commander:
         specifier: ^15.1.0
@@ -795,10 +795,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -864,10 +864,10 @@ importers:
         specifier: 11.2.0
         version: 11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^6.3.0
@@ -904,7 +904,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.14.0
+        specifier: ^0.15.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.7.0
@@ -2166,6 +2166,7 @@ packages:
   '@github/copilot-sdk@1.0.32':
     resolution: {integrity: sha512-kuHjtKV3F3chcVvhv04yUw8bBVQyT612nVpHIFeZ1yqC1JsQwRuV2EmXB26xZuGwz7pcHJorulRBRIIYBjQDWw==}
     engines: {node: ^20.19.0 || >=22.12.0}
+    deprecated: 'Deprecated: migrate to @microsoft/copilot-sdk. Migration docs: https://github.com/microsoft/copilot-sdk/blob/main/docs/v2-breaking-changes.md'
 
   '@gitlab/gitlab-ai-provider@3.6.1':
     resolution: {integrity: sha512-8JihlrwiUuyxzMU+wnUqx9oZZ+JtFFMYcYAULxdr0IsXYfe1OUd6xfUAioLzdUfWBobFVRDTQSVS8788Zg786A==}

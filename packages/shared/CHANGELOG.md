@@ -1,5 +1,46 @@
 # @kontourai/station-shared
 
+## 0.15.0
+
+### Minor Changes
+
+- 7c54e90: Add the Project brief, Project memory and Project usage, behind the `project-coordination` Feature Preview. Contracts add `@kontourai/station-contracts/project-session-context` (the brief and memory note shapes, their limits and parsers, and `composeProjectSessionContext`, the one composer of what a new Session in a Project starts from), `ProjectConfig` `goal`, `instructions`, `coordinatorEffort`, `taskModel`, `taskProviderId` and `taskEffort`, the `PROJECT_SESSION_CONTEXT_METADATA_KEY` and `PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY` reserved metadata keys, `projectBrief` and `projectMemory` context-injection blocks, a `project` usage grouping with `projectSlug` attribution, `projectUsageTotals`, and the `PROJECT_MEMORY_FULL_CODE` (`project_memory_full`) refusal, mapped in `PROVIDER_FAILURE_KINDS` to the non-retryable `conflict` kind. Shared's turn provenance fold reads the Project context a turn carried on every engine. The SDK adds Project memory clients (`listProjectMemory`, `getProjectMemoryNote`, `createProjectMemoryNote`, `updateProjectMemoryNote`, `deleteProjectMemoryNote`) and a `projectSlug` usage rollup filter.
+- d4233c3: Pull request agent feedback that needs a person shows in Needs you. Contracts add the `pull-request-feedback` attention item (`PullRequestFeedbackAttentionItem`), `cap` and `at` on a paused feedback status, and a `pull-request-feedback` client-origin sender so the delivered message is labelled as Station's. The SDK adds `turnOffPullRequestFeedback` and exports the new item type. Shared ranks the `pull-request-feedback` notification category as needing input.
+- 5aaabc0: Remove `streaming` and `ui.quickPrompts` from the Agent authoring type and schema. Remove those keys from new definitions. Existing files still open with their bytes intact, and the next save writes the current shape. Agent guidance import and export omit both fields. Layouts can continue passing `AgentQuickPrompt` to `onLaunchPrompt`.
+
+### Patch Changes
+
+- Updated dependencies [d8def70]
+- Updated dependencies [de1aed1]
+- Updated dependencies [e308051]
+- Updated dependencies [a80f89f]
+- Updated dependencies [ec227ca]
+- Updated dependencies [9294965]
+- Updated dependencies [b7f8c61]
+- Updated dependencies [3475cd8]
+- Updated dependencies [613b900]
+- Updated dependencies [7c54e90]
+- Updated dependencies [097e7e0]
+- Updated dependencies [890bb71]
+- Updated dependencies [6b381fa]
+- Updated dependencies [0fa15f6]
+- Updated dependencies [d4233c3]
+- Updated dependencies [4001c1b]
+- Updated dependencies [f93562f]
+- Updated dependencies [7e3fdf4]
+- Updated dependencies [b5d5625]
+- Updated dependencies [781a688]
+- Updated dependencies [5aaabc0]
+- Updated dependencies [47a181c]
+- Updated dependencies [1d0dbf5]
+- Updated dependencies [ea9ce36]
+- Updated dependencies [b3f8383]
+- Updated dependencies [3ae3285]
+- Updated dependencies [1b5f643]
+- Updated dependencies [3ae3285]
+- Updated dependencies [b9cc026]
+  - @kontourai/station-contracts@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
