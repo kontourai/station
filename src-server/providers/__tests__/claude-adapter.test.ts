@@ -1064,42 +1064,92 @@ describe('ClaudeAdapter', () => {
     },
   );
 
-  test('sendTurn keeps the typed displayInput in turn.started while the SDK prompt queue receives the composed model input (#685)', async () => {
-    mockQuery.mockReturnValue(createMockQuery([]));
-    const adapter = new ClaudeAdapter();
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  test.each([
+    {
+      name: 'exact Unicode composition',
+      input: 'Contexte café  \n  Résumé Δ\t\n\nsecond.  ',
+      ambientContext: 'Contexte café  ',
+      displayInput: '  Résumé Δ\t\n\nsecond.  ',
+      blocks: [
+        { type: 'text', text: 'Contexte café  \n' },
+        { type: 'text', text: '  Résumé Δ\t\n\nsecond.  ' },
+      ],
+    },
+    {
+      name: 'skill enrichment',
+      input: 'Context\nUse the selected skill.\nQuestion',
+      ambientContext: 'Context',
+      displayInput: 'Question',
+    },
+    {
+      name: 'review display summary',
+      input: 'Context\nFull review instructions',
+      ambientContext: 'Context',
+      displayInput: 'Review request',
+    },
+    {
+      name: 'legacy display input without context',
+      input: 'Context\nQuestion',
+      displayInput: 'Question',
+    },
+    { name: 'canonical-only input', input: 'Question' },
+    {
+      name: 'empty input',
+      input: '',
+      ambientContext: 'Context',
+      displayInput: '',
+    },
+    {
+      name: 'blank context',
+      input: '  ',
+      ambientContext: '  ',
+      displayInput: '  ',
+    },
+    {
+      name: 'missing display input',
+      input: 'Context\nQuestion',
+      ambientContext: 'Context',
+    },
+    {
+      name: 'empty display input',
+      input: 'Context\n',
+      ambientContext: 'Context',
+      displayInput: '',
+    },
+  ])(
+    'queues $name while retaining the Station event prompt (#685)',
+    async ({ name: _name, blocks, ...input }) => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = 'thread-ambient';
 
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'thread-ambient',
-      modelId: 'claude-sonnet-4-6',
-    });
-    await iterator.next(); // session.started
-    await iterator.next(); // session.configured
+      try {
+        await adapter.startSession({ provider: 'claude', threadId });
+        await iterator.next(); // session.started
+        await iterator.next(); // session.configured
+        await adapter.sendTurn({ threadId, ...input });
 
-    await adapter.sendTurn({
-      threadId: 'thread-ambient',
-      input: '[Timezone: Iceland]\nwhat time is it?',
-      displayInput: 'what time is it?',
-    });
+        const turnStarted = await iterator.next();
+        expect(turnStarted.value).toMatchObject({
+          method: 'turn.started',
+          prompt: input.displayInput ?? input.input,
+          ...(input.ambientContext
+            ? { ambientContext: input.ambientContext }
+            : {}),
+        });
 
-    // Transcript-facing event carries the typed text only.
-    const turnStarted = await iterator.next();
-    expect(turnStarted.value).toMatchObject({
-      method: 'turn.started',
-      prompt: 'what time is it?',
-    });
-
-    // Model boundary: the SDK prompt queue receives the composed input.
-    const promptQueue = mockQuery.mock.calls[0][0].prompt;
-    const queued = await promptQueue[Symbol.asyncIterator]().next();
-    expect(queued.value.message).toMatchObject({
-      role: 'user',
-      content: '[Timezone: Iceland]\nwhat time is it?',
-    });
-
-    await adapter.stopSession('thread-ambient');
-  });
+        const promptQueue = mockQuery.mock.calls[0][0].prompt;
+        const queued = await promptQueue[Symbol.asyncIterator]().next();
+        expect(queued.value.message).toEqual({
+          role: 'user',
+          content: blocks ?? input.input,
+        });
+      } finally {
+        await adapter.stopSession(threadId);
+      }
+    },
+  );
 
   test('steerTurn binds to the live SDK streaming-input queue', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
@@ -2474,63 +2524,92 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession('thread-model-change');
   });
 
-  test('maps validated images and text files to Claude native content blocks', async () => {
-    mockQuery.mockReturnValue(createMockQuery([]));
-    const adapter = new ClaudeAdapter();
+  test.each(['split', 'canonical', 'attachment-only'] as const)(
+    'queues %s text before native image, PDF and text attachments',
+    async (kind) => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
 
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'thread-attachments',
-    });
-    await adapter.sendTurn({
-      threadId: 'thread-attachments',
-      input: 'Review these',
-      attachments: [
-        {
-          kind: 'image',
-          name: 'screen.png',
-          mimeType: 'image/png',
-          size: 3,
-          dataUrl: 'data:image/png;base64,YWJj',
-        },
-        {
-          kind: 'file',
-          name: 'notes.txt',
-          mimeType: 'text/plain',
-          size: 5,
-          dataUrl: 'data:text/plain;base64,aGVsbG8=',
-        },
-      ],
-    });
-
-    const promptQueue = mockQuery.mock.calls[0][0].prompt;
-    const queued = await promptQueue[Symbol.asyncIterator]().next();
-    expect(queued.value.message).toEqual({
-      role: 'user',
-      content: [
-        { type: 'text', text: 'Review these' },
-        {
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: 'image/png',
-            data: 'YWJj',
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-attachments',
+      });
+      await adapter.sendTurn({
+        threadId: 'thread-attachments',
+        input: kind === 'attachment-only' ? '' : 'Context Δ\nReview these',
+        ...(kind === 'split'
+          ? { ambientContext: 'Context Δ', displayInput: 'Review these' }
+          : {}),
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screen.png',
+            mimeType: 'image/png',
+            size: 3,
+            dataUrl: 'data:image/png;base64,YWJj',
           },
-        },
-        {
-          type: 'document',
-          title: 'notes.txt',
-          source: {
-            type: 'text',
-            media_type: 'text/plain',
-            data: 'hello',
+          {
+            kind: 'file',
+            name: 'pages.pdf',
+            mimeType: 'application/pdf',
+            size: 5,
+            dataUrl: 'data:application/pdf;base64,JVBERi0=',
           },
-        },
-      ],
-    });
+          {
+            kind: 'file',
+            name: 'notes.txt',
+            mimeType: 'text/plain',
+            size: 5,
+            dataUrl: 'data:text/plain;base64,aGVsbG8=',
+          },
+        ],
+      });
 
-    await adapter.stopSession('thread-attachments');
-  });
+      const promptQueue = mockQuery.mock.calls[0][0].prompt;
+      const queued = await promptQueue[Symbol.asyncIterator]().next();
+      expect(queued.value.message).toEqual({
+        role: 'user',
+        content: [
+          ...(kind === 'split'
+            ? [
+                { type: 'text', text: 'Context Δ\n' },
+                { type: 'text', text: 'Review these' },
+              ]
+            : kind === 'canonical'
+              ? [{ type: 'text', text: 'Context Δ\nReview these' }]
+              : []),
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: 'YWJj',
+            },
+          },
+          {
+            type: 'document',
+            title: 'pages.pdf',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: 'JVBERi0=',
+            },
+          },
+          {
+            type: 'document',
+            title: 'notes.txt',
+            source: {
+              type: 'text',
+              media_type: 'text/plain',
+              data: 'hello',
+            },
+          },
+        ],
+      });
+
+      await adapter.stopSession('thread-attachments');
+    },
+  );
 
   test('rejects invalid UTF-8 documents before queuing a Claude prompt', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));

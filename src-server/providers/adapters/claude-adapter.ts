@@ -150,6 +150,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
 import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
+import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
@@ -3388,14 +3389,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
     turnId: ReturnType<typeof crypto.randomUUID>,
   ): Promise<ProviderTurnStartResult> {
+    const { ambientContext, displayInput, input: canonicalInput } = input;
+    const splitText: ContentBlockParam[] | undefined =
+      ambientContext?.trim() &&
+      typeof displayInput === 'string' &&
+      displayInput.length > 0 &&
+      composeAmbientTurnText(ambientContext, displayInput) === canonicalInput
+        ? [
+            {
+              type: 'text',
+              text: canonicalInput.slice(0, -displayInput.length),
+            },
+            { type: 'text', text: displayInput },
+          ]
+        : undefined;
     const decodedAttachments = decodeChatAttachments(input.attachments);
     const content: string | ContentBlockParam[] =
       decodedAttachments.length === 0
-        ? input.input
+        ? (splitText ?? canonicalInput)
         : [
-            ...(input.input
-              ? ([{ type: 'text', text: input.input }] as ContentBlockParam[])
-              : []),
+            ...(splitText ??
+              (canonicalInput
+                ? ([{ type: 'text', text: canonicalInput }] as const)
+                : [])),
             ...decodedAttachments.map(({ attachment, base64 }) => {
               if (attachment.kind === 'image') {
                 return {

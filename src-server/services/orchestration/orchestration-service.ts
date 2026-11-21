@@ -1610,8 +1610,8 @@ export type OrchestrationTurnAdmission = (input: {
 /**
  * archive#685 choke point: compose ambient, model-facing context into the turn's
  * model input while keeping the typed text available as `displayInput` for
- * transcript-facing events (`turn.started` prompt). Adapters never see the
- * `ambientContext` field itself.
+ * transcript-facing events (`turn.started` prompt). Preserve the raw context
+ * for adapters that need the original boundary.
  */
 function composeAmbientSendTurnInput(
   commandInput: OrchestrationSendTurnInput,
@@ -1625,9 +1625,6 @@ function composeAmbientSendTurnInput(
     ...turnInput,
     input: composed,
     displayInput: turnInput.input,
-    // Relay-only (see ProviderSendTurnInput.ambientContext): direct-model
-    // adapters ignore it; the station-agent relay forwards it so /chat
-    // composes once and persists typed text.
     ambientContext,
   };
 }

@@ -733,8 +733,8 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         activeTurnId,
         recordTurns,
       );
-      // `turn_duration` is only an optional early close signal. A string user
-      // message definitively starts the next turn, so flush the prior complete
+      // `turn_duration` is only an optional early close signal. A recognized user
+      // prompt definitively starts the next turn, so flush the prior complete
       // accumulator before mapping that new turn. A final file turn remains in
       // the cursor at EOF (93 of 2,075 turns across the 120 most recently
       // modified local transcripts): emitting it partially here would mislabel
@@ -856,13 +856,17 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       if (!isRecord(raw)) continue;
       const message = isRecord(raw.message) ? raw.message : undefined;
       const recordId = text(raw.uuid) ?? `offset-${start + lineStart}`;
-      if (raw.type === 'user' && typeof message?.content === 'string') {
-        inActiveTurn = recordId === activeTurnId;
-      }
+      const startsTurn =
+        raw.type === 'user' && claudeUserPrompt(raw, message) !== undefined;
+      if (startsTurn) inActiveTurn = recordId === activeTurnId;
       if (
         inActiveTurn &&
-        (raw.type === 'user' || raw.type === 'assistant') &&
-        message
+        message &&
+        (startsTurn ||
+          raw.type === 'assistant' ||
+          (raw.type === 'user' &&
+            Array.isArray(message.content) &&
+            message.content.some(isClaudeToolResult)))
       ) {
         retainRecordTurn(recordTurns, recordId, activeTurnId);
       }
@@ -1037,6 +1041,43 @@ interface CachedLeadingIdentity {
   identity: LeadingIdentity;
 }
 
+function claudeUserPrompt(
+  record: Record<string, unknown>,
+  message: Record<string, unknown> | undefined,
+): string | undefined {
+  if (
+    record.isMeta === true ||
+    record.isSynthetic === true ||
+    record.isCompactSummary === true ||
+    record.isVisibleInTranscriptOnly === true
+  ) {
+    return undefined;
+  }
+  const content = message?.content;
+  if (typeof content === 'string') return content;
+  // The CLI stamps SDK prompts with both fields. Text-shaped reminders and
+  // tool follow-ups can also use the user role without being SDK prompts.
+  if (
+    record.promptSource !== 'sdk' ||
+    record.turnOrigin !== 'sdk' ||
+    record.isSidechain === true ||
+    message?.role !== 'user' ||
+    !Array.isArray(content)
+  ) {
+    return undefined;
+  }
+  const blocks: string[] = [];
+  for (const block of content) {
+    if (!isRecord(block)) return undefined;
+    if (block.type === 'text' && typeof block.text === 'string') {
+      blocks.push(block.text);
+    } else if (block.type !== 'image' && block.type !== 'document') {
+      return undefined;
+    }
+  }
+  return blocks.length > 0 ? blocks.join('') : undefined;
+}
+
 function mapClaudeRecord(
   raw: unknown,
   session: AttachedSessionDescriptor,
@@ -1069,12 +1110,13 @@ function mapClaudeRecord(
 
   if (type === 'user') {
     const content = message ? message.content : undefined;
-    if (typeof content === 'string') {
+    const prompt = claudeUserPrompt(raw, message);
+    if (prompt !== undefined) {
       const turnId = recordId;
       // station#2210: a pasted prompt is real user data of unbounded size.
       // Bounded with a marker, never dropped — a wedge here stalled this
       // source's cursor for good.
-      const bounded = boundedPrompt(content, {
+      const bounded = boundedPrompt(prompt, {
         maxBytes: MAX_PROMPT_BYTES,
         source: PROMPT_SOURCE,
       });
@@ -1095,18 +1137,16 @@ function mapClaudeRecord(
     }
     if (Array.isArray(content)) {
       const turnId = activeTurnId ?? parentId ?? recordId;
-      return {
-        events: content.flatMap((block, index) =>
-          mapToolResult(
-            block,
-            { ...base, turnId },
-            session.sessionId,
-            recordId,
-            index,
-          ),
+      const events = content.flatMap((block, index) =>
+        mapToolResult(
+          block,
+          { ...base, turnId },
+          session.sessionId,
+          recordId,
+          index,
         ),
-        nextTurnId: turnId,
-      };
+      );
+      return { events, nextTurnId: events.length ? turnId : activeTurnId };
     }
     return { events: [], nextTurnId: activeTurnId };
   }
@@ -1448,6 +1488,16 @@ function mapAssistantBlock(
   return [];
 }
 
+function isClaudeToolResult(
+  block: unknown,
+): block is Record<string, unknown> & { tool_use_id: string } {
+  return (
+    isRecord(block) &&
+    block.type === 'tool_result' &&
+    typeof block.tool_use_id === 'string'
+  );
+}
+
 function mapToolResult(
   raw: unknown,
   base: {
@@ -1460,12 +1510,7 @@ function mapToolResult(
   recordId: string,
   index: number,
 ): CanonicalRuntimeEvent[] {
-  if (
-    !isRecord(raw) ||
-    text(raw.type) !== 'tool_result' ||
-    typeof raw.tool_use_id !== 'string'
-  )
-    return [];
+  if (!isClaudeToolResult(raw)) return [];
   // station#2210: a tool_result's content is engine output of unbounded
   // size — the exact shape that exceeded the 64 KiB ingress ceiling on the
   // live instance (a 64,675-byte `output` string), failed ingestion every

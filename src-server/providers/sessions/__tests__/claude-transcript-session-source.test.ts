@@ -1003,7 +1003,22 @@ describe('ClaudeTranscriptSessionSource', () => {
               uuid: 'turn-1',
               sessionId: 'session-a',
               cwd: '[redacted]',
-              message: { role: 'user', content: 'question'.repeat(500) },
+              promptSource: 'sdk',
+              turnOrigin: 'sdk',
+              message: {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Context café\n' },
+                  { type: 'text', text: 'question'.repeat(500) },
+                ],
+              },
+            },
+            {
+              type: 'user',
+              uuid: 'summary',
+              isCompactSummary: true,
+              isVisibleInTranscriptOnly: true,
+              message: { role: 'user', content: 'Synthetic summary' },
             },
             {
               type: 'assistant',
@@ -1021,6 +1036,12 @@ describe('ClaudeTranscriptSessionSource', () => {
       const source = new ClaudeTranscriptSessionSource({ configDir: root });
       const [session] = (await source.discover()).sessions;
       const before = await source.read(session);
+      expect(
+        before.events.filter((event) => event.method === 'turn.started'),
+      ).toMatchObject([
+        { turnId: 'prior-turn', prompt: 'prior question' },
+        { turnId: 'turn-1', prompt: `Context café\n${'question'.repeat(500)}` },
+      ]);
       if (typeof before.cursor === 'number')
         throw new Error('missing aggregation cursor');
       const { sourceState: _ancestry, ...oldCursor } = before.cursor;
@@ -1029,9 +1050,16 @@ describe('ClaudeTranscriptSessionSource', () => {
         record({
           type: 'system',
           subtype: 'turn_duration',
-          uuid: 'complete-1',
-          parentUuid: 'call-1',
-        }),
+          uuid: 'ignore-summary-completion',
+          parentUuid: 'summary',
+        }) +
+          record({
+            type: 'system',
+            subtype: 'turn_duration',
+            uuid: 'complete-1',
+            timestamp: '2026-07-22T00:00:03.000Z',
+            parentUuid: 'call-1',
+          }),
         { flag: 'a' },
       );
       const restarted = new ClaudeTranscriptSessionSource({
@@ -1063,6 +1091,7 @@ describe('ClaudeTranscriptSessionSource', () => {
               expect.objectContaining({
                 method: 'turn.completed',
                 turnId: 'turn-1',
+                createdAt: '2026-07-22T00:00:03.000Z',
               }),
             ]
           : [],
@@ -1316,7 +1345,51 @@ describe('ClaudeTranscriptSessionSource', () => {
           sessionId: 'session-a',
           cwd: '/workspace/project',
           timestamp: '2026-07-22T00:00:00.000Z',
-          message: { role: 'user', content: 'question' },
+          promptSource: 'sdk',
+          turnOrigin: 'sdk',
+          message: {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Contexte café  \n' },
+              { type: 'text', text: '  Résumé Δ\t\n\nsecond.  ' },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: 'YWJj',
+                },
+              },
+            ],
+          },
+        },
+        {
+          type: 'user',
+          uuid: 'unattributed-reminder',
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: 'Reminder' }],
+          },
+        },
+        {
+          type: 'user',
+          uuid: 'meta-reminder',
+          isMeta: true,
+          promptSource: 'sdk',
+          turnOrigin: 'sdk',
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: 'Reminder' }],
+          },
+        },
+        {
+          type: 'user',
+          uuid: 'synthetic-skill',
+          isSynthetic: true,
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: 'Skill body' }],
+          },
         },
         {
           type: 'assistant',
@@ -1364,6 +1437,11 @@ describe('ClaudeTranscriptSessionSource', () => {
     const first = await source.read(session);
     const second = await source.read(session);
 
+    expect(first.events[0]).toMatchObject({
+      method: 'turn.started',
+      turnId: 'user-1',
+      prompt: 'Contexte café  \n  Résumé Δ\t\n\nsecond.  ',
+    });
     expect(first.events.map((event) => event.method)).toEqual([
       'turn.started',
       'content.reasoning-delta',
