@@ -30,8 +30,9 @@ labels. Keep the existing native Windows listener and its `kontour-windows` /
 `native` routing unchanged.
 
 The [container smoke workflow](../../.github/workflows/container-smoke.yml)
-runs on an Ubuntu VM with job-isolated Docker and repo-pinned Chromium.
-Remaining native Windows jobs request the hardware labels
+runs on an Ubuntu VM with job-isolated Docker and repo-pinned Chromium. Only
+`ci-extended.yml` and `recover-terminal-capacity-owner.yml` still request the
+heavy Linux fleet labels. Remaining native Windows jobs request the hardware labels
 (`kontour-windows`, `native`) and still
 take a physical-host lease. If a Linux job is reintroduced on this host, route
 only `ci.yml`'s `fast-checks` to `fast-feedback` and every other leased Linux

@@ -3,8 +3,8 @@ name: "Repo: Backlog policy"
 # A daily audit, not a per-event gate. Running on every issue and label event
 # produced ~170 runs a day, most cancelled by the next label click, and failed
 # by construction in the minutes between filing an issue and labelling it.
-# That red belongs to backlog hygiene, not to main, so main-health does not
-# watch this workflow. Policy findings are report-only (warning annotations,
+# Now that it is a daily audit, main-health watches it like every other
+# scheduled workflow. Policy findings are report-only (warning annotations,
 # the job summary and one tracking issue); the run fails only when the live labels drift from
 # .github/labels.json or the labels or backlog cannot be read completely.
 on:

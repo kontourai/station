@@ -1,0 +1,7 @@
+{
+  "revision": "41803c5f23dafa317a172babc5abb0e2dfcff0c9",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Cites testing.md, which changed only in the scheduled-failure section and the workflow table (duplicate sweep watched, container smoke row back to main pushes, known-gap sentence); no claim on this page concerns tracker reporting or those rows, so it stays accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}
