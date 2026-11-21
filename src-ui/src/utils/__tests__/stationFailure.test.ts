@@ -262,7 +262,9 @@ describe('Station authority failure translation', () => {
     );
     expect(held).toMatchObject({ delivery: 'refused', retryable: false });
     expect(held.hint).toMatch(hint);
-    expect(`${held.body} ${held.hint}`).not.toMatch(/try again in a moment|chat:session/i);
+    expect(`${held.body} ${held.hint}`).not.toMatch(
+      /try again in a moment|chat:session/i,
+    );
     if (code !== 'turn_start_held')
       expect(held.hint).not.toMatch(/send again: Station then records/);
   });
