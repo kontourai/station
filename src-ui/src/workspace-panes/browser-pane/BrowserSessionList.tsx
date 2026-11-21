@@ -11,6 +11,7 @@ import {
   ErrorState,
   SkeletonBlock,
   SkeletonList,
+  useRetainedReadFailure,
 } from '../../components/state';
 import {
   type BrowserPaneApi,
@@ -154,15 +155,30 @@ function FullHistory({
     queryKey: browserPaneKeys.fullHistory(apiBase, session.browserSessionId),
     queryFn: ({ signal }) => api.session(session.browserSessionId, signal),
   });
-  if (full.isPending)
-    return <SkeletonBlock count={1} label="Loading the full history" />;
-  if (full.isError)
+  const fullFailure = useRetainedReadFailure(full);
+  const fullRetrying = full.fetchStatus !== 'idle';
+  if (fullFailure || full.isError)
     return (
       <ErrorState
         title="The full history could not be read"
-        description={describeBrowserFailure(full.error)}
+        description={describeBrowserFailure(fullFailure?.error ?? full.error)}
+        action={
+          <Button
+            size="sm"
+            aria-label="Try again"
+            aria-busy={fullRetrying}
+            aria-disabled={fullRetrying}
+            onClick={() => {
+              if (!fullRetrying) void full.refetch({ cancelRefetch: false });
+            }}
+          >
+            {fullRetrying ? 'Trying again…' : 'Try again'}
+          </Button>
+        }
       />
     );
+  if (full.isPending)
+    return <SkeletonBlock count={1} label="Loading the full history" />;
   // `total` counts every action, including repeats folded into one entry,
   // so what is really no longer kept is total minus what the kept entries
   // stand for.
@@ -218,7 +234,13 @@ export function BrowserSessionList({
     queryFn: ({ signal }) => api.sessions(projectSlug, signal),
     refetchInterval: 5_000,
   });
-  if (hideWhenEmpty && (sessions.isPending || sessions.data?.length === 0))
+  const sessionsFailure = useRetainedReadFailure(sessions);
+  const sessionsRetrying = sessions.fetchStatus !== 'idle';
+  if (
+    hideWhenEmpty &&
+    !sessionsFailure &&
+    (sessions.isPending || sessions.data?.length === 0)
+  )
     return null;
   return (
     <section
@@ -226,13 +248,29 @@ export function BrowserSessionList({
       aria-labelledby="browser-sessions-heading"
     >
       <h3 id="browser-sessions-heading">Sessions</h3>
-      {sessions.isPending ? (
-        <SkeletonList count={2} label="Loading browser sessions" />
-      ) : sessions.isError ? (
+      {sessionsFailure || sessions.isError ? (
         <ErrorState
           title="Browser sessions could not be listed"
-          description={describeBrowserFailure(sessions.error)}
+          description={describeBrowserFailure(
+            sessionsFailure?.error ?? sessions.error,
+          )}
+          action={
+            <Button
+              size="sm"
+              aria-label="Try again"
+              aria-busy={sessionsRetrying}
+              aria-disabled={sessionsRetrying}
+              onClick={() => {
+                if (!sessionsRetrying)
+                  void sessions.refetch({ cancelRefetch: false });
+              }}
+            >
+              {sessionsRetrying ? 'Trying again…' : 'Try again'}
+            </Button>
+          }
         />
+      ) : sessions.isPending ? (
+        <SkeletonList count={2} label="Loading browser sessions" />
       ) : sessions.data.length === 0 ? (
         <Empty
           variant="compact"

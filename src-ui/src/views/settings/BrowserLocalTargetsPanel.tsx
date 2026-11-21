@@ -2,7 +2,12 @@ import type { BrowserLocalTargetSuggestionView } from '@kontourai/station-contra
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
-import { Empty, ErrorState, SkeletonList } from '../../components/state';
+import {
+  Empty,
+  ErrorState,
+  SkeletonList,
+  useRetainedReadFailure,
+} from '../../components/state';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
@@ -43,6 +48,10 @@ export function BrowserLocalTargetsPanel({
     queryFn: ({ signal }) => api.suggestions(projectSlug, signal),
     enabled: scanning,
   });
+  const targetsFailure = useRetainedReadFailure(targets);
+  const suggestionsFailure = useRetainedReadFailure(suggestions);
+  const targetsRetrying = targets.fetchStatus !== 'idle';
+  const suggestionsRetrying = suggestions.fetchStatus !== 'idle';
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: targetsKey }),
@@ -72,13 +81,29 @@ export function BrowserLocalTargetsPanel({
         Project admins' browsers reach the public internet plus only the local
         servers shared here.
       </p>
-      {targets.isPending ? (
-        <SkeletonList count={2} label="Loading shared local servers" />
-      ) : targets.isError ? (
+      {targetsFailure || targets.isError ? (
         <ErrorState
           title="Shared local servers could not be read"
-          description={describeBrowserFailure(targets.error)}
+          description={describeBrowserFailure(
+            targetsFailure?.error ?? targets.error,
+          )}
+          action={
+            <Button
+              size="sm"
+              aria-label="Try again"
+              aria-busy={targetsRetrying}
+              aria-disabled={targetsRetrying}
+              onClick={() => {
+                if (!targetsRetrying)
+                  void targets.refetch({ cancelRefetch: false });
+              }}
+            >
+              {targetsRetrying ? 'Trying again…' : 'Try again'}
+            </Button>
+          }
         />
+      ) : targets.isPending ? (
+        <SkeletonList count={2} label="Loading shared local servers" />
       ) : targets.data.length === 0 ? (
         <Empty variant="compact" label="Nothing shared yet" />
       ) : (
@@ -107,13 +132,29 @@ export function BrowserLocalTargetsPanel({
       <h4>Local servers on this computer</h4>
       {!scanning ? (
         <Button onClick={() => setScanning(true)}>Find local servers</Button>
-      ) : suggestions.isPending ? (
-        <SkeletonList count={2} label="Looking for local servers" />
-      ) : suggestions.isError ? (
+      ) : suggestionsFailure || suggestions.isError ? (
         <ErrorState
           title="Local servers could not be listed"
-          description={describeBrowserFailure(suggestions.error)}
+          description={describeBrowserFailure(
+            suggestionsFailure?.error ?? suggestions.error,
+          )}
+          action={
+            <Button
+              size="sm"
+              aria-label="Try again"
+              aria-busy={suggestionsRetrying}
+              aria-disabled={suggestionsRetrying}
+              onClick={() => {
+                if (!suggestionsRetrying)
+                  void suggestions.refetch({ cancelRefetch: false });
+              }}
+            >
+              {suggestionsRetrying ? 'Trying again…' : 'Try again'}
+            </Button>
+          }
         />
+      ) : suggestions.isPending ? (
+        <SkeletonList count={2} label="Looking for local servers" />
       ) : suggestions.data.state === 'unavailable' ? (
         <Empty
           variant="compact"
