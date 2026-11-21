@@ -385,6 +385,7 @@ export function ChildWorkInstructionPanel({
           {historyContent}
         </>
       )}
+      {composer && message && <p role="status">{message}</p>}
       {pending && <p>Saved instruction: {pending.input}</p>}
       {pending && canOperate && mayContinue && key && loaded ? (
         <MessageDeliveryNote
@@ -461,6 +462,7 @@ export function ChildWorkInstructionPanel({
       ) : (
         <LazyBoundary
           load={loadInstructionForm}
+          shareAcrossMounts
           pending={<SkeletonBlock count={1} label="Preparing instructions" />}
           componentProps={{
             name,
@@ -482,7 +484,7 @@ export function ChildWorkInstructionPanel({
           }}
         />
       )}
-      {message && <p role="status">{message}</p>}
+      {!composer && message && <p role="status">{message}</p>}
     </section>
   );
 }
