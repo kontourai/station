@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the scheduled-failure section; checked the Main: Health watch list, ci:red label, cancel attribution and allowlist against main-health.yml and scheduled-failure-reporting.test.ts; container smoke row now says hosted and classifier-skipped.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

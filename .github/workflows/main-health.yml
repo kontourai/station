@@ -26,6 +26,24 @@ on:
       # a green run closes the tracker; a dry-run dispatch skips the issue
       # jobs and never does.
       - "Repo: Docs freshness sweep"
+      # Every other scheduled workflow, so a red scheduled run always opens a
+      # tracker. scripts/__tests__/scheduled-failure-reporting.test.ts refuses
+      # a scheduled workflow that is neither watched here nor on its justified
+      # allowlist. The backlog policy left this list in #2314
+      # because it was red by construction on every issue event; it is now a
+      # daily audit that fails only on label drift or an unreadable backlog.
+      # None of these has a conditional job, so a green run closes its tracker.
+      - "Repo: Backlog policy"
+      - "Repo: Dated TODO sweep"
+      - "Repo: Starved PR report"
+      - "Repo: Duplicate sweep"
+      - "Nightly: Fresh-home walkthrough"
+      # Its path-filtered main push runs report too: a main push that fails to
+      # warm the cache is the same red as the scheduled run.
+      - "Nightly: iOS Rust cache"
+      # Push-only and path-filtered to confinement code: the only run of the
+      # macOS Seatbelt legs, so a red one had no other surface.
+      - "Main: Seatbelt kernel legs"
     types: [completed]
     # Both jobs act only on runs whose head branch is main; this filter stops
     # pull-request and merge-group runs from starting a run that only skips.
@@ -46,21 +64,29 @@ permissions:
   # workflow-level, so close-after-success inherits two read grants it does
   # not use. No write scope beyond issues is granted.
   contents: read
+  # `checks: read` lists a job's annotations (a job id is its check-run id):
+  # the `##[error]` lines the tracker quotes, and the only record of WHO
+  # cancelled a run — a person, a newer run in the same concurrency group, or
+  # GitHub itself because no runner took the job.
+  checks: read
   issues: write
 
 jobs:
   # A fork can also call its branch main; only canonical-repository runs count.
   report-failure:
-    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    # `cancelled` starts this job but is reported only when the step below
+    # attributes the cancel to GitHub (no runner, runner lost). A person's
+    # cancel or a newer run superseding this one in its concurrency group
+    # writes nothing. A job-level `if` cannot read annotations, so that
+    # decision lives in scripts/main-health-comment-policy.mjs.
+    if: ${{ (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out' || github.event.workflow_run.conclusion == 'startup_failure' || github.event.workflow_run.conclusion == 'cancelled') && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
     concurrency:
       group: main-health-${{ github.event.workflow_run.name }}
     runs-on: ubuntu-latest
-    # 5, not the 2 this job used to take: the budget now also covers an
-    # actions/checkout of the monorepo, the paginated jobs lookup, and the
-    # tracker's own comment history, on top of the issue scan it always ran.
-    # A longer bound only delays a genuinely hung run; the tracker is created,
-    # reopened and labelled before any of that work, so a timeout partway
-    # through leaves the tracker correct and costs one comment.
+    # The budget covers an actions/checkout of the monorepo, the paginated
+    # jobs lookup, at most MAX_ANNOTATED_JOBS annotation reads, the issue scan
+    # and the tracker's comment history. A longer bound only delays a
+    # genuinely hung run.
     timeout-minutes: 5
     steps:
       # The comment policy is a module, not inline script, so its five cases
@@ -82,109 +108,165 @@ jobs:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         with:
           script: |
-            const { decideMainHealthComment, summarizeRunFailure } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { SILENT_CANCEL_CAUSES, classifyCancellation, closedRecently, supersededByNewerRun, decideMainHealthComment, failingLines, consolidateTracker, listTrackers, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
-            const title = `Main pipeline red: ${workflowName}`;
+            const event = process.env.RUN_EVENT;
+            const conclusion = process.env.RUN_CONCLUSION;
+            const title = trackerTitle(workflowName);
             const advisoryOwner = workflowName === 'Repo: Dependency advisory' ? 'briananderson1222' : null;
-            const details = [
-              `Workflow: ${workflowName}`,
-              `Run: ${runUrl}`,
-              `Head SHA: ${headSha}`,
-              ...(advisoryOwner ? [
-                `Owner: @${advisoryOwner} (dependency-policy CODEOWNER).`,
-                'Action: inspect the advisory report in the linked run, separate disclosed findings from scan/registry errors, and coordinate one compatible dependency repair. Do not renew exceptions or retry feature PRs to hide this result.',
-                'Preview/Stable publication remains blocked by its own fresh exact-source scan; feature and Nightly builds do not run advisory scans.',
-              ] : []),
-            ].join('\n');
-            const issues = await github.paginate(github.rest.issues.listForRepo, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'all',
-              per_page: 100,
+            // Read the run before any issue write: a cancelled run stays silent
+            // only when its annotations name a person or a newer run.
+            let jobs = [];
+            const annotations = [];
+            let detailsError = null;
+            try {
+              jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.payload.workflow_run.id,
+                per_page: 100,
+              });
+              for (const job of unsuccessfulJobs(jobs)) {
+                const { data } = await github.rest.checks.listAnnotations({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  check_run_id: job.id,
+                  per_page: 50,
+                });
+                for (const annotation of data) annotations.push({ ...annotation, job: job.name });
+              }
+            } catch (error) {
+              // Reported regardless (an unreadable cancel is an unrecognised
+              // one); the tracker says what is missing and this run still ends
+              // red below.
+              detailsError = error instanceof Error ? error.message : String(error);
+            }
+            let cancelCause = null;
+            if (conclusion === 'cancelled') {
+              cancelCause = classifyCancellation(annotations);
+              // A newer run replacing a pending one in a workflow-level
+              // concurrency group leaves a cancelled run with no jobs and so
+              // no annotation; the newer run on the same ref is the evidence.
+              if (cancelCause === 'unknown' && !detailsError && jobs.length === 0) {
+                const run = context.payload.workflow_run;
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: run.workflow_id,
+                  branch: run.head_branch,
+                  per_page: 20,
+                });
+                if (supersededByNewerRun(run, data.workflow_runs)) cancelCause = 'superseded';
+              }
+              core.info(`main-health: cancelled run attributed to ${cancelCause}`);
+              if (SILENT_CANCEL_CAUSES.includes(cancelCause)) return;
+            }
+            const { labels, note: labelNote } = await trackerLabels(github, context.repo, core);
+            const body = renderTrackerBody({
+              workflowName,
+              runUrl,
+              headSha,
+              event,
+              conclusion,
+              failures: summarizeRunFailure(jobs),
+              lines: failingLines(annotations),
+              detailsError,
+              cancelCause,
+              notes: [
+                ...(advisoryOwner ? [
+                  `Owner: @${advisoryOwner} (dependency-policy CODEOWNER).`,
+                  'Action: inspect the advisory report in the linked run, separate disclosed findings from scan/registry errors, and coordinate one compatible dependency repair. Do not renew exceptions or retry feature PRs to hide this result.',
+                  'Preview/Stable publication remains blocked by its own fresh exact-source scan; feature and Nightly builds do not run advisory scans.',
+                ] : []),
+                ...(labelNote ? [labelNote] : []),
+              ],
             });
-            const existing = issues.find((issue) => !issue.pull_request && issue.title === title);
+            const existing = await consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title);
             if (!existing) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title,
-                body: `A required workflow failed on main.\n\n${details}`,
-                labels: ['bug', 'P1'],
+                body,
+                labels,
                 ...(advisoryOwner ? { assignees: [advisoryOwner] } : {}),
               });
-              return;
-            }
-            if (advisoryOwner) {
-              await github.rest.issues.addAssignees({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existing.number,
-                assignees: [advisoryOwner],
-              });
-            }
-            const reopened = existing.state !== 'open';
-            if (reopened) {
+            } else {
+              if (advisoryOwner) {
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  assignees: [advisoryOwner],
+                });
+              }
+              const reopened = existing.state !== 'open';
+              // A red within a day of the close is the same episode flapping:
+              // reopen it, but let the comment policy treat it as a repeat
+              // rather than announce it.
+              const announceReopen = reopened && !closedRecently(existing, Date.now());
+              // The body always describes the latest red run, so whoever (or
+              // whatever agent) picks the tracker up reads current evidence.
+              // An edit sends no notification; the comment policy below
+              // decides when anyone is told.
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: existing.number,
-                state: 'open',
+                body,
+                ...(reopened ? { state: 'open' } : {}),
               });
-            }
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: existing.number,
-              labels: ['bug', 'P1'],
-            });
-            // Everything above is the tracker itself and runs first on purpose:
-            // by this point the issue exists, is open and is labelled, so a
-            // throw below costs one comment rather than the tracker. The jobs
-            // call is the same one close-after-success already makes under
-            // these permissions.
-            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.payload.workflow_run.id,
-              per_page: 100,
-            });
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: existing.number,
-              per_page: 100,
-            });
-            const decision = decideMainHealthComment({
-              workflowName,
-              runUrl,
-              headSha,
-              failures: summarizeRunFailure(jobs),
-              reopened,
-              comments,
-            });
-            core.info(`main-health: ${decision.action} (${decision.reason})`);
-            if (decision.action === 'update-marker') {
-              // Same failure, inside the heartbeat window: record the run in
-              // the marker of the comment that already exists. An edit sends
-              // no notification, so a persistent red stops paging anyone.
-              await github.rest.issues.updateComment({
+              await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: decision.commentId,
-                body: decision.body,
+                issue_number: existing.number,
+                labels,
               });
-              return;
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                per_page: 100,
+              });
+              const decision = decideMainHealthComment({
+                workflowName,
+                runUrl,
+                headSha,
+                failures: summarizeRunFailure(jobs),
+                reopened: announceReopen,
+                comments,
+              });
+              core.info(`main-health: ${decision.action} (${decision.reason})`);
+              if (decision.action === 'update-marker') {
+                // Same failure, inside the heartbeat window: record the run in
+                // the marker of the comment that already exists. An edit sends
+                // no notification, so a persistent red stops paging anyone.
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: decision.commentId,
+                  body: decision.body,
+                });
+              } else if (reopened && !announceReopen) {
+                // A quiet reopen posts nothing; the rewritten body carries
+                // this run, and the next red past the window speaks.
+                core.info('main-health: reopened within a day of the close; no comment.');
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: decision.body,
+                });
+              }
             }
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: existing.number,
-              body: decision.body,
-            });
+            if (detailsError) throw new Error(`Tracker written without run details: ${detailsError}`);
 
   close-after-success:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
@@ -195,8 +277,14 @@ jobs:
     concurrency:
       group: main-health-${{ github.event.workflow_run.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # The checkout (default branch, no credentials) supplies the bounded
+    # tracker lookup in scripts/main-health-comment-policy.mjs.
+    timeout-minutes: 4
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - name: Close the workflow tracking issue after a green run
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         # Event values stay data: env indirection prevents injection into JavaScript source.
@@ -206,10 +294,12 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           script: |
+            const { consolidateTracker, greenHasHeld, listTrackers, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { isOverdueBody } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
-            const title = `Main pipeline red: ${workflowName}`;
+            const title = trackerTitle(workflowName);
             const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -247,14 +337,39 @@ jobs:
               // CodeQL tracker.
               if (!jobs.some((job) => job.name === 'CodeQL JavaScript and TypeScript' && job.conclusion === 'success')) return;
             } else if (!hasSuccessfulJob || hasSkippedJob) return;
-            const issues = await github.paginate(github.rest.issues.listForRepo, {
+            const existing = await consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title);
+            if (!existing || existing.state !== 'open') return;
+            // A stopped schedule is answered only by a scheduled run: a push,
+            // dispatch or workflow_run green says nothing about the cron.
+            if (isOverdueBody(existing.body) && context.payload.workflow_run.event !== 'schedule') {
+              core.info(`main-health: ${title} tracks a stopped schedule; a ${context.payload.workflow_run.event} run does not clear it.`);
+              return;
+            }
+            // Close only once the green has held: no red run of this
+            // workflow on main in the day before this green. A workflow that
+            // alternates red and green keeps one open tracker instead of
+            // opening and closing it several times a day.
+            const run = context.payload.workflow_run;
+            const { data: history } = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              state: 'open',
-              per_page: 100,
+              workflow_id: run.workflow_id,
+              branch: 'main',
+              status: 'completed',
+              per_page: 50,
             });
-            const existing = issues.find((issue) => !issue.pull_request && issue.title === title);
-            if (!existing) return;
+            if (!greenHasHeld(run, history.workflow_runs)) {
+              core.info(`main-health: ${title} stays open: a red run on main within the last day.`);
+              return;
+            }
+            // Close first: a failed close must not leave a "closed" comment on an
+            // open issue. A comment that fails after the close fails the job.
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: 'closed',
+            });
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -267,9 +382,129 @@ jobs:
                 `Head SHA: ${headSha}`,
               ].join('\n'),
             });
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: existing.number,
-              state: 'closed',
-            });
+
+  # "The scheduled run never happened" is a failure too. Every Main: Health
+  # run (any watched workflow completing on main, many times a day) checks
+  # that each watched scheduled workflow has run within the tolerance in
+  # scripts/main-health-schedules.mjs, derived from that workflow's own cron.
+  # It reuses the same tracker title, so a workflow has one issue whether it
+  # failed or stopped running; the next scheduled run clears an overdue one.
+  overdue-schedules:
+    if: ${{ github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    # Idempotent: the newest check supersedes an older one still running.
+    concurrency:
+      group: main-health-overdue
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Open or clear trackers for schedules that stopped running
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { consolidateTracker, listTrackers, trackerLabels, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { cronIntervalMs, decideOverdue, isOverdueBody, readWatchedSchedules, renderOverdueBody, scheduleEffectiveSince, workflowSchedule } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
+            const now = Date.now();
+            const { labels } = await trackerLabels(github, context.repo, core);
+            const trackers = await listTrackers(github, context.repo);
+            // Each workflow is checked on its own: one failed API call must
+            // not stop the checks after it. Failures are collected and the
+            // job fails once, at the end, naming what could not be checked.
+            const failures = [];
+            for (const { file, name, crons } of readWatchedSchedules(process.env.GITHUB_WORKSPACE)) {
+             try {
+              const intervalMs = cronIntervalMs(crons);
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo,
+                workflow_id: file,
+                event: 'schedule',
+                branch: 'main',
+                per_page: 1,
+              });
+              const last = data.workflow_runs?.[0] ?? null;
+              let verdict = decideOverdue({ intervalMs, lastRunAt: last?.created_at ?? null, now });
+              if (verdict.overdue) {
+                // Only then: when did this schedule take effect? The commit
+                // that last changed the file's cron lines on the default
+                // branch, so a cron added or changed by a recent landing is
+                // not reported at once, and an edit elsewhere in the file does
+                // not postpone detection.
+                const path = `.github/workflows/${file}`;
+                const ref = context.payload.repository?.default_branch ?? 'main';
+                const { data: commits } = await github.rest.repos.listCommits({ ...context.repo, sha: ref, path, per_page: 20 });
+                const history = [];
+                for (const commit of commits) {
+                  const { data: content } = await github.rest.repos.getContent({ ...context.repo, path, ref: commit.sha });
+                  const at = { date: commit.commit?.committer?.date ?? null, crons: workflowSchedule(Buffer.from(content.content ?? '', 'base64').toString('utf8')).crons };
+                  history.push(at);
+                  if (at.crons.join('\n') !== crons.join('\n')) break;
+                }
+                verdict = decideOverdue({ intervalMs, lastRunAt: last?.created_at ?? null, scheduleChangedAt: scheduleEffectiveSince(crons, history), now });
+              }
+              const title = trackerTitle(name);
+              const tracker = await consolidateTracker(github, context.repo, trackers, title);
+              core.info(`main-health: ${name} last scheduled run ${last?.created_at ?? 'never'}; overdue=${verdict.overdue}`);
+              if (verdict.overdue) {
+                const body = renderOverdueBody({ workflowName: name, file, crons, intervalMs, limitMs: verdict.limitMs, lastRunAt: last?.created_at ?? null, lastRunUrl: last?.html_url ?? null, since: verdict.since });
+                if (!tracker) {
+                  await github.rest.issues.create({ ...context.repo, title, body, labels });
+                  continue;
+                }
+                // Unchanged body: already reported, say nothing again.
+                if (tracker.state === 'open' && tracker.body === body) continue;
+                const announce = tracker.state !== 'open' || !isOverdueBody(tracker.body);
+                await github.rest.issues.update({ ...context.repo, issue_number: tracker.number, body, state: 'open' });
+                await github.rest.issues.addLabels({ ...context.repo, issue_number: tracker.number, labels });
+                if (announce) {
+                  await github.rest.issues.createComment({ ...context.repo, issue_number: tracker.number, body: body.split('\n')[1] });
+                }
+                continue;
+              }
+              // Running again: clear only a tracker this check opened, and
+              // only once a scheduled run has succeeded. A run still going or
+              // a red one belongs to the failure reporter, which runs in
+              // another concurrency group and may be rewriting this tracker.
+              if (tracker?.state === 'open' && isOverdueBody(tracker.body) && last?.status === 'completed' && last?.conclusion === 'success') {
+                await github.rest.issues.update({ ...context.repo, issue_number: tracker.number, state: 'closed' });
+                await github.rest.issues.createComment({ ...context.repo, issue_number: tracker.number, body: `Ran on its schedule again at ${last?.created_at}: ${last?.html_url}` });
+              }
+             } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              failures.push(`${name} (${file}): ${message}`);
+              core.warning(`main-health: could not check ${name}: ${message}`);
+             }
+            }
+            if (failures.length) throw new Error(`Could not check ${failures.length} schedule(s): ${failures.join('; ')}`);
+
+  # Main: Health cannot watch itself through workflow_run, so its own red
+  # reaches a person here: one tracker, opened or rewritten by the smallest
+  # code path, with no checkout and no module. It is closed by hand once
+  # Main: Health runs green again.
+  report-own-failure:
+    needs: [report-failure, close-after-success, overdue-schedules]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: "Open or update the Main: Health tracker"
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = 'Main: Health could not run';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              "Main: Health failed, so a watched workflow's red run or stopped schedule may not have reached its tracker.",
+              '',
+              `Run: ${run}`,
+              `Watched run: ${context.payload.workflow_run?.html_url ?? 'unknown'}`,
+              '',
+              'Read the failed job in the run above. Close this issue by hand once Main: Health runs green again.',
+            ].join('\n');
+            const issues = await github.paginate(github.rest.issues.listForRepo, { ...context.repo, creator: 'github-actions[bot]', state: 'open', per_page: 100 });
+            const existing = issues.find((issue) => !issue.pull_request && issue.title === title);
+            if (existing) await github.rest.issues.update({ ...context.repo, issue_number: existing.number, body });
+            else await github.rest.issues.create({ ...context.repo, title, body, labels: ['bug', 'P1'] });
