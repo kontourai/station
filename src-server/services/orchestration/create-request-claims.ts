@@ -282,6 +282,7 @@ export class CreateRequestClaims {
       throw new Error(
         'Create requires authenticated caller scope and a request key.',
       );
+    const digest = chatTurnSubmissionDigest(input.intent);
     const callerSessionId =
       input.callerSessionId ?? (await createRequestCallerSession());
     const scope = [
@@ -294,7 +295,6 @@ export class CreateRequestClaims {
     const key = createHash('sha256')
       .update(JSON.stringify([input.kind, scope, input.requestKey]))
       .digest('hex');
-    const digest = chatTurnSubmissionDigest(input.intent);
     // Reject changed input before waiting for the live request's ownership lock.
     const known = await this.#update((ledger) => ledger.claims[key]);
     let reclaimable = false;
