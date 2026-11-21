@@ -1,5 +1,106 @@
 # @kontourai/station-contracts
 
+## 0.15.0
+
+### Minor Changes
+
+- de1aed1: Automation policy changes are explained and scoped (#4511), the operator
+  surface is complete (#4513), and the isolated-repair tick refuses intents whose
+  rule was deleted or changed kind (#4575).
+
+  Policy: a retained action's fingerprint covers only authority-bearing fields
+  (the source's repository, enabled/revoked state and the grant for this rule's
+  Project, Agent and action; the rule's mode, matcher and action). Renaming a
+  rule or a source, or changing a rate limit, episode policy or poll interval,
+  no longer stops work. A change to the action's instructions or budget is an
+  amendment: the action adopts it and the running Session gets the new text as
+  its next turn. Any other change is a revocation: automatic work stops, the
+  Session is marked blocked and the Task moves to `blocked`, both with the
+  reason. A person's own turn into that Session is admitted under their
+  authority (no rule budget, and Ask instead of an inherited Auto) and the
+  Session becomes theirs. This boundary survives action settlement and runtime
+  restart; a failed hand-over or approval write refuses the turn before send.
+  Intents retained before this change still match
+  until their rule or source changes in any way.
+
+  Task reads (`GET /api/tasks/:taskId` and `/graph`) carry `automation`
+  (`AutomationTaskProjection`): the immutable `AutomationTaskMandate` the Task
+  started under, its amendments, revocation and hand-over. Task Details shows it
+  as "Started by automation".
+
+  Operator surface: every `AUTOMATION_OPERATOR_SURFACE` verb has a route, an SDK
+  function and a `station automation` action, plus the new `update-rule`
+  (`PUT /automations/rules/:target`). Station Control MCP gains the four read
+  tools only. Mutations need the operator in person and edit `dispatch-task`
+  rules only. `retry-episode` gives an exhausted episode exactly one more
+  attempt under the rule's current policy.
+
+  Ledger: a held claim records `suppressed` with its reason (`rate-limited`,
+  `rule-active-limit`, `concurrency-limit`, `episode-active`,
+  `episode-exhausted`, `episode-indeterminate`). A refused intent keeps its
+  refusal reason (`policy_changed` and the new `admission_refused`), never
+  `policy_unavailable` by default.
+
+  Breaking for type consumers: `notify` is no longer an action kind and
+  `received` is no longer a delivery outcome; nothing ever executed or wrote
+  either. A stored grant listing `notify` drops it on read; a stored `notify`
+  rule makes the configuration unreadable (fails closed). Downgrade: once an
+  episode has been retried, an older Station cannot open the ledger and reads
+  Automation as `policy_unavailable` (fails closed).
+- e308051: A child transcript can be read the way a chat reads it. `ChildWorkTranscriptPage` now carries `offset` and `endOffset` (where a page's messages start and end; a read from past the end names the end), and `getChildWorkTranscript` accepts `tail: true` for the latest messages. The new `useChildWorkTranscriptTailQuery` opens on the latest messages, loads older ones through `fetchPreviousPage`, and while the child runs reads only the messages past its last `endOffset`, instead of re-reading every loaded page. Against a Station from before page ranges it pages forward by `nextOffset` (`hasLaterPage`) and re-reads its pages while the child runs.
+
+  Approval copy is plainer. `toolPolicyDeliveryExplanation` now reads, for example, "Station's approval rules apply to every tool call." and "This engine handles its own approvals; Station's rules aren't used.", and the approval-mode setting's `never` option is labelled "Full access".
+- a80f89f: Send staged images to a running child turn when its reported steer control advertises image input. The child steering API accepts image-only messages and messages with a caption. Existing text messages keep their original wire format.
+- ec227ca: Derive a Task's board lane from live facts instead of its stored status. Contracts add `@kontourai/station-contracts/task-lane` (`deriveTaskLane`, `partitionTaskLanes`, and the Task pull request facts shapes) and optional `draft`, `reviewDecision` and `mergeReadiness` on `PullRequest`. The SDK adds `useTaskPullRequestFactsQuery` for `GET /api/tasks/pull-request-facts`.
+- 9294965: Add optional `viewingSessionIds` to `FocusReport` and `FocusSurfaceSnapshot`
+  in `@kontourai/station-contracts/presence`, with `FOCUS_VIEWING_SESSION_IDS_MAX`
+  and `FOCUS_VIEWING_SESSION_ID_PATTERN`. A focused document that lists the chat it
+  shows quiets a finished-turn (`done`/`info`) alert on the person's other surfaces
+  only for that session. A report without the field keeps device-wide focus.
+  Hosts built before this field answer 400 to it, and the Station client then
+  reports without it.
+- b7f8c61: Allow `resolveConversationOpen` to report an authorized empty-context
+  reservation as `fresh-context-ready`. The earlier transcript remains readable,
+  and the next successful continuation starts the reserved Session with fresh
+  context. The result exposes reservation identities separately from execution.
+- 3475cd8: Add `station acp setup` and the safe `ACPEngineSetupEntry` catalog contract for guided engine setup. Engine setup links lead to Station's existing connection and sign-in pane; installation and credential operations stay with the person. ACP command-catalog actions reject an engine id instead of implying they check that engine.
+
+  The `@kontourai/station-sdk/engine-setup` entry provides scoped installer and Agent-tool hooks. The guided pane reviews and runs built-in installers in a visible terminal, verifies device-code sign-in, repairs launch arguments in place, and explicitly selects Station tools while preserving authored settings. Installer retries reconcile the saved attempt; Stop targets that exact attempt. The supervisor's protocol 1.4 negotiates a process-owned lifetime before starting a bounded command.
+- 613b900: Add `NOTIFICATION_STATION_QUERY_PARAM`, `isNotificationStationId` and `notificationSessionHref` to `@kontourai/station-contracts/notification`. Every OS notification link now names the Station that sent it, and every channel opens a session through one href, so a client connected to another saved Station switches to the sending one before it opens the conversation.
+- 7c54e90: Add the Project brief, Project memory and Project usage, behind the `project-coordination` Feature Preview. Contracts add `@kontourai/station-contracts/project-session-context` (the brief and memory note shapes, their limits and parsers, and `composeProjectSessionContext`, the one composer of what a new Session in a Project starts from), `ProjectConfig` `goal`, `instructions`, `coordinatorEffort`, `taskModel`, `taskProviderId` and `taskEffort`, the `PROJECT_SESSION_CONTEXT_METADATA_KEY` and `PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY` reserved metadata keys, `projectBrief` and `projectMemory` context-injection blocks, a `project` usage grouping with `projectSlug` attribution, `projectUsageTotals`, and the `PROJECT_MEMORY_FULL_CODE` (`project_memory_full`) refusal, mapped in `PROVIDER_FAILURE_KINDS` to the non-retryable `conflict` kind. Shared's turn provenance fold reads the Project context a turn carried on every engine. The SDK adds Project memory clients (`listProjectMemory`, `getProjectMemoryNote`, `createProjectMemoryNote`, `updateProjectMemoryNote`, `deleteProjectMemoryNote`) and a `projectSlug` usage rollup filter.
+- 097e7e0: Add the Project Library. Contracts add `@kontourai/station-contracts/project-library` (`ProjectLibraryPage`, `ProjectLibraryItem`, `projectLibraryUploadPath`, `filterProjectLibraryItems`, `projectLibraryTasks`, `sortProjectLibraryItems`) and the optional `projectLibrary` capability flag. The SDK adds `@kontourai/station-sdk/project-library` (`useProjectLibraryQuery`, `useUploadProjectLibraryFileMutation`, `useDeleteProjectLibraryFileMutation`, `downloadProjectLibraryContent`, `readProjectLibraryCapability`) for `GET/PUT/DELETE /api/projects/:slug/library…`, available while the `project-library` Feature Preview is on.
+- 890bb71: Add the coordinator in a Project Room's `#general`, behind the `project-room-coordinator` Feature Preview. Contracts add `@kontourai/station-contracts/project-room-coordinator` (the Project's coordinator limits and their parser and defaults, `askedForPullRequest`, `parseCoordinatorReply` for the reply's `station_routing` block, the row states, the suggested-Tasks card view and the status sweep result), `ProjectConfig.roomCoordinator` and the `projectRoomCoordinator` capability flag. The SDK adds `@kontourai/station-sdk/project-room-coordinator`: the card, Start, status sweep and settings clients and their React hooks.
+- 6b381fa: Add a Commenter Project role for reading and discussing shared work. The Task room message client can bind a reply to the signed-in member and the selected Task publication.
+- 0fa15f6: Add pull request agent feedback, behind the `pull-request-agent-feedback` Feature Preview. Contracts add `@kontourai/station-contracts/pull-request-feedback` (settings, status, delivery and observation shapes), an optional `getFeedbackObservation` on the pull request provider, and a `pullRequestFeedback` capability flag. The SDK adds a client for `/api/pull-request-feedback` to read a conversation's feedback state, turn its switches on or off, send a paused pull request's feedback again, and read whether the host serves it.
+- d4233c3: Pull request agent feedback that needs a person shows in Needs you. Contracts add the `pull-request-feedback` attention item (`PullRequestFeedbackAttentionItem`), `cap` and `at` on a paused feedback status, and a `pull-request-feedback` client-origin sender so the delivered message is labelled as Station's. The SDK adds `turnOffPullRequestFeedback` and exports the new item type. Shared ranks the `pull-request-feedback` notification category as needing input.
+- 4001c1b: Pull request agent feedback can be turned on once for a Project. Contracts add `ProjectPullRequestFeedbackDefaults`, `PullRequestByHead` and `PullRequestsByHeadResult`, and the optional `IPullRequestProvider.findOpenPullRequestsByHead`. The SDK adds `getProjectPullRequestFeedbackDefaults`, `writeProjectPullRequestFeedbackDefaults` and `removeDerivedPullRequest`.
+- f93562f: Show pull request agent feedback wherever a pull request is looked at. Contracts add `PullRequestFeedbackByPullRequest`, an optional `headSha` on a current Task pull request fact, its optional `feedback` (`TaskPullRequestFeedbackFact`), and `TaskLaneDerivation.feedbackNote`, which never changes a lane. `PullRequestFeedbackOwner.conversationId` is now optional: it is absent for a chat the reader may not read. The SDK adds `getPullRequestFeedbackByPullRequest`, and `pullRequestFeedbackOwnerOf` answers `{}` for such a chat instead of `undefined`.
+- 7e3fdf4: Review each new pull request head. Contracts add `pullRequestFeedbackActive(settings, headReview)` (a sending switch, or `reviewEachHead` while review of each head is offered), `PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID`, `PullRequestHeadReview` (with `current`), `PullRequestHeadReviewFinding` and `PullRequestHeadReviewWaiting`, and optional `headReview` and `headReviewWaiting` on `PullRequestFeedbackByPullRequest` and `PullRequestFeedbackView`. The SDK adds `reviewPullRequestHeadAgain`, `sendPullRequestHeadReviewFindings` and `pullRequestHeadReviewRefusal`, and `writePullRequestFeedback` accepts an optional `reviewEachHead`; leaving it out keeps the chat's stored value.
+- b5d5625: Read sessions that live on a connected SSH environment's Station. `fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? }, { apiBase?, requestScope?, signal? })` reads one read-only, bounded history page relayed by the named Station and rejects with `StationHttpError` carrying the route's `code`, and `readRemoteSessionHistoryCapability(apiBase)` reports the new `remoteSessionHistory` handshake flag (`StationCapabilityFlags.remoteSessionHistory`), which hosted Stations withdraw. `listOrchestrationSessions` takes an optional `{ limit }` asking for only the newest sessions. A response past `maxResponseBytes` now rejects with `StationResponseTooLargeError`, and the orchestration and conversation-search readers keep it as the `cause` of their unreadable-body error. `getOrchestrationSessionDetailWindow` rejects with `SessionDetailWindowUnsupportedError` (also exported from the agent entry) when a host answers without a `window-v1` page.
+- 781a688: Add a named terminal launch profile for GitHub and GitLab repository sign-in. The profile supplies the provider, and the Station host resolves the fixed command and checks the operator's terminal authority.
+- 5aaabc0: Remove `streaming` and `ui.quickPrompts` from the Agent authoring type and schema. Remove those keys from new definitions. Existing files still open with their bytes intact, and the next save writes the current shape. Agent guidance import and export omit both fields. Layouts can continue passing `AgentQuickPrompt` to `onLaunchPrompt`.
+- 47a181c: Add optional week and display-zone arguments to the scheduled jobs read. Jobs can include a bounded weekly forecast. Built-in scheduler status can include operator-only diagnostics for damaged job rows. Existing calls and healthy job actions keep their existing response shapes.
+- ea9ce36: Let a Task watch the pull requests it keeps until they land, behind the `pull-request-agent-feedback` Feature Preview. Contracts add `@kontourai/station-contracts/pull-request-watch` (the Project setting, a Task's choice, the ready test, refused-action kinds and the Task's watch view), optional `ProjectConfig.pullRequestWatch`, `TaskRecord.pullRequestWatch` and `TaskRecord.pullRequestWatchHold`, the `fix-budget` pause reason and the `fixAttemptsUsed` Task lane rung. Station builds that predate them refuse a Task store carrying either Task field. The SDK adds `@kontourai/station-sdk/pull-request-watch` to read a Task's watch and set a Task's or Project's choice.
+- 1b5f643: Add `UsageLimitContinueOnProfile` and `UsageLimitContinueOnOptions` for
+  "Continue on <label>" on a usage-limit stop: the enrolled credential profiles
+  a waiting stop may be continued on. Additive; no existing shape changes.
+
+### Patch Changes
+
+- d8def70: Align Agent step limits with the accepted top-level `maxSteps` field and document its VoltAgent scope. Validate date and time template options at configuration admission and during prompt expansion. Settings now explain when Station applies default instructions and template substitutions.
+- 1d0dbf5: Add `station conversation settle <conversationId>` and
+  `station conversation reopen <conversationId>`, which move a conversation
+  between Open and Settled in your own inbox under the Open and Settled inbox
+  Feature Preview (`PUT /api/conversations/:id/work-state`). The contracts
+  package adds the activity phrase for Station Control's `settle_conversation`
+  tool.
+- b3f8383: Declare the optional Session and Turn identifiers already supplied on Session progress observations. Older observations can still omit them.
+- 3ae3285: Expose whether the current reader may change a chat's pull request feedback. Project settings now group pull request controls in one repository-aware section with shared typography and spacing.
+- 3ae3285: Keep Task pull request watches and fix budgets when enabling head review. Report ready only after the watched head's review completes without required findings, with visible recovery steps when review needs a person.
+- b9cc026: Read a paired browser's current Web Push registration with
+  `fetchWebPushRegistration`. The VAPID read preserves HTTP refusals, and
+  registration requests accept a captured Station request scope.
+
 ## 0.14.0
 
 ### Minor Changes
