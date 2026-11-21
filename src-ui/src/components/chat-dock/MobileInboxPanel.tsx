@@ -492,6 +492,13 @@ export function MobileInboxPanel({
           />
         </ListRefreshPull>
       </div>
+      {open && refresh && (
+        <ListRefreshStatus
+          activity="Refreshing inbox…"
+          phase={refresh.phase}
+          updating={updating && (hasVisibleItems || !pending)}
+        />
+      )}
       {open && selected && (
         <MobileInboxSelection
           key={controller.stateKey}
@@ -512,13 +519,6 @@ export function MobileInboxPanel({
       )}
       {open && onNewChat && !selecting && !arranging && (
         <NewChatAction className="mobile-inbox__new-chat" onClick={onNewChat} />
-      )}
-      {open && refresh && (
-        <ListRefreshStatus
-          activity="Refreshing inbox…"
-          phase={refresh.phase}
-          updating={updating && (hasVisibleItems || !pending)}
-        />
       )}
       {controller.notice}
     </section>
