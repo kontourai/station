@@ -264,8 +264,9 @@ every other route. These rules make it a region rather than a special case
   floor) and this slice does not widen that fold; Home still reaches `main`
   there through the sidebar's two Home affordances (the header's app-name
   button and the Work list's Home row, `ProjectSidebar.tsx`) and the
-  `?surface=home` deep link. Home is `hiddenFromNav` and has no palette
-  entry.
+  `?surface=home` deep link. The palette's **Home** entry opens Home as the
+  page through `showSurfacePage('home')`. Home remains `hiddenFromNav`; the
+  sidebar renders its own Home affordances.
 - **A `main` occupant's toggle returns it to the dock.** A surface's chord
   (⌘D for Chat) and its row in the folded Regions menu are one model
   command, `toggleSurface` (#1523; the toolbar carries no placement rule of its

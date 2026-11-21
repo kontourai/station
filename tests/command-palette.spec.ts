@@ -1,4 +1,44 @@
 import { expect, type Page, test } from '@playwright/test';
+import { test as auditedTest } from './helpers/fixture-audit';
+import {
+  LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+  waitForLocalUiAccessReadiness,
+} from './helpers/local-ui-access-readiness';
+
+auditedTest.describe('Command palette real shell qualification', () => {
+  auditedTest.setTimeout(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS + 30_000);
+
+  auditedTest(
+    'ordinary registered shortcut opens and Escape restores focus',
+    async ({ page }) => {
+      await page.goto('/settings?view=keyboard-shortcuts');
+      await waitForLocalUiAccessReadiness(page);
+      await expect(
+        page.getByText('Open command palette', { exact: true }),
+      ).toBeVisible();
+
+      const trigger = page.getByRole('searchbox', {
+        name: 'Search keyboard shortcuts',
+      });
+      await trigger.focus();
+      await expect(trigger).toBeFocused();
+      await page.keyboard.press('ControlOrMeta+k');
+
+      const dialog = page.getByRole('dialog', { name: 'Command palette' });
+      await expect(dialog).toBeVisible();
+      const input = dialog.getByRole('combobox', { name: 'Search commands' });
+      await expect(input).toBeFocused();
+      await expect(dialog.getByRole('option', { name: /^Home/ })).toBeVisible();
+      await expect(
+        dialog.getByRole('option', { name: /^Agents/ }),
+      ).toBeVisible();
+      await input.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      await expect(page).toHaveURL(/\/settings\?view=keyboard-shortcuts$/);
+    },
+  );
+});
 
 function json(body: unknown, status = 200) {
   return {
