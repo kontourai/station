@@ -138,11 +138,6 @@
 .chat-dock__mobile-inbox-tools {
   display: contents;
 }
-@media (max-width: 350px) {
-  .chat-dock__mobile-actions .mobile-inbox__direct-tool {
-    display: none;
-  }
-}
 
 .chat-dock__mobile-header:has(.mobile-inbox__selection-heading)
   :is(

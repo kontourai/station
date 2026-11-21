@@ -141,34 +141,21 @@ export function MobileInboxSelection({
       aria-label="Selected conversations"
     >
       <div className="mobile-inbox-selection__commands">
-        {pending || !canSnooze ? (
-          <Button
-            variant="ghost"
-            className="mobile-inbox-selection__action"
-            aria-label="Snooze selected conversations"
-            disabled
-          >
-            <span>{snoozeLabel}</span>
-          </Button>
-        ) : (
-          <ActionOverflowMenu
-            label="Snooze selected conversations"
-            triggerClassName="mobile-inbox-selection__action"
-            triggerGlyph={snoozeLabel}
-            actions={SNOOZE_OPTIONS.map((option) => ({
-              key: option.label,
-              label: option.label,
-              onSelect: (trigger) => {
-                if (trigger instanceof HTMLButtonElement)
-                  void apply(
-                    'snooze',
-                    trigger,
-                    snoozeWakeAt(option, Date.now()),
-                  );
-              },
-            }))}
-          />
-        )}
+        <ActionOverflowMenu
+          disabled={pending || !canSnooze}
+          label="Snooze selected conversations"
+          triggerClassName="mobile-inbox-selection__action"
+          triggerGlyph={snoozeLabel}
+          actions={SNOOZE_OPTIONS.map((option) => ({
+            key: option.label,
+            label: option.label,
+            onSelect: (trigger) => {
+              if (trigger instanceof HTMLButtonElement)
+                void apply('snooze', trigger, snoozeWakeAt(option, Date.now()));
+            },
+          }))}
+        />
+
         <Button
           variant="ghost"
           className="mobile-inbox-selection__action"

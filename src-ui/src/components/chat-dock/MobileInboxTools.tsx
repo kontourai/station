@@ -1,5 +1,6 @@
 import { INBOX_SCOPE_CURRENT_PROJECT } from '@kontourai/station-contracts/device-settings';
 import { useId, useRef, useState } from 'react';
+import { useDockSlotDevice } from '../../hooks/useIsMobile';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { SearchGlyph } from '../icons/Glyph';
@@ -40,6 +41,7 @@ export function MobileInboxTools({
   onArrange(): void;
   onBack?: () => void;
 }) {
+  const { viewportWidth } = useDockSlotDevice();
   const [filters, setFilters] = useState(false);
   const [query, setQuery] = useState('');
   const [station, setStation] = useState('all');
@@ -81,30 +83,34 @@ export function MobileInboxTools({
   };
   return (
     <>
-      <Button
-        variant="ghost"
-        className="app-toolbar__icon-btn mobile-inbox__direct-tool"
-        aria-label="Search inbox"
-        aria-expanded={searchOpen}
-        onClick={onSearch}
-      >
-        <SearchGlyph />
-      </Button>
-      <Button
-        variant="ghost"
-        className="app-toolbar__icon-btn mobile-inbox__direct-tool"
-        aria-label="Filter inbox"
-        aria-haspopup="dialog"
-        aria-expanded={filters}
-        data-filtered={
-          scope.effectiveValue !== 'all' ||
-          status !== 'All statuses' ||
-          undefined
-        }
-        onClick={(e) => openFilters(e.currentTarget)}
-      >
-        <span className="mobile-inbox__filter-glyph" aria-hidden="true" />
-      </Button>
+      {viewportWidth > 350 && (
+        <>
+          <Button
+            variant="ghost"
+            className="app-toolbar__icon-btn mobile-inbox__direct-tool"
+            aria-label="Search inbox"
+            aria-expanded={searchOpen}
+            onClick={onSearch}
+          >
+            <SearchGlyph />
+          </Button>
+          <Button
+            variant="ghost"
+            className="app-toolbar__icon-btn mobile-inbox__direct-tool"
+            aria-label="Filter inbox"
+            aria-haspopup="dialog"
+            aria-expanded={filters}
+            data-filtered={
+              scope.effectiveValue !== 'all' ||
+              status !== 'All statuses' ||
+              undefined
+            }
+            onClick={(e) => openFilters(e.currentTarget)}
+          >
+            <span className="mobile-inbox__filter-glyph" aria-hidden="true" />
+          </Button>
+        </>
+      )}
       <ActionOverflowMenu
         label="Inbox actions"
         triggerClassName="app-toolbar__icon-btn mobile-inbox__more"
@@ -128,6 +134,7 @@ export function MobileInboxTools({
           historyMode="entry"
           onClose={() => setFilters(false)}
           returnFocusTarget={trigger.current}
+          insetSheetMinHeight={700}
           overlayClassName="composer-popover-overlay mobile-inbox-filters-overlay"
           panelClassName="composer-popover-panel mobile-inbox-filters"
         >

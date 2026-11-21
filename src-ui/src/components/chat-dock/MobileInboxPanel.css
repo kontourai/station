@@ -260,21 +260,19 @@
   margin-block-start: var(--k-space-4);
 }
 
-@media (min-height: 700px) {
-  .mobile-inbox-filters-overlay.responsive-surface-overlay {
-    align-items: flex-start;
-    justify-content: center;
-    padding: calc(
-        var(--app-toolbar-total-height, 48px) +
-        var(--touch-target-min) +
-        var(--k-space-4)
-      )
-      var(--k-space-3) var(--k-space-3);
-  }
-  .mobile-inbox-filters-overlay .mobile-inbox-filters {
-    width: 100%;
-    max-height: 100%;
-    border-radius: var(--k-radius-lg);
-    background: var(--k-panel-raised);
-  }
+.mobile-inbox-filters-overlay[data-inset-sheet].responsive-surface-overlay {
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(
+      var(--app-toolbar-total-height, 48px) +
+      var(--touch-target-min) +
+      var(--k-space-4)
+    )
+    var(--k-space-3) var(--k-space-3);
+}
+.mobile-inbox-filters-overlay[data-inset-sheet] .mobile-inbox-filters {
+  width: 100%;
+  max-height: 100%;
+  border-radius: var(--k-radius-lg);
+  background: var(--k-panel-raised);
 }
