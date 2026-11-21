@@ -214,7 +214,7 @@ function sessionTakesNextTurn(
  * the adapter has stopped it. A successor would resume the same native
  * conversation in a second engine beside it, so none is started.
  */
-export class ConversationPredecessorEngineLiveError extends Error {
+class ConversationPredecessorEngineLiveError extends Error {
   readonly code = CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE;
 
   constructor() {
