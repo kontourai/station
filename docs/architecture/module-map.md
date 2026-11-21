@@ -5221,13 +5221,52 @@ sample; recent readers reuse it. The sampler computes busy time from two
 `reserveEngineStart()` is a different capability: one in-memory lease per
 controller instance. It does not sample CPU. An interactive start waits FIFO
 for the lease, for at most 60 seconds and up to 32 waiting starts. When the
-caller supplies an abort signal, aborting it removes that start from the queue;
-the person's `/chat` path does not currently supply one. Other starts are refused immediately with
-`resource_engine_start_capacity` while the lease is held, including while it is
-handed to a waiting person. Recovery and credential-profile restarts currently
-use this background behavior: the shared respawn seam does not distinguish a
-person from automated callers, and the credential restart does not pass its
-signal to admission. The composer has no capacity-wait status channel.
+caller supplies an abort signal, aborting it removes that start from the queue.
+Other starts are refused immediately with `resource_engine_start_capacity`
+while the lease is held, including while it is handed to a waiting person.
+
+A start for an existing Session derives its intent on the server. A cold
+Session's respawn for a `sendTurn` waits only when Station classifies the turn
+as a person's (`interactive` dispatch origin); an automatic send
+(`/chat/background`, including automatic inbox delivery), Automation, Task,
+delegation and unclassified turns keep the immediate refusal. A person
+joining an in-flight background respawn that was refused starts again under
+their intent. Their Stop cancels a respawn still waiting for the lease, and no
+provider start follows. A credential-profile restart takes its intent from the
+source turn's recorded `resourceAdmissionIntent`, independently of its actor's
+`dispatchOrigin`. An automatic send can keep interactive source attribution
+while retaining background admission. Legacy events without the policy field
+fall back to origin; unrecognized policy values remain background. The recovery
+owner's signal reaches admission and preparation. A credential restart takes
+the lease before stopping the current provider, so a queued cancellation or
+capacity refusal leaves that provider in place. While a person's
+start for an existing Session is queued, its summary carries
+`engineStartWait`, published through the session-projection update the
+composer refreshes from. The wait clears on admission, cancellation, timeout
+or failure. A brand-new Session's first start publishes the same wait on the
+authorized `orchestration:engine-start-wait` stream, with a pending-start
+identity owned by its authenticated caller and tenant. It grants no Session
+read or successful-start claim. The identity remains cancellable through
+preparation after admission, then clears when the provider start settles.
+The stream rechecks read authority before writing; its unscoped event route
+never forwards these statuses. Reconnection and overflow snapshots replace
+transient status with current owned starts. A `/chat` request's own signal
+never cancels a send Station has accepted.
+
+A pending start binds targeted Stop to its accepted submission key, or to the
+recovery source's recorded turn/key. A delayed Stop naming another target does
+not cancel the current pending start. Untargeted Stop keeps its existing owner
+authorization. Recovered portable starts retain a snapshot of the receiver's
+admitted coordinate and recheck the offer after capacity and workspace
+preparation, immediately before the provider boundary.
+
+[Engine-start preparation](../../src-server/services/orchestration/engine-start-preparation.ts)
+uses the canonical abortable async helper before the provider effect. Stop can
+retire the caller's wait, lease and pending identity while a preparation promise
+remains unresolved; its late continuation is fenced. Once the adapter is
+invoked, cancellation no longer races its result into a pre-start refusal:
+possible provider effects retain their normal outcome and uncertainty custody.
+
 Other Station runtimes have their own controllers; this is not the verification
 coordinator's host-wide scheduler.
 
@@ -5247,6 +5286,13 @@ or that a provider will start successfully.
 [Posture tests](../../src-server/services/infra/__tests__/resource-posture.test.ts)
 and runtime/scheduler composition tests exercise progress at a synthetic
 99-percent CPU reading and preserve the product/verification import boundary.
+[Capacity tests](../../src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts)
+drive first start, respawn, Stop, timeout and credential restart through the
+real service and its published projection. The late-Stop cases hold the
+production workspace reauthorization boundary after admission.
+[Stream route tests](../../src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts)
+exercise principal isolation, reconnect replay, fresh `/chat` production
+composition, accepted-request disconnect and the UI status consumer.
 Keep CPU classification observational; do not make high load a hidden product
 refusal, require an override token or import verification scheduling into the
 application.

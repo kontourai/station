@@ -2,6 +2,7 @@ import type {
   EngineId,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
+import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-events';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
@@ -9,6 +10,10 @@ import type {
 import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  engineStartIntentForTurnOrigin,
+  type RuntimeEngineStartIntent,
+} from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -54,6 +59,10 @@ interface CredentialProfileRecoveryDeps {
     /** The replay's posture; the restart spawns in the resolved one. */
     modelOptions?: Record<string, unknown>;
     credentialProfileRef?: string;
+    /** #4568: absent for a boot restore, which no person is waiting on. */
+    resourceAdmissionIntent?: RuntimeEngineStartIntent;
+    sourceTurnId?: string;
+    sourceClientTurnId?: string;
   }) => Promise<{
     adapter: ProviderAdapterShape;
     armedInternalStopTurnId?: string;
@@ -145,7 +154,7 @@ export class CredentialProfileRecovery {
    */
   createDispatchAdapter(): RecoveryDispatchAdapter {
     return createRecoveryDispatchAdapter({
-      send: async (replay) => {
+      send: async ({ dispatchOrigin: _sourceOrigin, ...replay }) => {
         const result = await this.deps.dispatchSendTurn(replay);
         return result && 'turnId' in result ? result : undefined;
       },
@@ -181,6 +190,10 @@ export class CredentialProfileRecovery {
     recoveryCorrelationId: string;
     signal: AbortSignal;
     credentialProfileRef?: string;
+    dispatchOrigin?: TurnDispatchOrigin;
+    resourceAdmissionIntent?: RuntimeEngineStartIntent;
+    sourceTurnId?: string;
+    sourceClientTurnId?: string;
   }): Promise<{ turnId: string }> {
     // The pre-send boundary: until `adapter.sendTurn` is called below, no
     // failure can have reached the provider's send, so each throws
@@ -188,7 +201,12 @@ export class CredentialProfileRecovery {
     // account) is one of them.
     let restarted: Awaited<ReturnType<typeof this.deps.restartProviderSession>>;
     try {
-      restarted = await this.deps.restartProviderSession(input);
+      restarted = await this.deps.restartProviderSession({
+        ...input,
+        resourceAdmissionIntent:
+          input.resourceAdmissionIntent ??
+          engineStartIntentForTurnOrigin(input.dispatchOrigin ?? 'unknown'),
+      });
     } catch (error) {
       throw new RecoveryNotSentError(error, {
         sessionTouched: !isSessionUntouched(error),

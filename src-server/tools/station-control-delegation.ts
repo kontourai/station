@@ -7602,6 +7602,7 @@ export async function executeExecutionTargetMessage(
           !startInput.metadata?.delegation
             ? { personChatStart: true as const }
             : {}),
+          pendingStartClientTurnId: startContext?.pendingStartClientTurnId,
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -7714,6 +7715,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
+              ...(context?.resourceAdmissionIntent
+                ? { resourceAdmissionIntent: context.resourceAdmissionIntent }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7749,6 +7753,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
+                : {}),
+              ...(context?.resourceAdmissionIntent
+                ? { resourceAdmissionIntent: context.resourceAdmissionIntent }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
