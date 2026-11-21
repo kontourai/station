@@ -516,6 +516,7 @@ export function HomeStartComposer({
         accent: isGlobal ? undefined : accents.get(context),
         icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
+        folderIsHelp: workspaceHint.kind === 'managed',
         folderTitle:
           'path' in workspaceHint
             ? [

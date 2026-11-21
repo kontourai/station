@@ -1484,6 +1484,7 @@ export function NewChatModal({
           accent: isGlobal ? undefined : accents.get(selectedContext),
           icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
           folder: workspaceHintText(workspaceHint),
+          folderIsHelp: workspaceHint.kind === 'managed',
           folderTitle:
             'path' in workspaceHint
               ? [

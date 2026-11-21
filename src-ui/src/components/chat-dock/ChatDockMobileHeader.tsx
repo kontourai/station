@@ -8,6 +8,7 @@ import { useContext, useId, useRef, useState } from 'react';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
+  ArrowLeftGlyph,
   ExpandGlyph,
   InboxGlyph,
   MenuGlyph,
@@ -269,7 +270,7 @@ export function ChatDockMobileHeader({
       </div>
 
       <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
-        {hasConversation || !inboxActive ? (
+        {(hasConversation || !inboxActive) && (!childTrail || inboxActive) ? (
           <Button
             ref={inboxTriggerRef}
             variant="ghost"
@@ -280,7 +281,11 @@ export function ChatDockMobileHeader({
             data-no-dock-drag=""
             onClick={onToggleInbox}
           >
-            <InboxGlyph />
+            {dockToggle?.state === 'open' && !inboxActive ? (
+              <ArrowLeftGlyph />
+            ) : (
+              <InboxGlyph />
+            )}
           </Button>
         ) : null}
         <span className="chat-dock__mobile-identity-lines">

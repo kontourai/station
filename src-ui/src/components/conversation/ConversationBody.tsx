@@ -897,6 +897,10 @@ function LiveConversationBody({
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
+    sessionSummary:
+      activeOrchestrationSessionRead === 'error'
+        ? null
+        : activeOrchestrationSession,
     streamStatus,
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
@@ -3000,20 +3004,25 @@ function LiveConversationBody({
           )}
           <ConversationComposer
             activity={
-              <>
-                {activeSession.conversationId &&
-                !activeSession.replay &&
-                (!station || station.routeKind === 'host') ? (
+              activeSession.conversationId &&
+              !activeSession.replay &&
+              (!station || station.routeKind === 'host') ? (
+                <>
                   <AgentScheduleNotes
+                    key={activeSession.conversationId}
                     conversationId={activeSession.conversationId}
                     refreshKey={agentScheduleRefreshKey(
                       activeSession.conversationActivity?.openTurn?.turnId,
                       activeSession.streamingMessage?.contentParts,
                     )}
-                  />
-                ) : null}
-                {statusPill}
-              </>
+                  >
+                    {statusInPill ? statusPill : null}
+                  </AgentScheduleNotes>
+                  {!statusInPill && statusPill}
+                </>
+              ) : (
+                statusPill
+              )
             }
             contextMeter={
               showContextMeter && activeSession.conversationId ? (

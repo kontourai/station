@@ -157,6 +157,35 @@ function view(turnId = 'turn', allowed = true, name = 'Worker') {
   return render(panel(turnId, allowed, name));
 }
 
+test('a reopened child draft stays bound to the turn on which it was typed', async () => {
+  const drafts = new Map();
+  const child = (turnId: string, canContinue = true) => (
+    <ChildWorkInstructionPanel
+      threadId="parent"
+      childId="child"
+      name="Worker"
+      turnId={turnId}
+      running
+      historyAvailable
+      composer={{ identity: 'Codex · example-model', canContinue, drafts }}
+    />
+  );
+  const first = render(child('turn-one'));
+  fireEvent.change(await screen.findByLabelText('Send to Worker'), {
+    target: { value: 'Check this result' },
+  });
+  first.unmount();
+  const next = render(child('turn-two'));
+  expect(await screen.findByDisplayValue('Check this result')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Steer' }));
+  await screen.findByText(
+    'The subagent turn changed. This instruction was not sent.',
+  );
+  expect(mocks.send).not.toHaveBeenCalled();
+  next.rerender(child('turn-two', false));
+  expect(screen.queryByRole('textbox')).toBeNull();
+});
+
 test('sends only to the named child and keeps the same request after an uncertain response', async () => {
   mocks.send
     .mockResolvedValueOnce({ outcome: 'indeterminate' })

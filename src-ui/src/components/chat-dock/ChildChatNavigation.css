@@ -156,3 +156,28 @@
 .chat-dock__mobile-header--child .child-chat-trail__separator {
   display: none;
 }
+
+.child-chat-pane__reader:has(.child-chat-pane__history) {
+  overflow: hidden;
+}
+.child-chat-pane__history {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.child-chat-pane__origin,
+.child-chat-pane__record {
+  padding-inline: var(--chat-message-gutter, var(--k-space-3));
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.child-chat-pane__origin .button {
+  min-height: 44px;
+  color: var(--k-text);
+}
+.child-chat-pane__record {
+  flex: none;
+  padding-block: var(--k-space-3);
+}

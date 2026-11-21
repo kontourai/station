@@ -1,3 +1,4 @@
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import {
   type ReactNode,
   useCallback,
@@ -57,6 +58,7 @@ function ReportUnavailable({ onUnavailable }: { onUnavailable: () => void }) {
  */
 export function useChatStatusPill({
   activeSession,
+  sessionSummary,
   streamStatus,
   turnLive,
   enabled,
@@ -69,6 +71,7 @@ export function useChatStatusPill({
   apiBase,
 }: {
   activeSession: ChatSession;
+  sessionSummary?: OrchestrationSessionSummary | null;
   /** The Station whose live tool record counts this chat's running tools. */
   apiBase?: string;
   /** The stream is replaying missed events (`useStreamCatchingUp`). */
@@ -245,6 +248,7 @@ export function useChatStatusPill({
         unavailable={() => <ReportUnavailable onUnavailable={onUnavailable} />}
         componentProps={{
           input,
+          sessionSummary,
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
           onResync,

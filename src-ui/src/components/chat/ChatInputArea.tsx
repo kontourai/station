@@ -61,6 +61,7 @@ import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
 import { ComposerIconAction } from './ComposerIconAction';
+import { ComposerMessageField } from './ComposerMessageField';
 import {
   appendComposerSessionReference,
   composerDisplayValue,
@@ -1291,11 +1292,7 @@ export function ChatInputArea({
       </div>
 
       <div className="chat-input__capsule">
-        <fieldset
-          className="chat-input__textarea-wrapper"
-          aria-label="Message composer"
-          tabIndex={-1}
-        >
+        <ComposerMessageField>
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
               fallback={<SkeletonBlock label="Attachment controls" />}
@@ -1736,7 +1733,7 @@ export function ChatInputArea({
               {voiceError}
             </div>
           )}
-        </fieldset>
+        </ComposerMessageField>
         <div className="chat-controls-row">
           <React.Suspense fallback={null}>
             <FileAttachmentInput
@@ -2352,5 +2349,91 @@ export function ChatInputArea({
         )}
       </div>
     </div>
+  );
+}
+
+/** Child instructions are text addressed to a specific live turn. Their
+ * delivery owner supplies the submission; the editor shares the chat capsule. */
+export function ChildInstructionForm({
+  name,
+  editorId,
+  identity,
+  text,
+  onChange,
+  sending,
+  onSubmit,
+}: {
+  name: string;
+  editorId: string;
+  identity?: string;
+  text: string;
+  onChange(value: string): void;
+  sending: boolean;
+  onSubmit?: () => Promise<void>;
+}) {
+  const ready = !!text.trim() && !!onSubmit && !sending;
+  const field = (
+    <textarea
+      id={editorId}
+      aria-label={`Send to ${name}`}
+      className={identity ? undefined : 'editor-textarea'}
+      placeholder={identity ? 'Message…' : undefined}
+      rows={identity ? 2 : 3}
+      value={text}
+      disabled={sending}
+      onChange={(event) => onChange(event.target.value)}
+      maxLength={200000}
+      onKeyDown={(event) => {
+        if (
+          identity &&
+          !event.nativeEvent.isComposing &&
+          event.key === 'Enter' &&
+          (event.metaKey || event.ctrlKey) &&
+          ready
+        ) {
+          event.preventDefault();
+          void onSubmit?.();
+        }
+      }}
+    />
+  );
+  const send = (
+    <Button
+      type="submit"
+      className="tap-target"
+      disabled={!ready}
+      pending={sending}
+    >
+      {identity ? 'Steer' : 'Send'}
+    </Button>
+  );
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready) void onSubmit?.();
+      }}
+    >
+      {identity ? (
+        <div className="chat-input">
+          <div className="chat-input__capsule">
+            <ComposerMessageField>{field}</ComposerMessageField>
+            <div className="chat-controls-row">
+              <span className="child-instructions__identity" title={identity}>
+                {identity}
+              </span>
+              <span className="chat-controls-row__spacer" />
+              {send}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <label htmlFor={editorId}>Send to {name}</label>
+          {field}
+          {send}
+        </>
+      )}
+    </form>
   );
 }

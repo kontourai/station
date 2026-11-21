@@ -1,3 +1,4 @@
+import { conversationAccessFor } from '../../connections/station-connection';
 import { chatBelongsToStation } from '../../connections/station-state';
 import {
   useAuthorityPersistence,
@@ -3980,6 +3981,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       await runFork(source, agent, source.projectSlug, source.projectName);
   };
 
+  const parentRequestScope =
+    conversationConnection?.requestScope ?? requestAuthority;
+  const canInstructChild =
+    activeSession &&
+    !activeSession.replay &&
+    !importedSessionId &&
+    parentRequestScope &&
+    (conversationConnection
+      ? conversationConnection.isCurrent()
+      : requestAuthority?.isCurrent()) &&
+    chatBelongsToStation(activeSession, conversationConnection) &&
+    conversationAccessFor(activeSession, conversationConnection)?.continue;
+
   return (
     <TranscriptPrefetchTargetProvider value={transcriptPrefetchTarget}>
       <ChildChatNavigation
@@ -3992,6 +4006,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           importedSessionId,
         ])}
         title={presentationTitle}
+        writableParent={
+          canInstructChild
+            ? {
+                threadId: activeSession.currentSessionId ?? activeSession.id,
+                apiBase: conversationConnection?.targetApiBase ?? apiBase,
+                authorityKey: parentRequestScope.authorityKey,
+              }
+            : undefined
+        }
         initialChild={initialChildChat}
         controllerRef={childChatController}
         onCoveredChange={setIsChildReaderOpen}

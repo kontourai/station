@@ -327,3 +327,66 @@ button.chat-status-pill {
     transform: scale(1.9);
   }
 }
+
+.chat-check-backs {
+  display: grid;
+  gap: var(--k-space-2);
+  max-height: min(40dvh, 20rem);
+  overflow: auto;
+}
+
+.chat-status-pill__details .chat-check-backs .agent-schedule-notes__note {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.chat-status-pill__details .chat-check-backs button {
+  margin-top: 0;
+  min-height: 44px;
+}
+
+.chat-status-pill__children {
+  display: inline-flex;
+  align-items: center;
+  border-inline-start: var(--k-border-thin) solid var(--k-line);
+  padding-inline-start: var(--k-space-2);
+}
+.chat-status-pill__children .brand-icon + .brand-icon {
+  margin-inline-start: calc(-1 * var(--k-space-1));
+}
+.chat-status-pill__children > span:last-child {
+  padding-inline-start: var(--k-space-1);
+}
+.chat-activity-children {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.chat-activity-children li > :is(button, div) {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  text-align: start;
+}
+.chat-activity-children__identity {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chat-activity-children small {
+  display: block;
+  color: var(--k-text-muted);
+}
+.chat-activity-children__duration {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-status-pill__details[style] {
+  overflow: auto;
+  animation: none;
+}

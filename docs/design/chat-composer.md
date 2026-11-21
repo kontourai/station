@@ -102,8 +102,8 @@ rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
 
-A settled answer's **Basis** chip stays visible while the other actions are
-hidden and opens the Chat inventory scoped to that answer
+On phones, **Answer details and actions** contains **Basis**. On desktop, the
+settled answer's **Basis** chip stays visible. Both open Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 It reads plain **Basis** for an unassessed answer, which is nearly every answer
 today, and states that standing only in its accessible name. A notable standing
@@ -132,6 +132,10 @@ through one anchored popup outside the composer, so no composer clipping can cut
 them off. The `@` list closes when the input loses focus (pressing inside the
 list does not take focus) and reopens when focus returns with the caret in an
 `@` query. Child transcripts use the chat pane. Its title becomes an ancestor breadcrumb while the dock controls stay visible. Back, Escape and system Back return to the parent; each child keeps its own reader. Engine tool results join their recorded call IDs in the shared tool rows. Live child-work state refreshes the reader and stops polling when the child settles.
+A child reader names its parent above the transcript. A running engine child
+with a reported steer target can receive text in its own bottom composer when
+the operator can continue its parent conversation. The child's reported model
+appears there. Read-only records keep their existing limits.
 While a child covers its parent, the parent retains its draft but publishes no
 header controls or active-reader shortcuts.
 
@@ -538,7 +542,8 @@ managed engine workspaces, and the Codex adapter keeps it rather than making a
 second one, so a no-project Codex chat has one private folder. With the
 `home` choice a confined Codex chat is still unbound and gets its private
 workspace (#4448); other engines, and Codex on the host, run in home. The chip
-says "Runs in a private folder Station makes for this chat" for the scratch
+puts “Runs in a private folder Station makes for this chat” in the folder info
+tip for the scratch
 case, and the session card names any Station-made folder "Chat workspace"
 (`cwdManagedWorkspace`). The Project control draws its chosen icon, or a
 12px accent dot when none is displayable. The project menu states the
@@ -911,8 +916,13 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
-An armed check-back shares the composer activity row with **Scroll to bottom**.
-It takes the available width without moving that button to a second row.
+While a turn or its background work is running, its status leads the composer.
+Expand the activity pill to see armed check-backs and their Cancel controls.
+Reported running subagents use overlapping identity marks in the pill and
+show their own model and elapsed time in its details. Open a child with a
+transcript to read it in the same dock.
+Once work finishes, the pill shows **Waiting** and the earliest armed check-back
+time. Approval requests keep their own actions.
 The shared work-status selector keeps a settled conversation with an armed
 check-back in **Working**, labelled **Waiting**. Running work, failures and
 requests for the person retain their existing priority; an unapproved proposal

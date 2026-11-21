@@ -26,6 +26,7 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ComposerChoice } from '../ComposerChoice';
 import { ComposerRunControl } from '../ComposerRunControl';
+import { InfoTip } from '../InfoTip';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -190,6 +191,7 @@ export type StartProjectChip =
       /** The folder the chat runs in, as the project menu also states. */
       folder?: string;
       folderTitle?: string;
+      folderIsHelp?: boolean;
     };
 
 export interface StartContextItem {
@@ -707,14 +709,18 @@ export function StartComposer({
       </div>
       <div className="start-composer__location">
         {stationControl}
-        {project.status === 'ready' && project.folder && (
-          <span
-            className="start-composer__folder"
-            title={project.folderTitle ?? project.folder}
-          >
-            {project.folder}
-          </span>
-        )}
+        {project.status === 'ready' &&
+          project.folder &&
+          (project.folderIsHelp ? (
+            <InfoTip label="this chat’s folder">{project.folder}</InfoTip>
+          ) : (
+            <span
+              className="start-composer__folder"
+              title={project.folderTitle ?? project.folder}
+            >
+              {project.folder}
+            </span>
+          ))}
       </div>
       {note && <p className="start-composer__note">{note}</p>}
       {children}

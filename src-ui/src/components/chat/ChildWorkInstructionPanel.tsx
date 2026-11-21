@@ -5,14 +5,21 @@ import {
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { get, update } from 'idb-keyval';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { recordedDeliveryPort } from '../conversation/DeliveryPort';
+import { LazyBoundary } from '../LazyBoundary';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
+
+const loadInstructionForm = () =>
+  import('./ChatInputArea').then((module) => ({
+    default: module.ChildInstructionForm,
+  }));
+
 import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import { useUIBlockActions } from './UIBlockActionsContext';
 import './ChildWorkInstructionPanel.css';
@@ -37,6 +44,11 @@ async function clearInstruction(key: string, expected: Pending) {
   );
 }
 
+export type ChildInstructionDrafts = Map<
+  string,
+  { text: string; turnId?: string }
+>;
+
 export function ChildWorkInstructionPanel({
   threadId,
   childId,
@@ -44,7 +56,13 @@ export function ChildWorkInstructionPanel({
   running,
   name,
   historyAvailable,
+  composer,
 }: {
+  composer?: {
+    identity: string;
+    canContinue: boolean;
+    drafts?: ChildInstructionDrafts;
+  };
   threadId: string;
   childId: string;
   turnId?: string;
@@ -52,12 +70,16 @@ export function ChildWorkInstructionPanel({
   name: string;
   historyAvailable: boolean;
 }) {
+  const editorId = useId();
   const authority = useAuthorityPersistence();
   const host = useHostRequestAuthorityScope();
   const targetScope = useOptionalConversationConnection();
   const scope = targetScope?.requestScope ?? host;
   const apiBase = targetScope?.apiBase ?? scope?.apiBase;
-  const mayContinue = useUIBlockActions().canSendChildInstruction === true;
+  const cardActions = useUIBlockActions();
+  const mayContinue = composer
+    ? composer.canContinue
+    : cardActions.canSendChildInstruction === true;
   const grant = authority.observation?.grant;
   const canOperate = targetScope?.station
     ? targetScope.station.isCurrent() &&
@@ -80,8 +102,26 @@ export function ChildWorkInstructionPanel({
     apiBase,
   );
   const send = useSteerChildWorkMutation(apiBase, scope);
-  const [text, setText] = useState('');
-  const [draftTurnId, setDraftTurnId] = useState<string | undefined>();
+  const drafts = composer?.drafts;
+  const [draft, setDraft] = useState(
+    () =>
+      (key && drafts?.get(key)) || {
+        text: '',
+        turnId: undefined as string | undefined,
+      },
+  );
+  const { text, turnId: draftTurnId } = draft;
+  const writeDraft = useCallback(
+    (value: string, boundTurn?: string) => {
+      const next = { text: value, turnId: boundTurn };
+      if (key && drafts) {
+        if (value) drafts.set(key, next);
+        else drafts.delete(key);
+      }
+      setDraft(next);
+    },
+    [key, drafts],
+  );
   const [pending, setPending] = useState<Pending | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState('');
@@ -140,19 +180,17 @@ export function ChildWorkInstructionPanel({
       if (!active) return;
       setPending(null);
       if (entry.delivery === 'refused') {
-        setText(pending.input);
-        setDraftTurnId(pending.turnId);
+        writeDraft(pending.input, pending.turnId);
         setMessage('The instruction was not sent.');
       } else {
-        setText('');
-        setDraftTurnId(undefined);
+        writeDraft('', undefined);
         setMessage('Sent to the subagent.');
       }
     });
     return () => {
       active = false;
     };
-  }, [key, pending, history.data]);
+  }, [key, pending, history.data, writeDraft]);
   const submit = async () => {
     if (
       busy.current ||
@@ -219,15 +257,13 @@ export function ChildWorkInstructionPanel({
       if (result.outcome === 'steered') {
         await clearInstruction(key, saved);
         setPending(null);
-        setText('');
-        setDraftTurnId(undefined);
+        writeDraft('', undefined);
         setMessage('Sent to the subagent.');
       } else if (result.outcome === 'indeterminate') setMessage('');
       else {
         await clearInstruction(key, saved);
         setPending(null);
-        setText(saved.input);
-        setDraftTurnId(saved.turnId);
+        writeDraft(saved.input, saved.turnId);
         setMessage(
           result.outcome === 'unsupported'
             ? 'This subagent cannot receive instructions.'
@@ -246,9 +282,19 @@ export function ChildWorkInstructionPanel({
     }
   };
   const entries = history.data?.pages.flatMap((page) => page.entries) ?? [];
-  return (
-    <section className="child-instructions" aria-label="Subagent instructions">
-      <h4>Station instructions to {name}</h4>
+  const writable =
+    running &&
+    !!turnId &&
+    canOperate &&
+    mayContinue &&
+    !!key &&
+    loaded &&
+    !pending;
+  const identity = composer && (
+    <span className="child-instructions__identity">{composer.identity}</span>
+  );
+  const historyContent = (
+    <>
       {!historyAvailable && (
         <p>Instruction history is unavailable for this subagent.</p>
       )}
@@ -276,33 +322,29 @@ export function ChildWorkInstructionPanel({
         />
       )}
       {entries.length > 0 && (
-        <>
-          <ol>
-            {entries.map((entry) => (
-              <li key={entry.clientInputId}>
-                <>
-                  <p>{entry.text}</p>
-                  <small>
-                    {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
-                    {entry.clientOrigin?.reported.surface ??
-                      'Source not recorded'}{' '}
-                  </small>
-                  <MessageDeliveryNote
-                    variant="inline"
-                    state={
-                      entry.delivery === 'delivered'
-                        ? 'delivered'
-                        : entry.delivery === 'refused'
-                          ? 'not-sent'
-                          : 'unconfirmed'
-                    }
-                    port={recordedDeliveryPort}
-                  />
-                </>
-              </li>
-            ))}
-          </ol>
-        </>
+        <ol>
+          {entries.map((entry) => (
+            <li key={entry.clientInputId}>
+              <p>{entry.text}</p>
+              <small>
+                {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
+                {entry.clientOrigin?.reported.surface ??
+                  'Source not recorded'}{' '}
+              </small>
+              <MessageDeliveryNote
+                variant="inline"
+                state={
+                  entry.delivery === 'delivered'
+                    ? 'delivered'
+                    : entry.delivery === 'refused'
+                      ? 'not-sent'
+                      : 'unconfirmed'
+                }
+                port={recordedDeliveryPort}
+              />
+            </li>
+          ))}
+        </ol>
       )}
       {historyAvailable && history.isSuccess && entries.length === 0 && (
         <Empty variant="compact" label="Nothing sent yet" />
@@ -315,6 +357,33 @@ export function ChildWorkInstructionPanel({
         >
           Load more instructions
         </Button>
+      )}
+    </>
+  );
+  return (
+    <section
+      className={
+        composer
+          ? 'child-instructions child-instructions--composer'
+          : 'child-instructions'
+      }
+      aria-label="Subagent instructions"
+    >
+      {composer ? (
+        <>
+          {!writable && identity}
+          {(entries.length > 0 || history.isError || history.hasNextPage) && (
+            <details>
+              <summary>Instruction history</summary>
+              {historyContent}
+            </details>
+          )}
+        </>
+      ) : (
+        <>
+          <h4>Station instructions to {name}</h4>
+          {historyContent}
+        </>
       )}
       {pending && <p>Saved instruction: {pending.input}</p>}
       {pending && canOperate && mayContinue && key && loaded ? (
@@ -331,8 +400,7 @@ export function ChildWorkInstructionPanel({
                   ? null
                   : current,
               );
-              setText(pending.input);
-              setDraftTurnId(target.current.turnId);
+              writeDraft(pending.input, target.current.turnId);
               setMessage('');
               return null;
             },
@@ -367,12 +435,10 @@ export function ChildWorkInstructionPanel({
                     : current,
                 );
                 if (found.delivery === 'delivered') {
-                  setText('');
-                  setDraftTurnId(undefined);
+                  writeDraft('', undefined);
                   setMessage('Sent to the subagent.');
                 } else {
-                  setText(pending.input);
-                  setDraftTurnId(pending.turnId);
+                  writeDraft(pending.input, pending.turnId);
                   setMessage('The instruction was not sent.');
                 }
               }
@@ -393,41 +459,28 @@ export function ChildWorkInstructionPanel({
       ) : !key || !loaded ? (
         <p>Preparing instructions…</p>
       ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
+        <LazyBoundary
+          load={loadInstructionForm}
+          pending={<SkeletonBlock count={1} label="Preparing instructions" />}
+          componentProps={{
+            name,
+            editorId,
+            identity: composer?.identity,
+            text,
+            onChange: (value: string) => {
+              if (busy.current) return;
+              writeDraft(
+                value,
+                value ? (text ? draftTurnId : turnId) : undefined,
+              );
+            },
+            sending: submitting || send.isPending,
+            onSubmit:
+              historyAvailable && history.isSuccess && !history.isError
+                ? submit
+                : undefined,
           }}
-        >
-          <label>
-            Send to {name}
-            <textarea
-              className="editor-textarea"
-              rows={3}
-              value={text}
-              disabled={submitting || send.isPending}
-              onChange={(event) => {
-                if (busy.current) return;
-                if (!text && event.target.value) setDraftTurnId(turnId);
-                setText(event.target.value);
-              }}
-              maxLength={200000}
-            />
-          </label>
-          <Button
-            type="submit"
-            className="tap-target"
-            disabled={
-              !text.trim() ||
-              history.isError ||
-              !historyAvailable ||
-              !history.isSuccess
-            }
-            pending={submitting || send.isPending}
-          >
-            Send
-          </Button>
-        </form>
+        />
       )}
       {message && <p role="status">{message}</p>}
     </section>

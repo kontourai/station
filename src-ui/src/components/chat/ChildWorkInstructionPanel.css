@@ -20,3 +20,35 @@
   margin: 0;
   padding-inline-start: var(--k-space-5);
 }
+
+.child-instructions--composer {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  overflow-y: auto;
+  gap: var(--k-space-1);
+  border-top: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-panel);
+}
+.child-instructions--composer > :not(form) {
+  margin: 0;
+  padding: var(--k-space-2) var(--chat-message-gutter, var(--k-space-3));
+}
+.child-instructions__identity {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+.child-instructions--composer .chat-input__capsule {
+  width: 100%;
+}
+
+.child-instructions--composer .chat-controls-row {
+  align-items: center;
+}
+.child-instructions--composer .chat-controls-row .child-instructions__identity {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
