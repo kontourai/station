@@ -504,6 +504,9 @@ type TextReplyProps = Pick<
   | 'textareaRef'
   | 'disabled'
   | 'onInputChange'
+  | 'attachUnavailableReason'
+  | 'onAttachUnavailable'
+  | 'attachmentNotice'
   | 'onSend'
   | 'onClearInput'
   | 'fontSize'
@@ -1573,6 +1576,12 @@ export function ChatInputArea({
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
+              if (textReply && attachUnavailableReason) {
+                onAttachUnavailable(attachUnavailableReason);
+                if (!event.clipboardData.getData('text/plain'))
+                  event.preventDefault();
+                return;
+              }
               event.preventDefault();
               void selectAttachmentFiles?.(files);
             }}
@@ -1790,28 +1799,24 @@ export function ChatInputArea({
           )}
         </ComposerMessageField>
         <div className="chat-controls-row">
-          {!textReply && (
-            <React.Suspense fallback={null}>
-              <FileAttachmentInput
-                attachments={attachments}
-                onFilesSelected={selectAttachmentFiles ?? (async () => {})}
-                // A running turn does not disable the paperclip: files join the
-                // draft for the next message (`busyAttachmentReason` says why
-                // they cannot steer or queue). Only a composer that cannot
-                // take input at all, or a model that takes nothing, refuses.
-                disabled={
-                  disabled ||
-                  (!modelSupportsAttachments && !fileAttachmentsSupported)
-                }
-                supportsImages={modelSupportsAttachments}
-                supportsFiles={fileAttachmentsSupported}
-                unavailableReason={
-                  disabled ? undefined : attachUnavailableReason
-                }
-                onUnavailable={onAttachUnavailable}
-              />
-            </React.Suspense>
-          )}
+          <React.Suspense fallback={null}>
+            <FileAttachmentInput
+              attachments={attachments}
+              onFilesSelected={selectAttachmentFiles ?? (async () => {})}
+              // A running turn does not disable the paperclip: files join the
+              // draft for the next message (`busyAttachmentReason` says why
+              // they cannot steer or queue). Only a composer that cannot
+              // take input at all, or a model that takes nothing, refuses.
+              disabled={
+                disabled ||
+                (!modelSupportsAttachments && !fileAttachmentsSupported)
+              }
+              supportsImages={modelSupportsAttachments}
+              supportsFiles={fileAttachmentsSupported}
+              unavailableReason={disabled ? undefined : attachUnavailableReason}
+              onUnavailable={onAttachUnavailable}
+            />
+          </React.Suspense>
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
@@ -2436,6 +2441,11 @@ export function ChildInstructionForm({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { chatFontSize } = useDeviceSettings();
+  const [attachmentNotice, setAttachmentNotice] = useState<string>();
+  const updateDraft = (value: string) => {
+    setAttachmentNotice(undefined);
+    onChange(value);
+  };
   if (run)
     return (
       <ChatInputArea
@@ -2446,9 +2456,12 @@ export function ChildInstructionForm({
         currentModel={run.model}
         textareaRef={textareaRef}
         input={text}
-        onInputChange={onChange}
-        onClearInput={() => onChange('')}
-        onRestorePortableDraft={(value) => onChange(value)}
+        onInputChange={updateDraft}
+        onClearInput={() => updateDraft('')}
+        onRestorePortableDraft={updateDraft}
+        attachUnavailableReason="This subagent accepts text only."
+        onAttachUnavailable={setAttachmentNotice}
+        attachmentNotice={attachmentNotice}
         onSend={async () => {
           await onSubmit?.();
         }}

@@ -209,7 +209,15 @@ test('sends only to the named child and keeps the same request after an uncertai
     />,
   );
   const input = await screen.findByRole('textbox', { name: 'Message' });
+  const attach = await screen.findByRole('button', { name: 'Attach files' });
+  expect(attach.getAttribute('aria-disabled')).toBe('true');
+  fireEvent.click(attach);
+  expect(
+    await screen.findByText('This subagent accepts text only.'),
+  ).toBeTruthy();
+  expect(mocks.send).not.toHaveBeenCalled();
   fireEvent.change(input, { target: { value: 'Please check this' } });
+  expect(screen.queryByText('This subagent accepts text only.')).toBeNull();
   fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
   await screen.findAllByText('May have reached the agent');
   const first = mocks.send.mock.calls[0][0];
