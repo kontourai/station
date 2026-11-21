@@ -249,7 +249,7 @@ describe('open chat approval status in the dock and mobile inbox', () => {
     );
     expect(dockRow).toBe(
       within(dock.container).getByRole('button', {
-        name: /^Mismatch demo chat.*Needs approval.*Project B/,
+        name: /^Mismatch demo chat Project B Needs approval just now Demo agent$/,
       }),
     );
     expect(

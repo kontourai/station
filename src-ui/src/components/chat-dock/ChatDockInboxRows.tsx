@@ -1247,7 +1247,10 @@ export function InboxRow({
           </>
         )}
         {spokenContext && (
-          <span className="sr-only">{` ${spokenContext}`}</span>
+          <>
+            {' '}
+            <span className="sr-only">{spokenContext}</span>
+          </>
         )}
       </button>
       {hasActions && !actionsOnHold && (

@@ -874,16 +874,19 @@ describe('a project wears the same colour everywhere', () => {
     // which no allocation over beta alone would give it.
     expect(sidebarColour).toBe('var(--event-agent-complete)');
 
-    const rowColour = (ui: ReactElement) => {
-      const view = renderSidebar(ui);
-      const colour = view.container.querySelector<HTMLElement>(
-        '.inbox-row__project-accent',
-      )?.style.backgroundColor;
-      view.unmount();
-      return colour;
-    };
-    const dockColour = rowColour(<DockInbox items={[betaWork]} />);
-    const homeColour = rowColour(<Home items={[betaWork]} />);
+    const dock = renderSidebar(<DockInbox items={[betaWork]} />);
+    const dockMark = dock.container.querySelector(
+      '.inbox-row__project-accent.project-icon--initials',
+    );
+    const dockColour = dockMark
+      ?.closest<HTMLElement>('.inbox-row__project-line')
+      ?.style.getPropertyValue('--inbox-project-accent');
+    dock.unmount();
+
+    const home = renderSidebar(<Home items={[betaWork]} />);
+    const homeColour = home.container.querySelector<HTMLElement>(
+      '.inbox-row__project-accent',
+    )?.style.backgroundColor;
 
     expect({
       dock: dockColour,

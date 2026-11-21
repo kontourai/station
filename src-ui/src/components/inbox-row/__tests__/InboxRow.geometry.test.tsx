@@ -625,8 +625,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test("a project accent changes no row's height, in the panel or the phone sheet", async () => {
-    const accents = new Map([['station', 'var(--event-tool-call)']]);
+  test('both Inbox hosts paint the project accent without changing row height', async () => {
+    const accent = 'rgb(20, 100, 180)';
+    const accents = new Map([['station', accent]]);
     const cases = [
       {
         label: 'panel',
@@ -659,9 +660,15 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
         const line = pg.locator('.inbox-row__project-line').first();
-        const mark = await line
-          .locator('.inbox-row__project-accent')
-          .boundingBox();
+        const initials = line.locator(
+          '.inbox-row__project-accent.project-icon--initials',
+        );
+        const shadow = await initials.evaluate(
+          (element) => getComputedStyle(element).boxShadow,
+        );
+        expect(shadow).toContain(accent);
+        expect(shadow).toContain('inset');
+        const mark = await initials.boundingBox();
         const name = await line.locator('.inbox-row__project').boundingBox();
         expect(mark!.width).toBe(16);
         expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
