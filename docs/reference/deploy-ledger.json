@@ -1,5 +1,116 @@
 [
   {
+    "timestampUtc": "2026-11-21T22:56:40Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261121.3",
+    "sha": "1bbeef7965e0309f2d72bb4b32751d7f2f0ae502",
+    "artifactBuiltAt": "2026-11-21T21:59:36.524Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44953874657",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44953874657)"
+    ],
+    "changelog": {
+      "previousSha": "8975d30f8303673dbcabdab4c1b2161b27d8dff3",
+      "groups": {
+        "feat": [
+          "[#5375](https://github.com/kontourai/station/pull/5375) feat(chat): share desktop Inbox rows and preserve the collapsed chat header"
+        ],
+        "fix": [
+          "[#5377](https://github.com/kontourai/station/pull/5377) fix(service): wait for Windows archive launcher before uninstall",
+          "[#5376](https://github.com/kontourai/station/pull/5376) fix(muse): verify the assigned workspace on resume",
+          "[#5374](https://github.com/kontourai/station/pull/5374) fix(opencode): preserve Project workspace continuity",
+          "[#5373](https://github.com/kontourai/station/pull/5373) fix(ci): retry trusted Ubuntu bootstrap downloads",
+          "[#5372](https://github.com/kontourai/station/pull/5372) fix(chat): align OpenCode tool activity and startup"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5371](https://github.com/kontourai/station/pull/5371) perf: load the OpenTelemetry SDK only for configured servers"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-21T22:56:40Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261121.3",
+    "sha": "1bbeef7965e0309f2d72bb4b32751d7f2f0ae502",
+    "artifactBuiltAt": "2026-11-21T21:58:29.705Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44953874657",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44953874657)"
+    ],
+    "changelog": {
+      "previousSha": "8975d30f8303673dbcabdab4c1b2161b27d8dff3",
+      "groups": {
+        "feat": [
+          "[#5375](https://github.com/kontourai/station/pull/5375) feat(chat): share desktop Inbox rows and preserve the collapsed chat header"
+        ],
+        "fix": [
+          "[#5377](https://github.com/kontourai/station/pull/5377) fix(service): wait for Windows archive launcher before uninstall",
+          "[#5376](https://github.com/kontourai/station/pull/5376) fix(muse): verify the assigned workspace on resume",
+          "[#5374](https://github.com/kontourai/station/pull/5374) fix(opencode): preserve Project workspace continuity",
+          "[#5373](https://github.com/kontourai/station/pull/5373) fix(ci): retry trusted Ubuntu bootstrap downloads",
+          "[#5372](https://github.com/kontourai/station/pull/5372) fix(chat): align OpenCode tool activity and startup"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5371](https://github.com/kontourai/station/pull/5371) perf: load the OpenTelemetry SDK only for configured servers"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-21T22:00:37Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261121.44953874657",
+    "sha": "1bbeef7965e0309f2d72bb4b32751d7f2f0ae502",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44953874657",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261121.44953874657 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8975d30f8303673dbcabdab4c1b2161b27d8dff3",
+      "groups": {
+        "feat": [
+          "[#5375](https://github.com/kontourai/station/pull/5375) feat(chat): share desktop Inbox rows and preserve the collapsed chat header"
+        ],
+        "fix": [
+          "[#5377](https://github.com/kontourai/station/pull/5377) fix(service): wait for Windows archive launcher before uninstall",
+          "[#5376](https://github.com/kontourai/station/pull/5376) fix(muse): verify the assigned workspace on resume",
+          "[#5374](https://github.com/kontourai/station/pull/5374) fix(opencode): preserve Project workspace continuity",
+          "[#5373](https://github.com/kontourai/station/pull/5373) fix(ci): retry trusted Ubuntu bootstrap downloads",
+          "[#5372](https://github.com/kontourai/station/pull/5372) fix(chat): align OpenCode tool activity and startup"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5371](https://github.com/kontourai/station/pull/5371) perf: load the OpenTelemetry SDK only for configured servers"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-11-21T15:46:50Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261121.2",
