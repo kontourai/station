@@ -36,6 +36,7 @@ import {
   type SqliteKernelStorage,
 } from '@kontourai/monument/sqlite';
 import { isSupportedAgentIconToken } from '@kontourai/station-contracts/agent';
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
@@ -2716,6 +2717,19 @@ export const THREAD_CONTENT_BACKFILL_PROJECT_SQL = `INSERT INTO orchestration_th
   ON CONFLICT(thread_id) DO UPDATE SET
     content_sequence = MAX(content_sequence, excluded.content_sequence)`;
 
+type SteerReceiptInput = {
+  threadId: string;
+  clientInputId: string;
+  input: string;
+  turnId?: string;
+  childId?: string;
+  attachmentRefs?: readonly StagedAttachmentReference[];
+};
+type ChildSteerReceiptInput = SteerReceiptInput & {
+  childId: string;
+  turnId: string;
+};
+
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
 
@@ -3229,6 +3243,21 @@ export class EventStore {
       );
       CREATE INDEX IF NOT EXISTS child_steer_instruction_page
         ON orchestration_child_steer_instructions(thread_id, child_id, sequence)`);
+      const hasChildAttachments = () =>
+        this.db
+          .prepare(
+            "SELECT 1 FROM pragma_table_info('orchestration_child_steer_instructions') WHERE name = 'attachments_json'",
+          )
+          .get();
+      if (!hasChildAttachments()) {
+        try {
+          this.db.exec(
+            'ALTER TABLE orchestration_child_steer_instructions ADD COLUMN attachments_json TEXT',
+          );
+        } catch (error) {
+          if (!hasChildAttachments()) throw error;
+        }
+      }
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       // #3158: delegated-result ownership and its one consumption record,
@@ -17842,13 +17871,9 @@ export class EventStore {
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
-  readChildSteerInput(input: {
-    threadId: string;
-    childId: string;
-    turnId: string;
-    input: string;
-    clientInputId: string;
-  }):
+  readChildSteerInput(
+    input: ChildSteerReceiptInput,
+  ):
     | ReturnType<EventStore['readSteerInput']>
     | { outcome: 'unsupported' | 'no-active-task'; threadId: string } {
     const owner = this.db
@@ -17882,13 +17907,7 @@ export class EventStore {
   }
 
   claimChildSteerInput(
-    input: {
-      threadId: string;
-      childId: string;
-      turnId: string;
-      input: string;
-      clientInputId: string;
-    },
+    input: ChildSteerReceiptInput,
     attribution: {
       createdAt: string;
       principal?: import('@kontourai/station-contracts/principal').PrincipalRef;
@@ -17912,8 +17931,8 @@ export class EventStore {
       if (claimed)
         this.db
           .prepare(`INSERT INTO orchestration_child_steer_instructions
-        (thread_id, child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, delivery)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'indeterminate')`)
+        (thread_id, child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, attachments_json, delivery)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'indeterminate')`)
           .run(
             input.threadId,
             input.childId,
@@ -17927,6 +17946,17 @@ export class EventStore {
             attribution.clientOrigin
               ? JSON.stringify(attribution.clientOrigin)
               : null,
+            input.attachmentRefs?.length
+              ? JSON.stringify(
+                  input.attachmentRefs.map(
+                    ({ name, digest, clientAttachmentId }) => ({
+                      name,
+                      digest,
+                      clientAttachmentId,
+                    }),
+                  ),
+                )
+              : null,
           );
       this.db.exec('RELEASE SAVEPOINT child_steer_claim');
       return claimed;
@@ -17938,13 +17968,7 @@ export class EventStore {
     }
   }
 
-  confirmChildSteerInput(input: {
-    threadId: string;
-    childId: string;
-    turnId: string;
-    input: string;
-    clientInputId: string;
-  }): void {
+  confirmChildSteerInput(input: ChildSteerReceiptInput): void {
     this.db.exec('SAVEPOINT child_steer_confirm');
     try {
       this.confirmSteerInput(input, input.turnId);
@@ -18009,12 +18033,13 @@ export class EventStore {
     )
       throw new RangeError('Invalid child instruction page.');
     const rows = this.db
-      .prepare(`SELECT child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, delivery, refusal_code
+      .prepare(`SELECT child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, attachments_json, delivery, refusal_code
       FROM orchestration_child_steer_instructions WHERE thread_id = ? AND child_id = ? ORDER BY sequence LIMIT ? OFFSET ?`)
       .all(threadId, childId, limit + 1, offset) as Array<{
       child_id: string;
       turn_id: string;
       client_input_id: string;
+      attachments_json: string | null;
       input: string;
       created_at: string;
       principal_json: string | null;
@@ -18028,6 +18053,9 @@ export class EventStore {
         turnId: row.turn_id,
         clientInputId: row.client_input_id,
         text: row.input,
+        ...(row.attachments_json
+          ? { attachments: JSON.parse(row.attachments_json) }
+          : {}),
         createdAt: row.created_at,
         delivery: row.delivery,
         ...(row.delivery === 'refused' && row.refusal_code
@@ -18044,13 +18072,9 @@ export class EventStore {
     };
   }
 
-  readSteerInput(input: {
-    threadId: string;
-    clientInputId: string;
-    input: string;
-    turnId?: string;
-    childId?: string;
-  }):
+  readSteerInput(
+    input: SteerReceiptInput,
+  ):
     | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
     | undefined {
     const result = this.steerReceiptStorage().executeSync(
@@ -18080,13 +18104,7 @@ export class EventStore {
     };
   }
 
-  claimSteerInput(input: {
-    threadId: string;
-    clientInputId: string;
-    input: string;
-    turnId?: string;
-    childId?: string;
-  }): boolean {
+  claimSteerInput(input: SteerReceiptInput): boolean {
     const result = this.steerReceiptStorage().executeSync(
       {
         type: 'steerReceipts.claim',
@@ -18102,16 +18120,7 @@ export class EventStore {
     throw new Error('Steer receipt claim was refused.');
   }
 
-  confirmSteerInput(
-    input: {
-      threadId: string;
-      clientInputId: string;
-      input: string;
-      turnId?: string;
-      childId?: string;
-    },
-    confirmedTurnId: string,
-  ): void {
+  confirmSteerInput(input: SteerReceiptInput, confirmedTurnId: string): void {
     const result = this.steerReceiptStorage().executeSync(
       {
         type: 'steerReceipts.confirm',
@@ -18127,11 +18136,7 @@ export class EventStore {
       throw new Error('Steer delivery confirmation was not recorded.');
   }
 
-  private steerInputDigest(input: {
-    input: string;
-    turnId?: string;
-    childId?: string;
-  }): string {
+  private steerInputDigest(input: SteerReceiptInput): string {
     return createHash('sha256')
       .update(
         JSON.stringify(
@@ -18142,6 +18147,18 @@ export class EventStore {
                 input.childId,
                 input.turnId ?? null,
                 input.input,
+                ...(input.attachmentRefs?.length
+                  ? [
+                      input.attachmentRefs.map((ref) => [
+                        ref.stageId,
+                        ref.clientAttachmentId,
+                        ref.name,
+                        ref.mimeType,
+                        ref.size,
+                        ref.digest,
+                      ]),
+                    ]
+                  : []),
               ],
         ),
       )

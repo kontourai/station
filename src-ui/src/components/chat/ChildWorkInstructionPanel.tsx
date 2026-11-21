@@ -1,3 +1,4 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts/environment-security';
 import {
   useChildWorkInstructionsQuery,
@@ -15,6 +16,11 @@ import {
 } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { useComposerAttachments } from '../../hooks/useComposerAttachments';
+import type {
+  ComposerAttachmentStageSnapshot,
+  FileAttachment,
+} from '../../types';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import {
@@ -37,6 +43,7 @@ import { useUIBlockActions } from './UIBlockActionsContext';
 import './ChildWorkInstructionPanel.css';
 
 type Pending = {
+  attachmentRefs?: StagedAttachmentReference[];
   threadId: string;
   childId: string;
   turnId: string;
@@ -44,28 +51,75 @@ type Pending = {
   clientInputId: string;
 };
 
+function sameImages(
+  left: Pending['attachmentRefs'],
+  right:
+    | { name: string; digest: string; clientAttachmentId: string }[]
+    | undefined,
+) {
+  return (
+    (left?.length ?? 0) === (right?.length ?? 0) &&
+    (left ?? []).every(
+      (ref, i) =>
+        ref.digest === right?.[i]?.digest &&
+        ref.name === right[i].name &&
+        ref.clientAttachmentId === right[i].clientAttachmentId,
+    )
+  );
+}
+
 async function clearInstruction(key: string, expected: Pending) {
   await update<Pending | null>(key, (current) =>
     current?.clientInputId === expected.clientInputId &&
     current.threadId === expected.threadId &&
     current.childId === expected.childId &&
     current.turnId === expected.turnId &&
-    current.input === expected.input
+    current.input === expected.input &&
+    sameImages(current.attachmentRefs, expected.attachmentRefs)
       ? null
       : (current ?? null),
   );
 }
 
 export type ChildReplyRun = {
+  images?: boolean;
   engineId?: string;
   engineLabel?: string;
   model?: string;
 };
 
-export type ChildInstructionDrafts = Map<
-  string,
-  { text: string; turnId?: string }
->;
+type ChildDraft = {
+  text: string;
+  turnId?: string;
+  files?: FileAttachment[];
+  stages?: ComposerAttachmentStageSnapshot[];
+};
+export type ChildInstructionDrafts = Map<string, ChildDraft>;
+
+function draftFromInstruction(saved: Pending): ChildDraft {
+  return {
+    text: saved.input,
+    turnId: saved.turnId,
+    files: saved.attachmentRefs?.map((ref) => ({
+      id: ref.clientAttachmentId,
+      name: ref.name,
+      size: ref.size,
+      type: ref.mimeType,
+      data: '',
+    })),
+    stages: saved.attachmentRefs?.map((reference) => ({
+      clientAttachmentId: reference.clientAttachmentId,
+      name: reference.name,
+      size: reference.size,
+      mimeType: reference.mimeType,
+      stageId: reference.stageId,
+      reference,
+      state: 'complete',
+      delivery: 'staged',
+      progress: 1,
+    })),
+  };
+}
 
 export function ChildWorkInstructionPanel({
   threadId,
@@ -121,25 +175,92 @@ export function ChildWorkInstructionPanel({
   );
   const send = useSteerChildWorkMutation(apiBase, scope);
   const drafts = composer?.drafts;
-  const [draft, setDraft] = useState(
-    () =>
-      (key && drafts?.get(key)) || {
-        text: '',
-        turnId: undefined as string | undefined,
-      },
-  );
-  const { text, turnId: draftTurnId } = draft;
+  const [draft, setDraft] = useState<ChildDraft>(() => {
+    const saved = key ? drafts?.get(key) : undefined;
+    if (!saved) return { text: '' };
+    // A transfer belongs to the previous mounted editor. Its retained file can be retried here.
+    return {
+      ...saved,
+      stages: saved.stages?.map((stage) =>
+        stage.state === 'queued' || stage.state === 'uploading'
+          ? {
+              ...stage,
+              state: 'retryable',
+              error: 'Upload interrupted. Retry or choose the image again.',
+            }
+          : stage,
+      ),
+    };
+  });
+  const latestDraft = useRef(draft);
   const writeDraft = useCallback(
-    (value: string, boundTurn?: string) => {
-      const next = { text: value, turnId: boundTurn };
+    (next: ChildDraft) => {
+      if (!next.text && !next.files?.length && !next.stages?.length)
+        next = { text: '' };
+      latestDraft.current = next;
       if (key && drafts) {
-        if (value) drafts.set(key, next);
+        if (next.turnId || next.text) drafts.set(key, next);
         else drafts.delete(key);
       }
       setDraft(next);
     },
     [key, drafts],
   );
+  const { text, turnId: draftTurnId, files = [], stages = [] } = draft;
+  const allowImages =
+    composer?.run.images === true &&
+    mayContinue &&
+    canOperate &&
+    running &&
+    !!turnId;
+  const uploads = useComposerAttachments({
+    apiBase: apiBase ?? '',
+    ownerKey: key ?? undefined,
+    requestScope: scope ?? undefined,
+    cancelOnUnmount: true,
+    attachments: files,
+    stages,
+    capabilities: { images: allowImages, files: false },
+    getCurrentAttachments: () => latestDraft.current.files ?? [],
+    getCurrentStages: () => latestDraft.current.stages ?? [],
+    onAddAttachments: (added) =>
+      writeDraft({
+        ...latestDraft.current,
+        turnId: latestDraft.current.turnId ?? turnId,
+        files: [...(latestDraft.current.files ?? []), ...added],
+      }),
+    onReplaceAttachment: (replacement) =>
+      writeDraft({
+        ...latestDraft.current,
+        files: latestDraft.current.files?.map((file) =>
+          file.id === replacement.id ? replacement : file,
+        ),
+      }),
+    onStagesChange: (stages) =>
+      writeDraft({
+        ...latestDraft.current,
+        turnId: latestDraft.current.turnId ?? turnId,
+        stages,
+      }),
+  });
+  const reads = useRef(0);
+  const [readingImages, setReadingImages] = useState(false);
+  const selectImages = async (chosen: File[]) => {
+    reads.current += 1;
+    setReadingImages(true);
+    try {
+      await uploads.selectFiles(chosen);
+    } finally {
+      setReadingImages(--reads.current > 0);
+    }
+  };
+  const removeImage = (id: string) => {
+    void uploads.remove(id);
+    writeDraft({
+      ...latestDraft.current,
+      files: latestDraft.current.files?.filter((file) => file.id !== id),
+    });
+  };
   const [pending, setPending] = useState<Pending | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState('');
@@ -152,6 +273,7 @@ export function ChildWorkInstructionPanel({
     running,
     mayContinue,
     canOperate,
+    allowImages,
   });
   target.current = {
     threadId,
@@ -160,6 +282,7 @@ export function ChildWorkInstructionPanel({
     running,
     mayContinue,
     canOperate,
+    allowImages,
   };
   useEffect(() => {
     let active = true;
@@ -190,7 +313,8 @@ export function ChildWorkInstructionPanel({
           item.clientInputId === pending.clientInputId &&
           item.childId === pending.childId &&
           item.turnId === pending.turnId &&
-          item.text === pending.input,
+          item.text === pending.input &&
+          sameImages(pending.attachmentRefs, item.attachments),
       );
     if (!entry || entry.delivery === 'indeterminate') return;
     let active = true;
@@ -198,10 +322,10 @@ export function ChildWorkInstructionPanel({
       if (!active) return;
       setPending(null);
       if (entry.delivery === 'refused') {
-        writeDraft(pending.input, pending.turnId);
+        writeDraft(draftFromInstruction(pending));
         setMessage('The instruction was not sent.');
       } else {
-        writeDraft('', undefined);
+        writeDraft({ text: '' });
         setMessage('Sent to the subagent.');
       }
     });
@@ -212,6 +336,7 @@ export function ChildWorkInstructionPanel({
   const submit = async () => {
     if (
       busy.current ||
+      reads.current > 0 ||
       pending ||
       !key ||
       !scope?.isCurrent() ||
@@ -219,10 +344,38 @@ export function ChildWorkInstructionPanel({
       !mayContinue ||
       !running ||
       !turnId ||
-      !text.trim()
+      (!text.trim() && !files.length)
     )
       return;
+    const refs = files.map(
+      (file) =>
+        stages.find(
+          (stage) =>
+            stage.clientAttachmentId === file.id &&
+            stage.state === 'complete' &&
+            stage.delivery === 'staged',
+        )?.reference,
+    );
+    if (
+      files.length &&
+      (!allowImages ||
+        uploads.sendBlockedReason ||
+        refs.some((ref) => !ref) ||
+        stages.length !== files.length)
+    ) {
+      uploads.setError(
+        'The images are not ready. Retry the upload or remove them.',
+      );
+      return;
+    }
     const saved: Pending = {
+      ...(refs.length
+        ? {
+            attachmentRefs: refs.filter(
+              (ref): ref is StagedAttachmentReference => !!ref,
+            ),
+          }
+        : {}),
       threadId,
       childId,
       turnId,
@@ -263,6 +416,7 @@ export function ChildWorkInstructionPanel({
         !current.canOperate ||
         current.threadId !== saved.threadId ||
         current.childId !== saved.childId ||
+        (saved.attachmentRefs?.length && !current.allowImages) ||
         current.turnId !== saved.turnId
       ) {
         setMessage(
@@ -270,26 +424,36 @@ export function ChildWorkInstructionPanel({
         );
         return;
       }
-      const result = await send.mutateAsync(saved);
+      const { attachmentRefs, ...instruction } = saved;
+      const result = await send.mutateAsync({
+        ...instruction,
+        input: attachmentRefs?.length
+          ? { text: saved.input, attachmentRefs }
+          : saved.input,
+      });
       await history.refetch();
       if (result.outcome === 'steered') {
         await clearInstruction(key, saved);
         setPending(null);
-        writeDraft('', undefined);
+        writeDraft({ text: '' });
         setMessage('Sent to the subagent.');
       } else if (result.outcome === 'indeterminate') setMessage('');
       else {
         await clearInstruction(key, saved);
         setPending(null);
-        writeDraft(saved.input, saved.turnId);
+        writeDraft(draftFromInstruction(saved));
         setMessage(
-          result.outcome === 'unsupported'
-            ? 'This subagent cannot receive instructions.'
-            : result.outcome === 'confinement-changed'
-              ? 'Access changed. The instruction was not sent.'
-              : result.outcome === 'not-authorized'
-                ? 'You cannot send to this subagent.'
-                : 'The instruction was not sent. The subagent may have finished.',
+          result.outcome === 'attachments-unavailable'
+            ? 'The images could not be read. Reattach them and send again.'
+            : result.outcome === 'unsupported'
+              ? saved.attachmentRefs?.length
+                ? 'The image was not sent.'
+                : 'This subagent cannot receive instructions.'
+              : result.outcome === 'confinement-changed'
+                ? 'Access changed. The instruction was not sent.'
+                : result.outcome === 'not-authorized'
+                  ? 'You cannot send to this subagent.'
+                  : 'The instruction was not sent. The subagent may have finished.',
         );
       }
     } catch {
@@ -348,6 +512,9 @@ export function ChildWorkInstructionPanel({
           {entries.map((entry) => (
             <li key={entry.clientInputId}>
               <p>{entry.text}</p>
+              {entry.attachments?.map((image) => (
+                <span key={image.clientAttachmentId}>{image.name} </span>
+              ))}
               <small>
                 {entry.principal?.display ?? 'Sender not recorded'} ·{' '}
                 {entry.clientOrigin?.reported.surface ??
@@ -408,7 +575,17 @@ export function ChildWorkInstructionPanel({
         </>
       )}
       {composer && message && <p role="status">{message}</p>}
-      {pending && <p>Saved instruction: {pending.input}</p>}
+      {pending && (
+        <p>
+          Saved instruction:{' '}
+          {[
+            pending.input,
+            ...(pending.attachmentRefs?.map((ref) => ref.name) ?? []),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
       {pending && canOperate && mayContinue && key && loaded ? (
         <MessageDeliveryNote
           variant="inline"
@@ -423,7 +600,12 @@ export function ChildWorkInstructionPanel({
                   ? null
                   : current,
               );
-              writeDraft(pending.input, target.current.turnId);
+              writeDraft({
+                ...draftFromInstruction(pending),
+                turnId: pending.attachmentRefs?.length
+                  ? pending.turnId
+                  : target.current.turnId,
+              });
               setMessage('');
               return null;
             },
@@ -442,7 +624,8 @@ export function ChildWorkInstructionPanel({
                     entry.clientInputId === pending.clientInputId &&
                     entry.childId === pending.childId &&
                     entry.turnId === pending.turnId &&
-                    entry.text === pending.input,
+                    entry.text === pending.input &&
+                    sameImages(pending.attachmentRefs, entry.attachments),
                 );
               if (
                 !scope.isCurrent() ||
@@ -458,10 +641,10 @@ export function ChildWorkInstructionPanel({
                     : current,
                 );
                 if (found.delivery === 'delivered') {
-                  writeDraft('', undefined);
+                  writeDraft({ text: '' });
                   setMessage('Sent to the subagent.');
                 } else {
-                  writeDraft(pending.input, pending.turnId);
+                  writeDraft(draftFromInstruction(pending));
                   setMessage('The instruction was not sent.');
                 }
               }
@@ -483,16 +666,39 @@ export function ChildWorkInstructionPanel({
         <p>Preparing instructions…</p>
       ) : (
         <ChildInstructionEditor
+          images={
+            composer && (allowImages || files.length || stages.length)
+              ? {
+                  sessionId: JSON.stringify([scope?.authorityKey, key, turnId]),
+                  attachments: files,
+                  attachmentStages: stages,
+                  modelSupportsAttachments: allowImages,
+                  selectAttachmentFiles: allowImages ? selectImages : undefined,
+                  onRemoveAttachment: removeImage,
+                  onClearAttachments: () =>
+                    files.forEach((file) => removeImage(file.id)),
+                  onRetryAttachmentStage: uploads.retry,
+                  onCancelAttachmentStage: uploads.cancel,
+                  onReplaceAttachmentFile: uploads.replaceFile,
+                  attachmentError: uploads.error,
+                  sendBlockedReason: readingImages
+                    ? 'Preparing image…'
+                    : uploads.sendBlockedReason,
+                  removalUnblocksSend: uploads.removalUnblocksSend,
+                }
+              : undefined
+          }
           name={name}
           editorId={editorId}
           run={composer?.run}
           text={text}
           onChange={(value) => {
             if (!busy.current)
-              writeDraft(
-                value,
-                value ? (text ? draftTurnId : turnId) : undefined,
-              );
+              writeDraft({
+                ...latestDraft.current,
+                text: value,
+                turnId: latestDraft.current.turnId ?? turnId,
+              });
           }}
           sending={submitting || send.isPending}
           onSubmit={

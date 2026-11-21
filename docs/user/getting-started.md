@@ -1088,7 +1088,7 @@ on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-You can attach files or dictate during a turn. Steer carries text only, so a
+You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot
 hold files yet, they wait in the draft, which says why, until you send it after
@@ -1312,8 +1312,11 @@ then its tool calls and answers. The title becomes **Parent chat / Subagent**;
 choose an ancestor to return to that chat without losing its draft or reading
 position. Escape returns one level. On a phone, the title names the subagent;
 use the back button or swipe from the left edge. The reader opens on the
-latest messages; earlier ones load as you scroll up. Engine transcripts are
-read only and refresh while running.
+latest messages; earlier ones load as you scroll up. A running child that
+accepts instructions has a message composer. When its active turn accepts
+images, use the paperclip or paste a screenshot, then choose **Send**.
+You can send an image on its own. Other child transcripts stay readable and
+refresh while running.
 
 If a tool result has no recorded text, the reader says **Text output unavailable.**
 This does not mean the tool produced no output.

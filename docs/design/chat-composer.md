@@ -922,7 +922,7 @@ show their own model and elapsed time in its details. Open a child with a
 transcript to read it in the same dock. Expanded activity is centered above
 the status pill. A writable child uses the regular message editor, Send arrow,
 Return-key preference and run identity control. Sending addresses the current
-child turn. The paperclip stays in its usual place. Tapping it explains that child replies accept text only. The child’s reported model is available in Agent & model.
+child turn. A child that advertises image steering shows the usual paperclip for images and screenshots. The text-only child composer omits it. The child’s reported model is available in Agent & model.
 Once work finishes, the pill shows **Waiting** and the earliest armed check-back
 time. Approval requests keep their own actions.
 The shared work-status selector keeps a settled conversation with an armed

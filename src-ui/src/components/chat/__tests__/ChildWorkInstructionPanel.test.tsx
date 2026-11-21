@@ -209,15 +209,9 @@ test('sends only to the named child and keeps the same request after an uncertai
     />,
   );
   const input = await screen.findByRole('textbox', { name: 'Message' });
-  const attach = await screen.findByRole('button', { name: 'Attach files' });
-  expect(attach.getAttribute('aria-disabled')).toBe('true');
-  fireEvent.click(attach);
-  expect(
-    await screen.findByText('This subagent accepts text only.'),
-  ).toBeTruthy();
-  expect(mocks.send).not.toHaveBeenCalled();
-  fireEvent.change(input, { target: { value: 'Please check this' } });
+  expect(screen.queryByRole('button', { name: 'Attach files' })).toBeNull();
   expect(screen.queryByText('This subagent accepts text only.')).toBeNull();
+  fireEvent.change(input, { target: { value: 'Please check this' } });
   fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
   await screen.findAllByText('May have reached the agent');
   const first = mocks.send.mock.calls[0][0];
@@ -238,6 +232,83 @@ test('sends only to the named child and keeps the same request after an uncertai
       )
     )?.clientInputId,
   ).toBe(first.clientInputId);
+});
+
+test('a writable child sends a staged screenshot without text and retains only its reference while delivery is uncertain', async () => {
+  const key = 'child-steer:' + JSON.stringify(['owner', 'parent', 'child']);
+  const ref = {
+    source: 'current-composer' as const,
+    kind: 'image' as const,
+    clientAttachmentId: 'chosen',
+    stageId: 'stage_image',
+    digest: `sha256-${'0'.repeat(64)}` as const,
+    name: 'screen.png',
+    mimeType: 'image/png' as const,
+    size: 3,
+    expiresAt: new Date(Date.now() + 600000).toISOString(),
+  };
+  const files = [
+    {
+      id: 'chosen',
+      name: ref.name,
+      type: ref.mimeType,
+      size: ref.size,
+      data: 'data:image/png;base64,YWJj',
+    },
+  ];
+  const stages = [
+    {
+      clientAttachmentId: 'chosen',
+      stageId: ref.stageId,
+      name: ref.name,
+      mimeType: ref.mimeType,
+      size: ref.size,
+      state: 'complete' as const,
+      delivery: 'staged' as const,
+      progress: 1,
+      reference: ref,
+    },
+  ];
+  const client = await import('@kontourai/station-sdk/client');
+  const reconcile = vi
+    .spyOn(client, 'reconcileAttachmentStages')
+    .mockResolvedValue([
+      { state: 'complete', stageId: ref.stageId, reference: ref },
+    ]);
+  mocks.send.mockResolvedValue({ outcome: 'indeterminate' });
+  try {
+    render(
+      <ChildWorkInstructionPanel
+        threadId="parent"
+        childId="child"
+        name="Worker"
+        turnId="turn"
+        running
+        historyAvailable
+        composer={{
+          canContinue: true,
+          run: { images: true, engineLabel: 'Codex' },
+          drafts: new Map([[key, { text: '', turnId: 'turn', files, stages }]]),
+        }}
+      />,
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Attach files' }),
+    ).toHaveProperty('disabled', false);
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findAllByText('May have reached the agent');
+    expect(mocks.send.mock.calls[0][0]).toMatchObject({
+      threadId: 'parent',
+      childId: 'child',
+      turnId: 'turn',
+      input: { text: '', attachmentRefs: [ref] },
+    });
+    const saved = await get(key);
+    expect(saved).toMatchObject({ attachmentRefs: [ref] });
+    expect(JSON.stringify(saved)).not.toContain('data:image');
+  } finally {
+    reconcile.mockRestore();
+  }
 });
 
 test('concurrent panels claim one durable instruction before dispatch', async () => {

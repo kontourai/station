@@ -144,6 +144,7 @@ import {
   codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
+  refreshCodexChildSteerControls,
   requestStop as requestCodexChildStop,
 } from './codex-adapter-child-work.js';
 import {
@@ -554,9 +555,19 @@ function mapCodexModelCatalogEntry(model: any): {
   const supportsFastMode = serviceTiers.some(
     (tier) => tier.id === 'fast' || tier.id === 'priority',
   );
+  const modalities = model.inputModalities;
+  const imageInput =
+    Array.isArray(modalities) &&
+    modalities.length &&
+    modalities.every((entry: unknown) => typeof entry === 'string')
+      ? modalities.includes('image')
+      : undefined;
   const capabilities: ModelOptionCapabilities | undefined =
-    supportedEffortLevels.length > 0 || serviceTiers.length > 0
+    supportedEffortLevels.length > 0 ||
+    serviceTiers.length > 0 ||
+    imageInput !== undefined
       ? {
+          ...(imageInput !== undefined ? { imageInput } : {}),
           ...(supportedEffortLevels.length > 0
             ? {
                 supportsEffort: true,
@@ -991,6 +1002,19 @@ export function projectCodexQuotaSnapshot(
   if (!update) return null;
   const snapshot = mergeQuotaSnapshot(undefined, update);
   return snapshot ? { ...snapshot, baselineAt: snapshot.observedAt } : null;
+}
+
+function codexMessageInput(
+  text: string | undefined,
+  images: ReturnType<typeof decodeChatAttachments>,
+) {
+  return [
+    ...(text ? [{ type: 'text', text, text_elements: [] }] : []),
+    ...images.map(({ attachment }) => ({
+      type: 'image',
+      url: attachment.dataUrl,
+    })),
+  ];
 }
 
 export class CodexAdapter implements ProviderAdapterShape {
@@ -1560,6 +1584,14 @@ export class CodexAdapter implements ProviderAdapterShape {
             value: catalog,
             observedAt: this.now().getTime(),
           };
+          for (const record of this.transport.listSessions()) {
+            if (record.childWork)
+              refreshCodexChildSteerControls({
+                record,
+                nowIso: () => this.now().toISOString(),
+                publish: (event) => this.transport.publish(event),
+              });
+          }
           return catalog;
         })
         .finally(() => {
@@ -2413,6 +2445,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       resumeCursor: input.resumeCursor,
       nowIso: () => this.now().toISOString(),
     });
+    record.childModelAcceptsImages = (modelId) =>
+      this.modelCatalogCache?.value.models.find((model) => model.id === modelId)
+        ?.capabilities?.imageInput !== false;
     record.preparedResumeBindingKey = resumeBindingKey;
     // Where Codex writes this session's thread rollouts, children included:
     // a child's transcript ref names it, never a file path.
@@ -3620,19 +3655,7 @@ export class CodexAdapter implements ProviderAdapterShape {
                   },
                 ]
               : []),
-            ...(input.input
-              ? [
-                  {
-                    type: 'text',
-                    text: input.input,
-                    text_elements: [],
-                  },
-                ]
-              : []),
-            ...decodedAttachments.map(({ attachment }) => ({
-              type: 'image',
-              url: attachment.dataUrl,
-            })),
+            ...codexMessageInput(input.input, decodedAttachments),
           ],
           model: input.modelId,
           effort: mapReasoningEffort(modelOptions),
@@ -3716,21 +3739,31 @@ export class CodexAdapter implements ProviderAdapterShape {
     });
   }
 
+  readonly childSteerImages = true;
+
   async steerChildWork(
     threadId: string,
     childId: string,
     turnId: string,
     input: string,
+    images?: import('@kontourai/station-contracts/chat-attachment').ChatAttachmentInput[],
   ): Promise<ProviderChildSteerResult> {
     const record = this.transport.requireSession(threadId);
-    const target = codexChildSteerTarget(record, childId, turnId);
+    const target = codexChildSteerTarget(
+      record,
+      childId,
+      turnId,
+      !!images?.length,
+    );
     if (target !== 'ready') return { outcome: target };
     const text = input.trim();
-    if (!text) throw new Error('Steer input is empty.');
+    const decoded = decodeChatAttachments(images);
+    rejectFileAttachments('Codex', decoded);
+    if (!text && !decoded.length) throw new Error('Steer input is empty.');
     try {
       const result = await this.transport.sendRequest(record, 'turn/steer', {
         threadId: childId,
-        input: [{ type: 'text', text, text_elements: [] }],
+        input: codexMessageInput(text, decoded),
         expectedTurnId: turnId,
       });
       if (extractStringField(result, 'turnId') !== turnId)

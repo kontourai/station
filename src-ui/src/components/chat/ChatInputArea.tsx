@@ -498,15 +498,30 @@ function sizeDraft(
   return floor;
 }
 
-type TextReplyProps = Pick<
+export type ChildImageControls = Pick<
+  ChatInputAreaProps,
+  | 'fileAttachmentsSupported'
+  | 'sessionId'
+  | 'attachments'
+  | 'attachmentStages'
+  | 'selectAttachmentFiles'
+  | 'modelSupportsAttachments'
+  | 'attachmentError'
+  | 'onRetryAttachmentStage'
+  | 'onCancelAttachmentStage'
+  | 'onReplaceAttachmentFile'
+  | 'onRemoveAttachment'
+  | 'onClearAttachments'
+  | 'sendBlockedReason'
+  | 'removalUnblocksSend'
+>;
+
+type ChildReplyProps = Pick<
   ChatInputAreaProps,
   | 'input'
   | 'textareaRef'
   | 'disabled'
   | 'onInputChange'
-  | 'attachUnavailableReason'
-  | 'onAttachUnavailable'
-  | 'attachmentNotice'
   | 'onSend'
   | 'onClearInput'
   | 'fontSize'
@@ -524,19 +539,20 @@ type TextReplyProps = Pick<
   | 'currentModel'
   | 'executionEngineId'
   | 'agentIcon'
-> & { textReply: true };
+> &
+  Partial<ChildImageControls> & { childReply: true };
 
 type ComposerProps =
-  | (ChatInputAreaProps & { textReply?: false })
-  | (TextReplyProps &
+  | (ChatInputAreaProps & { childReply?: false })
+  | (ChildReplyProps &
       Partial<
-        Record<Exclude<keyof ChatInputAreaProps, keyof TextReplyProps>, never>
+        Record<Exclude<keyof ChatInputAreaProps, keyof ChildReplyProps>, never>
       >);
 
-export function ChatInputArea(props: TextReplyProps): React.ReactElement;
+export function ChatInputArea(props: ChildReplyProps): React.ReactElement;
 export function ChatInputArea(props: ChatInputAreaProps): React.ReactElement;
 export function ChatInputArea({
-  textReply,
+  childReply,
   activity,
   activityRef,
   contextMeter,
@@ -705,6 +721,7 @@ export function ChatInputArea({
   const busyAttachmentReason =
     turnInFlight &&
     !busyQueueTakesFiles &&
+    !(childReply && modelSupportsAttachments) &&
     (attachments.length > 0 || attachmentStages.length > 0)
       ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
       : undefined;
@@ -848,7 +865,7 @@ export function ChatInputArea({
   // phone, beside a caption that already names the engine.
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
-    : textReply
+    : childReply
       ? 'Model not reported'
       : 'Model';
   // Only an effort this chat requests is named; otherwise the engine's own
@@ -923,7 +940,7 @@ export function ChatInputArea({
   // A composer whose sending the server refused invites no typing: its
   // reason, under the draft, says why.
   const placeholder =
-    (textReply ? 'Type a message…' : undefined) ??
+    (childReply ? 'Type a message…' : undefined) ??
     submitAction?.placeholder ??
     (sendRefused
       ? ''
@@ -947,8 +964,8 @@ export function ChatInputArea({
                 ? 'Type a message — @ files, / for commands…'
                 : 'Type a message — / for commands…');
   const modelPickerOpen = modelQuery !== null && !input.startsWith('/model ');
-  const composerTokens = textReply ? [] : parseComposerTokens(input);
-  const displayInput = textReply
+  const composerTokens = childReply ? [] : parseComposerTokens(input);
+  const displayInput = childReply
     ? input
     : composerDisplayValue(input, composerTokens);
 
@@ -958,7 +975,7 @@ export function ChatInputArea({
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
   const overLimitBy =
-    (textReply
+    (childReply
       ? input.length
       : draftText === undefined
         ? composerMentionWireLength(input, composerTokens)
@@ -1234,7 +1251,7 @@ export function ChatInputArea({
       data-popover-boundary=""
       ref={composerRootRef}
     >
-      {!textReply && modelPickerOpen && (
+      {!childReply && modelPickerOpen && (
         <ResponsiveDialogSurface
           layer="popover"
           ariaLabel="Model"
@@ -1477,25 +1494,27 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
-          {!textReply && modelQuery !== null && input.startsWith('/model ') && (
-            <React.Suspense fallback={null}>
-              <ModelSelectorAutocomplete
-                query={modelQuery}
-                models={(pickerModels ?? availableModels).map((m) => ({
-                  ...m,
-                  originalId: m.originalId || m.id,
-                }))}
-                currentModel={currentModel}
-                agentDefaultModel={agentDefaultModel}
-                anchorRef={textareaRef}
-                onSelect={onModelSelect}
-                onClose={onModelClose}
-              />
-            </React.Suspense>
-          )}
+          {!childReply &&
+            modelQuery !== null &&
+            input.startsWith('/model ') && (
+              <React.Suspense fallback={null}>
+                <ModelSelectorAutocomplete
+                  query={modelQuery}
+                  models={(pickerModels ?? availableModels).map((m) => ({
+                    ...m,
+                    originalId: m.originalId || m.id,
+                  }))}
+                  currentModel={currentModel}
+                  agentDefaultModel={agentDefaultModel}
+                  anchorRef={textareaRef}
+                  onSelect={onModelSelect}
+                  onClose={onModelClose}
+                />
+              </React.Suspense>
+            )}
           {/* A command runs on select, so a draft-only composer (busy wait,
               conversation still opening) opens no selector. */}
-          {!textReply && commandQuery !== null && !disabled && (
+          {!childReply && commandQuery !== null && !disabled && (
             <React.Suspense fallback={null}>
               <SlashCommandSelector
                 query={commandQuery}
@@ -1507,7 +1526,7 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           <textarea
-            maxLength={textReply ? CHAT_INPUT_MAX_CHARS : undefined}
+            maxLength={childReply ? CHAT_INPUT_MAX_CHARS : undefined}
             ref={textareaRef}
             data-native-image-paste={
               selectAttachmentFiles && modelSupportsAttachments
@@ -1563,7 +1582,7 @@ export function ChatInputArea({
               setMentionQuery(null);
             }}
             onChange={(e) => {
-              const next = textReply
+              const next = childReply
                 ? e.target.value
                 : reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
@@ -1576,8 +1595,7 @@ export function ChatInputArea({
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
-              if (textReply && attachUnavailableReason) {
-                onAttachUnavailable(attachUnavailableReason);
+              if (childReply && !selectAttachmentFiles) {
                 if (!event.clipboardData.getData('text/plain'))
                   event.preventDefault();
                 return;
@@ -1764,7 +1782,9 @@ export function ChatInputArea({
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
                 } else if (
-                  (input.trim() || hasQuotedContext) &&
+                  (input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0) &&
                   !isOverLimit &&
                   !sendBlockedReason &&
                   !disabled
@@ -1799,24 +1819,28 @@ export function ChatInputArea({
           )}
         </ComposerMessageField>
         <div className="chat-controls-row">
-          <React.Suspense fallback={null}>
-            <FileAttachmentInput
-              attachments={attachments}
-              onFilesSelected={selectAttachmentFiles ?? (async () => {})}
-              // A running turn does not disable the paperclip: files join the
-              // draft for the next message (`busyAttachmentReason` says why
-              // they cannot steer or queue). Only a composer that cannot
-              // take input at all, or a model that takes nothing, refuses.
-              disabled={
-                disabled ||
-                (!modelSupportsAttachments && !fileAttachmentsSupported)
-              }
-              supportsImages={modelSupportsAttachments}
-              supportsFiles={fileAttachmentsSupported}
-              unavailableReason={disabled ? undefined : attachUnavailableReason}
-              onUnavailable={onAttachUnavailable}
-            />
-          </React.Suspense>
+          {(!childReply || modelSupportsAttachments) && (
+            <React.Suspense fallback={null}>
+              <FileAttachmentInput
+                attachments={attachments}
+                onFilesSelected={selectAttachmentFiles ?? (async () => {})}
+                // A running turn does not disable the paperclip: files join the
+                // draft for the next message (`busyAttachmentReason` says why
+                // they cannot steer or queue). Only a composer that cannot
+                // take input at all, or a model that takes nothing, refuses.
+                disabled={
+                  disabled ||
+                  (!modelSupportsAttachments && !fileAttachmentsSupported)
+                }
+                supportsImages={modelSupportsAttachments}
+                supportsFiles={fileAttachmentsSupported}
+                unavailableReason={
+                  disabled ? undefined : attachUnavailableReason
+                }
+                onUnavailable={onAttachUnavailable}
+              />
+            </React.Suspense>
+          )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
@@ -1841,7 +1865,7 @@ export function ChatInputArea({
           )}
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
-              textOnly={!!textReply}
+              textOnly={!!childReply}
               hideTrigger={isMobile}
               input={input}
               quotes={quoteContext}
@@ -2156,7 +2180,7 @@ export function ChatInputArea({
                   engineHasModes={acpSessionModes.length > 0}
                 />
               ) : (
-                !textReply &&
+                !childReply &&
                 executionMode === EXECUTION_MODE.EXTERNAL &&
                 approvalModeKnobSupported(
                   approvalEngineId,
@@ -2418,12 +2442,13 @@ export function ChatInputArea({
   );
 }
 
-/** Child instructions are text addressed to a specific live turn. Their
+/** Child instructions are addressed to a specific live turn. Their
  * delivery owner supplies the submission; the editor shares the chat capsule. */
 export function ChildInstructionForm({
   name,
   editorId,
   run,
+  images,
   voice,
   text,
   onChange,
@@ -2433,6 +2458,7 @@ export function ChildInstructionForm({
   name: string;
   editorId: string;
   run?: ChildReplyRun;
+  images?: ChildImageControls;
   voice?: StartComposerVoice;
   text: string;
   onChange(value: string): void;
@@ -2441,27 +2467,21 @@ export function ChildInstructionForm({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { chatFontSize } = useDeviceSettings();
-  const [attachmentNotice, setAttachmentNotice] = useState<string>();
-  const updateDraft = (value: string) => {
-    setAttachmentNotice(undefined);
-    onChange(value);
-  };
   if (run)
     return (
       <ChatInputArea
-        textReply
+        childReply
         agentLabel={run.engineLabel ?? 'Subagent'}
         agentIcon={<AgentIcon agent={{ name }} size={18} />}
         executionEngineId={run.engineId}
         currentModel={run.model}
         textareaRef={textareaRef}
         input={text}
-        onInputChange={updateDraft}
-        onClearInput={() => updateDraft('')}
-        onRestorePortableDraft={updateDraft}
-        attachUnavailableReason="This subagent accepts text only."
-        onAttachUnavailable={setAttachmentNotice}
-        attachmentNotice={attachmentNotice}
+        onInputChange={onChange}
+        onClearInput={() => onChange('')}
+        onRestorePortableDraft={onChange}
+        {...images}
+        fileAttachmentsSupported={false}
         onSend={async () => {
           await onSubmit?.();
         }}

@@ -18,10 +18,12 @@ import {
   CHAT_ATTACHMENT_MAX_COUNT,
   CHAT_ATTACHMENT_MAX_DATA_URL_LENGTH,
   CHAT_ATTACHMENT_MAX_NAME_LENGTH,
+  CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
   type ChatAttachmentInput,
   parseChatAttachmentDataUrl,
   validateChatAttachment,
   validateChatAttachments,
+  validatePersistedChatAttachmentDescriptor,
 } from '@kontourai/station-contracts/chat-attachment';
 import { CHILD_WORK_TRANSCRIPT_PAGE_MAX } from '@kontourai/station-contracts/child-work';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
@@ -526,12 +528,65 @@ const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
   clientInputId: z.string().min(1).max(128),
 });
 
+const stagedAttachmentReferencesSchema = z
+  .array(
+    z.object({
+      stageId: z.string().min(1).max(128),
+      clientAttachmentId: z.string().min(1).max(128),
+      source: z.literal('current-composer'),
+      kind: z.enum(['image', 'file']),
+      name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
+      mimeType: z.enum([
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/json',
+        'application/pdf',
+        'text/csv',
+        'text/markdown',
+        'text/plain',
+      ]),
+      size: z.number().int(),
+      digest: z
+        .string()
+        .max(71)
+        .regex(/^sha256-[0-9a-f]{64}$/),
+      expiresAt: z.string().max(40).datetime(),
+    }),
+  )
+  .max(CHAT_ATTACHMENT_MAX_COUNT)
+  .optional();
+
 const steerChildWorkCommandSchema = z.object({
   type: z.literal('steerChildWork'),
   threadId: z.string().min(1).max(512),
   childId: z.string().min(1).max(512),
   turnId: z.string().min(1).max(512),
-  input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
+  input: z.union([
+    z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
+    z
+      .object({
+        text: z.string().trim().max(CHAT_INPUT_MAX_CHARS),
+        attachmentRefs: stagedAttachmentReferencesSchema
+          .unwrap()
+          .min(1)
+          .refine(
+            (refs) =>
+              refs.every(
+                (ref) =>
+                  ref.kind === 'image' &&
+                  !validatePersistedChatAttachmentDescriptor(ref),
+              ) &&
+              new Set(refs.map((ref) => ref.stageId)).size === refs.length &&
+              new Set(refs.map((ref) => ref.clientAttachmentId)).size ===
+                refs.length &&
+              refs.reduce((total, ref) => total + ref.size, 0) <=
+                CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
+          ),
+      })
+      .strict(),
+  ]),
   clientInputId: z.string().min(1).max(128),
 });
 
@@ -855,36 +910,6 @@ function delegationAttachmentValidationRefusal(
 function validateFiles<T>(schema: z.ZodSchema<T>) {
   return validate(schema, { refusal: delegationAttachmentValidationRefusal });
 }
-
-const stagedAttachmentReferencesSchema = z
-  .array(
-    z.object({
-      stageId: z.string().min(1).max(128),
-      clientAttachmentId: z.string().min(1).max(128),
-      source: z.literal('current-composer'),
-      kind: z.enum(['image', 'file']),
-      name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
-      mimeType: z.enum([
-        'image/gif',
-        'image/jpeg',
-        'image/png',
-        'image/webp',
-        'application/json',
-        'application/pdf',
-        'text/csv',
-        'text/markdown',
-        'text/plain',
-      ]),
-      size: z.number().int(),
-      digest: z
-        .string()
-        .max(71)
-        .regex(/^sha256-[0-9a-f]{64}$/),
-      expiresAt: z.string().max(40).datetime(),
-    }),
-  )
-  .max(CHAT_ATTACHMENT_MAX_COUNT)
-  .optional();
 
 export const delegateTaskSchema = z.object({
   appearanceProposal: z.boolean().optional(),
@@ -7661,6 +7686,42 @@ export function createOrchestrationRoutes(
               },
             })
           : undefined;
+      const childImages =
+        command.type === 'steerChildWork' && typeof command.input !== 'string'
+          ? command.input.attachmentRefs
+          : undefined;
+      let imageBinding: AttachmentTurnBinding | undefined;
+      const resolveChildImages =
+        childImages &&
+        principal &&
+        deps.hydrateStagedAttachments &&
+        deps.acceptStagedAttachments &&
+        deps.releaseStagedAttachments
+          ? () => {
+              const binding = {
+                threadId: command.threadId,
+                clientTurnId:
+                  'child-steer:' +
+                  createHash('sha256')
+                    .update(
+                      JSON.stringify([
+                        command.childId,
+                        command.turnId,
+                        command.clientInputId,
+                      ]),
+                    )
+                    .digest('hex'),
+                attemptId: randomUUID(),
+              };
+              const images = deps.hydrateStagedAttachments!(
+                principal,
+                childImages,
+                binding,
+              );
+              imageBinding = binding;
+              return images;
+            }
+          : undefined;
       try {
         await actionOperation?.update({
           status: 'running',
@@ -7696,6 +7757,7 @@ export function createOrchestrationRoutes(
               : {}),
             ...(command.type === 'steerChildWork'
               ? {
+                  resolveChildImages,
                   requestCurrent: () =>
                     deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
                     stationControlRequestCurrent(c.req.raw) &&
@@ -7727,6 +7789,22 @@ export function createOrchestrationRoutes(
             ? ([{ personAuthored: true }] as const)
             : ([] as const)),
         );
+        if (
+          imageBinding &&
+          childImages &&
+          principal &&
+          result.result &&
+          'outcome' in result.result
+        ) {
+          if (result.result.outcome === 'steered')
+            deps.acceptStagedAttachments!(principal, childImages, imageBinding);
+          else if (result.result.outcome !== 'indeterminate')
+            deps.releaseStagedAttachments!(
+              principal,
+              childImages,
+              imageBinding,
+            );
+        }
         if (command.type === 'steerTurn')
           reopenForPersonMessage(c, command.threadId);
         if (actionOperation && command.type === 'adoptSession') {

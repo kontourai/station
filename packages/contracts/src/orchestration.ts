@@ -174,7 +174,7 @@ export type OrchestrationCommand =
       threadId: string;
       childId: string;
       turnId: string;
-      input: string;
+      input: import('./child-work.js').ChildSteerMessage;
       clientInputId: string;
     }
   | {
@@ -622,6 +622,7 @@ export type SteerChildWorkResult =
         | 'unsupported'
         | 'no-active-task'
         | 'confinement-changed'
+        | 'attachments-unavailable'
         | 'unavailable'
         | 'not-authorized';
       threadId: string;

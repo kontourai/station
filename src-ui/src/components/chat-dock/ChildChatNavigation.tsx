@@ -398,6 +398,7 @@ function LiveChildReader({
                 ? (engineDisplayLabel(engine) ?? undefined)
                 : undefined,
               model: item.model?.id,
+              images: item.controls?.steer?.images === true,
             },
             canContinue: mayInstruct,
             drafts,

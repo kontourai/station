@@ -2799,7 +2799,7 @@ Imperative API calls — use in event handlers, slash commands, or anywhere hook
 ### Turn steering and acknowledgement retries
 
 `steerChildWork(apiBase, { threadId, childId, turnId, input, clientInputId })`
-uses a distinct child-only command; `getChildWorkInstructions` reads its
+accepts a text string, or `{ text, attachmentRefs }` for a child whose current `controls.steer.images` is true. An image-only message uses empty text. The refs come from the current person's completed image stages. Older hosts reject this structured input. The SDK uses a distinct child-only command; `getChildWorkInstructions` reads its
 separately paged Station-attributed history. Both require the host's
 `childWorkSteering` capability. React clients can use
 `useSteerChildWorkMutation` and `useChildWorkInstructionsQuery`. Retain the
