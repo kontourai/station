@@ -4495,8 +4495,8 @@ non-interactive run is refused unless `--yes` approves what was printed.
 It sends exactly the reviewed revisions. Recovery uses the retained code and
 data and downloads nothing. When it activates the plugin, any trusted
 permissions it still needs are listed for the separate host approval in
-Plugins. When the host is too busy to finish within the activation limit, it
-says so and exits 2: try again when the host is idle, or remove the plugin.
+Plugins. When the activation does not finish within the activation limit, it
+says so and exits 2: a retry may work, or remove the plugin.
 
 ### `plugin preview <source>`
 

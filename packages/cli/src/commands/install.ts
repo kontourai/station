@@ -117,7 +117,7 @@ function unappliedLines(
       '  Open Plugins on the Station host; if it reads Needs recovery, recover it there.',
     ];
   const stopped = unapplied.deadlineMs
-    ? `Station was too busy to activate it within ${describeActivationDeadline(unapplied.deadlineMs)}`
+    ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
     : 'its activation did not finish';
   return [
     `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
@@ -130,10 +130,16 @@ function unappliedLines(
  * Exit status for a saved-but-unapplied change, after the CLI's precedent
  * for distinct outcomes (`home recovery-plan` exits 2): a plugin left
  * inactive is not a success a script should continue from. A change Station
- * finishes on its own (`recovery: 'none'`) keeps exit 0.
+ * finishes on its own (`recovery: 'none'`) keeps exit 0, and so does one from
+ * a server that did not say (`unknown`): the CLI cannot claim the plugin is
+ * inactive, so its text defers to the plugin's row.
  */
 function markUnappliedExit(unapplied: PluginLifecycleUnapplied): void {
-  if (unapplied.kind === 'activation' && unapplied.recovery === 'none') return;
+  if (
+    unapplied.kind === 'activation' &&
+    (unapplied.recovery === 'none' || unapplied.recovery === 'unknown')
+  )
+    return;
   process.exitCode = 2;
 }
 
@@ -620,13 +626,13 @@ export async function recover(
   if (unapplied) {
     if (unapplied.kind === 'activation' && unapplied.recovery !== 'none') {
       const stopped = unapplied.deadlineMs
-        ? `Station was too busy to finish activating it within ${describeActivationDeadline(unapplied.deadlineMs)}`
+        ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
         : 'its activation did not finish';
       console.log(
         `⚠️ Recovery of ${label} was saved, but it is still not active: ${stopped}.`,
       );
       console.log(
-        '  Trying again when the host is idle usually works; `station plugin remove` is the way out.',
+        '  Trying again may work; `station plugin remove` is the way out.',
       );
     } else
       for (const line of unappliedLines('Installed', label, unapplied))

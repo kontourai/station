@@ -680,7 +680,7 @@ describe('usePluginManagementViewModel', () => {
         { tier: 'active' },
       ]),
     ).toBe(
-      'Provider Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.',
+      'Provider Kit is active, but its server features stay off until you approve its trusted permissions. Open Plugins, select it, and review its request under Requested and not granted.',
     );
     expect(consentFailureMessage('Network Kit', [{ tier: 'active' }])).toBe(
       'Network Kit was installed, but required permissions were not approved.',
@@ -1295,7 +1295,7 @@ describe('usePluginManagementViewModel', () => {
     await waitFor(() => {
       expect(result.current.message).toEqual({
         type: 'error',
-        text: 'Network Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.',
+        text: 'Network Kit is active, but its server features stay off until you approve its trusted permissions. Open Plugins, select it, and review its request under Requested and not granted.',
       });
     });
     expect(mocks.requestConsent).toHaveBeenCalledWith(
@@ -1454,7 +1454,7 @@ describe('update and remove saved without being applied', () => {
 
     expect(result.current.message).toEqual({
       type: 'warning',
-      text: 'network-kit was updated, but Station was too busy to activate it within 10 seconds, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
+      text: 'network-kit was updated, but its activation did not finish within 10 seconds, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
     });
     expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
   });
@@ -1505,6 +1505,56 @@ describe('update and remove saved without being applied', () => {
     mocks.toast = null;
   });
 
+  test.each([
+    ['applied', { success: true }, 'Removed marker-d.'],
+    [
+      'retained data',
+      { success: true, lifecycle: { reclamation: 'not-proven' } },
+      'Removed marker-d. Its data and code are retained.',
+    ],
+    [
+      'finishing in the background',
+      { ...SAVED, success: false },
+      'Removed marker-d. It finishes unloading in the background.',
+    ],
+    [
+      'both',
+      { ...SAVED, success: false, lifecycle: { reclamation: 'not-proven' } },
+      'Removed marker-d, still unloading. Data and code retained.',
+    ],
+  ])(
+    'at phone width a removal (%s) is announced by a short toast and not by the inline message',
+    async (_case, response, text) => {
+      const width = window.innerWidth;
+      window.innerWidth = 390;
+      mocks.toast = { showToast: vi.fn() };
+      mocks.removeMutate.mockImplementation((_target, options) =>
+        options.onSuccess(response),
+      );
+      try {
+        const { result } = renderHook(() => usePluginManagementViewModel());
+        await act(async () => {
+          result.current.remove('marker-d');
+        });
+        expect(mocks.toast.showToast).toHaveBeenCalledWith(
+          text,
+          undefined,
+          undefined,
+          undefined,
+          'success',
+        );
+        // The list hides the detail pane at phone width, so nothing may rely
+        // on the inline message; and a toast of two lines at 320px (about 70
+        // characters) is the most the space under the toolbar holds.
+        expect(result.current.message).toBeNull();
+        expect(text.length).toBeLessThanOrEqual(60);
+      } finally {
+        window.innerWidth = width;
+        mocks.toast = null;
+      }
+    },
+  );
+
   test('a saved removal is reported as removed, finishing in the background, not as a failure', async () => {
     mocks.removeMutate.mockImplementation((_target, options) =>
       options.onSuccess(SAVED),
@@ -1516,7 +1566,7 @@ describe('update and remove saved without being applied', () => {
 
     expect(result.current.message).toEqual({
       type: 'success',
-      text: 'Removed network-kit from Station. It finishes unloading in the background.',
+      text: 'Removed network-kit. It finishes unloading in the background.',
     });
     expect(mocks.deselectPlugin).toHaveBeenCalled();
   });

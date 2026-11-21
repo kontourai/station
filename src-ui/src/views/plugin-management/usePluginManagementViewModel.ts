@@ -831,18 +831,20 @@ export function usePluginManagementViewModel() {
     if (activeProposal?.kind === 'remove') setActiveProposal(null);
     removeMutation.mutate(proposalId ? { name, proposalId } : name, {
       onSuccess: async (result) => {
-        const retained =
-          result.lifecycle?.reclamation === 'not-proven'
-            ? ' Its stored data and code are retained.'
-            : '';
+        // Short on purpose: the toast sits over the top of a phone's list and
+        // must stay within two lines at 320px so it covers no control.
+        const kept = result.lifecycle?.reclamation === 'not-proven';
         // A removal activates nothing, so a saved removal whose runtime reload
         // did not finish is completed by Station's next reconciliation.
+        const unloading = Boolean(pluginLifecycleUnapplied(result));
         const removed: PluginMessage = {
           type: 'success',
-          text: pluginLifecycleUnapplied(result)
-            ? `Removed ${name} from Station. It finishes unloading in the background.${retained}`
-            : retained
-              ? `Removed ${name} from Station.${retained}`
+          text: unloading
+            ? kept
+              ? `Removed ${name}, still unloading. Data and code retained.`
+              : `Removed ${name}. It finishes unloading in the background.`
+            : kept
+              ? `Removed ${name}. Its data and code are retained.`
               : `Removed ${name}.`,
         };
         if (toast) {

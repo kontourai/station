@@ -6,6 +6,7 @@ import type {
   PackageMcpAdmissionJournal,
   PackageMcpInstallation,
 } from './package-mcp-admission.js';
+import { pluginActivationInFlight } from './plugin-activation-composition.js';
 import {
   computePluginContentDigest,
   computePluginContentDigestAsync,
@@ -65,7 +66,9 @@ function bindCatalogInstallation(
       ? { state: 'ready' }
       : inspection.state === 'observed' &&
           inspection.admission === 'activation-pending'
-        ? { state: 'pending', recovery: 'review' }
+        ? pluginActivationInFlight(journal!, pluginId)
+          ? { state: 'activating' }
+          : { state: 'pending', recovery: 'review' }
         : { state: 'unavailable' };
   }
   const selectionCurrent = () =>

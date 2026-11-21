@@ -1,6 +1,10 @@
 import { createServer } from 'node:http';
-import { afterEach, describe, expect, test } from 'vitest';
-import { devServerOrigin, listenDevServer } from '../dev/server.js';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  devServerOrigin,
+  installDevDependencies,
+  listenDevServer,
+} from '../dev/server.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
 afterEach(async () => {
@@ -23,5 +27,28 @@ describe('plugin dev listener', () => {
     expect(address.family).toBe('IPv4');
     expect(address.port).toBeGreaterThan(0);
     expect(devServerOrigin(address)).toBe(`http://127.0.0.1:${address.port}`);
+  });
+});
+
+describe('plugin dev dependencies', () => {
+  test('a dependency installed but not active does not leave the dev process exiting 2', async () => {
+    const before = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      // What `install` does for a saved-but-inactive dependency.
+      const installDependency = vi.fn(async () => {
+        process.exitCode = 2;
+        return { pluginName: 'dep', version: '1.0.0' };
+      });
+      await installDevDependencies(
+        { dependencies: [{ id: 'dep', source: './dep' }] },
+        installDependency,
+        '/nonexistent-plugins-dir',
+      );
+      expect(installDependency).toHaveBeenCalledWith('./dep', []);
+      expect(process.exitCode).toBeUndefined();
+    } finally {
+      process.exitCode = before;
+    }
   });
 });

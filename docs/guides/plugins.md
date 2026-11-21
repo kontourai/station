@@ -689,12 +689,14 @@ behavior require separate platform verification.
 
 ### Recover interrupted activation
 
-On a slow or busy host, an install or update can be saved before its runtime
-activation finishes. Station waits up to 10 seconds for a plugin to activate,
-the same limit as any other configuration change; past it, Station stops that
+When a plugin's runtime activation does not finish in time (a slow host, or
+plugin code that hangs), an install or update can be saved first. Station waits up to 10 seconds for a
+plugin to activate, the same limit as any other configuration change; past it, Station stops that
 activation rather than hold every other configuration change behind it, and it
-does not retry it on its own. Recovery runs under the same limit, so on a busy
-host recover when it is idle. Plugins
+does not retry it on its own. Recovery runs under the same limit, so a retry may
+work and removing the plugin is the way out. While the server is still
+activating the plugin, its row reads **Activating…** with no recovery offered;
+it becomes ready by itself or, once stopped, **Needs recovery**. Plugins
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
 again would install a second copy: installing a plugin that reads **Needs

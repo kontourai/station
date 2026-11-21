@@ -108,7 +108,9 @@ function isPluginInstallationReadiness(
   const row = value as Record<string, unknown>;
   return row.state === 'pending'
     ? row.recovery === 'review' && exactFields(row, ['state', 'recovery'])
-    : (row.state === 'ready' || row.state === 'unavailable') &&
+    : (row.state === 'ready' ||
+        row.state === 'activating' ||
+        row.state === 'unavailable') &&
         exactFields(row, ['state']);
 }
 

@@ -5512,7 +5512,8 @@ returns 202 with `success: false` and `configurationActivation` (status
 `pending`) whose `recovery` is `"required"`, or a pending lifecycle receipt.
 The activation is not continuing: the plugin is not active, and its
 `installationReadiness` reads `pending` with `recovery: "review"` until a
-person recovers it. A receipt stopped at the deadline also carries
+person recovers it (a list read made while the install request is still open
+reads `activating`). A receipt stopped at the deadline also carries
 `deadlineMs`. Changes that finish on the reconciliation rail (a removal, a
 legacy git update) carry `recovery: "none"`. It is
 not complete solely because the HTTP request was accepted. Clients read these

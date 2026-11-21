@@ -189,6 +189,21 @@ test('preserves typed pending readiness and rejects malformed readiness without 
   vi.unstubAllGlobals();
 });
 
+test('reads an activating plugin row, the state of an install whose request is still open', async () => {
+  const row = {
+    name: 'activating',
+    version: '1',
+    hasBundle: false,
+    installationReadiness: { state: 'activating' },
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(Response.json({ plugins: [row] })),
+  );
+  await expect(listPlugins('https://station.example')).resolves.toEqual([row]);
+  vi.unstubAllGlobals();
+});
+
 test('carries a ready record’s commands and generation and fails closed on malformed ones', async () => {
   const ready = {
     name: 'demo',

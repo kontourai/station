@@ -471,9 +471,17 @@ export interface PluginInstallationRevision {
   readonly origin?: string;
 }
 
-/** Server-observed runtime readiness, independent of install/consent completion. */
+/**
+ * Server-observed runtime readiness, independent of install/consent completion.
+ *
+ * `activating`: this server is still activating the plugin, so the install
+ * request that owns it is open and will settle on its own. `pending`: the
+ * activation was stopped (it ran past its deadline, or the host restarted) and
+ * the plugin stays inactive until a person recovers it.
+ */
 export type PluginInstallationReadiness =
   | { readonly state: 'ready' }
+  | { readonly state: 'activating' }
   | { readonly state: 'pending'; readonly recovery: 'review' }
   | { readonly state: 'unavailable' };
 

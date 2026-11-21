@@ -15,7 +15,9 @@ import { workspacePaneAvailabilityMetricDescriptor } from './workspace-pane-know
 interface WorkspacePaneAvailabilityContribution {
   id: string;
   enabled: boolean;
-  installationReadiness?: { state: 'ready' | 'pending' | 'unavailable' };
+  installationReadiness?: {
+    state: 'ready' | 'activating' | 'pending' | 'unavailable';
+  };
 }
 
 export interface WorkspacePaneCatalogAvailabilityCandidate {
@@ -156,7 +158,11 @@ function defaultAvailabilityInput(
     // Catalog membership is authoritative that the product has rolled out the
     // declaration. It is not proof that a renderer can be loaded.
     rollout: 'available',
-    installation: candidate.contribution?.installationReadiness?.state,
+    // Still activating reads as not yet installed, like a stopped activation.
+    installation:
+      candidate.contribution?.installationReadiness?.state === 'activating'
+        ? 'pending'
+        : candidate.contribution?.installationReadiness?.state,
     distribution:
       candidate.contribution?.enabled === true ? 'enabled' : 'disabled',
     // archive#1370 must not infer renderer execution from a descriptor reference.

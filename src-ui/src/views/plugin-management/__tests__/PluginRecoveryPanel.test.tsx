@@ -151,7 +151,7 @@ test('a declined trusted approval after recovery says the plugin still needs it'
   await waitFor(() =>
     expect(onOutcome).toHaveBeenCalledWith({
       type: 'error',
-      text: 'Fixture is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.',
+      text: 'Fixture is active, but its server features stay off until you approve its trusted permissions. Open Plugins, select it, and review its request under Requested and not granted.',
     }),
   );
 });
@@ -163,7 +163,7 @@ test('a recovery stopped again says the host was busy and how to get out', async
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
   expect((await screen.findByRole('status')).textContent).toBe(
-    'Recovery was saved, but the plugin is still not active: Station was too busy to finish activating it within 10 seconds. Trying again when the host is idle usually works; Remove plugin is the way out.',
+    'Recovery was saved, but the plugin is still not active: its activation did not finish within 10 seconds. Trying again may work; Remove plugin is the way out.',
   );
   expect(state.hostApproval).not.toHaveBeenCalled();
 });
@@ -304,4 +304,25 @@ test('an install that left this row inactive explains itself above the recovery 
   expect(
     await screen.findByRole('region', { name: 'Recovery review' }),
   ).toBeTruthy();
+});
+
+test('a plugin the server is still activating says Activating, loads no recovery review and offers no Recover', async () => {
+  const activating = {
+    ...plugin,
+    installationReadiness: { state: 'activating' as const },
+  };
+  const view = render(
+    <PluginRecoveryPanel plugin={activating} onRemove={vi.fn()} />,
+  );
+  expect(screen.getByText('Activating…')).toBeTruthy();
+  expect(screen.queryByText('Needs recovery')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Review recovery' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
+  expect(state.refetch).not.toHaveBeenCalled();
+
+  // Once the server reports the activation stopped, the row needs recovery
+  // and its review is loaded.
+  view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  expect(screen.getByText('Needs recovery')).toBeTruthy();
+  await reviewLoaded();
 });

@@ -498,6 +498,42 @@ describe('plugin CLI API authority', () => {
     );
   });
 
+  test('an older server that sends no recovery field defers to the plugin row and does not exit 2', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.exitCode = undefined;
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1.0.0' },
+          components: [],
+          conflicts: [],
+          contentDigest: 'sha256:reviewed',
+          grantRevision: 'parent-reviewed-revision',
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            plugin: { name: 'demo', version: '1.0.0' },
+            configurationActivation: { status: 'pending', reason: 'saved' },
+          },
+          { status: 202 },
+        ),
+      );
+    const { install } = await import('../commands/install.js');
+
+    await install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null);
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toContain(
+      '⚠️ Installed demo@1.0.0, but Station did not say whether it is active.',
+    );
+    // Nothing known says the plugin is inactive, so nothing is a failure.
+    expect(process.exitCode).toBeUndefined();
+  });
+
   test('reports a saved update by its recovery field and a saved removal as removed', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const saved = {
@@ -532,7 +568,7 @@ describe('plugin CLI API authority', () => {
     expect(process.exitCode).toBeUndefined();
     const printed = log.mock.calls.map((call) => String(call[0]));
     expect(printed).toContain(
-      '⚠️ Updated demo@1.1.0, but Station was too busy to activate it within 10 seconds, so it is not active.',
+      '⚠️ Updated demo@1.1.0, but its activation did not finish within 10 seconds, so it is not active.',
     );
     // A legacy update the server says finishes on its own is not a recovery.
     expect(printed).toContain(
@@ -702,7 +738,7 @@ describe('plugin CLI API authority', () => {
       await recover('demo', { ...parsed, flags: { yes: true } }, null);
       const printed = log.mock.calls.map((call) => String(call[0]));
       expect(printed).toContain(
-        '⚠️ Recovery of demo was saved, but it is still not active: Station was too busy to finish activating it within 10 seconds.',
+        '⚠️ Recovery of demo was saved, but it is still not active: its activation did not finish within 10 seconds.',
       );
       expect(process.exitCode).toBe(2);
       process.exitCode = undefined;

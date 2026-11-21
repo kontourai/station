@@ -33,6 +33,13 @@ export function filterPlugins(plugins: Plugin[], search: string) {
   });
 }
 
+function readinessPrefix(state: string | undefined) {
+  if (state === 'pending') return 'Needs recovery · ';
+  if (state === 'activating') return 'Activating… · ';
+  if (state === 'unavailable') return 'Unavailable · ';
+  return '';
+}
+
 export function buildPluginListItems(
   plugins: Plugin[],
   updates: readonly PluginUpdateSummary[] = [],
@@ -48,7 +55,7 @@ export function buildPluginListItems(
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Needs recovery · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${available.has(plugin.name) ? ' · Update available' : ''}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${readinessPrefix(plugin.installationReadiness?.state)}v${plugin.version}${available.has(plugin.name) ? ' · Update available' : ''}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }
@@ -274,7 +281,7 @@ export function unappliedMessage(
   if (unapplied.recovery === 'unknown')
     return `${pluginName} was ${verb}, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.`;
   const stopped = unapplied.deadlineMs
-    ? `Station was too busy to activate it within ${describeActivationDeadline(unapplied.deadlineMs)}`
+    ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
     : 'its activation did not finish';
   return `${pluginName} was ${verb}, but ${stopped}, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.`;
 }
@@ -290,15 +297,14 @@ export function unappliedTone(
 
 /**
  * A recovery that was stopped again. Recovery runs under the same deadline,
- * so on a busy host the useful advice is to wait for a quieter moment, and
- * Remove is the way out.
+ * so a retry may work, and Remove is the way out.
  */
 export function recoveryStoppedNotice(unapplied: PluginLifecycleUnapplied) {
   const stopped =
     unapplied.kind === 'activation' && unapplied.deadlineMs
-      ? `Station was too busy to finish activating it within ${describeActivationDeadline(unapplied.deadlineMs)}`
+      ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
       : 'its activation did not finish';
-  return `Recovery was saved, but the plugin is still not active: ${stopped}. Trying again when the host is idle usually works; Remove plugin is the way out.`;
+  return `Recovery was saved, but the plugin is still not active: ${stopped}. Trying again may work; Remove plugin is the way out.`;
 }
 
 /** What a declined post-install (or post-recovery) approval left behind. */
@@ -307,7 +313,7 @@ export function consentFailureMessage(
   pending: Array<{ tier: string }>,
 ) {
   if (pending.some((permission) => permission.tier === 'trusted')) {
-    return `${pluginName} is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.`;
+    return `${pluginName} is active, but its server features stay off until you approve its trusted permissions. Open Plugins, select it, and review its request under Requested and not granted.`;
   }
 
   return `${pluginName} was installed, but required permissions were not approved.`;

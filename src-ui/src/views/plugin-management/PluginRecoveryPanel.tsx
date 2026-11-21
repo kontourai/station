@@ -47,6 +47,7 @@ export function PluginRecoveryPanel({
   const [notice, setNotice] = useState<string>();
   const busy = useRef(false);
   const pending = plugin.installationReadiness?.state === 'pending';
+  const activating = plugin.installationReadiness?.state === 'activating';
   const basis =
     preview.data?.recoveryRevision === reviewedRevision
       ? preview.data
@@ -58,13 +59,24 @@ export function PluginRecoveryPanel({
     if (result.data && !result.error)
       setReviewedRevision(result.data.recoveryRevision);
   }
-  // A pending row is a plugin whose activation did not complete; nothing
-  // resumes it, so the review that recovers it is loaded straight away. It
-  // is a read: recovering still takes the person's explicit decision below.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once per plugin row (the panel is keyed by plugin name).
+  // A pending row is a plugin whose activation was stopped; nothing resumes
+  // it, so the review that recovers it is loaded straight away. It is a read:
+  // recovering still takes the person's explicit decision below. An activating
+  // row gets no review: that activation finishes by itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per change of state (the panel is keyed by plugin name).
   useEffect(() => {
     if (pending) void review();
-  }, []);
+  }, [pending]);
+  // While the server reports the activation in flight, read the list again
+  // until it settles into ready or stopped.
+  useEffect(() => {
+    if (!activating) return;
+    const timer = setInterval(
+      () => void queries.invalidateQueries({ queryKey: ['plugins'] }),
+      2000,
+    );
+    return () => clearInterval(timer);
+  }, [activating, queries]);
   async function recover() {
     if (busy.current || !basis) return;
     busy.current = true;
@@ -170,20 +182,28 @@ export function PluginRecoveryPanel({
         title={plugin.displayName || plugin.name}
         subtitle={`Version ${plugin.version}`}
         badge={{
-          label: pending ? 'Needs recovery' : 'Unavailable',
+          label: pending
+            ? 'Needs recovery'
+            : activating
+              ? 'Activating…'
+              : 'Unavailable',
           variant: 'warning',
         }}
       />
       <div className="detail-panel__body plugins__recovery">
         <p>
-          {pending
-            ? 'This plugin is installed but not active: its activation did not finish, and Station does not retry it on its own. Its workspace panes and actions stay unavailable until you recover it.'
-            : 'Station cannot verify this installation. Refresh its status before using it.'}
+          {activating
+            ? 'Station is activating this plugin now. Its workspace panes and actions appear once it is ready.'
+            : pending
+              ? 'This plugin is installed but not active: its activation did not finish, and Station does not retry it on its own. Its workspace panes and actions stay unavailable until you recover it.'
+              : 'Station cannot verify this installation. Refresh its status before using it.'}
         </p>
-        <p>
-          Recovery uses the retained code and data. It does not download a
-          replacement or reset stored data.
-        </p>
+        {!activating && (
+          <p>
+            Recovery uses the retained code and data. It does not download a
+            replacement or reset stored data.
+          </p>
+        )}
         {notice && <p role="status">{notice}</p>}
         {preview.error && (
           <p role="alert">{userFacingErrorMessage(preview.error)}</p>
@@ -247,7 +267,7 @@ export function PluginRecoveryPanel({
           </Button>
           <Button
             onClick={() => onRemove(plugin.name)}
-            disabled={recovery.isPending}
+            disabled={recovery.isPending || activating}
           >
             Remove plugin
           </Button>

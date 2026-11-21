@@ -724,4 +724,26 @@ describe('a plugin installed but not active', () => {
       screen.getByText((text) => text.startsWith('Needs recovery · v1.0.0')),
     ).toBeTruthy();
   });
+  test('its row says Activating while the server is still activating it, not Needs recovery', async () => {
+    const { buildPluginListItems } = await import(
+      '../views/plugin-management/view-utils'
+    );
+    const activating = {
+      name: 'slow-activation',
+      displayName: 'Slow Activation',
+      version: '1.0.0',
+      installationReadiness: { state: 'activating' },
+    };
+    viewModel = baseViewModel({
+      plugins: [activating],
+      filtered: [activating],
+      items: buildPluginListItems([activating as never]),
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText((text) => text.startsWith('Activating… · v1.0.0')),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Needs recovery/)).toBeNull();
+  });
 });
