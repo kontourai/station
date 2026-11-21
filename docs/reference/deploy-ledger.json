@@ -1,5 +1,107 @@
 [
   {
+    "timestampUtc": "2026-11-21T15:46:50Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261121.2",
+    "sha": "8975d30f8303673dbcabdab4c1b2161b27d8dff3",
+    "artifactBuiltAt": "2026-11-21T14:58:26.407Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44916136501",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44916136501)"
+    ],
+    "changelog": {
+      "previousSha": "a80f89fb67b5abcff11b933236365e6f473718fc",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5370](https://github.com/kontourai/station/pull/5370) fix(claude): preserve authored text boundaries in sends and native history",
+          "[#5369](https://github.com/kontourai/station/pull/5369) fix(ui): show established chat history at full opacity on open",
+          "[#5367](https://github.com/kontourai/station/pull/5367) fix(ui): clear mobile dock touch targets",
+          "[#5366](https://github.com/kontourai/station/pull/5366) fix(ci): wait for Inbox swipe cancellation to render"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5368](https://github.com/kontourai/station/pull/5368) perf(ui): defer Project work-item polling until Tasks is visible"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-11-21T15:46:50Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261121.2",
+    "sha": "8975d30f8303673dbcabdab4c1b2161b27d8dff3",
+    "artifactBuiltAt": "2026-11-21T14:57:42.064Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44916136501",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44916136501)"
+    ],
+    "changelog": {
+      "previousSha": "a80f89fb67b5abcff11b933236365e6f473718fc",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5370](https://github.com/kontourai/station/pull/5370) fix(claude): preserve authored text boundaries in sends and native history",
+          "[#5369](https://github.com/kontourai/station/pull/5369) fix(ui): show established chat history at full opacity on open",
+          "[#5367](https://github.com/kontourai/station/pull/5367) fix(ui): clear mobile dock touch targets",
+          "[#5366](https://github.com/kontourai/station/pull/5366) fix(ci): wait for Inbox swipe cancellation to render"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5368](https://github.com/kontourai/station/pull/5368) perf(ui): defer Project work-item polling until Tasks is visible"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-11-21T14:58:55Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261121.44916136501",
+    "sha": "8975d30f8303673dbcabdab4c1b2161b27d8dff3",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44916136501",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261121.44916136501 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a80f89fb67b5abcff11b933236365e6f473718fc",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5370](https://github.com/kontourai/station/pull/5370) fix(claude): preserve authored text boundaries in sends and native history",
+          "[#5369](https://github.com/kontourai/station/pull/5369) fix(ui): show established chat history at full opacity on open",
+          "[#5367](https://github.com/kontourai/station/pull/5367) fix(ui): clear mobile dock touch targets",
+          "[#5366](https://github.com/kontourai/station/pull/5366) fix(ci): wait for Inbox swipe cancellation to render"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5368](https://github.com/kontourai/station/pull/5368) perf(ui): defer Project work-item polling until Tasks is visible"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-11-21T08:20:06Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261121.1",

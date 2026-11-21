@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-21T15:46:50Z | nightly-desktop | 0.2.0-nightly.20261121.2 | `8975d30` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44916136501) |
+| 2026-11-21T15:46:50Z | nightly-android | 0.2.0-nightly.20261121.2 | `8975d30` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44916136501) |
+| 2026-11-21T14:58:55Z | nightly-npm | 0.12.0-nightly.20261121.44916136501 | `8975d30` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44916136501) |
 | 2026-11-21T08:20:06Z | nightly-desktop | 0.2.0-nightly.20261121.1 | `a80f89f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44880067053) |
 | 2026-11-21T08:20:06Z | nightly-android | 0.2.0-nightly.20261121.1 | `a80f89f` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44880067053) |
 | 2026-11-21T07:32:12Z | nightly-npm | 0.12.0-nightly.20261121.44880067053 | `a80f89f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44880067053) |
@@ -525,6 +528,72 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-21T15:46:50Z · nightly-desktop · 0.2.0-nightly.20261121.2
+
+- Ship SHA: `8975d30f8303673dbcabdab4c1b2161b27d8dff3`
+- Artifact built at: `2026-11-21T14:58:26.407Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 44916136501)
+
+### Changelog
+
+Commits since `a80f89f` ([full sha](https://github.com/kontourai/station/commit/a80f89fb67b5abcff11b933236365e6f473718fc)):
+
+**Fixes**
+
+- [#5370](https://github.com/kontourai/station/pull/5370) fix(claude): preserve authored text boundaries in sends and native history
+- [#5369](https://github.com/kontourai/station/pull/5369) fix(ui): show established chat history at full opacity on open
+- [#5367](https://github.com/kontourai/station/pull/5367) fix(ui): clear mobile dock touch targets
+- [#5366](https://github.com/kontourai/station/pull/5366) fix(ci): wait for Inbox swipe cancellation to render
+
+**Other**
+
+- [#5368](https://github.com/kontourai/station/pull/5368) perf(ui): defer Project work-item polling until Tasks is visible
+
+## 2026-11-21T15:46:50Z · nightly-android · 0.2.0-nightly.20261121.2
+
+- Ship SHA: `8975d30f8303673dbcabdab4c1b2161b27d8dff3`
+- Artifact built at: `2026-11-21T14:57:42.064Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 44916136501)
+
+### Changelog
+
+Commits since `a80f89f` ([full sha](https://github.com/kontourai/station/commit/a80f89fb67b5abcff11b933236365e6f473718fc)):
+
+**Fixes**
+
+- [#5370](https://github.com/kontourai/station/pull/5370) fix(claude): preserve authored text boundaries in sends and native history
+- [#5369](https://github.com/kontourai/station/pull/5369) fix(ui): show established chat history at full opacity on open
+- [#5367](https://github.com/kontourai/station/pull/5367) fix(ui): clear mobile dock touch targets
+- [#5366](https://github.com/kontourai/station/pull/5366) fix(ci): wait for Inbox swipe cancellation to render
+
+**Other**
+
+- [#5368](https://github.com/kontourai/station/pull/5368) perf(ui): defer Project work-item polling until Tasks is visible
+
+## 2026-11-21T14:58:55Z · nightly-npm · 0.12.0-nightly.20261121.44916136501
+
+- Ship SHA: `8975d30f8303673dbcabdab4c1b2161b27d8dff3`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261121.44916136501 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a80f89f` ([full sha](https://github.com/kontourai/station/commit/a80f89fb67b5abcff11b933236365e6f473718fc)):
+
+**Fixes**
+
+- [#5370](https://github.com/kontourai/station/pull/5370) fix(claude): preserve authored text boundaries in sends and native history
+- [#5369](https://github.com/kontourai/station/pull/5369) fix(ui): show established chat history at full opacity on open
+- [#5367](https://github.com/kontourai/station/pull/5367) fix(ui): clear mobile dock touch targets
+- [#5366](https://github.com/kontourai/station/pull/5366) fix(ci): wait for Inbox swipe cancellation to render
+
+**Other**
+
+- [#5368](https://github.com/kontourai/station/pull/5368) perf(ui): defer Project work-item polling until Tasks is visible
 
 ## 2026-11-21T08:20:06Z · nightly-desktop · 0.2.0-nightly.20261121.1
 
