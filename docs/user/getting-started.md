@@ -17,8 +17,8 @@ and keeping Station updated. To share a Project with someone, read the
    review a documentation change. Use no tools.” Choose **Start** to open a
    direct chat.
 4. Read the answer in the chat. If an approval or question appears, inspect
-   it before responding. When the answer has a **Basis** chip, open it to
-   inspect the recorded inputs behind that answer.
+   it before responding. To inspect the recorded inputs, choose **Basis** on the
+   answer. On a phone, open the answer’s **⋯** menu to find **Basis**.
 5. Keep talking in the same chat, create a Project for shared context, or
    track a deliverable in a Task. [Choose what fits](concepts.md#choose-a-project-task-or-direct-chat).
 
@@ -111,8 +111,8 @@ then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep
 their **Inspect output** action. Items that cannot be read show an unavailable
-state rather than an empty result. The answer's **Basis** chip still opens
-inspection scoped to that answer.
+state rather than an empty result. For a single answer, choose **Basis** from
+its footer on desktop or its **⋯** menu on a phone.
 
 To see how much of the model's context window a chat has used, read the meter
 beside Send under the message box, or choose **⋯** then **Conversation

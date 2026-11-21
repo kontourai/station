@@ -2754,8 +2754,9 @@ inventory when opening a child reader and derives delegate streaming state from
 the current Session's child-work facts.
 Chat opens engine children with a parent `session` and `child` selector;
 delegates use `childSession` for their own Session thread. `childTitle` labels
-the breadcrumb. These selectors choose a read-only child view and grant no
-additional authority. The pane consumes each child request once and retains
+the breadcrumb. These selectors identify the child transcript. Sending a child
+instruction separately requires current operation access, a writable parent,
+and a steer target reported for the child’s active turn. The pane consumes each child request once and retains
 an already-open parent Chat, including its draft, when the bound parent matches.
 A bound parent matches a child request when the request's reporting session
 belongs to that Chat by the Agents pane's rule (`threadInChat`), including an
