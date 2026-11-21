@@ -630,6 +630,7 @@ function ProjectOperatorPage({
             >
               <ProjectTasksSection
                 slug={slug}
+                active={destination === 'tasks'}
                 projectId={project.id}
                 projectWorkingDirectory={project.workingDirectory}
                 gitStatus={gitStatus}
