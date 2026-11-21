@@ -1,0 +1,7 @@
+{
+  "revision": "0c2f9e509f5b8d0b97828c5d75f1a9cfe6dc8a1c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared transcript caller and MessageBubble gate against the mounted desktop/mobile regression. Settled eligible work folds at both widths while open turns and anchored child cards retain their existing presentation.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

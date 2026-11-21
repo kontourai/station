@@ -101,44 +101,49 @@ function MessageContentComponent({
   onToolApproval,
   appTools,
 }: MessageContentProps & { appTools: ReadonlySet<string> }) {
+  const isMobile = useIsMobile();
   const browserScope = useBrowserActivityScope();
   const anchoredChildren = useTranscriptChildrenForCalls(
     contentParts?.flatMap((part) =>
       part.toolCallId ? [part.toolCallId] : [],
     ) ?? [],
   );
-  const keepChildAnchors = anchoredChildren.length > 0;
   // A call that spawned child work is drawn as that child's card, which
   // carries its status; its own row would only repeat the title.
-  const cardCallIds = new Set(
-    anchoredChildren.flatMap((child) =>
-      child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
-    ),
+  const cardCallIds = useMemo(
+    () =>
+      new Set(
+        anchoredChildren.flatMap((child) =>
+          child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
+        ),
+      ),
+    [anchoredChildren],
   );
+  const shouldFold =
+    foldWork && !browserScope && (isMobile || cardCallIds.size > 0);
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
       ? contentParts
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork && !keepChildAnchors && !browserScope
-      ? foldTurnWork(parts, appTools, showReasoning)
+    return shouldFold
+      ? foldTurnWork(parts, appTools, showReasoning, cardCallIds)
       : splitToolCallRuns(parts, appTools, showReasoning);
   }, [
     contentParts,
     textContent,
-    foldWork,
-    keepChildAnchors,
+    shouldFold,
+    cardCallIds,
     appTools,
     showReasoning,
-    browserScope,
   ]);
   const blocks = useTranscriptChildBlocks(
     browserScope ? splitBrowserActivityRuns(baseBlocks) : baseBlocks,
   );
   const uniqueResultIds = useMemo(() => {
     const unique = new Set<string>();
-    if (!pagedHistoryRowKey || foldWork) return unique;
+    if (!pagedHistoryRowKey || shouldFold) return unique;
     const seen = new Set<string>();
     for (const part of contentParts ?? []) {
       const id = part.sourceEventId;
@@ -148,7 +153,7 @@ function MessageContentComponent({
       seen.add(id);
     }
     return unique;
-  }, [contentParts, foldWork, pagedHistoryRowKey]);
+  }, [contentParts, shouldFold, pagedHistoryRowKey]);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -172,7 +177,6 @@ function MessageContentComponent({
     );
 
   const approvalsHeld = useContext(ApprovalsHeldContext);
-  const isMobile = useIsMobile();
   const renderToolCall = (part: MessageContentPart, index: number) => (
     <ToolCallDisplay
       key={index}

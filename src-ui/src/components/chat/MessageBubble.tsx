@@ -151,7 +151,7 @@ export interface MessageBubbleSession {
    * `ChatMessageList.statusShownElsewhere`. */
   activityShownElsewhere?: boolean;
   /**
-   * The phone transcript folds a SETTLED assistant row's tool work into one
+   * The transcript folds a settled assistant row's tool work into one
    * row (`MessageContent`'s `foldWork`). Only a caller that knows which row
    * is still the open turn sets this; without it no row folds.
    */
@@ -462,10 +462,7 @@ function MessageBubbleComponent({
   const providerSender =
     msg.sender?.kind === 'provider' ? msg.sender : undefined;
   const foldWork =
-    isMobile &&
-    isAssistant &&
-    activeSession.foldSettledWork === true &&
-    !rowIsLiveTurn;
+    isAssistant && activeSession.foldSettledWork === true && !rowIsLiveTurn;
   // The meta row's time is the turn's own terminal event time, read from the
   // turn's envelope: `msg.timestamp` can be a client-clock fill-in on some
   // load paths, and a historical row must never state one as its time.

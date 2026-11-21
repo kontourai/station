@@ -109,7 +109,7 @@ import {
 } from './engine-command-dispatch.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
-import { readString } from './opencode-native-events.js';
+import { openCodeMcpStatus, readString } from './opencode-native-events.js';
 import {
   type OpenCodeNativeMcp,
   openCodeMcpDigest,
@@ -927,6 +927,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     mcp: OpenCodeNativeMcp,
   ): Promise<void> {
     const failed: string[] = [];
+    const registered = new Set<string>();
     for (const server of mcp.servers) {
       try {
         await client.request(
@@ -934,18 +935,39 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           `/api/experimental/mcp/${encodeURIComponent(server.name)}`,
           { config: server.config },
         );
+        registered.add(server.name);
       } catch (error) {
         failed.push(
           `${server.name} (${error instanceof OpenCodeServeHttpError ? error.status : 'no answer'})`,
         );
       }
     }
+    const deadline = Date.now() + 2_000;
+    while (registered.size > 0 && Date.now() < deadline) {
+      try {
+        const answer = await client.request<{ data?: unknown }>(
+          'GET',
+          '/api/mcp',
+          undefined,
+          { timeoutMs: Math.max(1, deadline - Date.now()) },
+        );
+        for (const { name, state } of openCodeMcpStatus(answer?.data)) {
+          if (state === 'starting' || !registered.delete(name)) continue;
+          if (state !== 'ready') failed.push(`${name} (${state})`);
+        }
+      } catch {
+        break;
+      }
+      if (registered.size > 0) await sleep(100);
+    }
+    for (const name of registered)
+      failed.push(`${name} (readiness unconfirmed)`);
     const skipped = mcp.undelivered.map((entry) => entry.id ?? entry.reason);
     if (failed.length > 0 || skipped.length > 0)
       this.warn(
         threadId,
         'OPENCODE_TOOL_SERVERS_UNDELIVERED',
-        `Some tool servers were not given to OpenCode: ${[...failed, ...skipped].join(', ')}.`,
+        `Some tool servers could not be confirmed ready in OpenCode: ${[...failed, ...skipped].join(', ')}.`,
       );
   }
 
