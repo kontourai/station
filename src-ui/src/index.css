@@ -5834,6 +5834,21 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     --touch-target-min: 44px;
   }
 
+  /* End the scrollport at the collapsed bar so controls cannot paint under
+     Inbox while the route scrolls. The margin owns the existing reservation. */
+  .app__main:has(> .chat-dock.is-collapsed:not([data-keyboard-hidden]))
+    > .main-content
+    > .content-view {
+    margin-bottom: var(--dock-bottom-clearance);
+    padding-bottom: 0;
+    scroll-padding-bottom: 0;
+  }
+
+  /* The drawer and its backdrop own presses until navigation closes. */
+  .sidebar-backdrop ~ .app__main > .chat-dock.is-collapsed {
+    pointer-events: none;
+  }
+
   /* Mobile Safari zooms the whole page when an editable control below 16px
      receives focus. Keep browser/user pinch zoom enabled and prevent only
      that focus-triggered jump. Attribute/not selectors intentionally outrank
