@@ -97,6 +97,7 @@ import { TURN_ENGINE_DISPLAY_NAME_METADATA_KEY } from '@kontourai/station-contra
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
+import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
 import {
   delegatedApprovalDenial,
   type StagedPreToolPolicyEvaluator,
@@ -118,6 +119,7 @@ import {
   acpAdvertisedModelCatalog,
   findAcpModelConfigOption,
   parseAcpSessionModelState,
+  resolveAcpEngineVariant,
 } from '../../services/acp/acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
@@ -179,7 +181,10 @@ import {
   type UntrustedContentLedger,
   untrustedContentAncestry,
 } from '../../services/plugins/untrusted-content-policy.js';
-import { acpPersistenceTarget } from '../../services/plugins/untrusted-persistence-protection.js';
+import {
+  acpPersistenceTarget,
+  untrustedPersistenceTarget,
+} from '../../services/plugins/untrusted-persistence-protection.js';
 import {
   acpPassthroughSessions,
   acpResumeSessions,
@@ -289,6 +294,11 @@ import {
   readKiroOpenExternalUrl,
   readKiroUserInput,
 } from './acp-input-requests.js';
+import {
+  isKiroWorkspaceRead,
+  kiroPermissionRefusal,
+  readKiroPermission,
+} from './acp-kiro-permissions.js';
 import {
   type AcpToolServerSkip,
   type AcpToolServerSkipReason,
@@ -4859,7 +4869,27 @@ export class AcpAdapter implements ProviderAdapterShape {
     client.requestPermission = async (
       params: RequestPermissionRequest,
     ): Promise<RequestPermissionResponse> => {
-      const toolName = params.toolCall?.name;
+      const kas =
+        resolveAcpEngineVariant(record.process.initResult) === 'kiro-v3';
+      if (
+        kas &&
+        this.dropForeignFrame(record, params.sessionId, context.logger)
+      )
+        return { outcome: { outcome: 'cancelled' } };
+      const kiro = kas ? readKiroPermission(params) : undefined;
+      const toolName = kiro ? kiro.toolName : params.toolCall?.name;
+      const toolKind = params.toolCall?.kind ?? kiro?.kind;
+      const rawInput = params.toolCall?.rawInput ?? kiro?.args;
+      const cwd = record.session.cwd ?? context.cwd;
+      const answerOptions = kas
+        ? params.options.filter((option) => option.kind !== 'allow_always')
+        : params.options;
+      const decline = (reason: string): RequestPermissionResponse => {
+        const outcome = mapAcpDecisionToOutcome('decline', params.options);
+        return kas
+          ? kiroPermissionRefusal(outcome, params, reason)
+          : { outcome };
+      };
       // #2933: a tool-level grant (`tools.autoApprove`, matched by name)
       // covers plain calls to the tool, never a plan exit. ACP marks a mode
       // switch such as leaving plan mode with the `switch_mode` tool kind;
@@ -4878,7 +4908,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.approvalFloor === 'confined' &&
         isOpenCodeEditShaped(params.toolCall?.kind, params.toolCall?.rawInput);
       let needsPerson =
-        toolRequestNeedsPerson(toolName, params.toolCall?.kind) ||
+        kiro?.explicit === true ||
+        toolRequestNeedsPerson(toolName, toolKind) ||
         (governedEdit &&
           openCodeEditNeedsPerson(
             params.toolCall?.rawInput,
@@ -4889,9 +4920,22 @@ export class AcpAdapter implements ProviderAdapterShape {
       // contain git hook execution, #4860), read from the call's kind, locations
       // and input whether or not the agent named the tool (the name is
       // optional, and the staged evaluator below needs one).
-      const persistence = acpPersistenceTarget(params.toolCall ?? {});
+      const persistence = acpPersistenceTarget({
+        ...params.toolCall,
+        kind: kiro?.persistencePath ? kiro.kind : toolKind,
+        locations: [
+          ...(params.toolCall?.locations ?? []),
+          ...(kiro?.persistencePath
+            ? [{ path: resolve(cwd, kiro.persistencePath) }]
+            : []),
+        ],
+      });
+      const shellPersistence =
+        kiro?.kind === 'execute'
+          ? untrustedPersistenceTarget('shell', kiro.args)
+          : undefined;
       if (
-        persistence &&
+        (persistence || shellPersistence) &&
         (await (
           this.options.untrustedContentLedger ?? sharedUntrustedContentLedger
         ).conversationHasRead(
@@ -4901,14 +4945,30 @@ export class AcpAdapter implements ProviderAdapterShape {
           }),
         ))
       ) {
-        context.logger.warn?.(
-          'Untrusted-content persistence protection declined an ACP change',
-          { threadId: record.session.threadId, kind: params.toolCall?.kind },
-        );
-        return {
-          outcome: mapAcpDecisionToOutcome('decline', params.options),
-        };
+        if (persistence) {
+          context.logger.warn?.(
+            'Untrusted-content persistence protection declined an ACP change',
+            { threadId: record.session.threadId, kind: toolKind },
+          );
+          return decline(
+            'Station declined a change to an instruction or hook location after reading untrusted content.',
+          );
+        }
+        needsPerson = true;
       }
+      const workspaceRead =
+        kas &&
+        !needsPerson &&
+        (await isKiroWorkspaceRead(kiro?.workspaceRead, cwd));
+      let workspaceReadAllowed =
+        workspaceRead &&
+        !record.preToolPolicy &&
+        !!toolName &&
+        isDelegatedToolAllowed({
+          toolName: externalPreToolPolicyIdentity(toolName).delegationToolName,
+          delegation: record.delegation,
+          toolNameMapping: new Map(),
+        });
       let guardianReason: string | undefined;
       if (toolName && record.preToolPolicy) {
         const turnId = record.activeTurnId;
@@ -4917,7 +4977,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             toolName,
             toolCallId: params.toolCall.toolCallId,
             toolDescription: params.toolCall.title ?? undefined,
-            toolArgs: params.toolCall.rawInput,
+            toolArgs: rawInput,
           },
           {
             agentSlug: record.agent?.slug ?? 'unknown',
@@ -4926,6 +4986,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           },
           {
             interaction: 'external',
+            ...(workspaceRead ? { engineWorkspaceRead: true } : {}),
             // ACP names are reported by the external process. Keep the raw
             // name authoritative so reserved-name grants remain fail-closed.
             identity: externalPreToolPolicyIdentity(toolName),
@@ -4939,11 +5000,17 @@ export class AcpAdapter implements ProviderAdapterShape {
         // grant: the guardian reviews a tool call, not the plan a plan exit
         // asks a person to review.
         if (decision.behavior === 'allow' && !needsPerson) {
-          return {
-            outcome: mapAcpDecisionToOutcome('accept', params.options),
-          };
+          const outcome = mapAcpDecisionToOutcome('accept', answerOptions);
+          if (!kas || outcome.outcome !== 'cancelled') return { outcome };
         }
-        if (decision.behavior === 'allow' && !decision.toolGrant) {
+        workspaceReadAllowed =
+          workspaceRead &&
+          (decision.behavior === 'defer' || decision.behavior === 'allow');
+        if (
+          decision.behavior === 'allow' &&
+          needsPerson &&
+          !decision.toolGrant
+        ) {
           // The evaluator has already logged the guardian's allow; say here
           // that it did not decide the request. The guardian is still asked
           // about such a request: its enforce-mode deny must decline it.
@@ -4964,9 +5031,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           ) {
             record.staleToolPolicyTurnId = turnId;
           }
-          return {
-            outcome: mapAcpDecisionToOutcome('decline', params.options),
-          };
+          return decline(decision.denial.reason);
         }
         if (decision.behavior === 'ask' && decision.required) {
           needsPerson = true;
@@ -4983,13 +5048,17 @@ export class AcpAdapter implements ProviderAdapterShape {
           'self-reported',
         )
       ) {
-        return {
-          outcome: mapAcpDecisionToOutcome('accept', params.options),
-        };
+        const outcome = mapAcpDecisionToOutcome('accept', answerOptions);
+        if (!kas || outcome.outcome !== 'cancelled') return { outcome };
+      }
+
+      if (workspaceReadAllowed && !needsPerson) {
+        const outcome = mapAcpDecisionToOutcome('accept', answerOptions);
+        if (outcome.outcome !== 'cancelled') return { outcome };
       }
 
       if (governedEdit && !needsPerson && record.openCodeEditGrant) {
-        const granted = mapAcpDecisionToOutcome('accept', params.options);
+        const granted = mapAcpDecisionToOutcome('accept', answerOptions);
         if (granted.outcome !== 'cancelled') return { outcome: granted };
       }
 
@@ -5000,9 +5069,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       if (
         !needsPerson &&
         !record.delegation?.denyApprovals &&
-        acpApprovalModeAllows(record.approvalMode, params.toolCall?.kind)
+        acpApprovalModeAllows(record.approvalMode, toolKind)
       ) {
-        const once = params.options.find(
+        const once = answerOptions.find(
           (option) => option.kind === 'allow_once',
         );
         if (once)
@@ -5017,10 +5086,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // `cancelled` — fall through to the prompt rather than auto-cancel.
       // #2933: never for a plan exit, which a session grant cannot answer.
       if (toolName && !needsPerson && record.approvedTools.has(toolName)) {
-        const grantedOutcome = mapAcpDecisionToOutcome(
-          'accept',
-          params.options,
-        );
+        const grantedOutcome = mapAcpDecisionToOutcome('accept', answerOptions);
         if (grantedOutcome.outcome !== 'cancelled') {
           return { outcome: grantedOutcome };
         }
@@ -5033,15 +5099,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       // (a nameless request skips the evaluator). Nobody can answer the
       // child's request, so decline it fail-fast rather than wait.
       if (record.delegation?.denyApprovals) {
-        // Called for its toolDenials metric only: an ACP permission outcome
-        // has no reason channel, so the denial text reaches nobody.
-        delegatedApprovalDenial(
+        const { denial } = delegatedApprovalDenial(
           toolName ?? params.toolCall?.title ?? 'tool call',
           'external',
         );
-        return {
-          outcome: mapAcpDecisionToOutcome('decline', params.options),
-        };
+        return decline(denial.reason);
       }
 
       const requestId = crypto.randomUUID();
@@ -5063,34 +5125,43 @@ export class AcpAdapter implements ProviderAdapterShape {
           // `respondToRequest` records a session grant under, so the grant
           // button must be able to name it.
           ...(toolName ? { toolName } : {}),
-          rawInput: params.toolCall?.rawInput,
+          ...(kas && needsPerson ? { requiresUserInteraction: true } : {}),
+          rawInput,
           // The engine's ACP kind, so a card with no bound transcript row
           // still says whether it gates a command, an edit or a read.
           // #2933: surfaces also compute the session grant they offer from
           // it; a `switch_mode` kind offers none. Only a kind in the ACP
           // vocabulary is published: an unknown one is dropped, not coerced.
-          ...(engineToolKind(params.toolCall?.kind)
-            ? { toolKind: engineToolKind(params.toolCall?.kind) }
+          ...(engineToolKind(toolKind)
+            ? { toolKind: engineToolKind(toolKind) }
             : {}),
-          options: params.options,
+          options: answerOptions,
         },
       });
 
       const decision = await new Promise<AcpDecision>((resolve) => {
         record.pendingRequests.set(requestId, {
           resolve,
-          options: params.options,
+          options: answerOptions,
           ...(record.activeTurnId
             ? { openedInTurnId: record.activeTurnId }
             : {}),
           ...(toolName ? { toolName } : {}),
-          ...(needsPerson ? { needsPerson: true as const } : {}),
+          ...(needsPerson ||
+          (kas && !answerOptions.some(({ kind }) => kind === 'allow_once'))
+            ? { needsPerson: true as const }
+            : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
           ...(origin ? { origin } : {}),
         });
       });
 
-      return { outcome: mapAcpDecisionToOutcome(decision, params.options) };
+      return {
+        outcome: mapAcpDecisionToOutcome(
+          kas && decision === 'acceptForSession' ? 'accept' : decision,
+          answerOptions,
+        ),
+      };
     };
 
     return client;

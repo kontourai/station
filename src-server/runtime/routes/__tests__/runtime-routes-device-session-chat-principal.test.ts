@@ -751,6 +751,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ? {
             orchestrationService: deepStub({
               sessionQueries: orchestration!.sessionQueries,
+              readableEngineStartWaits:
+                orchestration!.readableEngineStartWaits.bind(orchestration),
               canUserReadSession:
                 orchestration!.canUserReadSession.bind(orchestration),
               ...(orchestrationExtras.extraOwners

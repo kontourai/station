@@ -299,6 +299,7 @@ import {
   skillOverlayDirFor,
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
+import { resolveClaudeStationDocs } from './claude-station-docs.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
 import {
   EngineWorkloadNotices,
@@ -841,6 +842,7 @@ type ClaudeSessionRecord = {
   stopWatchingWorkloadNotices?: () => void;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
+  stationDocs?: Awaited<ReturnType<typeof resolveClaudeStationDocs>>;
   mcpServers: Record<string, McpServerConfig>;
   tenantExecutionContext?: TenantExecutionContext;
   configuredMetadata?: Record<string, unknown>;
@@ -1956,7 +1958,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
-      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism))
+      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism)) {
+        const docs = resolveClaudeStationDocs(input);
+        const stationDocs = docs ? await docs : undefined;
+        if (docs) input.signal?.throwIfAborted();
         return this.startTrackedSession(
           sdk,
           input,
@@ -1973,7 +1978,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           undefined,
           oauthTokens,
           artifactsEnv,
+          stationDocs,
         );
+      }
       const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
         connectionEnv,
@@ -2666,6 +2673,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     seatbelt?: SeatbeltStart,
     oauthTokens?: ReadonlyMap<string, string>,
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
+    stationDocs?: ClaudeSessionRecord['stationDocs'],
   ): ProviderSession | Promise<ProviderSession> {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -2720,6 +2728,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input, oauthTokens);
+    if (stationDocs && toolServers.mcpServers?.[stationDocs.config.name]) {
+      toolServers.mcpServers[stationDocs.config.name] = stationDocs.config;
+    }
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const configHome = claudeSpawnConfigHome(
       appHomeEnv,
@@ -2803,6 +2814,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
+      if (stationDocs)
+        return stationDocs.close().then(() => {
+          throw error;
+        });
       throw error;
     }
 
@@ -2838,6 +2853,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
+      stationDocs,
       mcpServers: { ...toolServers.mcpServers, ...builtinServers },
       coordinatorControlGeneration: input.agent?.toolServers?.find(
         (server) =>
@@ -4040,7 +4056,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     record.stopping = true;
     this.endWorkloadNotices(record);
     record.promptQueue.close();
-    record.query.close();
+    try {
+      record.query.close();
+    } finally {
+      if (record.stationDocs) await record.stationDocs.close();
+    }
     await record.engineProcess?.terminate();
     record.confinementCleanup?.();
     this.options.nativeSessionOwnership?.retired(threadId);
@@ -5693,6 +5713,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       await this.consumeMessagesInner(record);
     } finally {
+      if (record.stationDocs) await record.stationDocs.close();
       record.streamEnded = true;
       // An exit nobody asked for, with no failure published for it yet: the
       // stream ended (or was closed) without saying why. Its children settle

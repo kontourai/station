@@ -1,0 +1,61 @@
+{
+  "revision": "55a871598666fd7fdeebd1a07b33ab38992e422f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced Claude start and stream teardown through the new Station Docs owner and the existing resolver and park paths. The catalog stays SDK-local while handlers call the verified stdio subprocess. Existing native identity admission, wakeups, and managed permissions retain their owners.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the Claude PreToolUse, canUseTool, and SDK config paths after the docs transport selection. The loader uses the approved existing entry, registers the original tool names and schemas, and introduces no permission rule or token. Authored or restricted tool settings keep their current route.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed Claude start, idle and stream cleanup under the existing Agent, Session and engine identities. The docs helper belongs to a provider session and uses a host-generation snapshot. It does not establish a new Agent or control plane.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked the original capability matrix and synthetic Station specification against the implementation delta. The docs transport is chosen after the same secret-boundary resolution. Agent identity, supported engines and tool grant construction keep their meaning.","inputs":["docs/design/agent-engine-unification.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Traced session capability selection and Claude SDK registration. The credential-free Station Docs facade does not participate in Browser and Computer authority, foreign MCP discovery, or the approval broker.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked Claude connection/env/executable setup and ready binding before the docs selection. The verified helper uses the serving runtime executable and empty child environment. First-run selection and credential-profile ownership keep their existing callers.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Traced the runtime-owned stdio identity overlay and static catalog imports. The identity annotation stays private to the loaded definition and publishes no new integration metadata, resource capability, iframe route or grant.","inputs":["docs/design/mcp-ui-host.md","src-server/domain/config-loader.ts","src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked registered docs identity handling against contributed integration lookup in ConfigLoader. Binding eligibility is recorded on the registered runtime projection. Contributed definitions still use the existing lookup and trust-overlay path.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/domain/config-loader.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked the integration load and trust-projection callers. The private docs marker is assigned after a registered runtime identity overlay and is independent of registry trust, signature acceptance and persistent policy publication.","inputs":["docs/design/registry-trust-policy.md","src-server/domain/config-loader.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the canonical Station Agent and exact docs binding against authored profile settings. The new delivery consumes the already admitted docs tool server. Custom, disabled and restricted selections use the existing policy and delivery.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/session-agent-resolution.ts","src-server/services/plugins/tool-library-catalog.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the optional docs helper against the Claude connection setup and same-session engine path. It adds no credential or connection requirement, and verification failure at resolution keeps stdio delivery.","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked the two build outputs. The docs entry now builds once and its emitted byte digest is embedded in the core. The artifact name, source map and executable mode are preserved. This source review does not certify an installed candidate.","inputs":["docs/guides/desktop-build.md","esbuild.config.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Checked source development, normal boot and teardown through the Claude adapter. Source execution without build metadata retains stdio. The new per-session helper has no effect on Station instance setup and login-link delivery.","inputs":["docs/guides/development.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked ConfigLoader persistence and the tool catalog read path. The private docs-delivery binding is neither persisted nor applied to contributed servers, and the catalog still returns the existing three published descriptions.","inputs":["docs/guides/plugins.md","src-server/domain/config-loader.ts","src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked the serving-bundle stamp and release provenance boundary. The digest comes from this build of station-docs.js. It authenticates the internal snapshot only and leaves the release manifest, signatures and channel promotion protocol untouched.","inputs":["docs/guides/release-rings.md","esbuild.config.mjs"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the docs catalog and exact Station Agent delivery against the control and approval paths. The same shipped descriptions and calls remain available and the snapshot carries no credential or write capability.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed start and end logic through the Claude adapter and the same native Session identity. Lazy docs initialization is independent of Starter Work placement, capability selection and continuation authority.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the docs bundle regression and its existing process-resource classification. The test exercises the real verified child, checks incorrect initial bytes and a retained snapshot, and uses the same focused runner.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Checked the canonical docs marker in the built-in runtime identity projection. Plugin integration manifests and the contributed-definition loader remain on their existing paths.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the tool catalog and route imports following the descriptor split. Tool identities and public presentation do not change. A listed tool still does not establish a successful runtime call.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked ConfigLoader built-in identity projection and catalog/list routes. The in-memory docs binding is absent from public ToolDef and API payloads. Published catalog names, descriptions and values come from the shared descriptors.","inputs":["docs/reference/api.md","src-server/domain/config-loader.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/tool-library-catalog.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the build-time digest against the environment contract. The compiler derives the value directly from the shipped entry and writes it into the core. No environment override is added. The docs subprocess receives an empty environment.","inputs":["docs/reference/env-vars.md","esbuild.config.mjs"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced normal Claude start/stop and stream exit handling. The per-session docs owner retires its child through an exit fence. No API field, conversation history identity, cursor schema or dispatch receipt changed.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the macOS canonical Claude delivery, compiled entry digest, source snapshot, read-only reconnect, shutdown, idle retirement and initial stdio fallback against the build, resolver, adapter and real bundle test. Availability and capability caveats for other engines remain accurate.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/session-agent-resolution.ts","src-server/tools/__tests__/station-docs-mcp-server.test.ts","src-server/tools/station-docs-content.ts","src-server/tools/station-docs-mcp-server.ts","esbuild.config.mjs","src-server/providers/adapters/claude-station-docs.ts","src-server/tools/station-docs-binding.ts","src-server/tools/station-docs-tools.ts","src-server/tools/__tests__/station-docs-bundle.test.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the catalog import change against Board tool-library reads. The same descriptors remain available and the new process policy belongs only to eligible Claude Sessions.","inputs":["docs/user/personal-boards.md","src-server/services/plugins/tool-library-catalog.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked the route catalog import against MCP Apps resource, tool render and iframe paths. The static Station Docs descriptors carry the same fields. The demo integration remains on its configured transport.","inputs":["examples/mcp-ui-demo/README.md","src-server/routes/agents/tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the existing control and documentation channels through the Claude resolver. The docs facade supplies the same read-only results and conveys no Station-control authority.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the documented child-process classification against the extended docs bundle test. The existing resource class covers both esbuild and the private stdio helper.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

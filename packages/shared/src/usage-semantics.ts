@@ -65,6 +65,9 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // Muse serve emits the usage of each model call, not its wire cumulative
     // field (MuseServeSession.onTokenUsage; captured session/tokenUsage frames).
     ['muse', 'per-turn'],
+    // The Copilot SDK engine emits each model call's `assistant.usage`
+    // (`CopilotSdkEventTranslator`), never a running total, so events sum.
+    ['copilot-sdk', 'per-turn'],
     // The attached OpenCode source sums the `step-finish` usage of one turn's
     // assistant messages and emits it once, when that turn closes
     // (`opencode-session-source.ts`), so each event is that turn's figure.

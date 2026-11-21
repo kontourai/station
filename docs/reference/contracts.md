@@ -64,6 +64,16 @@ incoming claims, and uses it only to retain bounded App envelopes in history
 windows. It grants no resource or execution authority. Older readers ignore the
 field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
+### Turn admission policy
+
+`TurnStartedEvent.resourceAdmissionIntent` records an explicit Station engine-start policy
+separately from `dispatchOrigin` source attribution. Station replaces an
+adapter-supplied policy when correlating the accepted send. Recovery reads the
+recorded policy and the source turn/submission identifiers; these fields do not
+become client input or grant execution authority. Older turns without the field
+retain origin-based fallback, while an unrecognized present policy fails closed
+to background admission.
+
 ### Delegated execution ownership
 
 `AgentDelegationContext.parentSessionId` identifies the initiating execution
@@ -810,6 +820,16 @@ response identity. A match emits server-owned `nativeResumeIdentity: matched`
 metadata. A queued prompt, requested cursor, or process start does not establish
 a match. An exact-resume identity mismatch stops that activation; it does not
 silently claim a fresh thread has continued the original one.
+`ProviderContinuityCapabilities.recoveryBinding: 'required'` is an adapter
+opt-in for an adapter that refuses a resume without its recorded binding (the
+Copilot SDK engine). For it alone, restart recovery
+(`startRecoveredOrchestrationSession`) and a credential retry that keeps its
+credential profile pass the key the session's start recorded on
+`session.started` as `ProviderSessionStartInput.nativeResumeBindingKey`. A
+retry that moves to another profile passes none, since the profile is part of
+the binding. Adapters without the opt-in (Claude, Codex) keep their own resume
+rules, because their recorded key can change legitimately: another engine
+home, a deliberate profile switch, or a key an older build computed.
 `nativeReturn: 'same-binding'` additionally permits an explicit Agent handoff
 back to an earlier native thread in this Conversation. Station requires the
 same Agent, Environment, connection, working directory and opaque configuration
@@ -1128,6 +1148,7 @@ non-retryable.
 | `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
+| `feature_preview_disabled` | `unavailable` | `true` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
 | `managed-policy-capability-disabled` | `permission_denied` | `false` |
 | `managed-policy-remote-clients` | `permission_denied` | `false` |
@@ -1164,6 +1185,7 @@ non-retryable.
 | `provider_turn_in_progress` | `busy` | `true` |
 | `provider-plan-quota-exhausted` | `quota_exhausted` | `false` |
 | `resource_engine_start_capacity` | `busy` | `true` |
+| `resource_engine_start_cancelled` | `cancelled` | `false` |
 | `session_ended` | `session_gone` | `false` |
 | `session_recovery_failed` | `unavailable` | `true` |
 | `session_start_in_flight` | `busy` | `true` |

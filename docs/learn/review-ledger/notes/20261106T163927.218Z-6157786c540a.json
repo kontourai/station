@@ -1,0 +1,9 @@
+{
+  "revision": "e1ae9dfe0f90b80012736205f384c16739735d1e",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the final mobile-chat-composer fixture delta: fixed-width 390/1440 first-start Stop journeys render both themes, retain before-wait/waiting PNGs and model the actual HTTP 400 cancellation refusal. All three focused browser journeys passed on f9ea4205bead. The manifest owner and fixture-versus-live-provider evidence boundaries remain accurate; no broader E2E or physical-device claim is added.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed five explicit empty pending-start projections added to the legacy SSE replay fixtures after the connected-agent diagnostic caught seven closed-stream assertion failures. The 157-test route suite now passes, including initial/live, hosted, filtered and resume ordering behavior. This fixture repair changes no smoke/provider qualification, ownership, recycle or retained-artifact contract described here; no live-provider result is claimed.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"]}
+  ]
+}

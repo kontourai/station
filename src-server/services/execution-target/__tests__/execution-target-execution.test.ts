@@ -1308,6 +1308,7 @@ describe('executeForegroundMessage', () => {
           environmentId: 'environment-kontour',
         }),
       }),
+      { pendingStartClientTurnId: 'client-turn-1' },
     );
     expect(deps.sendTurn).toHaveBeenCalledWith(
       expect.anything(),

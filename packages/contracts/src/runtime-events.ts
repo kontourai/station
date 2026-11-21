@@ -100,6 +100,13 @@ export const SERVER_EVENTS = {
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
   /**
+   * #4568: a person's engine start began or stopped waiting for the one
+   * engine-start slot. Non-durable; the wire frame is
+   * `OrchestrationEngineStartWaitFrame`, relayed only to readers its
+   * producer authorizes.
+   */
+  ORCHESTRATION_ENGINE_START_WAIT_CHANGED: 'orchestration:engine-start-wait',
+  /**
    * A Project's plugin draft built a new revision (epic #2323 S3). Payload is
    * `{ projectSlug, draftId, generation }`. Deliberately NOT under the
    * `plugins:` namespace: that namespace is gated by installed-plugin
@@ -230,6 +237,9 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',
+  // #4568: names the thread a person is starting; readable only by that
+  // start's owner (or the Session's readers once one exists).
+  [SERVER_EVENTS.ORCHESTRATION_ENGINE_START_WAIT_CHANGED]: 'scoped',
   // #2067: these six were 'broadcast', which in the SSE relay means relayed
   // to EVERY listener unconditionally. Each payload names a plugin, so a
   // collaborator who merely held the stream open watched the instance's
@@ -497,6 +507,29 @@ export function turnDispatchOrigin(event: {
     : 'unknown';
 }
 
+/** Admission policy recorded separately from the source actor's attribution. */
+export const ENGINE_START_ADMISSION_INTENTS = [
+  'interactive_user',
+  'queued_background',
+  'delegated_background',
+  'webhook',
+  'recovery',
+] as const;
+export type EngineStartAdmissionIntent =
+  (typeof ENGINE_START_ADMISSION_INTENTS)[number];
+
+export function turnResourceAdmissionIntent(event: {
+  resourceAdmissionIntent?: unknown;
+}): EngineStartAdmissionIntent | undefined {
+  if (event.resourceAdmissionIntent === undefined) return undefined;
+  return typeof event.resourceAdmissionIntent === 'string' &&
+    (ENGINE_START_ADMISSION_INTENTS as readonly string[]).includes(
+      event.resourceAdmissionIntent,
+    )
+    ? (event.resourceAdmissionIntent as EngineStartAdmissionIntent)
+    : 'queued_background';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -519,6 +552,8 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * `unknown`.
    */
   dispatchOrigin?: TurnDispatchOrigin;
+  /** Server-owned admission policy; adapter/client values are replaced at dispatch. */
+  resourceAdmissionIntent?: EngineStartAdmissionIntent;
   /**
    * #4827: the turn's `prompt` is not text the sender typed. `mcp-prompt`:
    * the server-verified expansion of an MCP prompt (a slash command the

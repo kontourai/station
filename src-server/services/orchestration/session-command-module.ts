@@ -223,6 +223,8 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /** Accepted foreground submission key, supplied by server composition only. */
+  pendingStartClientTurnId?: string;
   /**
    * A person's own interactive chat, derived by the `/chat` route
    * (`ForegroundMessageInput.personChatStart`). Never accepted from a body.

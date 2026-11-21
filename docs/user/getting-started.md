@@ -492,7 +492,9 @@ New Chat does not run it.
 
 For a credential-free first path, use a supported local model service and then
 return to Connections. Startup can register detected Claude Code, Codex, and
-Muse engines and their default Agents. An engine you explicitly removed is
+Muse engines and their default Agents; with the `copilot-sdk-engine` Feature
+Preview on, it also registers GitHub Copilot (SDK) when `copilot` is on `PATH`,
+from the next start. An engine you explicitly removed is
 not automatically added again. Registration does not prove that the engine is
 signed in or ready. The discovery screen also offers other local suggestions
 that you can choose to configure. The

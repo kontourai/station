@@ -708,7 +708,7 @@ for (const { name, label, transport } of registrations) {
       });
     }
 
-    if (name === 'bedrock' || name === 'ollama') {
+    if (name === 'bedrock' || name === 'ollama' || name === 'copilot-sdk') {
       exempt(
         name,
         'EXEMPT declared image-input — adapter does not declare image-input; session-lifecycle is exercised by the shared lifecycle check',

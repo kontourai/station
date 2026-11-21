@@ -102,6 +102,8 @@ export type StagedPreToolPolicyEvaluator = (
      * an untrusted-content ask is not raised. Refusals still apply.
      */
     fullAccess?: boolean;
+    /** The adapter can answer a proved workspace read after Station's policy checks. */
+    engineWorkspaceRead?: true;
   },
 ) => Promise<PreToolPolicyDecision>;
 
@@ -813,6 +815,9 @@ export function createStagedPreToolPolicyEvaluator(
         return { behavior: 'allow' };
       }
     }
+
+    if (options.interaction === 'external' && options.engineWorkspaceRead)
+      return { behavior: 'defer' };
 
     if (invocation.delegation?.denyApprovals) {
       deps.logger.warn('Delegated child agent denied approval-bound tool', {

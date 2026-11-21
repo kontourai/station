@@ -348,7 +348,15 @@
 
     "src-ui/src/lib/composerForegroundDispatch.ts",
 
-    "src-ui/src/hooks/useSwipeActions.ts"
+    "src-ui/src/hooks/useSwipeActions.ts",
+
+    "src-ui/src/hooks/orchestration/engineStartWaits.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
   ],
 
   "checks": [

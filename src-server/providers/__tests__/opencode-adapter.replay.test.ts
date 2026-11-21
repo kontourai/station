@@ -1606,6 +1606,23 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(h.leaser.acquired).toHaveLength(2);
   });
 
+  test('cancelling a governed preflight releases its retained serve lease', async () => {
+    const h = await setup({ scenario: 'basic' });
+    const cancel = new AbortController();
+    await h.adapter.preflightStart({
+      threadId: 'thread-1',
+      provider: 'opencode',
+      cwd: '/replay/proj',
+      metadata: { connectionId: 'opencode' },
+      modelOptions: { approvalMode: 'ask' },
+      signal: cancel.signal,
+    });
+    expect(h.leaser.acquired).toHaveLength(1);
+    cancel.abort();
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+  });
+
   test('a governed start sends Station rules and pins a governed agent', async () => {
     const h = await setup({ scenario: 'basic' });
     await h.adapter.preflightStart({

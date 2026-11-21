@@ -1220,8 +1220,8 @@ text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
 The mode picker defaults to **Queue** for every engine. Station holds a
 follow-up for the next turn when the current one is still running. A chosen
-mode holds until the conversation changes. Claude Code, Codex and Muse on
-`muse serve` have additive steering. A Muse Session on `muse exec` reports no
+mode holds until the conversation changes. Claude Code, Codex, Muse on `muse serve` and the GitHub Copilot (SDK)
+preview engine have additive steering. A Muse Session on `muse exec` reports no
 steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
 cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
@@ -1233,7 +1233,7 @@ take new steering input. The next turn runs confined (#2898).
 Station-owned steering waits durably for the next post-tool boundary in the
 turn Station accepted. If the turn ends first, the pending row explains why
 Steer was refused. Its wording says **Steer when safe**.
-Claude and Codex retain engine-defined native placement. The composer reads the
+Claude, Codex and the GitHub Copilot (SDK) preview engine retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
 provider names. While the Session projection is pending, the mode picker and
@@ -1359,6 +1359,28 @@ does not forward it. Station therefore reports **No progress from OpenCode for
 establishes a retry. New text, reasoning, tool progress and terminal events clear
 transient waiting/retry status; raw logs and engine error payloads are not chat
 activity labels.
+
+A person's first start, cold follow-up or credential-profile restart may
+wait behind another engine start for up to 60 seconds (#4568). The dock shows
+**Waiting for another engine to start** while the send is in flight. Existing
+Sessions carry `engineStartWait` on their summaries. For a first start with
+no Session yet, the authorized orchestration stream carries the wait and its
+server-owned pending-start identity. That identity permits Stop without
+inventing a Session record, including after admission while preparation is
+still pending. Stop before the provider call prevents the engine from starting.
+The badge clears on admission, cancellation, timeout or failure. Reconnection
+and replacement snapshots replace transient status with the current owned
+starts. A timeout returns the usual "Another engine is already starting"
+refusal. An automatic send keeps the immediate refusal and shows no wait.
+Disconnecting a `/chat` request does not cancel a send Station has accepted.
+
+Targeted Stop carries the pending submission's own key or the recovery source's
+recorded turn/key. A delayed Stop for another invocation cannot be retargeted by
+thread identity alone. Before the adapter call, Stop retires owned preparation
+even if a workspace or receiver check never returns; a late completion cannot
+launch the engine. After adapter invocation, the existing provider outcome and
+indeterminate-delivery rules still apply. A credential restart waits for
+admission before it tears down the current provider process.
 
 ### Return on this device
 

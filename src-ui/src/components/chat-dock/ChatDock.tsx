@@ -2717,6 +2717,27 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setImportedSessionId(null);
     requestNewChat();
   }, [requestNewChat, setImportedSessionId]);
+  const [visibleNewChatEpoch, setVisibleNewChatEpoch] = useState<number>();
+  const openNewChatFromDesktopInbox = useCallback(() => {
+    // A warm child focuses on mount, before the dock's reveal effect.
+    if (
+      isPaneOpen &&
+      !isMobile &&
+      !importedSessionId &&
+      !isChildReaderOpen &&
+      !newChatDraftOpen.current
+    ) {
+      setVisibleNewChatEpoch(newChatRequestEpoch + 1);
+    }
+    openNewChatDirect();
+  }, [
+    isPaneOpen,
+    isMobile,
+    importedSessionId,
+    isChildReaderOpen,
+    newChatRequestEpoch,
+    openNewChatDirect,
+  ]);
   const openConversationInScopedPane = useCallback(
     (
       conversationId: string,
@@ -4558,7 +4579,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               onAcknowledgeConversation:
                                 acknowledgeTaskConversation,
                               onOpenHistory: openInboxHistory,
-                              onNewChat: openNewChatDirect,
+                              onNewChat: openNewChatFromDesktopInbox,
                               sync: inboxSync,
                               agentsLoaded,
                               onOpenFailed: showInboxOpenFailure,
@@ -4624,6 +4645,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               <LazyBoundary
                                 key={newChatRequestEpoch}
                                 load={loadDockStartComposer}
+                                shareAcrossMounts={
+                                  visibleNewChatEpoch === newChatRequestEpoch
+                                }
                                 componentProps={{
                                   agents: forkEligibleAgents,
                                   projects:

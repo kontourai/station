@@ -104,6 +104,10 @@ describe('dispatch-scope contract dependencies (#3335)', () => {
 describe('Nightly regressions outside the import graph', () => {
   test.each([
     [
+      'packages/contracts/src/engine-capability-matrix.ts',
+      'src-server/providers/__tests__/engine-durability-profile.test.ts',
+    ],
+    [
       'tests/gallery-screen-sources.json',
       'scripts/__tests__/gallery-screen-coverage.test.ts',
     ],
