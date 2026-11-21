@@ -475,6 +475,11 @@ red within a day of a close reopens it without a comment. Replaying
 Qualification health from 66 to 20, Nightly from 40 to 20); opening is
 never delayed.
 
+Known gap: the failure and success jobs of one workflow share a concurrency
+group, so a newer queued job replaces an older pending one. A failure that is
+followed by a success before it could be reported is not reported, when no
+tracker exists yet.
+
 A cancelled run is attributed from its jobs' annotations. Only a person's
 cancel ("The run was canceled by @…") and a run superseded in its concurrency
 group ("Canceling since a higher priority waiting request for … exists") write
@@ -510,10 +515,9 @@ the label could not be checked.
 
 `scripts/__tests__/scheduled-failure-reporting.test.ts` refuses a scheduled
 workflow that is neither watched nor on its justified allowlist: `Main:
-Qualification` (its repair episode and health trackers report it) and `Repo:
-Duplicate sweep`, which breaks the rule as written: its scheduled output has
-no reader, so its cron is being removed rather than reported. An allowlist
-entry for a workflow that is gone or no longer scheduled fails the test.
+Qualification`, whose repair episode and health trackers report it. An
+allowlist entry for a workflow that is gone or no longer scheduled fails the
+test.
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
@@ -542,7 +546,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (classifier-filtered: UI-only landings); manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
-| [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | UTC schedule: `7 */6 * * *`, over the range since the last green smoke (smoke skipped when nothing container-relevant landed); manual dispatch; GitHub-hosted. |
+| [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
 | [`delivery-validation.yml`](../../.github/workflows/delivery-validation.yml) | — | **Delivery validation** | selected after PR core checks; all families after scheduled full qualification. |
@@ -560,7 +564,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Qualification health`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: Backlog policy`, `Repo: Dated TODO sweep`, `Repo: Starved PR report`, `Nightly: Fresh-home walkthrough`, `Nightly: iOS Rust cache`, `Main: Seatbelt kernel legs`, filtered to runs on `main`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Qualification health`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: Backlog policy`, `Repo: Dated TODO sweep`, `Repo: Starved PR report`, `Repo: Duplicate sweep`, `Nightly: Fresh-home walkthrough`, `Nightly: iOS Rust cache`, `Main: Seatbelt kernel legs`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |

@@ -1,18 +1,9 @@
 name: "Main: Container smoke"
 
-# A cadence, not a per-landing run: on a GitHub-hosted runner one smoke per
-# container-relevant landing (~26 a day at 20-30 minutes) would hold one of
-# the account's 20 job slots all day. Each scheduled run classifies the whole
-# range since the last run whose smoke passed and skips when nothing
-# container-relevant landed in it. The cadence lane's landing-driven decide
-# step should replace this cron once it exists: GitHub delivers this
-# repository's schedules sparsely (about 4-5 of 24 hourly firings a day), so
-# a six-hour cron runs roughly two or three times a day. Main: Health reports
-# a red or cancelled run and a schedule that stops firing.
 on:
-  schedule:
-    - cron: '7 */6 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -20,15 +11,10 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Classifies the range since the last green smoke with one node script,
-    # so a range of docs-only landings skips the smoke job.
+    # Classify the full diff so docs-only pushes skip the smoke job.
     runs-on: ubuntu-22.04
     if: ${{ github.event_name != 'pull_request' }}
     timeout-minutes: 10
-    # Reads this workflow's own run and job history to find that range.
-    permissions:
-      contents: read
-      actions: read
     outputs:
       container: ${{ steps.classify.outputs.container }}
     steps:
@@ -41,39 +27,30 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - id: range
-        name: Find the last commit a smoke passed on
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/container-smoke-range.mjs
-
       - id: classify
-        name: Classify the complete range since the last green smoke
+        name: Classify the complete before..sha diff
         env:
-          BEFORE: ${{ steps.range.outputs.before }}
+          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
           AFTER: ${{ github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
   smoke:
     needs: classify
     if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.container == 'true')
-    # Never cancel a running smoke: its verdict covers every landing since
-    # the last green one. The group keeps at most one pending run; Main:
-    # Health ignores a run superseded in this group.
+    # Never cancel a running smoke: the job takes 20+ minutes and the merge
+    # queue lands a non-docs entry every ~18, so cancelling on push meant
+    # only the last commit of a burst ever got a verdict (17 cancelled main
+    # runs on 2026-09-01 alone, each the only run for its commit, including
+    # the first two carrying the #917 fix).
+    # Without cancel the group still keeps at most one pending run, so the
+    # latest main is verified next; main-health ignores `cancelled` runs.
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: false
-    # GitHub-hosted (#5350): the VM owns its Docker daemon, and there is no
-    # shared desktop-win host capacity to reserve.
+    # The VM owns its Docker daemon for this job. There is no shared
+    # desktop-win host capacity to reserve.
     runs-on: ubuntu-24.04
-    # Not yet measured hosted. The smoke job took 8-15 minutes on the fleet
-    # host (six passing runs on 2026-10-01, e.g. run 36850091547 at 15 min)
-    # with a warm Docker cache and installed browsers; a hosted runner builds
-    # the image cold and installs dependencies and Chromium, so 20-30 minutes
-    # is the estimate. 45 leaves half again for a slow pull without letting a
-    # hang hold a slot for long; set it from the first hosted runs. A timeout
-    # is a timed_out run, which Main: Health reports.
-    timeout-minutes: 45
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,14 +65,6 @@ jobs:
           umask 077
           docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
           echo "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
-      - name: Report runner capacity
-        # Disk is the hosted runner's tightest resource for an image build;
-        # print it so a disk-full failure is diagnosable from the log alone.
-        run: |
-          echo "SMOKE_T_START=$(date +%s)" >> "$GITHUB_ENV"
-          df -h / "$RUNNER_TEMP"
-          docker version --format 'docker {{.Server.Version}}'
-          docker compose version
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -103,56 +72,19 @@ jobs:
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with: { install: false }
 
-      - name: Install dependencies
-        run: |
-          echo "SMOKE_T_DEPENDENCIES=$(date +%s)" >> "$GITHUB_ENV"
-          npm run dependencies:ci
+      - run: npm run dependencies:ci
       - name: Install repo-pinned Chromium
         run: |
-          echo "SMOKE_T_CHROMIUM=$(date +%s)" >> "$GITHUB_ENV"
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install --with-deps chromium
       - name: Build, pair, persist, and clean up
         env:
           STATION_RELEASE_SHA: ${{ github.sha }}
           STATION_RELEASE_REF: v0.0.0-rc.1
-        run: |
-          echo "SMOKE_T_SMOKE=$(date +%s)" >> "$GITHUB_ENV"
-          scripts/container-smoke.sh
+          STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
+        run: scripts/container-smoke.sh
       - name: Verify public-ingress protocol and port isolation
-        run: |
-          echo "SMOKE_T_INGRESS=$(date +%s)" >> "$GITHUB_ENV"
-          node deploy/public-ingress/smoke.mjs
-      # Hosted run time is not yet measured: every run, green or red, writes
-      # how long each phase took against the 45-minute job bound, so the
-      # first hosted runs say whether the bound is right.
-      - name: Record phase timings
-        if: always()
-        env:
-          SMOKE_BOUND_MINUTES: "45"
-        run: |
-          now=$(date +%s)
-          phase() {
-            if [ -z "$2" ]; then printf '| %s | not reached |\n' "$1"; return; fi
-            end=${3:-$now}
-            printf '| %s | %dm %02ds |\n' "$1" $(( (end - $2) / 60 )) $(( (end - $2) % 60 ))
-          }
-          {
-            echo '### Container smoke phase timings'
-            echo
-            echo '| Phase | Duration |'
-            echo '| --- | --- |'
-            phase 'Checkout and setup' "$SMOKE_T_START" "${SMOKE_T_DEPENDENCIES:-$now}"
-            phase 'Install dependencies' "$SMOKE_T_DEPENDENCIES" "${SMOKE_T_CHROMIUM:-$now}"
-            phase 'Install Chromium' "$SMOKE_T_CHROMIUM" "${SMOKE_T_SMOKE:-$now}"
-            phase 'Build, pair, persist, clean up' "$SMOKE_T_SMOKE" "${SMOKE_T_INGRESS:-$now}"
-            phase 'Public-ingress smoke' "$SMOKE_T_INGRESS" "$now"
-            echo
-            if [ -n "$SMOKE_T_START" ]; then
-              total=$(( now - SMOKE_T_START ))
-              printf 'Total %dm %02ds of the %s-minute bound (%d%%).\n' $(( total / 60 )) $(( total % 60 )) "$SMOKE_BOUND_MINUTES" $(( total * 100 / (SMOKE_BOUND_MINUTES * 60) ))
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: node deploy/public-ingress/smoke.mjs
       # A red smoke with no trace or screenshot is undiagnosable from logs
       # alone (#917's investigation had zero artifacts to read).
       - name: Upload Playwright results on failure

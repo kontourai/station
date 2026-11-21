@@ -1180,9 +1180,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
   'scripts/__tests__/release-advisory-gate.test.ts',
-  // Runs container-smoke.yml's phase-timing bash step as a single-shot child
-  // process against a temporary step summary. No wall-clock assertion.
-  'scripts/__tests__/container-smoke-range.test.ts',
   // #2783: runs release-artifacts.mjs assemble and validate as real child
   // processes with release.yml's arguments. Single-shot spawns, no wall-clock
   // assertion.

@@ -40,13 +40,9 @@ const HOUR = 3_600_000;
  * Scheduled workflows that report through something other than main-health,
  * each with the reason. A new scheduled workflow fails this suite until it is
  * watched by main-health or added here, and an entry for a workflow that is
- * gone or no longer scheduled fails it too, so the list cannot rot. The
- * duplicate-sweep entry goes when the branch dropping that workflow's cron
- * lands.
+ * gone or no longer scheduled fails it too, so the list cannot rot.
  */
 const REPORTED_ELSEWHERE: Record<string, string> = {
-  '.github/workflows/pr-duplicate-sweep.yml':
-    'audit verdict remove: scheduled runs never pass --apply, so their only output is a log line nobody reads (latest sampled run: "no superseded candidates"); reporting its failures would page for a job with no consumer',
   '.github/workflows/main-qualification.yml':
     'qualification-repair.yml opens the "Main qualification repair" episode issue for a red run and qualification-health.yml files "Main qualification health" for staleness; both belong to the qualification cadence owner',
 };
@@ -782,6 +778,37 @@ describe('scheduled workflow failure reporting', () => {
     expect(fake.issues[0].state).toBe('open');
   });
 
+  it('closes before it comments: a failed close leaves no closing comment on an open tracker', async () => {
+    const fake = fakeGithub();
+    fake.setRun(RED_SWEEP);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      { only: REPORT },
+    );
+    expect(fake.issues[0].state).toBe('open');
+    const commentsBefore = fake.issues[0].comments.length;
+
+    fake.setRun(GREEN_SWEEP);
+    fake.interleave.beforeUpdate = async () => {
+      throw Object.assign(new Error('HTTP 502'), { status: 502 });
+    };
+    await expect(
+      runMainHealth(
+        fake,
+        workflowRunEvent('Repo: Dated TODO sweep', 'success'),
+        { only: REPORT },
+      ),
+    ).rejects.toThrow(/HTTP 502/);
+    expect(fake.issues[0].state).toBe('open');
+    expect(fake.issues[0].comments).toHaveLength(commentsBefore);
+    expect(
+      fake.issues[0].comments.some((comment) =>
+        comment.body.includes('Closed after a successful run'),
+      ),
+    ).toBe(false);
+  });
+
   it('keeps one tracker per workflow', async () => {
     const fake = fakeGithub();
     fake.setRun(RED_SWEEP);
@@ -1269,6 +1296,18 @@ describe('scheduled workflows that stop running', () => {
     );
   });
 
+  it('watches the duplicate sweep, whose six-hourly cron gets the 20 h tolerance', () => {
+    const sweep = readWatchedSchedules(root.href).find(
+      ({ name }) => name === 'Repo: Duplicate sweep',
+    );
+    expect(sweep?.file).toBe('pr-duplicate-sweep.yml');
+    expect(sweep?.crons).toEqual(['27 */6 * * *']);
+    expect(overdueLimitMs(cronIntervalMs(sweep?.crons ?? []))).toBe(20 * HOUR);
+    expect(Object.keys(REPORTED_ELSEWHERE)).not.toContain(
+      '.github/workflows/pr-duplicate-sweep.yml',
+    );
+  });
+
   it('derives the interval from cron and tolerates the measured sparsity', () => {
     expect(cronIntervalMs(['47 * * * *'])).toBe(HOUR);
     expect(cronIntervalMs(['23 2,8,14,20 * * *'])).toBe(6 * HOUR);
@@ -1365,11 +1404,11 @@ describe('scheduled workflows that stop running', () => {
   });
 
   it('gives a cron that just landed one full tolerance, and ignores edits that leave the cron alone', async () => {
-    // Container smoke's file dates from 2026-08-27 but its cron lands now:
+    // The duplicate sweep's file predates its cron change but its cron lands now:
     // the first Main: Health run after landing must not call it never-run.
     const now = Date.parse('2026-11-16T12:00:00Z');
     const current = readFileSync(
-      new URL('.github/workflows/container-smoke.yml', root),
+      new URL('.github/workflows/pr-duplicate-sweep.yml', root),
       'utf8',
     );
     const withoutCron = current.replace(
@@ -1394,7 +1433,7 @@ describe('scheduled workflows that stop running', () => {
           { sha: 'c2', date: hoursAgo(21), text: current },
           { sha: 'c1', date: hoursAgo(2000), text: withoutCron },
         ],
-        expected: ['Main pipeline red: Main: Container smoke'],
+        expected: ['Main pipeline red: Repo: Duplicate sweep'],
       },
       {
         // A comment edit an hour ago must not postpone a 21-hour-old cron.
@@ -1404,7 +1443,7 @@ describe('scheduled workflows that stop running', () => {
           { sha: 'c2', date: hoursAgo(21), text: current },
           { sha: 'c1', date: hoursAgo(2000), text: withoutCron },
         ],
-        expected: ['Main pipeline red: Main: Container smoke'],
+        expected: ['Main pipeline red: Repo: Duplicate sweep'],
       },
     ];
     for (const { name, history, expected } of cases) {
@@ -1416,8 +1455,8 @@ describe('scheduled workflows that stop running', () => {
           status: 'completed',
           conclusion: 'success',
         };
-      fake.scheduledRuns['container-smoke.yml'] = null;
-      fake.fileHistory['container-smoke.yml'] = history;
+      fake.scheduledRuns['pr-duplicate-sweep.yml'] = null;
+      fake.fileHistory['pr-duplicate-sweep.yml'] = history;
       await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
         only: ['overdue-schedules'],
         now,

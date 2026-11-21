@@ -29,14 +29,14 @@ on:
       # Every other scheduled workflow, so a red scheduled run always opens a
       # tracker. scripts/__tests__/scheduled-failure-reporting.test.ts refuses
       # a scheduled workflow that is neither watched here nor on its justified
-      # allowlist (the duplicate sweep is on it: its scheduled output is a
-      # log line nobody reads). The backlog policy left this list in #2314
+      # allowlist. The backlog policy left this list in #2314
       # because it was red by construction on every issue event; it is now a
       # daily audit that fails only on label drift or an unreadable backlog.
       # None of these has a conditional job, so a green run closes its tracker.
       - "Repo: Backlog policy"
       - "Repo: Dated TODO sweep"
       - "Repo: Starved PR report"
+      - "Repo: Duplicate sweep"
       - "Nightly: Fresh-home walkthrough"
       # Its path-filtered main push runs report too: a main push that fails to
       # warm the cache is the same red as the scheduled run.
@@ -362,6 +362,14 @@ jobs:
               core.info(`main-health: ${title} stays open: a red run on main within the last day.`);
               return;
             }
+            // Close first: a failed close must not leave a "closed" comment on an
+            // open issue. A comment that fails after the close fails the job.
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: 'closed',
+            });
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -373,12 +381,6 @@ jobs:
                 `Run: ${runUrl}`,
                 `Head SHA: ${headSha}`,
               ].join('\n'),
-            });
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: existing.number,
-              state: 'closed',
             });
 
   # "The scheduled run never happened" is a failure too. Every Main: Health
@@ -467,8 +469,8 @@ jobs:
               // a red one belongs to the failure reporter, which runs in
               // another concurrency group and may be rewriting this tracker.
               if (tracker?.state === 'open' && isOverdueBody(tracker.body) && last?.status === 'completed' && last?.conclusion === 'success') {
-                await github.rest.issues.createComment({ ...context.repo, issue_number: tracker.number, body: `Ran on its schedule again at ${last?.created_at}: ${last?.html_url}` });
                 await github.rest.issues.update({ ...context.repo, issue_number: tracker.number, state: 'closed' });
+                await github.rest.issues.createComment({ ...context.repo, issue_number: tracker.number, body: `Ran on its schedule again at ${last?.created_at}: ${last?.html_url}` });
               }
              } catch (error) {
               const message = error instanceof Error ? error.message : String(error);

@@ -416,6 +416,7 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/dated-todo-sweep.yml',
       '.github/workflows/starved-pr-report.yml',
+      '.github/workflows/pr-duplicate-sweep.yml',
       '.github/workflows/fresh-home-walkthrough.yml',
       '.github/workflows/ios-rust-cache-warm.yml',
       // Push-only, path-filtered; its main push run is the only Seatbelt run.
@@ -1089,6 +1090,8 @@ describe('CI verification workflow contracts', () => {
         'publishes released packages from merged main; nothing to pre-verify',
       '.github/workflows/source-availability.yml':
         'reports on merged main and files issues; observational, not a build',
+      '.github/workflows/container-smoke.yml':
+        'exercises the built container on classified main pushes or manual dispatch; PR checks cover container release wiring',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
@@ -1124,12 +1127,9 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const containerSmoke = workflow('container-smoke.yml');
 
-    expect(ci).toContain('push:');
-    expect(ci).toContain('branches: [main]');
-    // Container smoke is a cadence over the range since its last green smoke
-    // (container-smoke-range.test.ts), not a per-push run.
-    expect(containerSmoke).not.toMatch(/^ {2}push:/m);
     for (const source of [ci, containerSmoke]) {
+      expect(source).toContain('push:');
+      expect(source).toContain('branches: [main]');
       expect(source).not.toContain('paths-ignore:');
       expect(source).toContain('Exact full-diff classification');
       expect(source).toContain('fetch-depth: 0');
@@ -1155,9 +1155,8 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
-    // A running smoke covers every landing since the last green one; the
-    // group still collapses pending runs, so only the in-progress verdict is
-    // preserved.
+    // A 20-minute smoke must outlive the next queue merge; the group still
+    // collapses pending runs, so only the in-progress verdict is preserved.
     const containerSmokeJob = containerSmoke.slice(
       containerSmoke.indexOf('  smoke:'),
     );
@@ -1271,9 +1270,7 @@ describe('CI verification workflow contracts', () => {
     };
     const smoke = document.jobs.smoke;
     expect(smoke['runs-on']).toBe('ubuntu-24.04');
-    // 45, not #5350's 80: the run is a six-hour cadence and its phase
-    // timings land in the job summary (container-smoke-range.test.ts).
-    expect(smoke['timeout-minutes']).toBe(45);
+    expect(smoke['timeout-minutes']).toBe(80);
     expect(smoke['continue-on-error']).toBeUndefined();
     expect(smoke.steps).toEqual(
       expect.arrayContaining([
@@ -1286,11 +1283,9 @@ describe('CI verification workflow contracts', () => {
             'playwright install --with-deps chromium',
           ),
         }),
+        expect.objectContaining({ run: 'scripts/container-smoke.sh' }),
         expect.objectContaining({
-          run: expect.stringContaining('scripts/container-smoke.sh'),
-        }),
-        expect.objectContaining({
-          run: expect.stringContaining('node deploy/public-ingress/smoke.mjs'),
+          run: 'node deploy/public-ingress/smoke.mjs',
         }),
       ]),
     );
@@ -2823,8 +2818,6 @@ describe('CI verification workflow contracts', () => {
       // exact-pixel baseline needs a renderer pinned by digest.
       'nightly-gallery.yml',
       'gallery-pr-check.yml',
-      // Its heavy-host listener went offline; hosted since.
-      'container-smoke.yml',
     ];
     for (const name of linuxWorkflows) {
       const source = workflow(name);
@@ -3221,14 +3214,9 @@ describe('CI verification workflow contracts', () => {
     }
     expect(ci.triggers).toContain('merge_group');
     expect(ci.job.if).toContain("github.event_name != 'merge_group'");
-    // Neither copy runs on merge_group now. They differ only in where the
-    // range starts: ci.yml's push `before`, container smoke's last green
-    // smoke (a cadence run has no push `before`).
-    expect(smoke.step.env?.AFTER).toEqual(ci.step.env?.AFTER);
-    expect(smoke.step.env?.BEFORE).toBe(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      '${{ steps.range.outputs.before }}',
-    );
+    // Neither copy runs on merge_group now, so their event handling is the
+    // same too.
+    expect(ci.step.env).toEqual(smoke.step.env);
 
     // The guards that read as dead code and are not. Neither workflow
     // declares the event its job-level `if` excludes; the guard is what keeps
