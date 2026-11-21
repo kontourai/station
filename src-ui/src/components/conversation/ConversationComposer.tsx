@@ -19,7 +19,7 @@ export function ConversationComposer(
         {props.activity}
       </div>
       <span className="chat-controls-row__spacer" />
-      {props.turnInFlight && (
+      {props.turnInFlight && !props.stopInActivity && (
         <ConversationStopControl
           onCancel={props.onCancel}
           stopPending={props.stopPending}

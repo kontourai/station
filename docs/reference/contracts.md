@@ -2197,7 +2197,7 @@ and the [inventory projection](../../src-server/services/orchestration/conversat
 
 Child-work items may expose `controls.steer.turnId` only for a running child
 with a bounded valid turn identity; settlement or a missing snapshot removes the
-steer control. The distinct `steerChildWork` command carries the parent Session,
+steer control. Optional `controls.steer.images` advertises image input for that child turn. The distinct `steerChildWork` command carries the parent Session,
 child, turn, input and required client input ID. `ChildWorkInstructionPage`
 contains Station-owned instructions and their delivery states, separately from
 the provider transcript. The optional `childWorkSteering` host flag advertises

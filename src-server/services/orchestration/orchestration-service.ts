@@ -9987,6 +9987,7 @@ export class OrchestrationService {
        */
       principal?: PrincipalRef;
       requestCurrent?: () => boolean;
+      resolveChildImages?: () => import('@kontourai/station-contracts/chat-attachment').ChatAttachmentInput[];
       /** Station #90 lane D (R1): see `SessionCommandContext.ownerAttribution`. */
       ownerAttribution?: StartOwnerAttribution;
       /** #2493: see `SessionCommandContext.fullAccessGrant`. */
@@ -11829,12 +11830,18 @@ export class OrchestrationService {
         }
         case 'steerChildWork': {
           const store = this.options.eventStore;
+          const richInput =
+            typeof command.input === 'string' ? undefined : command.input;
           const input = {
             threadId: command.threadId,
             childId: command.childId,
             turnId: command.turnId,
             clientInputId: command.clientInputId,
-            input: command.input,
+            input:
+              typeof command.input === 'string'
+                ? command.input
+                : command.input.text,
+            ...(richInput ? { attachmentRefs: richInput.attachmentRefs } : {}),
           };
           const uncertain: SteerChildWorkResult = {
             outcome: 'indeterminate',
@@ -11943,7 +11950,10 @@ export class OrchestrationService {
               adapters: this.options.adapterRegistry.list(),
             }));
           this.assertAdapterCurrent(adapter);
-          if (!adapter.steerChildWork) {
+          if (
+            !adapter.steerChildWork ||
+            (richInput && !adapter.childSteerImages)
+          ) {
             this.persistReceipt(receipt);
             return {
               receipt,
@@ -11970,6 +11980,30 @@ export class OrchestrationService {
                 threadId: command.threadId,
               } as SteerChildWorkResult,
             };
+          }
+          let images:
+            | ReturnType<NonNullable<typeof context.resolveChildImages>>
+            | undefined;
+          if (richInput) {
+            try {
+              images = context.resolveChildImages?.();
+            } catch {
+              images = undefined;
+            }
+            if (
+              !images?.length ||
+              images.length !== richInput.attachmentRefs.length ||
+              images.some((image) => image.kind !== 'image')
+            ) {
+              this.persistReceipt(receipt);
+              return {
+                receipt,
+                result: {
+                  outcome: 'attachments-unavailable',
+                  threadId: command.threadId,
+                } as SteerChildWorkResult,
+              };
+            }
           }
           if (
             !store.claimChildSteerInput(input, {
@@ -12033,7 +12067,8 @@ export class OrchestrationService {
                 command.threadId,
                 command.childId,
                 command.turnId,
-                command.input,
+                input.input,
+                ...(images ? [images] : []),
               ),
               new Promise<never>((_, reject) => {
                 timeout = setTimeout(

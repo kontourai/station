@@ -1105,6 +1105,7 @@ function MessageBubbleComponent({
           <div className="message-details__lead">{renderList(sheetStart)}</div>
           <div className="message-details__actions">{renderList(sheetEnd)}</div>
         </div>
+        {basisChip}
         {sheetAfter}
       </MessageDetails>
     ) : null;
@@ -1142,7 +1143,6 @@ function MessageBubbleComponent({
   // the user's bubble keeps its controls beside it.
   const mobileDetails = isAssistant ? (
     <div className="message-meta">
-      {basisChip}
       {inlineCopy}
       {inlineBranch}
       {details}

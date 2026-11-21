@@ -110,6 +110,42 @@ const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set([
   'childWork',
 ]);
 
+export function CompactStatusExplanation({
+  status,
+  reasonId,
+}: {
+  status: WorkStatus;
+  reasonId: string;
+}) {
+  return (
+    <>
+      {status.reason && (
+        <span
+          id={reasonId}
+          className="sr-only"
+          data-testid={REASON_TEST_IDS[status.rung]}
+          title={status.reason}
+        >
+          {status.reason}
+        </span>
+      )}
+      {status.detail && (
+        <span
+          className={
+            REASON_RUNGS.has(status.rung)
+              ? 'inbox-row__touch-reason'
+              : 'sr-only'
+          }
+          data-testid={DETAIL_TEST_IDS[status.rung]}
+          title={status.detail}
+        >
+          {status.detail}
+        </span>
+      )}
+    </>
+  );
+}
+
 /**
  * The row's single status line: icon, word, then whatever the ladder says
  * the word is about, then a ticking duration while a turn is open.

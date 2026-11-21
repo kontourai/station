@@ -17,8 +17,8 @@ and keeping Station updated. To share a Project with someone, read the
    review a documentation change. Use no tools.” Choose **Start** to open a
    direct chat.
 4. Read the answer in the chat. If an approval or question appears, inspect
-   it before responding. When the answer has a **Basis** chip, open it to
-   inspect the recorded inputs behind that answer.
+   it before responding. To inspect the recorded inputs, choose **Basis** on the
+   answer. On a phone, open the answer’s **⋯** menu to find **Basis**.
 5. Keep talking in the same chat, create a Project for shared context, or
    track a deliverable in a Task. [Choose what fits](concepts.md#choose-a-project-task-or-direct-chat).
 
@@ -111,8 +111,8 @@ then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep
 their **Inspect output** action. Items that cannot be read show an unavailable
-state rather than an empty result. The answer's **Basis** chip still opens
-inspection scoped to that answer.
+state rather than an empty result. For a single answer, choose **Basis** from
+its footer on desktop or its **⋯** menu on a phone.
 
 To see how much of the model's context window a chat has used, read the meter
 beside Send under the message box, or choose **⋯** then **Conversation
@@ -722,7 +722,7 @@ as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and the phone header's compose icon open the same composer.
+**⌘T**, and the floating button in the phone Inbox open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -816,18 +816,15 @@ directly from the collapsed bar. The menu drawer lists places and Projects.
 The chat bar's Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapse
-and reopen restore the last view. Use the compose icon at the right of the
-chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
+and reopen restore the last view. Use the floating **New chat** button in Inbox, the compose icon in the collapsed bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
-a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
-management remains in the chat actions menu. **Projects** has the same add control
+a chip in the dock header. The app header keeps connection health, the drawer, and the Station switcher above the dock in full screen. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
 On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
-Project **Tasks** list. Release when the ring fills. The actions menu offers
-the same refresh. A floating status pill shows what’s refreshing.
+Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in Inbox actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
@@ -849,8 +846,7 @@ chats from a side dock, open **More dock actions** and choose **Open chat…**.
 The picker opens over the current dock placement.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
-details. With **Sheet gestures preview** enabled in Settings → Advanced →
+from inbox**. On mobile, hold a conversation or choose **Select conversations** from Inbox actions. Choose **Details** for one selected row to open its actions. The bottom tray shows which actions apply to the selection. Use **Filter inbox** for Station, Project and status. On narrow phones, Search and Filter are in Inbox actions. With **Sheet gestures preview** enabled in Settings → Advanced →
 Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Dismiss** hides the conversation.
@@ -1092,7 +1088,7 @@ on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-You can attach files or dictate during a turn. Steer carries text only, so a
+You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot
 hold files yet, they wait in the draft, which says why, until you send it after
@@ -1316,8 +1312,11 @@ then its tool calls and answers. The title becomes **Parent chat / Subagent**;
 choose an ancestor to return to that chat without losing its draft or reading
 position. Escape returns one level. On a phone, the title names the subagent;
 use the back button or swipe from the left edge. The reader opens on the
-latest messages; earlier ones load as you scroll up. Engine transcripts are
-read only and refresh while running.
+latest messages; earlier ones load as you scroll up. A running child that
+accepts instructions has a message composer. When its active turn accepts
+images, use the paperclip or paste a screenshot, then choose **Send**.
+You can send an image on its own. Other child transcripts stay readable and
+refresh while running.
 
 If a tool result has no recorded text, the reader says **Text output unavailable.**
 This does not mean the tool produced no output.

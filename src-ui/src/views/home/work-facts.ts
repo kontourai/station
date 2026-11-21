@@ -77,6 +77,7 @@ export interface WorkFacts {
   runRootId?: string;
   station?: { id: string; label: string };
   attention?: WorkAttentionKind;
+  attentionStartedAt?: number;
   activity?: WorkActivity;
   ownedWorkState?: NonNullable<
     OrchestrationSessionSummary['ownedWork']
@@ -273,6 +274,13 @@ export function buildWorkFacts({
     )
       entry.engineOpenedTurn = true;
     if (item.lifecycleLabel === 'Needs attention') {
+      if (
+        session?.lifecycleState === 'needs_input' &&
+        session.lifecycleChangedAt
+      ) {
+        const start = Date.parse(session.lifecycleChangedAt);
+        if (Number.isFinite(start)) entry.attentionStartedAt = start;
+      }
       const attention = moreUrgentAttention(
         moreUrgentAttention(
           session && orchestrationLifecycleLabel(session) === 'Needs attention'

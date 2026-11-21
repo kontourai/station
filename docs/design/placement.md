@@ -176,7 +176,7 @@ every other route. These rules make it a region rather than a special case
   - **The page is seen, not covered.** A page open — a landing in `main`
     through `showSurface` or the model's open, which both go through `commit`
     in `RegionModelContext` — restores any maximized dock region on every
-    device: a maximized dock owns the whole phone viewport,
+    device: a maximized dock fills the phone workspace below its app toolbar,
     and on a desktop a maximized side region hides `.main-content` while a
     maximized bottom region takes its row. The dock stays open beside or
     below the page, and the reader's maximize memory (`lastDockMaximized`,

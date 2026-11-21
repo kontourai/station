@@ -274,9 +274,7 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 person's Comfortable or Compact choice sets only the base text tokens and
 never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
 The embedded mobile Inbox uses two-line titles, project artwork and engine
-marks, short status labels, and a separate recency timestamp. Search opens
-from its icon without opening the keyboard on Inbox entry. The dock header
-owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
+marks, short status labels, and an elapsed, scheduled or recency time. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position. While reading a
 chat, **Inbox** in Chat actions opens the same list. **Browse all conversations**
@@ -327,7 +325,7 @@ Stations are under **More ways to connect**. Native capability and coarse-pointe
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
-The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
+The collapsed mobile dock’s **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled
 states. The relay UX screenshot harness omits the real dock and uses stubbed
@@ -340,7 +338,7 @@ keep their own motion. The global reduced-motion reset still applies. Source
 rules describe the treatment; browser checks at narrow widths, both themes,
 long content and short heights establish whether controls remain reachable.
 
-The status pill's entry, body morph and details entrance use backwards fill in
+Expanded activity opens in a popup anchored above the composer so the transcript cannot clip child links or Cancel. The anchored popup appears at its measured position. The status pill’s entry, body morph and in-place details entrance use backwards fill in
 [their stylesheet](../../src-ui/src/components/status/live-status.css). Their
 final frame matches the resting opacity and transform, so completed effects
 release instead of retaining an animated stacking context. Exit and celebration
@@ -549,15 +547,17 @@ checks remain necessary.
 
 A chat on a phone is full screen, as in a messaging app: opening one from
 Home, the Inbox, the drawer or a started draft maximizes the dock. The half
-height is a deliberate peek. The open dock's bar carries a 44px **Full screen
-chat** / **Restore chat size** control beside its leading control, so both
-states are one tap. With no chat yet, the bar offers New chat and the
-Inbox title, not a pressed **Back to chat** or Chat actions.
+height is a deliberate peek. The app toolbar keeps the drawer and Station switcher
+above the dock at every height. The trailing extent button switches between
+full and half height. The collapsed bar opens Inbox or starts a new chat.
+In Inbox, the down arrow collapses the dock. In chat, Back returns to Inbox
+or, when reading a subagent, to its parent.
 
-The drawer lists places and Projects. The chat bar's **Inbox** remains the
-conversation list; the drawer does not duplicate it with Recent chats.
-The collapsed chat bar offers **Full screen chat** directly in its leading
-button slot, preserving the one-row layout and 44px target at narrow widths.
+Inbox floats **New chat** above the list. In an open chat it lives in the
+chat actions menu. At narrow widths the Inbox menu also holds Search and
+Filter. Filters combine Station, Project and status. Hold a conversation or
+choose **Select conversations** to select rows. The tray offers Snooze,
+Settle and Dismiss according to the selected rows’ eligibility.
 
 The answer's **⋯** sheet lists the answer's actions itself (Provenance,
 Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose

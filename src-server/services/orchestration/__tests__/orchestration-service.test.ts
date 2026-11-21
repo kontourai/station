@@ -23521,20 +23521,26 @@ describe('OrchestrationService', () => {
 
   async function runScriptedSmoke(
     input: Parameters<OrchestrationService['runConnectionSmoke']>[0],
+    advanceAfter: 'turn.completed' | 'turn.started' = 'turn.completed',
   ) {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
-    const terminal = deferred<void>();
+    const published = deferred<void>();
     const unsubscribe = eventBus.subscribe((frame) => {
       if (frame.event !== 'orchestration:event') return;
       const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
-      if (event?.method === 'turn.completed' && event.threadId.startsWith(`station-smoke-${input.provider}-`))
-        terminal.resolve();
+      if (
+        event?.method === advanceAfter &&
+        event.threadId.startsWith(`station-smoke-${input.provider}-`)
+      ) {
+        published.resolve();
+      }
     });
     try {
       const result = service.runConnectionSmoke(input);
-      // Advance the smoke's poll after the fixture's terminal is published.
-      await Promise.race([terminal.promise, result]);
-      await vi.advanceTimersByTimeAsync(100);
+      await Promise.race([published.promise, result]);
+      await vi.advanceTimersByTimeAsync(
+        advanceAfter === 'turn.started' ? input.timeoutMs : 100,
+      );
       return await result;
     } finally {
       unsubscribe();
@@ -24120,13 +24126,16 @@ describe('OrchestrationService', () => {
       });
       return { threadId: input.threadId, turnId: 'silent-smoke-turn' };
     });
-    const result = await service.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+    const result = await runScriptedSmoke(
+      {
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 20,
+      },
+      'turn.started',
+    );
 
     expect(result).toMatchObject({ ok: false, reasonCode: 'timeout' });
     expect(claude.sessions.size).toBe(0);

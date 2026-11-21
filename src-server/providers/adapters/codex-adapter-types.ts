@@ -251,6 +251,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * #2458: this session's Codex subagents as child work
    * (`codex-adapter-child-work.ts`). Created on first use.
    */
+  childModelAcceptsImages?: (modelId: string | undefined) => boolean;
   childWork?: CodexChildWorkState;
   /**
    * The absolute `CODEX_HOME` this session's app-server was spawned under,

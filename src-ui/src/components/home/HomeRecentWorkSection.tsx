@@ -3,6 +3,7 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useProjectNames } from '../../hooks/useProjectNames';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -162,6 +163,7 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
         <h2 id="recent-work-heading">Recent work</h2>
         {props.refresh && (
           <ListRefreshActions
+            direct
             label="Recent work actions"
             refreshLabel="Refresh recent work"
             refresh={props.refresh}
@@ -262,6 +264,7 @@ function HomeWorkContent({
   // The same row facts the dock's inbox reads, from the same derivations.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
+  const projectNames = useProjectNames();
   const projectIconBySlug = useProjectIcons();
   if (workLoading && !workDegraded) {
     return (
@@ -300,6 +303,7 @@ function HomeWorkContent({
         gitLocationByThreadId,
         projectAccentBySlug,
         projectIconBySlug,
+        projectNames,
       }}
       onOpen={onOpen}
     />

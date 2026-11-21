@@ -460,9 +460,10 @@ for (const layout of ['desktop', 'mobile'] as const) {
       let view = mount(layout, async () => true);
       const user = userEvent.setup();
       if (layout === 'mobile') {
-        await user.click(
-          screen.getByRole('button', { name: 'Details for First selection' }),
+        fireEvent.contextMenu(
+          screen.getByRole('button', { name: /^First selection\b/ }),
         );
+        await user.click(screen.getByRole('button', { name: 'Details' }));
         await user.click(await screen.findByRole('button', { name: '1 hour' }));
       } else {
         await user.click(
@@ -474,9 +475,10 @@ for (const layout of ['desktop', 'mobile'] as const) {
       expect(readSnoozes(NOW, 'principal-b')).toEqual({});
       await user.click(screen.getByRole('button', { name: 'Snoozed · 1' }));
       if (layout === 'mobile') {
-        await user.click(
-          screen.getByRole('button', { name: 'Details for First selection' }),
+        fireEvent.contextMenu(
+          screen.getByRole('button', { name: /^First selection\b/ }),
         );
+        await user.click(screen.getByRole('button', { name: 'Details' }));
         await user.click(
           await screen.findByRole('button', { name: 'Unsnooze' }),
         );
@@ -486,9 +488,10 @@ for (const layout of ['desktop', 'mobile'] as const) {
         );
       expect(readSnoozes(NOW, 'principal-a')).toEqual({});
       if (layout === 'mobile') {
-        await user.click(
-          screen.getByRole('button', { name: 'Details for First selection' }),
+        fireEvent.contextMenu(
+          screen.getByRole('button', { name: /^First selection\b/ }),
         );
+        await user.click(screen.getByRole('button', { name: 'Details' }));
         await user.click(
           await screen.findByRole('button', { name: 'Dismiss from inbox' }),
         );

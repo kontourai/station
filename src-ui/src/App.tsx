@@ -526,12 +526,8 @@ function App({
     (displayCurrentView.type !== 'layout' ||
       (!selectedLayoutUnknown && !isChatWorkspaceLayout));
   /**
-   * A full-screen mobile dock owns the whole viewport (archive#4460: any
-   * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
-   * chrome for the docked case, and the shared `DockShell` behaves
-   * identically regardless of occupant). A project layout owns the visible
-   * view instead, even while a persisted dock snap is being restored on
-   * navigation.
+   * A maximized dock owns the workspace below the toolbar. Layouts that
+   * occupy the workspace themselves do not acquire the ambient dock state.
    */
   const isAmbientMobileDockFullscreen =
     !isPanePopOut &&

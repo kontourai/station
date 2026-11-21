@@ -178,6 +178,15 @@ export function useInboxDismissActions(
     }
   };
   return {
+    async dismissSelected(item: HomeWorkItem) {
+      if (currentNamespace.current !== namespace)
+        throw new Error('Station changed');
+      const target = hostTarget(item);
+      if (target) {
+        if (!workState.hide.mutateAsync) throw new Error('Hide unavailable');
+        await workState.hide.mutateAsync({ sessionId: target, hidden: true });
+      } else dismissInboxItem(item, facts?.get(item.id), namespace);
+    },
     dismiss: (item: HomeWorkItem) => {
       const target = hostTarget(item);
       if (target) {

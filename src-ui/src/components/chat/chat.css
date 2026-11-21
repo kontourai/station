@@ -3502,7 +3502,12 @@
   }
 
   .chat-input__activity:not(
-    :has(.chat-status-pill, .chat-scroll-to-bottom, .agent-schedule-notes)
+    :has(
+      .chat-status-pill,
+      .chat-scroll-to-bottom,
+      .agent-schedule-notes,
+      .chat-check-backs
+    )
   ) {
     display: none;
   }
@@ -3510,7 +3515,9 @@
   /* In a dock too short for the transcript the Scroll to bottom button is not
      shown (see data-composer-priority), so it cannot hold this row open. */
   .chat-dock__body[data-composer-priority]
-    .chat-input__activity:not(:has(.chat-status-pill, .agent-schedule-notes)) {
+    .chat-input__activity:not(
+      :has(.chat-status-pill, .agent-schedule-notes, .chat-check-backs)
+    ) {
     display: none;
   }
 
@@ -3694,6 +3701,8 @@ div.chat-input
     .chat-input__next-turn-notice,
     .chat-input__composer-notice,
     .chat-status-pill,
+    .agent-schedule-notes,
+    .chat-check-backs,
     .chat-scroll-to-bottom
   )
 ) {

@@ -165,6 +165,7 @@ export function ActionOverflowMenu({
   status,
   label,
   inlineSingle = false,
+  disabled = false,
   triggerClassName = 'action-overflow__trigger',
   triggerText,
   triggerGlyph,
@@ -208,6 +209,8 @@ export function ActionOverflowMenu({
    * inlined third is exactly the row #3045 removes.
    */
   inlineSingle?: boolean;
+  /** The command group is unavailable for the current selection. */
+  disabled?: boolean;
   /** The `⋯` trigger's class. The dock passes its own 28px bar control. */
   triggerClassName?: string;
   /**
@@ -230,6 +233,7 @@ export function ActionOverflowMenu({
   reserveGlyphColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  if (disabled && open) setOpen(false);
   const openRef = useRef(open);
   openRef.current = open;
   const coarse = useCoarsePointer();
@@ -401,7 +405,7 @@ export function ActionOverflowMenu({
       open: () => {
         const trigger = ownRef.current;
         // The same two branches the render below takes without a menu.
-        if (!trigger || actions.length === 0) return false;
+        if (disabled || !trigger || actions.length === 0) return false;
         if (inlineSingle && actions.length === 1) return false;
         // An open, not a toggle: one hold can ask twice (the platform's own
         // long-press `contextmenu` after the hold timer), and focusing the
@@ -414,7 +418,7 @@ export function ActionOverflowMenu({
         return true;
       },
     }),
-    [actions.length, inlineSingle],
+    [actions.length, inlineSingle, disabled],
   );
 
   if (actions.length === 0) return null;
@@ -443,7 +447,7 @@ export function ActionOverflowMenu({
         ref={setTrigger}
         type="button"
         className="chat-dock__more-inline"
-        disabled={only.disabled}
+        disabled={disabled || only.disabled}
         // Everything the row would have carried in the menu carries here: a row
         // that opens a surface of its own still says so, a toggle still reports
         // its state, and live work behind it is still visible. Folding a command
@@ -498,6 +502,7 @@ export function ActionOverflowMenu({
         // `aria-hidden` (it is a glyph for the same fact), so without this a
         // screen reader would hear no difference between an idle dock and one
         // with three background tasks running.
+        disabled={disabled}
         aria-label={triggerName}
         title={triggerName}
         aria-haspopup="menu"

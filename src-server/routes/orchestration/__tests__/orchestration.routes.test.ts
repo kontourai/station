@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { vi as vitestConfigVi } from 'vitest';
+import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { CreateRequestCapacityError } from '../../../services/orchestration/create-request-claims.js';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
@@ -1070,11 +1071,14 @@ describe('Orchestration Routes', () => {
   });
 
   test('child steer command reaches the real service and durable receipt over HTTP', async () => {
+    const screenshot =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAI0lEQVR4nGOUq/BmIAUwkaSaYVQDcYCJSHVwMKqBGEByKAEA408BAa+t6k4AAAAASUVORK5CYII=';
     const directory = makeTempDir('child-steer-http-');
     const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
     steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class ChildAdapter extends GateTestAdapter {
+      readonly childSteerImages = true;
       private loaded = false;
       readonly steerChildWork = vi.fn(
         async (_threadId: string, _childId: string, turnId: string) => ({
@@ -1146,7 +1150,29 @@ describe('Orchestration Routes', () => {
         },
       },
     });
+    const stages = new AttachmentStagingService();
+    const owner = { principalId: ROUTE_TEST_USER_ID };
+    const desc = {
+      clientAttachmentId: 'image-id',
+      name: 'screen.png',
+      kind: 'image' as const,
+      mimeType: 'image/png' as const,
+      size: 92,
+    };
+    const prepared = stages.prepare(owner, desc);
+    const ref = stages.upload(
+      prepared.stageId,
+      prepared.uploadGrant,
+      screenshot,
+    );
+    const hydrate = vi.fn(stages.bindAndHydrate.bind(stages));
     const app = createOrchestrationRoutes(service, {
+      hydrateStagedAttachments: (principal, refs, binding) =>
+        hydrate({ principalId: principal.id }, refs, binding),
+      acceptStagedAttachments: (principal, refs, binding) =>
+        stages.acceptBinding({ principalId: principal.id }, refs, binding),
+      releaseStagedAttachments: (principal, refs, binding) =>
+        stages.releaseBinding({ principalId: principal.id }, refs, binding),
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
@@ -1229,6 +1255,72 @@ describe('Orchestration Routes', () => {
         ],
       },
     });
+    const imageCommand = {
+      ...command,
+      clientInputId: 'image-key',
+      input: { text: '', attachmentRefs: [ref] },
+    };
+    const peerStage = stages.prepare({ principalId: 'another-person' }, desc);
+    const peerRef = stages.upload(
+      peerStage.stageId,
+      peerStage.uploadGrant,
+      screenshot,
+    );
+    expect(
+      await (
+        await send({
+          ...imageCommand,
+          input: { text: '', attachmentRefs: [peerRef] },
+        })
+      ).json(),
+    ).toMatchObject({ data: { outcome: 'attachments-unavailable' } });
+    expect(adapter.steerChildWork).toHaveBeenCalledTimes(1);
+    expect(await (await send(imageCommand)).json()).toMatchObject({
+      data: { outcome: 'steered' },
+    });
+    expect(adapter.steerChildWork).toHaveBeenLastCalledWith(
+      threadId,
+      'child',
+      'child-turn',
+      '',
+      [
+        {
+          kind: 'image',
+          name: 'screen.png',
+          mimeType: 'image/png',
+          size: 92,
+          dataUrl: screenshot,
+        },
+      ],
+    );
+    expect(stages.reconcile(owner, [ref.stageId])[0].state).toBe('accepted');
+    expect(await (await send(imageCommand)).json()).toMatchObject({
+      data: { outcome: 'steered' },
+    });
+    expect(
+      await (
+        await send({
+          ...imageCommand,
+          input: {
+            text: '',
+            attachmentRefs: [{ ...ref, digest: 'sha256-' + '0'.repeat(64) }],
+          },
+        })
+      ).json(),
+    ).toMatchObject({ code: 'client_turn_input_conflict' });
+    expect(hydrate).toHaveBeenCalledTimes(2);
+    expect(adapter.steerChildWork).toHaveBeenCalledTimes(2);
+    const history = await (await read('child')).json();
+    expect(history).toMatchObject({
+      data: {
+        entries: [
+          {},
+          { text: '', attachments: [{ name: ref.name, digest: ref.digest }] },
+        ],
+      },
+    });
+    expect(JSON.stringify(history)).not.toContain('data:image');
+    stages.dispose();
     expect((await read('other')).status).toBe(404);
     expect(
       (

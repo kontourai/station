@@ -1372,9 +1372,16 @@ The remaining controls are defined by
   handshake advertises this command and instruction history; an absent flag or
   an older host rejecting the unknown command is not permission to fall back.
 
+  With `controls.steer.images`, input may be `{ text, attachmentRefs }`.
+  Stage images using the same Station credential. The references, their order
+  and text are bound to the child instruction receipt. Text may be empty for
+  an image-only instruction. Expired or foreign stages fail before dispatch.
+
   Codex support follows observed child protocol and active turn facts, not model
   names. Captures with Codex 0.164 show v1 accepting child `turn/steer` and v2
-  rejecting direct app-server input. This provider evidence does not establish
+  rejecting direct app-server input. With codex-cli 0.167.0, the Station
+  adapter sent a PNG to an active v1 child and a local model endpoint received
+  its pixels in that child's next request. This provider evidence does not establish
   an end-to-end Station HTTP or deployed-device journey.
 
   A Muse workflow's turn ends when it launches its children, so the Muse

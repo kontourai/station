@@ -2618,6 +2618,8 @@ describe('CodexAdapter', () => {
 
     test('child steer targets only the owned active child and refuses stale or unknown targets', async () => {
       processHandle = new FakeCodexProcess();
+      const screenshot =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAI0lEQVR4nGOUq/BmIAUwkaSaYVQDcYCJSHVwMKqBGEByKAEA408BAa+t6k4AAAAASUVORK5CYII=';
       const adapter = new CodexAdapter({
         processFactory: () => processHandle!,
       });
@@ -2645,6 +2647,15 @@ describe('CodexAdapter', () => {
         CHILD_ID,
         CHILD_TURN_ID,
         'hello child',
+        [
+          {
+            kind: 'image',
+            name: 'sample.png',
+            mimeType: 'image/png',
+            size: 92,
+            dataUrl: screenshot,
+          },
+        ],
       );
       await respondToLatestPendingRequest(adapter, threadId, {
         turnId: CHILD_TURN_ID,
@@ -2660,7 +2671,10 @@ describe('CodexAdapter', () => {
         params: {
           threadId: CHILD_ID,
           expectedTurnId: CHILD_TURN_ID,
-          input: [{ type: 'text', text: 'hello child', text_elements: [] }],
+          input: [
+            { type: 'text', text: 'hello child', text_elements: [] },
+            { type: 'image', url: screenshot },
+          ],
         },
       });
       await adapter.stopAll();
@@ -4433,6 +4447,7 @@ describe('CodexAdapter', () => {
             {
               model: 'gpt-5.5',
               displayName: 'GPT-5.5',
+              inputModalities: ['text'],
             },
             {
               model: 'legacy-speed',
@@ -4473,6 +4488,7 @@ describe('CodexAdapter', () => {
         id: 'gpt-5.5',
         name: 'GPT-5.5',
         originalId: 'gpt-5.5',
+        capabilities: { imageInput: false },
       },
       {
         id: 'legacy-speed',
