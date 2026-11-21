@@ -283,7 +283,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     ],
     reason:
       'engine capability declarations and adapter parity; the full consumer ' +
-      'graph runs in main/release qualification (#2458)',
+      'graph runs in main/release full qualification (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
