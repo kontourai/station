@@ -1013,8 +1013,7 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const continueButton = continueRow();
     expect(continueButton.textContent).toContain('Task-first home');
-    // The work row's own metadata: the agent and the project.
-    expect(continueButton.textContent).toContain('Codex · Station');
+    expect(continueButton.textContent).toMatch(/Station\s+Codex/);
     fireEvent.click(continueButton);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledWith({ sessionId: 'newest' });

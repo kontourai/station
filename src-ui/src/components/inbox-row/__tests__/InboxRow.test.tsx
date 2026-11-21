@@ -540,7 +540,7 @@ describe('the chip line exists only when a chip does', () => {
     expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
-      screen.getByRole('button', { name: /, unsent draft$/ }),
+      screen.getByRole('button', { name: /\bunsent draft$/ }),
     ).toBeTruthy();
     act(() => chatDraftsStore.clear('chat-with-draft'));
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();

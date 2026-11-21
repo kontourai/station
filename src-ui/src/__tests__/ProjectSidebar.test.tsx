@@ -884,6 +884,11 @@ describe('a project wears the same colour everywhere', () => {
     dock.unmount();
 
     const home = renderSidebar(<Home items={[betaWork]} />);
+    expect(
+      home.getByRole('button', {
+        name: /^Tidy the beta release notes.*Beta.*Codex/,
+      }),
+    ).toBeTruthy();
     const homeColour = home.container.querySelector<HTMLElement>(
       '.inbox-row__project-accent',
     )?.style.backgroundColor;

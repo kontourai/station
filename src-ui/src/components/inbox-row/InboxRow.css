@@ -107,7 +107,7 @@
   min-width: 0;
 }
 
-/* A hover row's second line: the agent's mark, the status, then the project.
+/* A Home hover row's second line: status, project, then agent.
    The status keeps its word whole; the project gives way first. */
 .inbox-row__state {
   display: flex;
@@ -116,14 +116,14 @@
   align-items: center;
   gap: var(--k-space-2);
 }
-.inbox-row__state > .identity-marks {
-  flex: 0 0 auto;
-}
 .inbox-row__state > .inbox-row__status {
   flex: 0 1 auto;
   min-width: 0;
 }
 .inbox-row__context {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
   /* Yields all of its width before the status detail loses any: the
      project is also in the row's name and hover card; the state is not. */
   flex: 0 10000 auto;
@@ -890,15 +890,20 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.inbox-row__project-line .inbox-row__project,
+:is(.inbox-row__project-line, .inbox-row__context) .inbox-row__project,
 .inbox-row__station {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
-.inbox-row__project-line .inbox-row__project-accent {
+:is(.inbox-row__project-line, .inbox-row__context) .inbox-row__project-accent {
   flex: none;
+  margin-inline-end: 0;
+}
+:is(.inbox-row__project, .inbox-row__station, .inbox-row__draft-marker)
+  + :is(.identity-marks, .inbox-row__agent) {
+  margin-inline-start: var(--k-space-1);
 }
 .inbox-row__status-column {
   grid-column: 2;
@@ -969,10 +974,10 @@
 .inbox-row__project-line .project-icon--initials {
   box-shadow: inset 0 -2px var(--inbox-project-accent, transparent);
 }
-.inbox-row__project-line .identity-marks {
+:is(.inbox-row__project-line, .inbox-row__context) .identity-marks {
   flex: none;
 }
-.inbox-row__project-line .inbox-row__agent {
+:is(.inbox-row__project-line, .inbox-row__context) .inbox-row__agent {
   position: static;
   width: auto;
   height: auto;

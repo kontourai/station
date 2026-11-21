@@ -1551,8 +1551,7 @@ context in the conversation's session details.
 The mobile **Inbox** is embedded in Chat. Use the leading arrow to return to
 Inbox, or open it from Chat actions. **New chat** floats at the lower right of
 the Inbox list. A tap opens the start composer. The Home and Inbox rows lead
-with the conversation title. The next line groups engine marks and project
-artwork with their names. A pencil identifies an unsent draft on this device.
+with the conversation title. The next line shows the project mark and name first, followed by the agent or engine identity. A pencil identifies an unsent draft on this device.
 The right edge aligns the status with one time beneath it. A live clock uses
 the start of the observed activity, a scheduled check shows its due time, and
 other rows show recency. Opening Inbox does not reset these times. On Home,

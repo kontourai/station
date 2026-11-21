@@ -105,8 +105,7 @@ const SETTLED_PAGE_SIZE = 20;
  * and the project sidebar's open chats. Scroll, header and responsive layout
  * stay host-owned; work grouping and status remain shared.
  *
- * THE ROW (#3043) has a fixed line budget: a meta line (agent mark, agent
- * and project, time), the title, ONE status line chosen by the status ladder
+ * THE ROW (#3043) has a fixed line budget: a metadata line (project, then agent), the title, ONE status line chosen by the status ladder
  * (`workStatus`), and a chip line that exists only when a chip does. The
  * budget yields in one place: a failure or unanswerable REASON may wrap to
  * a second line, because the user needs to read it. Time and the hover/focus
@@ -587,56 +586,73 @@ function InboxRowTitle({ title }: { title: string }) {
   );
 }
 
-function InboxRowSummary({
+function InboxRowProjectLine({
   item,
-  now,
-  status,
   statusId,
   contextLabel,
   projectAccent,
   projectIcon,
   stationLabel,
   hasUnsentDraft,
+  compact = true,
+  remoteProject = false,
   children,
-}: Pick<InboxRowProps, 'item' | 'now' | 'projectAccent' | 'projectIcon'> & {
-  status: WorkStatus;
+}: Pick<InboxRowProps, 'item' | 'projectIcon' | 'projectAccent' | 'compact'> & {
   statusId: string;
   contextLabel: string;
   stationLabel?: string;
   hasUnsentDraft?: boolean;
+  remoteProject?: boolean;
   children?: ReactNode;
 }) {
   return (
+    <span
+      id={`${statusId}-project`}
+      className={compact ? 'inbox-row__project-line' : 'inbox-row__context'}
+      style={
+        compact && projectAccent
+          ? ({ '--inbox-project-accent': projectAccent } as CSSProperties)
+          : undefined
+      }
+    >
+      {item.kind === 'task' && 'Task · '}
+      {(!compact || item.projectSlug || item.projectLabel !== 'No project') && (
+        <ProjectAccentSwatch
+          size={compact ? 16 : 12}
+          accent={projectAccent}
+          icon={projectIcon}
+          name={contextLabel}
+          fallback={compact || remoteProject ? 'initials' : 'dot'}
+        />
+      )}
+      <span className="inbox-row__project">{contextLabel}</span>
+      {stationLabel && (
+        <span className="inbox-row__station">
+          {' · '}
+          <span className="sr-only">Station:</span> {stationLabel}
+        </span>
+      )}
+      {hasUnsentDraft && <DraftMarker />} {children}
+    </span>
+  );
+}
+
+function InboxRowSummary({
+  item,
+  now,
+  status,
+  statusId,
+  children,
+}: {
+  item: HomeWorkItem;
+  now: number;
+  status: WorkStatus;
+  statusId: string;
+  children: ReactNode;
+}) {
+  return (
     <>
-      <InboxRowTitle title={item.title} />{' '}
-      <span
-        id={`${statusId}-project`}
-        className="inbox-row__project-line"
-        style={
-          projectAccent
-            ? ({ '--inbox-project-accent': projectAccent } as CSSProperties)
-            : undefined
-        }
-      >
-        {children}{' '}
-        {(item.projectSlug || item.projectLabel !== 'No project') && (
-          <ProjectAccentSwatch
-            size={16}
-            accent={projectAccent}
-            icon={projectIcon}
-            name={contextLabel}
-            fallback="initials"
-          />
-        )}
-        <span className="inbox-row__project">{contextLabel}</span>
-        {stationLabel && (
-          <span className="inbox-row__station">
-            {' · '}
-            <span className="sr-only">Station:</span> {stationLabel}
-          </span>
-        )}
-        {hasUnsentDraft && <DraftMarker />}
-      </span>{' '}
+      <InboxRowTitle title={item.title} /> {children}{' '}
       <span className="inbox-row__status-column">
         <span
           className="inbox-row__status"
@@ -972,10 +988,31 @@ export function InboxRow({
     ]
       .filter(Boolean)
       .join(' ') || undefined;
+  const summary = compact || actionsInDetails;
+  const projectLine = (
+    <InboxRowProjectLine
+      item={item}
+      statusId={statusId}
+      contextLabel={contextLabel}
+      compact={summary}
+      projectAccent={projectAccent}
+      projectIcon={projectIcon}
+      remoteProject={remoteProject}
+      stationLabel={summary ? stationLabel : undefined}
+      hasUnsentDraft={hasUnsentDraft}
+    >
+      <IdentityMarks identity={identity} size={16} fallbackTitle={agentText} />
+      {chrome === 'hover' && identity.marks.length > 0 ? (
+        <span className="sr-only">{agentText}</span>
+      ) : agentText &&
+        (agentText !== contextLabel || identity.marks.length === 0) ? (
+        <span className="inbox-row__agent">{agentText}</span>
+      ) : null}
+    </InboxRowProjectLine>
+  );
   const spokenContext = [
     size === 'slim' && contextLabel,
-    (size === 'slim' || (chrome === 'hover' && identity.marks.length > 0)) &&
-      agentText,
+    size === 'slim' && agentText,
     item.controlMode === 'read-only-attached' && 'third-party session',
     unread ? 'unread' : readUnknown ? 'read status unknown' : '',
     hasUnsentDraft && 'unsent draft',
@@ -1126,29 +1163,15 @@ export function InboxRow({
             {selectedIds.has(item.id) ? <CheckGlyph /> : null}
           </span>
         )}
-        {(compact || actionsInDetails) && size !== 'slim' ? (
+        {summary && size !== 'slim' ? (
           <>
             <InboxRowSummary
               item={item}
               now={now}
               status={status}
               statusId={statusId}
-              contextLabel={contextLabel}
-              projectAccent={projectAccent}
-              projectIcon={projectIcon}
-              stationLabel={stationLabel}
-              hasUnsentDraft={hasUnsentDraft}
             >
-              <IdentityMarks
-                identity={identity}
-                size={16}
-                fallbackTitle={agentText}
-              />
-              {agentText &&
-                (chrome !== 'hover' || identity.marks.length === 0) &&
-                (agentText !== contextLabel || identity.marks.length === 0) && (
-                  <span className="inbox-row__agent">{agentText}</span>
-                )}
+              {projectLine}
             </InboxRowSummary>
             <InboxRowChips
               chips={chips.filter((chip) => chip.kind !== 'remote')}
@@ -1214,11 +1237,6 @@ export function InboxRow({
               )}
             </span>{' '}
             <span className="inbox-row__state">
-              <IdentityMarks
-                identity={identity}
-                size={16}
-                fallbackTitle={agentText}
-              />
               <InboxRowStatusLine
                 id={statusId}
                 reasonId={reasonId}
@@ -1226,22 +1244,7 @@ export function InboxRow({
                 status={status}
                 now={now}
               />{' '}
-              <span className="inbox-row__context">
-                {identity.marks.length === 0 && (
-                  <>
-                    <span className="inbox-row__agent">{agentText}</span>
-                    {' · '}
-                  </>
-                )}
-                <ProjectAccentSwatch
-                  accent={projectAccent}
-                  icon={projectIcon}
-                  fallback={remoteProject ? 'initials' : 'dot'}
-                  name={contextLabel}
-                />
-                <span className="inbox-row__project">{contextLabel}</span>
-                {hasUnsentDraft && <DraftMarker />}
-              </span>
+              {projectLine}
             </span>{' '}
             <InboxRowChips chips={chips} />
           </>
@@ -1407,17 +1410,15 @@ function InboxTaskRow({
         aria-describedby={`${id}-project ${id}`}
         onClick={() => onActivate(item)}
       >
-        <InboxRowSummary
-          item={item}
-          now={now}
-          status={status}
-          statusId={id}
-          contextLabel={projectName ?? item.projectLabel}
-          projectAccent={projectAccent}
-          projectIcon={projectIcon}
-          stationLabel={facts?.station?.label ?? item.environmentLabel}
-        >
-          Task ·
+        <InboxRowSummary item={item} now={now} status={status} statusId={id}>
+          <InboxRowProjectLine
+            item={item}
+            statusId={id}
+            contextLabel={projectName ?? item.projectLabel}
+            projectAccent={projectAccent}
+            projectIcon={projectIcon}
+            stationLabel={facts?.station?.label ?? item.environmentLabel}
+          />
         </InboxRowSummary>
       </button>
       {actions.length > 0 && (

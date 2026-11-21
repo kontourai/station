@@ -659,7 +659,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        const line = pg.locator('.inbox-row__project-line').first();
+        const line = pg.locator(
+          '[data-row-key="running"] .inbox-row__project-line',
+        );
         const initials = line.locator(
           '.inbox-row__project-accent.project-icon--initials',
         );
@@ -670,6 +672,10 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         expect(shadow).toContain('inset');
         const mark = await initials.boundingBox();
         const name = await line.locator('.inbox-row__project').boundingBox();
+        const agent = await line.locator('.inbox-row__agent').boundingBox();
+        expect(name!.width).toBeGreaterThan(0);
+        expect(agent!.width).toBeGreaterThan(0);
+        expect(name!.x + name!.width).toBeLessThanOrEqual(agent!.x);
         expect(mark!.width).toBe(16);
         expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
         expect(
@@ -1042,7 +1048,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
 
   // #4266: on a phone the second line read [mark] … "No project" from the
   // middle of the row, and the engine's name was a 1px clipped label.
-  test('a phone row names its engine in words and keeps the project beside it', async () => {
+  test('a phone row keeps its project context directly before the engine mark and name', async () => {
     seed();
     const { unmount } = render(
       <MobileInboxPanel
@@ -1096,9 +1102,8 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       expect(line.engineText).toBe('Codex');
       expect(line.engine.width).toBeGreaterThan(20);
       expect(line.engine.left).toBeGreaterThanOrEqual(line.marks.right);
-      expect(line.project.left).toBeGreaterThanOrEqual(line.engine.right);
-      // Beside the engine, not from the row's midpoint.
-      expect(line.project.left - line.engine.right).toBeLessThan(40);
+      expect(line.marks.left).toBeGreaterThanOrEqual(line.project.right);
+      expect(line.marks.left - line.project.right).toBeLessThan(40);
       expect(line.project.left).toBeLessThan(
         line.row.left + line.row.width / 2,
       );

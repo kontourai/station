@@ -1128,9 +1128,9 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       vi.fn(),
       AGENTS,
     );
-    // No mark to stand for it, so the agent stays in words before the project.
+    // No mark to stand for it, so the agent stays in words after the project.
     const row = screen.getByRole('button', {
-      name: /^Shared row title.*Codex.*Shared project/,
+      name: /^Shared row title.*Shared project.*Codex/,
     });
     expect(within(row).getByText('Codex')).toBeTruthy();
   });

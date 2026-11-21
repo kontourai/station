@@ -273,8 +273,7 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-lg` (18px). Desktop density remains owned by each surface; the
 person's Comfortable or Compact choice sets only the base text tokens and
 never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
-Desktop and mobile Inbox cards share a two-line title allowance, project and engine
-marks, a status label and one elapsed, scheduled or recency time. A task opens
+Desktop and mobile Inbox cards allow two lines for the title. The metadata reads project first, then agent, as it does on Home. The status column shows one elapsed, scheduled or recency time. A task opens
 from its row. Its work-chat disclosure stays separate. Desktop row actions
 appear on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
