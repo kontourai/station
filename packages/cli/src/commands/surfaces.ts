@@ -1,4 +1,10 @@
 import {
+  AUTOMATION_OPERATOR_OPERATIONS,
+  AUTOMATION_OPERATOR_SURFACE,
+  type AutomationDispatchRuleInput,
+  type AutomationPollSourceInput,
+} from '@kontourai/station-contracts/automation';
+import {
   parseIndependentReviewRequest,
   REVIEW_EVIDENCE_OPERATOR_SURFACE,
 } from '@kontourai/station-contracts/review-evidence';
@@ -6,11 +12,19 @@ import type { AddJobOpts } from '@kontourai/station-contracts/scheduler';
 import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
+  createAutomationRule,
+  createAutomationSource,
   createIntegration,
   createJob,
+  deleteAutomationRule,
+  deleteAutomationSource,
   deleteIntegration,
   deleteJob,
+  disableAutomationRule,
+  disableAutomationSource,
   disableJob,
+  enableAutomationRule,
+  enableAutomationSource,
   enableJob,
   fetchRegistrySkills,
   getIntegration,
@@ -23,6 +37,9 @@ import {
   getSchedulerStatus,
   installRegistrySkill,
   listAutomationDeliveries,
+  listAutomationEpisodes,
+  listAutomationRules,
+  listAutomationSources,
   listIntegrations,
   listJobs,
   listReviewReceipts,
@@ -30,9 +47,11 @@ import {
   listSchedulerProviders,
   previewSchedule,
   reconnectIntegration,
+  retryAutomationEpisode,
   runIndependentReview,
   runJob,
   SchedulerRunFailedError,
+  updateAutomationRule,
   updateIntegration,
   updateJob,
 } from '@kontourai/station-sdk/client';
@@ -48,6 +67,7 @@ import {
   printJson,
   printResolvedTarget,
   requestJson,
+  requestText,
   requirePositional,
   resolveApiBase,
   streamSse,
@@ -784,28 +804,141 @@ async function runScheduleCommand(args: string[]) {
 }
 
 /**
- * `station automation` (epic #3439). Slice S2 ships the read-only
- * `deliveries` verb; the other `AUTOMATION_OPERATOR_SURFACE` verbs arrive
- * with their routes.
+ * `station automation` (epic #3439, S5 #4513): every
+ * `AUTOMATION_OPERATOR_SURFACE` verb. Mutations are refused by the server
+ * unless the operator makes them in person. `enable`, `source-enable` and
+ * `rule-update` need the configuration fingerprint; pass
+ * `--expected-fingerprint=<sha256>` to pin the version you reviewed, or the
+ * CLI reads the current one first.
  */
 async function runAutomationCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
   const action = requirePositional(parsed, 0, 'automation action');
+  const limit = (): { limit?: number } => {
+    const value = parseWholeNumberFlag(parsed, 'limit', { min: 1 });
+    return value === undefined ? {} : { limit: value };
+  };
+  const pinned = (): string | undefined => {
+    const raw = parsed.flags['expected-fingerprint'];
+    if (raw === undefined) return undefined;
+    if (typeof raw !== 'string' || !/^[a-f0-9]{64}$/.test(raw))
+      throw new Error('--expected-fingerprint must be a sha256 hex digest.');
+    return raw;
+  };
+  const ruleFingerprint = async () =>
+    pinned() ?? (await listAutomationRules(apiBase)).configurationFingerprint;
+  const sourceFingerprint = async () =>
+    pinned() ?? (await listAutomationSources(apiBase)).configurationFingerprint;
+  const surface = AUTOMATION_OPERATOR_SURFACE;
 
   switch (action) {
-    case 'deliveries': {
-      const limit = parseWholeNumberFlag(parsed, 'limit', { min: 1 });
+    case surface.deliveries.cli:
+      printFetched(await listAutomationDeliveries(apiBase, limit()));
+      return;
+    case surface.episodes.cli:
+      printFetched(await listAutomationEpisodes(apiBase, limit()));
+      return;
+    case surface['retry-episode'].cli: {
+      const ruleId = requirePositional(parsed, 1, 'rule id');
+      const episodeId = requirePositional(parsed, 2, 'episode id');
+      announceMutationTarget(parsed);
       printFetched(
-        await listAutomationDeliveries(
+        await retryAutomationEpisode(apiBase, { ruleId, episodeId }),
+      );
+      return;
+    }
+    case surface['list-sources'].cli:
+      printFetched(await listAutomationSources(apiBase));
+      return;
+    case surface['create-source'].cli: {
+      const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
+      printFetched(
+        await createAutomationSource(
           apiBase,
-          limit === undefined ? {} : { limit },
+          body as AutomationPollSourceInput,
         ),
       );
       return;
     }
+    case surface['enable-source'].cli: {
+      const id = requirePositional(parsed, 1, 'source id');
+      announceMutationTarget(parsed);
+      await enableAutomationSource(apiBase, id, await sourceFingerprint());
+      printFetched({ enabled: id });
+      return;
+    }
+    case surface['disable-source'].cli: {
+      const id = requirePositional(parsed, 1, 'source id');
+      announceMutationTarget(parsed);
+      await disableAutomationSource(apiBase, id);
+      printFetched({ disabled: id });
+      return;
+    }
+    case surface['delete-source'].cli: {
+      const id = requirePositional(parsed, 1, 'source id');
+      announceMutationTarget(parsed);
+      await deleteAutomationSource(apiBase, id);
+      printFetched({ deleted: id });
+      return;
+    }
+    case surface['list-rules'].cli:
+      printFetched(await listAutomationRules(apiBase));
+      return;
+    case surface['create-rule'].cli: {
+      const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
+      printFetched(
+        await createAutomationRule(
+          apiBase,
+          body as Parameters<typeof createAutomationRule>[1],
+        ),
+      );
+      return;
+    }
+    case surface['update-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      const body = await loadJsonPayload(parsed);
+      announceMutationTarget(parsed);
+      printFetched(
+        await updateAutomationRule(apiBase, id, {
+          ...(body as AutomationDispatchRuleInput),
+          expectedFingerprint:
+            typeof body.expectedFingerprint === 'string'
+              ? body.expectedFingerprint
+              : await ruleFingerprint(),
+        }),
+      );
+      return;
+    }
+    case surface['enable-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      announceMutationTarget(parsed);
+      await enableAutomationRule(apiBase, id, await ruleFingerprint());
+      printFetched({ enabled: id });
+      return;
+    }
+    case surface['disable-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      announceMutationTarget(parsed);
+      await disableAutomationRule(apiBase, id);
+      printFetched({ disabled: id });
+      return;
+    }
+    case surface['delete-rule'].cli: {
+      const id = requirePositional(parsed, 1, 'rule id');
+      announceMutationTarget(parsed);
+      await deleteAutomationRule(apiBase, id);
+      printFetched({ deleted: id });
+      return;
+    }
     default:
-      throw new Error("Unknown automation action. Use 'deliveries'.");
+      throw new Error(
+        `Unknown automation action. Use ${AUTOMATION_OPERATOR_OPERATIONS.map(
+          (operation) => `'${surface[operation].cli}'`,
+        ).join(', ')}.`,
+      );
   }
 }
 
@@ -1057,10 +1190,11 @@ async function runAuthCommand(args: string[]) {
       const subaction = requirePositional(parsed, 1, 'users action');
       if (subaction === 'search') {
         const query = requirePositional(parsed, 2, 'query');
-        await requestRawAndPrint(
+        const { body } = await requestText(
           apiBase,
           `/api/users/search?q=${encodeURIComponent(query)}`,
         );
+        printJson(JSON.parse(body));
         return;
       }
       if (subaction === 'get') {
@@ -1335,8 +1469,33 @@ async function runAcpCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
   const action = requirePositional(parsed, 0, 'acp action');
+  if (
+    ['setup', 'status', 'commands', 'command-options'].includes(action) &&
+    parsed.positionals.length > 1
+  ) {
+    throw new Error(
+      `station acp ${action} takes no engine id. Use 'station acp setup' to inspect engines; 'commands' lists the shared ACP command catalog.`,
+    );
+  }
 
   switch (action) {
+    case 'setup':
+      try {
+        await requestAndPrint(apiBase, '/acp/setup');
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          'status' in error &&
+          error.status === 404 &&
+          !('code' in error)
+        ) {
+          throw new Error(
+            'This Station does not support guided engine setup. Update the Station host or open Connections → Engines.',
+          );
+        }
+        throw error;
+      }
+      return;
     case 'status':
       await requestAndPrint(apiBase, '/acp/status');
       return;
@@ -1422,7 +1581,7 @@ async function runAcpCommand(args: string[]) {
     }
     default:
       throw new Error(
-        "Unknown acp action. Use 'status', 'commands', 'command-options', or 'connections'.",
+        "Unknown acp action. Use 'setup', 'status', 'commands', 'command-options', or 'connections'.",
       );
   }
 }

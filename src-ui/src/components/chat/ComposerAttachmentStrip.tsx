@@ -1,3 +1,4 @@
+import { useOptionalPreview } from '../../contexts/PreviewContext';
 import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
@@ -87,14 +88,10 @@ function resizedLabel(
 }
 
 /**
- * The attached files, visible in the composer itself (archive#3344).
- *
- * Before this, a pasted screenshot's only trace was a count badge on the
- * paperclip button, and the thumbnail lived behind a popover the user had to
- * think to open — a paste that worked looked, at a glance, exactly like a
- * paste that did nothing. The popover (`AttachmentPreviewMenu`) still owns
- * bulk actions and full-size preview; this strip only has to answer "did my
- * image attach, and how do I take it back off".
+ * The attached files, visible in the composer itself (archive#3344): the one
+ * place that says what is attached, how its upload is going, and how to take
+ * it back off. A thumbnail opens the transcript's own previewer, so an image
+ * looks the same before and after it is sent.
  */
 export function ComposerAttachmentStrip({
   attachments,
@@ -105,6 +102,9 @@ export function ComposerAttachmentStrip({
   onReplaceFile,
   imagesRefused = false,
 }: ComposerAttachmentStripProps) {
+  // Optional: a strip rendered outside the app shell (an isolated test or
+  // pane) still shows its thumbnails; they just do not open.
+  const preview = useOptionalPreview();
   const visibleAttachments = [
     ...attachments,
     ...stages
@@ -130,6 +130,27 @@ export function ComposerAttachmentStrip({
       ),
   ];
   if (visibleAttachments.length === 0) return null;
+  const openImage = (attachment: FileAttachment) => {
+    if (!preview || !attachment.preview) return;
+    // Prev/next walks this draft's images, as it walks a message's.
+    const gallery = visibleAttachments
+      .filter((entry) => entry.preview && entry.type.startsWith('image/'))
+      .map((entry) => ({
+        url: entry.preview!,
+        mediaType: entry.type,
+        name: entry.name,
+      }));
+    preview.openPreview(
+      {
+        url: attachment.preview,
+        mediaType: attachment.type.startsWith('image/')
+          ? attachment.type
+          : 'image/png',
+        name: attachment.name,
+      },
+      gallery,
+    );
+  };
   return (
     <ul className="composer-attachments" aria-label="Attached files">
       {visibleAttachments.map((attachment) => {
@@ -147,7 +168,21 @@ export function ComposerAttachmentStrip({
                 : ''
             }`}
           >
-            {attachment.preview ? (
+            {attachment.preview && preview ? (
+              <button
+                type="button"
+                className="composer-attachments__thumb-button"
+                onClick={() => openImage(attachment)}
+                aria-label={`Preview ${attachment.name}`}
+                title={`Preview ${attachment.name}`}
+              >
+                <img
+                  src={attachment.preview}
+                  alt=""
+                  className="composer-attachments__thumb"
+                />
+              </button>
+            ) : attachment.preview ? (
               <img
                 src={attachment.preview}
                 alt={attachment.name}

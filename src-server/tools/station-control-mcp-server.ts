@@ -39,6 +39,8 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
+import { registerProjectLibraryTools } from './station-control-project-library-tools.js';
+import { registerProjectMemoryTools } from './station-control-project-memory-tools.js';
 import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
 import { registerScheduleTools } from './station-control-schedule-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
@@ -69,22 +71,18 @@ import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
  *
  * Skipped where it has nothing to add: tools not in the table (the browser
  * tools, whose own refusal is unchanged), route-enforced tools (`notify_user`
- * answers `caller-required` itself), reads of data that belongs to no person
- * (any caller, or none, may read them), and tools that call no route
- * (`install_plugin` only explains). A principal-scoped or operator-wide read
- * is checked (slice B): a caller-less or owner-less session learns why here,
- * whatever envelope the tool's SDK call would have put the server's code in.
+ * answers `caller-required` itself), and tools that call no route
+ * (`install_plugin` only explains). Every other tool is checked, reads of
+ * data that belongs to no person included (slice D: a caller-less call is
+ * refused whatever it asks for), so a caller-less or owner-less session
+ * learns why here, whatever envelope the tool's SDK call would have put the
+ * server's code in.
  */
 function withToolSideRefusal<
   Callback extends (input: never, ...rest: never[]) => unknown,
 >(name: string, callback: Callback): Callback {
   const policy = stationControlToolPolicy(name);
-  if (
-    !policy ||
-    policy.enforcedBy === 'route' ||
-    (policy.toolClass === 'read-only' && policy.role === 'none') ||
-    policy.routes.length === 0
-  )
+  if (!policy || policy.enforcedBy === 'route' || policy.routes.length === 0)
     return callback;
   const guarded = async (
     ...args: Parameters<Callback>
@@ -468,8 +466,12 @@ export function createSelectedStationControlMcpServer(
   registerDeclarePullRequestTools(registry);
   // Epic #4003: the caller's own Task brief.
   registerTaskBriefTools(registry);
+  // #5067: the caller's own Project Library.
+  registerProjectLibraryTools(registry);
   // #4003: the caller's own Task summary and records.
   registerTaskMemoryTools(registry);
+  // #5065: the caller Session's own Project memory.
+  registerProjectMemoryTools(registry);
   registerTaskThreadTools(registry);
   registerReviewGuideTools(registry);
   registry.registerDiscovery();

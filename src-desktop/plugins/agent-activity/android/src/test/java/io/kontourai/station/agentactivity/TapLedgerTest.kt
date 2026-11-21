@@ -88,6 +88,12 @@ class TapLedgerTest {
     assertTrue(TapLedger.parse(tampered).taps.isEmpty())
     val roundTrip = TapLedger.parse(empty.issue(card, 7, SessionRoute("s", "t", null), nonce(1), now).serialize())
     assertEquals(listOf(IssuedTap(nonce(1), card, 7, SessionRoute("s", "t", null), now)), roundTrip.taps)
+    // An alert tap's record survives the ledger, so the redeemed route still reads it.
+    val alertRoute = SessionRoute("s", "t", null, "notification-0001")
+    assertEquals(
+      listOf(IssuedTap(nonce(2), card, 7, alertRoute, now)),
+      TapLedger.parse(empty.issue(card, 7, alertRoute, nonce(2), now).serialize()).taps
+    )
   }
 
   @Test

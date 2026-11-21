@@ -14,21 +14,27 @@ import type {
   ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 
-export interface ConversationOpenResolver {
+export interface ConversationOpenResolver<Prefetched = never> {
   resolve(input: {
     conversation: ConversationListItem;
     authority: SessionReadAuthority;
     expectedSessionId?: string;
+    /**
+     * The current child the caller already read for this request under the
+     * same authority, handed to `readCurrent` so one open does not replay the
+     * Session's history twice. The child-changed checks still run around it.
+     */
+    prefetched?: Prefetched;
   }): Promise<ConversationOpenResolution>;
 }
 
-export function createConversationOpenResolver(deps: {
+export function createConversationOpenResolver<Prefetched = never>(deps: {
   currentSessionId(conversationId: string): string;
   readCurrent(input: {
     conversationId: string;
     authority: SessionReadAuthority;
+    prefetched?: Prefetched;
   }): Promise<{
     sessionId: string;
     /**
@@ -38,7 +44,8 @@ export function createConversationOpenResolver(deps: {
      */
     reservedSuccessorSessionId?: string;
     execution?: ConversationOpenExecution;
-    messages: readonly ConversationMessage[];
+    /** Transcript message count; the bytes stay behind the window APIs. */
+    messageCount: number;
     answerability: ConversationListItem['answerability'];
     canContinue: boolean;
     continuationPending?: boolean;
@@ -48,9 +55,9 @@ export function createConversationOpenResolver(deps: {
     activity?: ConversationTurnActivity;
   } | null>;
   reportUnavailable?(error: unknown): void;
-}): ConversationOpenResolver {
+}): ConversationOpenResolver<Prefetched> {
   return {
-    async resolve({ conversation, authority, expectedSessionId }) {
+    async resolve({ conversation, authority, expectedSessionId, prefetched }) {
       if (conversation.source === 'store') {
         // The runtime picker filters store rows and the point-read route never
         // guesses their owner. Keep this defensive arm total if another caller
@@ -74,6 +81,7 @@ export function createConversationOpenResolver(deps: {
         const current = await deps.readCurrent({
           conversationId: conversation.id,
           authority,
+          ...(prefetched !== undefined ? { prefetched } : {}),
         });
         if (!current) {
           return {
@@ -105,7 +113,7 @@ export function createConversationOpenResolver(deps: {
           transcript: {
             available: true,
             owner: 'runtime',
-            messageCount: current.messages.length,
+            messageCount: current.messageCount,
           },
           canContinue: current.canContinue,
           ...(!current.canContinue && current.continuationPending

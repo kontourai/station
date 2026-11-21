@@ -4,7 +4,6 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
@@ -54,12 +53,6 @@ import {
   mcpNegotiationDuration,
   mcpNegotiations,
 } from '../../telemetry/metrics.js';
-import { createChildDelegationContext } from '../agents/delegation.js';
-import { attestDelegationContext } from '../agents/delegation-attestation.js';
-import {
-  currentTenantExecutionContext,
-  isHostedTenantExecutionRequired,
-} from '../bootstrap/runtime-tenant-context.js';
 import {
   builtinStationApiServerId,
   isBuiltinStationControl,
@@ -78,6 +71,10 @@ import { markTrustedNativeStationControlTool } from '../tools/tool-provenance.js
 import { createBuiltinVendedTool } from '../tools/vended-tool-compat.js';
 import { isMCPAppsToolVisibleTo } from './mcp-apps-metadata.js';
 import { sameMCPConnectionDefinition } from './mcp-definition-currentness.js';
+import {
+  callNativeStationControlTool,
+  nativeStationControlToolCatalog,
+} from './station-control-native-tools.js';
 import { createNativeStationKnowledgeTools } from './station-knowledge-native-tools.js';
 import {
   describeLoaderFailure,
@@ -94,13 +91,11 @@ function withResolvedMCPEnvironment(
   toolId: string,
   toolDef: ToolDef,
   resolvedEnv?: Record<string, string>,
-  tenantExecutionContext?: TenantExecutionContext,
 ): ToolDef {
   const env = withStationControlRuntimeEnv(
     toolId,
     toolDef,
     resolvedEnv ?? toolDef.env,
-    tenantExecutionContext,
   );
 
   const child = {
@@ -116,107 +111,74 @@ function withResolvedMCPEnvironment(
   return child;
 }
 
-// Tenant pools are runtime-owner-qualified publication projections. Actual
-// handles (including unpublished/failed ones) remain in that runtime's custody.
-type NativeConnectionEntry = {
-  current: boolean;
-  claim: MCPLocalClaim;
-  connection?: MCPConnection;
-  creation?: Promise<MCPConnection>;
-};
-class NativeStationControlReleasedDuringCreationError extends Error {
-  constructor() {
-    super(
-      'Tenant station-control connection was released while creation was pending.',
-    );
-  }
-}
-const nativeStationControlPools = new Map<
-  MCPLocalConnectionCustody,
-  Map<string, NativeConnectionEntry>
->();
-
-async function retireNativeStationControlPools(
-  owner?: MCPLocalConnectionCustody,
-): Promise<void> {
-  const settlements: Promise<unknown>[] = [];
-  for (const [custody, pool] of nativeStationControlPools) {
-    if (owner && custody !== owner) continue;
-    const claims: MCPLocalClaim[] = [];
-    const selected: Array<[string, NativeConnectionEntry]> = [];
-    for (const [id, entry] of pool) {
-      entry.current = false; // Before cleanup or any await.
-      claims.push(entry.claim);
-      selected.push([id, entry]);
-    }
-    // Keep this owner reachable until its selected cleanup really settles.
-    settlements.push(
-      custody.releaseClaims(claims).then((cleanup) => {
-        if (cleanup.state !== 'settled')
-          throw new MCPLocalCustodyError(cleanup.state);
-        for (const [id, entry] of selected)
-          if (pool.get(id) === entry) pool.delete(id);
-        if (!pool.size) nativeStationControlPools.delete(custody);
-      }),
-    );
-  }
-  const results = await Promise.allSettled(settlements);
-  if (results.some((result) => result.status === 'rejected'))
-    throw new Error('Native station-control cleanup failed.');
-}
-
-/** Bounded local-handle retirement; not a process/descendant drain receipt. */
-export async function releaseAllNativeStationControlConnections(
-  owner?: MCPLocalConnectionCustody,
-): Promise<void> {
-  await retireNativeStationControlPools(owner);
-}
-
-async function nativeStationControlConnection(
+/**
+ * The built-in station-control tools for Station's own engine, served
+ * in-process per session (`station-control-native-tools.ts`). They carry the
+ * same provenance, replay declarations, delegation stamps and mutation gate
+ * the pooled child's tools did.
+ */
+async function createNativeStationControlTools(
+  agentSlug: string,
+  spec: AgentSpec,
   toolId: string,
   toolDef: ToolDef,
-  resolvedEnv: Record<string, string> | undefined,
-  custody: MCPLocalConnectionCustody,
-): Promise<MCPConnection> {
-  const context = currentTenantExecutionContext();
-  if (!context) {
-    if (!isHostedTenantExecutionRequired())
-      throw new Error('No tenant-bound station-control connection is active.');
-    throw new Error(
-      'Tenant execution context is required for station-control.',
-    );
-  }
-  let pool = nativeStationControlPools.get(custody);
-  if (!pool) {
-    pool = new Map();
-    nativeStationControlPools.set(custody, pool);
-  }
-  const existing = pool.get(context.tenantId);
-  if (existing?.current && existing.claim.isCurrent()) {
-    if (existing.connection) return existing.connection;
-    if (existing.creation) return existing.creation;
-  }
-  const claim = custody.acquire(toolId, 'native-control');
-  const entry: NativeConnectionEntry = { current: true, claim };
-  pool.set(context.tenantId, entry);
-  entry.creation = Promise.resolve().then(async () => {
-    try {
-      const connection = await claim.connect(
-        withResolvedMCPEnvironment(toolId, toolDef, resolvedEnv, context),
-      );
-      if (!entry.current || !claim.isCurrent())
-        throw new NativeStationControlReleasedDuringCreationError();
-      entry.connection = connection;
-      return connection;
-    } catch (error) {
-      if (!entry.current)
-        throw new NativeStationControlReleasedDuringCreationError();
-      entry.current = false;
-      await custody.release(claim);
-      throw error;
-    }
-  });
-  return entry.creation;
+  toolNameMapping: Map<string, MCPToolNameMappingEntry>,
+  toolNameReverseMapping: Map<string, string>,
+  provenanceGeneration: MCPToolProvenanceGeneration,
+  logger: any,
+): Promise<Tool<any>[]> {
+  const catalog = (await nativeStationControlToolCatalog()).filter((tool) =>
+    isMCPAppsToolVisibleTo(tool, 'model'),
+  );
+  const loaded = catalog.map((tool) =>
+    toStationMCPTool(undefined, tool, logger, true, (args) =>
+      callNativeStationControlTool(tool.originalName, args ?? {}),
+    ),
+  );
+  const identities = new Map(
+    loaded.map(
+      (tool, index) =>
+        [
+          tool,
+          {
+            serverId: catalog[index]!.serverId,
+            originalToolName: catalog[index]!.originalName,
+          },
+        ] as const,
+    ),
+  );
+  const normalized = normalizeLoadedMCPTools(
+    agentSlug,
+    loaded,
+    toolNameMapping,
+    toolNameReverseMapping,
+    provenanceGeneration,
+    toolId,
+    (tool) => {
+      const identity = identities.get(tool);
+      if (!identity) throw new Error('Missing reviewed MCP loader identity.');
+      return identity;
+    },
+    logger,
+    true,
+  );
+  return wrapPlatformMutationGatedTools(
+    wrapDelegationAwareTools(
+      normalized.filter(
+        (tool) =>
+          !mcpToolDisabled(
+            toolId,
+            originalMcpToolName(
+              toolId,
+              toolNameMapping.get(tool.name)?.original ?? tool.name,
+            ),
+            toolDef.disabledTools,
+          ),
+      ),
+      { agentSlug, spec, toolId },
+    ),
+    { agentSlug, toolId },
+  );
 }
 
 /**
@@ -364,43 +326,12 @@ async function createMCPTools(
   }
 
   // MCP Apps tools may be app-only. They remain in the raw connection catalog
-  // for the host bridge, but never enter an agent/model tool catalog.
-  const isNativeStationControl = isBuiltinStationControl(toolId, toolDef);
+  // for the host bridge, but never enter an agent/model tool catalog. The
+  // built-in station-control never reaches here (`loadAgentTools` serves it
+  // in-process), so no tool on this path is Station's own.
   const loadedTools = mcpConfig.tools
     .filter((tool) => isMCPAppsToolVisibleTo(tool, 'model'))
-    .map((tool) =>
-      toStationMCPTool(
-        mcpConfig,
-        tool,
-        logger,
-        isNativeStationControl,
-        isNativeStationControl
-          ? async (args) => {
-              if (mcpConfig.isUsable?.() === false)
-                throw new MCPLocalCustodyError('stale');
-              const connection = currentTenantExecutionContext()
-                ? await nativeStationControlConnection(
-                    toolId,
-                    toolDef,
-                    undefined,
-                    custody,
-                  )
-                : isHostedTenantExecutionRequired()
-                  ? await nativeStationControlConnection(
-                      toolId,
-                      toolDef,
-                      undefined,
-                      custody,
-                    )
-                  : mcpConfig;
-              return connection.client.callTool({
-                name: tool.originalName,
-                arguments: args ?? {},
-              });
-            }
-          : undefined,
-      ),
-    );
+    .map((tool) => toStationMCPTool(mcpConfig, tool, logger, false));
   const loaderIdentities = new Map(
     loadedTools.map((loaded, index) => {
       const source = mcpConfig.tools.filter((tool) =>
@@ -427,7 +358,6 @@ async function createMCPTools(
       return identity;
     },
     logger,
-    isNativeStationControl,
   );
 
   // Mark as connected after successful getTools
@@ -614,6 +544,31 @@ export async function loadAgentTools(
           toolCount: registered.length,
         });
         mcpConnectionStatus.set(toolId, { connected: false });
+        continue;
+      }
+
+      if (builtinStationApiServerId(toolId, toolDef) === 'station-control') {
+        // #2377 slice D (decision 4): Station's own engine reaches
+        // station-control in-process as the calling session's verified,
+        // `bound` caller. Nothing connects at load and no child process
+        // holds a credential; each call finds its session from the turn.
+        const native = await createNativeStationControlTools(
+          agentSlug,
+          spec,
+          toolId,
+          toolDef,
+          toolNameMapping,
+          toolNameReverseMapping,
+          provenanceGeneration,
+          logger,
+        );
+        tools.push(...native);
+        mcpConnectionStatus.set(toolId, { connected: true });
+        integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: toolDef.transport,
+          toolCount: native.length,
+        });
         continue;
       }
 
@@ -1097,9 +1052,6 @@ function toStationMCPTool(
           ? result
           : requireToolServerResult(result, 'tool-call', tool.serverId, logger);
       } catch (error) {
-        if (error instanceof NativeStationControlReleasedDuringCreationError) {
-          throw error;
-        }
         throw captureToolServerOperationFailure(
           error,
           'tool-call',
@@ -1320,25 +1272,15 @@ export function wrapDelegationAwareTools(
           }
         }
         if (controlName === 'send_message' || controlName === 'delegate_task') {
-          // #2601: only this runtime vouches for a context; a model-written
+          // #2601, #2377 slice D: the route derives the child's delegation
+          // context from the verified calling session's own records
+          // (`request-delegation.ts`, `caller-derived`), so this runtime no
+          // longer stamps or attests one, and a model-written context or
           // attestation never survives to the route.
+          delete nextArgs._delegation;
           delete nextArgs._delegationAttestation;
-          if (parentConversationId) {
-            const delegation = createChildDelegationContext({
-              agentSlug: options.agentSlug,
-              conversationId: parentConversationId,
-              spec: options.spec,
-              current: execOptions?.delegation,
-            });
-            nextArgs._delegation = delegation;
-            // The pooled station-control child carries no per-session
-            // caller, so the route keeps this context only because it is
-            // attested (`delegation-attestation.ts`).
-            nextArgs._delegationAttestation =
-              attestDelegationContext(delegation);
-            if (controlName === 'delegate_task') {
-              nextArgs.parentTaskId = parentConversationId;
-            }
+          if (parentConversationId && controlName === 'delegate_task') {
+            nextArgs.parentTaskId = parentConversationId;
           }
         }
         if (controlName === 'update_skill' && !nextArgs._sourceContext) {

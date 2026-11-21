@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed against this change: index.css only drops the dead .attachment-menu popover rules (base and mobile). No claim in this document describes those surfaces; prose unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]}
+  ]
+}

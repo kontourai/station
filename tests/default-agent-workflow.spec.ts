@@ -7,6 +7,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { dragDockTo } from './helpers/region-placement';
 import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const DEFAULT_PROJECT = {
@@ -480,12 +481,12 @@ async function openDefaultAgentSession(
   });
   await page.goto('/?dock=open');
   await dismissSetupLauncher(page);
+  if (options?.firstMessage === undefined) return;
   await expect(
     page
       .locator('#chat-dock')
       .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
-  if (options?.firstMessage === undefined) return;
 
   await page
     .locator('#chat-dock')
@@ -811,15 +812,34 @@ test.describe('Default agent workflow', () => {
         ),
     );
 
+    await page.setViewportSize({ width: 1440, height: 900 });
     await openDefaultAgentSession(page);
-    // "Open chat…" is a row of the dock's ⋯ menu (design round 2026-10, B1).
-    await page.getByRole('button', { name: /^More dock actions/ }).click();
-    await page.getByRole('menuitem', { name: /^Open chat…/ }).click();
+    await dragDockTo(page, 'right');
+    const dock = page.locator('#chat-dock');
+    const more = dock.getByRole('button', { name: /^More dock actions/ });
     const picker = page.getByRole('dialog', { name: 'Open chat' });
-    await expect(picker).toBeVisible();
-    await picker
-      .getByRole('button', { name: /Authoritative conversation/ })
-      .click();
+    const row = picker.getByRole('button', {
+      name: /Authoritative conversation/,
+    });
+    const savedPlacement = () =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('station-device-settings-v1') ?? '{}')
+            .values?.dockSlotPlacement,
+      );
+    await expect(dock).toHaveClass(/chat-dock--right/);
+    await expect.poll(savedPlacement).toBe('right');
+    await more.click();
+    await page.getByRole('menuitem', { name: /^Open chat…/ }).press('Enter');
+    await expect(row).toBeVisible();
+    await expect(dock).toHaveClass(/chat-dock--right/);
+    await expect.poll(savedPlacement).toBe('right');
+    await page.keyboard.press('Escape');
+    await expect(picker).toBeHidden();
+    await expect(more).toBeFocused();
+    await more.press('Enter');
+    await page.getByRole('menuitem', { name: /^Open chat…/ }).click();
+    await row.press('Enter');
 
     await expect(picker).not.toBeVisible();
     await expect
@@ -831,8 +851,11 @@ test.describe('Default agent workflow', () => {
     ).toBeEnabled();
     await expect(page.getByText(/is read-only/)).toHaveCount(0);
 
+    await expect.poll(savedPlacement).toBe('right');
     await page.reload();
     await dismissSetupLauncher(page);
+    await expect(dock).toHaveClass(/chat-dock--right/);
+    await expect.poll(savedPlacement).toBe('right');
     await expect
       .poll(() => openRequests, { message: 'reload revalidation request' })
       .toBeGreaterThanOrEqual(2);

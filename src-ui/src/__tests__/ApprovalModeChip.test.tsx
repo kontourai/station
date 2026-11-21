@@ -4,6 +4,7 @@ import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
+import { ComposerRunSetupClose } from '../components/ComposerChoiceSummary';
 import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
 import { mountedDecisionSurfaces } from '../lib/custom-appearance/decision-surfaces';
 
@@ -71,7 +72,7 @@ describe('ApprovalModeChip', () => {
       'Approval: Ask first. Station approval coverage unknown.',
     );
     expect(trigger().getAttribute('aria-label')).toContain(
-      'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
+      'Codex approval reviewer: Unknown. Sandbox escalations may be reviewed automatically.',
     );
     await openSheet();
     expect(
@@ -90,12 +91,34 @@ describe('ApprovalModeChip', () => {
       />,
     );
     expect(trigger().getAttribute('aria-label')).not.toContain(
-      'Codex reviewer',
+      'Codex approval reviewer',
     );
     await openSheet();
     expect(option(/Ask first.*Claude asks/i)).toBeTruthy();
     expect(screen.queryByText(/configured reviewer may approve/i)).toBeNull();
   });
+
+  test.each([
+    ['user', 'You'],
+    ['automatic', 'Automatic'],
+  ] as const)(
+    'shows the reported %s reviewer with Ask still selected',
+    async (reportedApprovalReviewer, label) => {
+      render(
+        <ApprovalModeChip
+          engineConnectionId="codex"
+          sessionOverride="ask"
+          reportedApprovalReviewer={reportedApprovalReviewer}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(chipValue()).toBe('Ask');
+      await openSheet();
+      expect(
+        screen.getByText(`Codex approval reviewer: ${label}.`),
+      ).toBeTruthy();
+    },
+  );
 
   test('an inherited mode shows what the engine confirmed in the visible chip', () => {
     const { rerender } = render(
@@ -358,12 +381,15 @@ describe('ApprovalModeChip', () => {
 
   test('#727 review item 3 (HIGH): escalating to never requires a second confirming click before onChange fires', async () => {
     const onChange = vi.fn();
+    const closeRunSetup = vi.fn();
     render(
-      <ApprovalModeChip
-        engineConnectionId="codex"
-        sessionOverride="ask"
-        onChange={onChange}
-      />,
+      <ComposerRunSetupClose.Provider value={closeRunSetup}>
+        <ApprovalModeChip
+          engineConnectionId="codex"
+          sessionOverride="ask"
+          onChange={onChange}
+        />
+      </ComposerRunSetupClose.Provider>,
     );
 
     await openSheet();
@@ -372,6 +398,7 @@ describe('ApprovalModeChip', () => {
     // Picking 'never' does not apply it yet — the option list is replaced by an
     // explicit confirm step.
     expect(onChange).not.toHaveBeenCalled();
+    expect(closeRunSetup).not.toHaveBeenCalled();
     expect(screen.queryByRole('radiogroup')).toBeNull();
     // Custom CSS is held off while the full-access confirm is on screen.
     expect(mountedDecisionSurfaces()).toContain('approval-mode');
@@ -381,6 +408,7 @@ describe('ApprovalModeChip', () => {
 
     fireEvent.click(confirmButton);
     expect(onChange).toHaveBeenCalledWith('never');
+    expect(closeRunSetup).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 

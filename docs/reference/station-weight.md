@@ -53,7 +53,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `restMemoryBytes` | Summed memory of the instance's tree with no sessions, once two consecutive samples 5 s apart agree within 5% (after at least 30 s, at most 300 s). |
 | `idleSessionsMemoryBytes` | The same, after three sessions each created by one stub-answered turn. Each Claude session keeps an engine process alive. |
 | `idleCpuPercent` | CPU time the tree used over a 30 s window at rest, as a percentage of one core. The tree is sampled every 250 ms, and each process counts the CPU time it last showed, so a worker that exits inside the window still counts. See [Gaps](#gaps) for what sampling misses. |
-| `idleWakeups` | Not measured: see [Gaps](#gaps). |
+| `idleWakeups` | macOS, report only. Libproc interrupt wakeups over the idle CPU window. The result also carries package-idle wakeups and the process counts at the endpoints. |
 | `idleContextSwitches` | Linux only: voluntary plus involuntary context switches over the same window, from `/proc`. This is a proxy, not wakeups. |
 | `leftoverAfterStopMemoryBytes` | Memory of every process still alive 5 s after `station stop` that belongs to the run: any process seen in the instance's tree during the run, and any process carrying the run's environment, however it detached. Only the kill-eligible ones are then killed; the rest are reported as left running (see [Ownership](#ownership-kill-eligible-and-report-only)). What it cannot find is written beside the value (`leftoverAfterStopMemoryBytes.gap`; see [Gaps](#gaps)). A read of the tree that failed while following it makes the value `NOT_MEASURED`. |
 | `request.stationAddedTextBytes` | Text lines, blank lines included, in Station's first turn request that the control request lacks, sized from the text sent. |
@@ -154,9 +154,10 @@ signalled only when it is affirmatively shown to qualify.
   outlives its timeout, the run sends SIGKILL to that group, untagged members
   included, but only while Node has not reaped the launcher. A session
   leader cannot change its group, and an unreaped pid cannot be reused, so
-  until then the group id names the group this run created. Node records the
-  exit status in the same libuv callback that reaps the child, and the
-  timeout runs from a timer, so it reads that state accurately. Once the
+  until then the group id names the group this run created. Libuv can reap
+  several children before Node receives their exit callbacks. The strict
+  signal waits until the current batch of callbacks finishes and then
+  checks the leader's status immediately before sending the signal. Once the
   launcher has been reaped, the group may have ended and its id been reused,
   and no POSIX call signals a group only if it is still a given one, so the
   group is not signalled: the command fails with that reason, and anything
@@ -166,11 +167,11 @@ signalled only when it is affirmatively shown to qualify.
 - **C. A child the run spawned, through its own handle.** The control
   engine processes the Agent SDK starts (see *Control request* below) are
   spawned by the run, which keeps each one's `ChildProcess`. They are
-  signalled only through that handle's `kill`, and only while Node has not
-  reaped them: right before each signal, `exitCode` and `signalCode` must
-  both still be null. Node records them in the callback that reaps the
-  child, and an unreaped pid cannot be reused, so the handle still names the
-  process the run spawned. Every path that ends them goes through that
+  signalled only through that handle's `kill`. The synchronous guard
+  refuses once Node records `exitCode` or `signalCode` in the child's exit
+  callback. This check assumes it is outside a sibling's exit callback
+  from the same reaping batch, where the target's status may still be
+  pending. Every path that ends them goes through that
   `kill`: the run's cleanup (SIGTERM, then SIGKILL after 5 s), the SDK's
   own close and escalation, its kill-all when the run's process exits, and
   the abort signal Node wires to `kill`. No environment is read for this:
@@ -260,6 +261,49 @@ not measured.
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
 
+### Paired multi-turn requests (optional, report-only)
+
+`npm run perf:station-weight -- --multi-turn --report-only` adds a separate
+three-turn conversation after the ordinary samples and first-turn comparison.
+Without `--report-only`, the ordinary gate still compares its original metrics;
+the added conversation is always diagnostic and never a budget. `--multi-turn`
+cannot record a baseline. The default workload, metrics and baseline schema
+are unchanged when the flag is absent.
+
+The Station conversation uses `/api/orchestration/chat` with the same
+conversation id for both follow-ups. The SDK control resumes its own session,
+using the same bundled executable, fixture directory and model at ordinals
+1, 2 and 3. Each prompt and canned reply carries a distinct run/ordinal marker.
+There are no real provider API or plan calls, tool calls, discovery transitions, or
+context edits in this workload. Required instructions and tools remain enabled.
+The control must receive `CLAUDE.md`; Station must receive both `CLAUDE.md`
+and `AGENTS.md` on every turn.
+
+`requestConversation.turns` records each pair's cumulative request sizes,
+history text, loaded and named deferred tools, request count, sidecalls and
+other endpoint calls. `stationAdded` uses the same line-multiset and whole-tool
+definition comparison as the first-turn metric. `text` and
+`stationAdded.addedTextProgress` split cumulative lines into those repeated
+from the preceding ordinal and those newly introduced; removed lines are
+reported too. This is a multiset accounting of observed text, not a causal
+classification. History deliberately repeated on follow-ups is not all new
+overhead. Only the existing billing-header version suffix is normalized.
+There are no token or cost estimates.
+
+Every pair requires one unambiguous prompt-bearing request per caller window,
+successful completion with that ordinal's exact reply, intact ordered prompt
+and reply history, matching Claude versions/models, and fresh request and
+accepted-turn identities. A missing/refused/replayed/ambiguous turn is
+`not_measured` (`NOT_MEASURED` in the summary); later turns are explicitly
+skipped, and the run fails even in report-only mode. The bounded workload has
+three turns; dispatch and completion waits retain the existing 90 s and 120 s
+bounds per Station turn, and each SDK query has a 120 s interruption deadline.
+
+This diagnostic does not measure parking cost, memory or latency. In particular,
+the released and warm follow-ups below have different history ordinals and
+cannot establish a causal parking-cost difference. Codex/ACP parity and a
+read-only discovery transition remain `NOT_VERIFIED`.
+
 ### Delegated run (optional, report-only)
 
 `--delegated-run` adds one step after the idle-session sample. It writes a
@@ -293,6 +337,33 @@ turn, which keeps that engine for the ordinary idle park afterwards.
 
 A failed step is written as `delegatedRun.status: not_measured` with its
 reason. It does not fail the run.
+
+### Matched delegated follow-ups (optional, report-only)
+
+`npm run perf:station-weight -- --report-only --delegated-pair` compares
+the first operator follow-up in two separate Claude delegations. Both use
+the same seed, canned reply and follow-up shape, with distinct markers
+for each arm to keep delayed requests from being paired across sessions.
+The first delegation is
+eligible for Station's existing finished-session park policy. The harness
+waits for its engine to exit before seeding the warm comparison. The
+process observation establishes exit and replacement, without a separate
+receipt for the cause of the exit. Use
+`--delegated-pair=parked-first` to reverse the follow-up order.
+
+The report requires the same model and Claude Code version. Each outgoing
+follow-up must carry its own seed prompt and reply in order, the follow-up
+prompt, and the repository instruction markers. It also requires the warm
+engine to survive its follow-up and a new engine to appear on resume. The
+recorded process identities use the benchmark's existing process table.
+Follow-up latency is dispatch to the successful reply, observed by
+polling every 50 ms. The memory value is the parked engine's observed
+footprint before release, not a whole-app footprint delta. The result
+does not establish live-model recall or an interactive idle timeout.
+
+The flag runs without the other optional diagnostics. A missing or
+ambiguous arm fails the diagnostic. A saved pair also requires
+`--report-only` on evaluation and cannot record a baseline.
 
 ## Budgets and baseline
 
@@ -356,8 +427,12 @@ revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
 
 ## Gaps
 
-- **Wakeups on macOS.** Per-process wakeup counts need `powermetrics` (root)
-  or libproc, and `top`'s `IDLEW` did not advance between samples.
+- **Wakeups on macOS.** The [sampler](../../scripts/bench/station-weight-wakeups.mjs) counts only processes with matching kernel
+  birth identities at both ends of the idle window. Processes present at only
+  one endpoint are counted separately and omitted from the wakeup sum. An
+  unreadable counter, mismatched birth, or decreasing count on a shared PID
+  makes the result `NOT_MEASURED`. Processes that live entirely between the
+  endpoints are missed. Wakeup counts do not measure energy consumption.
 - **Windows.** The launcher is a bash script and the tree is read with POSIX
   `ps`, so the whole run reports `not_measured`.
 - **Unready engine.** A memory sample that never settles, an engine that never

@@ -1,0 +1,7 @@
+{
+  "revision": "71230143c613a2fa80b2a111ffaddf215b9d5baa",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked the Session API dispatch authority link and same-Project child delegation description against the current guide, station-control-policy dispatch entry, and recorded depth and tool-policy enforcement in request-delegation. The example now includes its shipped delegation declaration and explicitly distinguishes it from caller eligibility. The API descriptions and linked anchors remain accurate under this guide edit.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

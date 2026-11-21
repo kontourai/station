@@ -1,0 +1,23 @@
+{
+  "revision": "cd7bed7a9205c01f4bae0cff872c839a45ecdbca",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the existing device-code leaf and SDK response parser. DELETE returns the cancelled login record for an interrupted preflight and the pending POST returns that record with outcome cancelled and status 409. The existing profile checks and mounted engine:login authority remain the route admission. No new route or capability is required.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the device-code cancellation amendment and checked the citing API and integration material. The new receipt covers existing engine sign-in only. Terminal lifecycle and public integration routing are outside the affected leaf.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the device-code cancellation amendment and checked the citing API and integration material. The new receipt covers existing engine sign-in only. Terminal lifecycle and public integration routing are outside the affected leaf.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed device-code startup, capability discovery, single-profile cancellation, and process custody against the Connections and setup guides. An explicit sign-in or cancel still addresses the selected profile. The CLI writes credentials and verifies completion, Station relays the prompt, and the launcher owns its process tree. No change to Session, delegation, machine, tool, or Agent authority.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed device-code startup, capability discovery, single-profile cancellation, and process custody against the Connections and setup guides. An explicit sign-in or cancel still addresses the selected profile. The CLI writes credentials and verifies completion, Station relays the prompt, and the launcher owns its process tree. No change to Session, delegation, machine, tool, or Agent authority.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed device-code startup, capability discovery, single-profile cancellation, and process custody against the Connections and setup guides. An explicit sign-in or cancel still addresses the selected profile. The CLI writes credentials and verifies completion, Station relays the prompt, and the launcher owns its process tree. No change to Session, delegation, machine, tool, or Agent authority.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed device-code startup, capability discovery, single-profile cancellation, and process custody against the Connections and setup guides. An explicit sign-in or cancel still addresses the selected profile. The CLI writes credentials and verifies completion, Station relays the prompt, and the launcher owns its process tree. No change to Session, delegation, machine, tool, or Agent authority.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the two affected readiness fixture groups and the tool-policy and smoke-confidence references. The fixture removes ambient OAuth and storage-directory overrides so its selected file and CLI status assertions reach their stated branches. This is deterministic test evidence for existing readiness behavior.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the two affected readiness fixture groups and the tool-policy and smoke-confidence references. The fixture removes ambient OAuth and storage-directory overrides so its selected file and CLI status assertions reach their stated branches. This is deterministic test evidence for existing readiness behavior.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

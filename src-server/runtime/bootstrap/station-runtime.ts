@@ -130,6 +130,7 @@ import {
   managedPolicyAllowsRemoteClients,
   managedRemoteClientsDenial,
 } from '@kontourai/station-contracts/managed-policy';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -172,6 +173,7 @@ import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js
 import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { runMuseMcpList } from '../../providers/adapters/muse-mcp-status.js';
 import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema.js';
@@ -293,7 +295,10 @@ import {
   type AgentHooksDeps,
   createAgentHooks,
 } from '../agents/agent-hooks.js';
-import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type PullRequestWatchPolicy,
+} from '../agents/pre-tool-policy.js';
 import {
   activatePreparedRuntimeAgentInstance,
   buildRuntimeAgentInstance,
@@ -322,6 +327,10 @@ import {
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
+import {
+  composeProjectCoordinationRuntime,
+  type ProjectCoordinationRuntime,
+} from '../project-coordination-runtime.js';
 import {
   composeProjectWorkingRuntime,
   type ProjectWorkingRuntime,
@@ -532,7 +541,6 @@ import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-vari
 import { bootstrapRuntimeVoiceAgent } from '../agents/runtime-voice-agent.js';
 import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import type { StrandsFramework } from '../frameworks/strands-adapter.js';
-import { releaseAllNativeStationControlClients } from '../frameworks/strands-native-client-pool.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   createStationControlCallerRecordResolver,
@@ -543,9 +551,8 @@ import {
   createCodexBoundToolServer,
 } from '../mcp/station-control-in-process.js';
 import {
-  buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
-  mintStationControlMcpToken,
+  mintCodexStationMcpHeaderAuth,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
 import {
@@ -678,6 +685,15 @@ const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
 export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
+  /**
+   * #5066: the watching-Task refusals, bound once the routes compose pull
+   * request feedback. Every agent's pre-tool policy reads it per call, so
+   * an agent built before that binding is still covered.
+   */
+  private readonly pullRequestWatchSlot: { current?: PullRequestWatchPolicy } =
+    {};
+  private readonly pullRequestWatchPolicy: PullRequestWatchPolicy = (input) =>
+    this.pullRequestWatchSlot.current?.(input);
   private virtualApplication?: VirtualApplicationIngress;
   private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
@@ -871,6 +887,12 @@ export class StationRuntime {
    */
   private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
+  private stopConversationTitleGeneration?: () => void;
+  private stopTaskLifecycleEvents?: () => void;
+  private taskWorktreeRetryAdmissionClosed = false;
+  private readonly taskWorktreeRetries = new Set<Promise<void>>();
+  private readonly sessionExitFinalizations = new Set<Promise<void>>();
+  private readonly assignmentClaimUpdates = new Set<Promise<void>>();
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
   private notificationService?: NotificationService;
@@ -1058,6 +1080,7 @@ export class StationRuntime {
       ),
   });
   private codexAdapter = new CodexAdapter({
+    toolFamiliesEnabled: () => this.codexToolFamiliesEnabled(),
     resolveBoundToolPolicy: (input) =>
       this.resolveExternalPreToolPolicy(input, 'authentic'),
     boundToolsEpoch: () =>
@@ -1143,61 +1166,45 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
+    // #2376 slice 3: the adapter passes `toolFamilies` only for a session
+    // it admitted (preview on, qualified Codex version, header-token path);
+    // every other mint starts with the whole catalog.
     mintStationControlMcpAuth: (
       threadId: string,
       tenantExecutionContext,
       allowedTools,
       generation,
-    ) => {
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      const { token } = mintStationControlMcpToken(
-        threadId,
-        'http-header-token',
-        undefined,
+      toolFamilies,
+    ) =>
+      mintCodexStationMcpHeaderAuth({
+        port: this.port,
+        sessionId: threadId,
+        conversationId:
+          this.orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId,
+        serverId: 'station-control',
         tenantExecutionContext,
         allowedTools,
-        generation !== undefined ? 'coordinator-control' : 'station-control',
-        undefined,
-        generation === undefined
-          ? undefined
-          : () => coordinatorGeneration(conversationId) === generation,
-        // Codex 0.164 does not refresh tools after load_tool_family, even on
-        // the next turn. Keep its catalog callable until refresh is qualified.
-        false,
-      );
-      return { url: buildStationControlMcpHeaderUrl(this.port), token };
-    },
+        coordinatorGeneration: generation,
+        toolFamilies: toolFamilies === true,
+      }),
     mintStationKnowledgeMcpAuth: (
       threadId,
       tenantExecutionContext,
       allowedTools,
       generation,
-    ) => {
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      const { token } = mintStationControlMcpToken(
-        threadId,
-        'http-header-token',
-        undefined,
+    ) =>
+      mintCodexStationMcpHeaderAuth({
+        port: this.port,
+        sessionId: threadId,
+        conversationId:
+          this.orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId,
+        serverId: 'station-knowledge',
         tenantExecutionContext,
         allowedTools,
-        generation !== undefined
-          ? 'coordinator-knowledge'
-          : 'station-knowledge',
-        undefined,
-        generation === undefined
-          ? undefined
-          : () => coordinatorGeneration(conversationId) === generation,
-        false,
-      );
-      return {
-        url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
-        token,
-      };
-    },
+        coordinatorGeneration: generation,
+      }),
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
     // `this.logger` is not assigned until later in the constructor body
@@ -1239,6 +1246,32 @@ export class StationRuntime {
       createCredentialProfileAppHomeEnvPeek(this.museAppHomeSettings)(),
     // The engine's own MCP servers, read at session start (`muse mcp list`).
     listMcpServers: runMuseMcpList,
+    logger: {
+      warn: (msg: string, context?: unknown) =>
+        (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+          msg,
+          context,
+        ),
+      info: (msg: string, context?: unknown) =>
+        (this.logger?.info as ((...a: unknown[]) => void) | undefined)?.(
+          msg,
+          context,
+        ),
+    },
+  });
+  // GitHub Copilot through the Copilot SDK (docs/decisions/copilot-sdk-engine.md).
+  // Built here, before the preview registry exists, so it reads the
+  // `copilot-sdk-engine` preview through a lazy selector: until the bind in
+  // the constructor runs, and on a hosted runtime where it never binds,
+  // every selection takes the disabled branch.
+  private copilotSdkPreview: FeaturePreviewSelector | undefined;
+  private copilotSdkAdapter = new CopilotSdkAdapter({
+    preview: {
+      select: (branches) =>
+        this.copilotSdkPreview
+          ? this.copilotSdkPreview.select(branches)
+          : branches.disabled(),
+    },
     logger: {
       warn: (msg: string, context?: unknown) =>
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
@@ -1365,8 +1398,25 @@ export class StationRuntime {
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
+  private codexToolFamiliesPreview?: FeaturePreviewSelector;
+  /** The `codex-tool-families` preview's current choice. */
+  private codexToolFamiliesEnabled(): boolean {
+    return (
+      this.codexToolFamiliesPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false
+    );
+  }
   private stationInstructionsPreview?: FeaturePreviewSelector;
   private coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065/#5068: the `project-coordination` preview's composition. */
+  /**
+   * Composed with the services; absent until then, so every reader below
+   * (initialization deps, routes, dispatch) treats it as optional, like the
+   * other runtime collaborators a failed startup may never have built.
+   */
+  private projectCoordination?: ProjectCoordinationRuntime;
   private openCodeNativeEnginePreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
@@ -1477,6 +1527,7 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       projectToolPolicy: () => {
         const policy = new ToolLibraryService(
           this.configLoader.getProjectHomeDir(),
@@ -1824,7 +1875,23 @@ export class StationRuntime {
           description:
             'Let Codex Sessions use authorized browser and device tools through a bound channel. New Sessions also get Station Control there instead of a header token, adding about 110 KB of tool definitions to each thread.',
         });
+        // Runs the operator's own Copilot CLI and sign-in, so a hosted
+        // multi-tenant runtime never offers it.
+        this.copilotSdkPreview = this.featurePreviews.bind({
+          id: 'copilot-sdk-engine',
+          label: 'GitHub Copilot through the Copilot SDK',
+          description:
+            'Add a GitHub Copilot engine that drives your installed Copilot CLI through the Copilot SDK, with Station approvals, rewind and subagent reporting. Each message spends your Copilot requests.',
+        });
       }
+      // #2376 slice 3. A new id, not the withdrawn progressive-tools one, so
+      // a host that saved that choice is not opted in by an upgrade.
+      this.codexToolFamiliesPreview = this.featurePreviews.bind({
+        id: 'codex-tool-families',
+        label: 'Codex tool families',
+        description:
+          'Start new Codex Sessions that use Station Control over its header token with a short index of tool families instead of every tool; the agent loads a family when it needs one. Needs Codex 0.167.0 or later, and stays off for the Codex browser and device tools channel. A change applies to new and resumed Sessions; a running Session keeps what it started with.',
+      });
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1998,6 +2065,7 @@ export class StationRuntime {
       this.proposedChangeService = services.proposedChangeService;
       this.knowledgeService = services.knowledgeService;
       this.knowledgeStoreProvider = services.knowledgeStoreProvider;
+      this.projectCoordination = this.composeProjectCoordination();
       this.fileTreeService = services.fileTreeService;
       this.ptyAdapter = services.ptyAdapter;
       this.voiceService = services.voiceService;
@@ -2045,7 +2113,14 @@ export class StationRuntime {
           }),
         logger: this.logger,
       });
-      subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
+      const unsubscribeTitles = subscribeConversationTitleGeneration(
+        this.eventBus,
+        conversationTitles,
+      );
+      this.stopConversationTitleGeneration = () => {
+        conversationTitles.stop();
+        unsubscribeTitles();
+      };
       const worktreeProvisioningService = new WorktreeProvisioningService();
       const settlementStore =
         this.orchestrationEventStore?.worktreeOutputSettlementStore();
@@ -2060,7 +2135,14 @@ export class StationRuntime {
             isWorkspaceBusy: (path) => this.isWorkspaceBusy(path),
           })
         : undefined;
-      this.eventBus.subscribe((serverEvent) => {
+      // Emit diagnostics before scheduling boot writers. If construction
+      // throws, its synchronous cleanup can still close the store and lease.
+      this.logger.info('Station Runtime initializing', {
+        voltagentCore: '1.1.37',
+        aiSdkBedrock: '3.0.56',
+        nodeVersion: process.version,
+      });
+      this.stopTaskLifecycleEvents = this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
         const event = serverEvent.data?.event as
           | {
@@ -2079,37 +2161,28 @@ export class StationRuntime {
           event?.method === 'turn.aborted' ||
           event?.method === 'session.exited'
         )
-          setImmediate(() => {
-            void this.taskGraphService
-              .retryDeferredTaskWorktreeFinalizations()
-              .catch((error) => {
-                this.logger.warn('Deferred Task worktree finalization failed', {
-                  error: errorMessage(error),
-                });
-              });
-          });
+          setImmediate(() => this.retryDeferredTaskWorktreeFinalizations());
         if (event?.method !== 'session.exited' || !event.sessionId) return;
         const sessionId = event.sessionId;
-        void this.taskGraphService
-          .releaseClaimForSession(sessionId, event.reason ?? 'session.exited')
-          .catch((error) => {
-            this.logger.warn(
-              'Failed to release assignment claim on session exit',
-              {
-                sessionId: event.sessionId,
-                error: errorMessage(error),
-              },
-            );
-          });
-        void finalizeSessionExit(
-          { ...event, sessionId },
-          {
-            readExitDetail: (id) =>
-              this.orchestrationService.readSession(
-                id,
-                INTERNAL_SESSION_READ_SCOPE,
-                {
-                  eventMethods: [
+        this.trackTaskLifecycleWrite(this.assignmentClaimUpdates, () =>
+          this.taskGraphService.releaseClaimForSession(
+            sessionId,
+            event.reason ?? 'session.exited',
+          ),
+        );
+        this.trackTaskLifecycleWrite(this.sessionExitFinalizations, () =>
+          finalizeSessionExit(
+            { ...event, sessionId },
+            {
+              // The event bus receives committed exits, including ones
+              // published by orchestration after its public reads stop.
+              readExitDetail: async (id) => {
+                const store = this.orchestrationEventStore;
+                const session = store.readSessionByThread(id);
+                if (!session) return null;
+                const events = store.listEventPayloads(
+                  id,
+                  [
                     'session.started',
                     'session.configured',
                     'session.exited',
@@ -2122,102 +2195,76 @@ export class StationRuntime {
                     'request.resolved',
                     'session.stop-settled',
                   ],
-                },
-              ),
-            publishAgentFinished: async ({
-              sessionId: id,
-              provider,
-              detail,
-            }) => {
-              const binding =
-                this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
-                  id,
+                  false,
+                  true,
                 );
-              const task = binding
-                ? this.taskGraphService.readTaskView(binding.taskId)
-                : this.taskGraphService
-                    .listTasks()
-                    .find((candidate) => candidate.sessionId === id);
-              if (!task) return;
-              // Fold the persisted canonical stream through the one lifecycle
-              // classifier used by every other Station projection. Exit
-              // `reason` is adapter text, not a room-outcome authority.
-              const lifecycle = projectSessionLifecycle({
-                session: detail.session,
-                events: detail.events,
-              });
-              // An exit while work was still in progress was cut off.
-              const outcome =
-                sessionLifecycleOutcome(lifecycle.lifecycleState) ??
-                'cancelled';
-              await this.projectTaskRoomRuntime?.publishAgentFinished({
-                taskId: task.id,
+                return {
+                  session: {
+                    ...session,
+                    lifecycleState: projectSessionLifecycle({ session, events })
+                      .lifecycleState,
+                  },
+                  events,
+                };
+              },
+              publishAgentFinished: async ({
                 sessionId: id,
                 provider,
-                outcome,
-                occurredAt: detail.session.updatedAt,
-              });
+                detail,
+              }) => {
+                const binding =
+                  this.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+                    id,
+                  );
+                const task = binding
+                  ? this.taskGraphService.readTaskView(binding.taskId)
+                  : this.taskGraphService
+                      .listTasks()
+                      .find((candidate) => candidate.sessionId === id);
+                if (!task) return;
+                const outcome =
+                  sessionLifecycleOutcome(detail.session.lifecycleState) ??
+                  'cancelled';
+                await this.projectTaskRoomRuntime?.publishAgentFinished({
+                  taskId: task.id,
+                  sessionId: id,
+                  provider,
+                  outcome,
+                  occurredAt: detail.session.updatedAt,
+                });
+              },
+              finalizeWorktree: (exit) =>
+                this.worktreeOutputSettlements
+                  ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
+                  : worktreeProvisioningService.finalize(exit),
+              warn: (message, fields) => this.logger.warn(message, fields),
             },
-            finalizeWorktree: (exit) =>
-              this.worktreeOutputSettlements
-                ? this.worktreeOutputSettlements.finalizeSessionExit(exit)
-                : worktreeProvisioningService.finalize(exit),
-            warn: (message, fields) => this.logger.warn(message, fields),
-          },
+          ),
         );
       });
-      // Startup reconciliation sweep (review finding #5): a prior Station
-      // process (or dispatch attempt) may have crashed between an
-      // AssignmentProvider claim succeeding and its release, wedging the
-      // subject with no live owner — the in-process release triggers above
-      // (session.exited, task-terminal) only fire for a THIS-process crash's
-      // survivors, not a claim left over from before this restart. Fire-and-
-      // forget: never block server startup on it, but it needs
-      // `projectService`/`taskGraphService` wiring to already be complete,
-      // which it is at this point in the constructor. See
-      // `TaskGraphService.reconcileStaleAssignmentClaims`'s own doc comment
-      // for the accepted residual gap this sweep does not close.
-      // #4507: retry Task worktree finalizations a previous process
-      // deferred. Started only after the boot orphan-engine sweep settles,
-      // so it does not run while that sweep is still reaping a previous
-      // process's detached engines; a sweep that settled has not proved
-      // every orphan is gone (it reaps only what it can identify), and the
-      // later turn-end retries do not wait for it. Finalization's own
-      // checks (running turns here, a clean checkout, git refusing a dirty
-      // removal) still apply on every retry.
+
+      // #4507: retry durable deferred worktrees after the orphan sweep.
+      // Waiting for the sweep performs no work against the Task graph.
       void Promise.resolve(options.orphanEngineSweep)
         .catch(() => undefined)
-        .then(() =>
-          this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
-        )
-        .catch((error) => {
-          this.logger.warn('Deferred Task worktree finalization failed', {
-            error: errorMessage(error),
-          });
-        });
-      void this.taskGraphService
-        .reconcileStaleAssignmentClaims()
-        .then((result) => {
-          if (result.releasedSubjects.length > 0) {
-            this.logger.info(
-              'Startup reconciliation released stale assignment claims',
-              { subjects: result.releasedSubjects },
-            );
-          }
-        })
-        .catch((error) => {
-          this.logger.warn('Startup assignment-claim reconciliation failed', {
-            error: errorMessage(error),
-          });
-        });
-
-      // Log versions for debugging
-      this.logger.info('Station Runtime initializing', {
-        voltagentCore: '1.1.37',
-        aiSdkBedrock: '3.0.56',
-        nodeVersion: process.version,
+        .then(() => this.retryDeferredTaskWorktreeFinalizations());
+      this.trackTaskLifecycleWrite(this.assignmentClaimUpdates, async () => {
+        const result =
+          await this.taskGraphService.reconcileStaleAssignmentClaims();
+        if (result.releasedSubjects.length > 0) {
+          this.logger.info(
+            'Startup reconciliation released stale assignment claims',
+            {
+              subjects: result.releasedSubjects,
+            },
+          );
+        }
       });
     } catch (error) {
+      this.stopConversationTitleGeneration?.();
+      this.taskWorktreeRetryAdmissionClosed = true;
+      this.stopTaskLifecycleEvents?.();
+      this.stopTaskLifecycleEvents = undefined;
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
@@ -2980,9 +3027,8 @@ export class StationRuntime {
    * 'remove', ...)`, but until this wiring, nothing in production ever
    * subscribed — the whole watcher half was computed and discarded.
    *
-   * This reuses `reloadAgents()` — the SAME unconditional "resync the
-   * runtime's agent set from disk" entrypoint `scheduleRuntimeDailyReload`
-   * already fires on a timer and `POST /api/agents/reload` fires on demand —
+   * This reuses the on-demand `reloadAgents()` entry point
+   * (`POST /api/agents/reload`)
    * rather than `scheduleAgentConfigurationReconciliation()` below: that
    * reconciliation path is gated on the provider/app-config LAUNCHABILITY
    * REVISION counters actually having drifted, which an agent/integration
@@ -4543,11 +4589,23 @@ export class StationRuntime {
               enabled: () => true,
               disabled: () => false,
             }) ?? false,
+          // #2377 slice D: Station's own engine derives its station-control
+          // caller from the same records as in-process Claude.
+          stationControlCallerRecords: () =>
+            this.orchestrationService
+              ? createStationControlCallerRecordResolver(
+                  this.stationControlRecordSources(),
+                )
+              : undefined,
           codexBoundToolsEnabled: () =>
             this.codexBoundToolsPreview?.select({
               enabled: () => true,
               disabled: () => false,
             }) ?? false,
+          // The adapter's own admission question, so the families line in
+          // the instructions and the credential's listing agree.
+          codexToolFamiliesAdmitted: (threadId, eligible) =>
+            this.codexAdapter.toolFamiliesAdmitted(threadId, eligible),
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -4576,6 +4634,16 @@ export class StationRuntime {
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
           coordinatorSessionPreview: this.coordinatorSessionPreview,
+          projectSessionContext: this.projectCoordination?.sessionContext,
+          projectCoordinatorEffort: (projectSlug) => {
+            if (this.projectCoordination?.enabled() !== true) return undefined;
+            try {
+              return this.storageAdapter.getProject(projectSlug)
+                .coordinatorEffort;
+            } catch {
+              return undefined;
+            }
+          },
           openCodeNativeEnginePreview: this.openCodeNativeEnginePreview,
           durableAgentPreview: this.featurePreviews.bind({
             id: 'durable-station-agent',
@@ -4627,6 +4695,7 @@ export class StationRuntime {
           claudeAdapter: this.claudeAdapter,
           codexAdapter: this.codexAdapter,
           museAdapter: this.museAdapter,
+          copilotSdkAdapter: this.copilotSdkAdapter,
           ollamaAdapter: this.ollamaAdapter,
           createVoltAgentInstance: async (slug) =>
             this.createVoltAgentInstance(slug),
@@ -4634,7 +4703,6 @@ export class StationRuntime {
             this.configureRoutes(app);
             this.virtualApplication?.bind(app);
           },
-          reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
           registryTrustPolicyAuthority: this.registryTrustPolicyAuthority,
@@ -4901,6 +4969,29 @@ export class StationRuntime {
                       this.orchestrationService,
                     ),
                   ),
+                // #5068: the Project's Task model and effort, read at each
+                // dispatch, while the `project-coordination` preview is on.
+                projectTaskDefaults: (projectSlug) => {
+                  if (this.projectCoordination?.enabled() !== true)
+                    return undefined;
+                  let project: ProjectConfig;
+                  try {
+                    project = this.storageAdapter.getProject(projectSlug);
+                  } catch {
+                    return undefined;
+                  }
+                  return {
+                    ...(project.taskModel
+                      ? { modelId: project.taskModel }
+                      : {}),
+                    ...(project.taskProviderId
+                      ? { providerId: project.taskProviderId }
+                      : {}),
+                    ...(project.taskEffort
+                      ? { effort: project.taskEffort }
+                      : {}),
+                  };
+                },
                 // A seeded dispatch records its Agent; refuse one this
                 // Station does not have.
                 assertAgentExists: (agentId) =>
@@ -5018,6 +5109,16 @@ export class StationRuntime {
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+      // The Copilot SDK engine is adopted only while its preview is on. It
+      // shares the `copilot` CLI with the ACP built-in `copilot`, a separate
+      // connection this never touches.
+      previewCandidates: [
+        {
+          id: 'copilot-sdk',
+          cli: 'copilot',
+          allowed: () => this.copilotSdkAdapter.previewEnabled(),
+        },
+      ],
     }).catch((error: unknown) => {
       // Documented never to throw. If it ever does, the rejection is observed
       // HERE, where it can be attributed, rather than surfacing unowned on
@@ -5451,6 +5552,9 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      bindPullRequestWatchPolicy: (policy) => {
+        this.pullRequestWatchSlot.current = policy;
+      },
       discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -5590,6 +5694,7 @@ export class StationRuntime {
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
       coordinatorSessionPreview: this.coordinatorSessionPreview,
+      projectCoordination: this.projectCoordination,
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,
       getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
@@ -5781,6 +5886,7 @@ export class StationRuntime {
       observeModelContext: (
         observation: import('../types.js').ModelGenerationObservation,
       ) => recordManagedModelContext(this.orchestrationEventStore, observation),
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       agentSlug,
       validateProjectTools: (
         slug: string,
@@ -6020,6 +6126,8 @@ export class StationRuntime {
       orchestrationService: {
         resolveSessionActingPrincipal: (threadId) =>
           this.orchestrationService.resolveSessionActingPrincipal(threadId),
+        delegatedAppearanceOwner: (threadId) =>
+          this.orchestrationService.delegatedAppearanceOwner?.(threadId),
         firstStartedMetadataOfThread: (threadId) =>
           this.orchestrationService.firstStartedMetadataOfThread(threadId),
       },
@@ -6044,6 +6152,51 @@ export class StationRuntime {
         .designationForConversation(conversationId)?.actor.userId ===
       principal.id
     );
+  }
+
+  private composeProjectCoordination(): ProjectCoordinationRuntime {
+    const projectCoordination = composeProjectCoordinationRuntime({
+      preview: this.featurePreviews.bind({
+        id: 'project-coordination',
+        label: 'Project brief, memory and models',
+        description:
+          "Start every new Session in a Project with its goal, instructions and memory notes, on every engine, and set its coordinator and Task models. Adds the brief and memory index to each new Session's first turn.",
+      }),
+      projectHomeDir: this.configLoader.getProjectHomeDir(),
+      getProject: (slug) => {
+        try {
+          return this.storageAdapter.getProject(slug);
+        } catch {
+          return undefined;
+        }
+      },
+      saveProject: async (slug, update) => {
+        const revision = this.storageAdapter.projectRevision(slug);
+        await revision.replace({
+          ...revision.value,
+          ...update,
+          updatedAt: new Date().toISOString(),
+        });
+      },
+      knowledge: {
+        listDocuments: (slug, namespace) =>
+          this.knowledgeService.listDocuments(slug, namespace),
+        getDocumentContent: (slug, docId, namespace) =>
+          this.knowledgeService.getDocumentContent(slug, docId, namespace),
+      },
+      warn: (message, fields) => this.logger.warn(message, fields),
+    });
+    this.knowledgeService.setBriefCarriesRules((slug) => {
+      if (!projectCoordination.enabled()) return false;
+      try {
+        return Boolean(
+          this.storageAdapter.getProject(slug).instructionsMigratedAt,
+        );
+      } catch {
+        return false;
+      }
+    });
+    return projectCoordination;
   }
 
   private bindChatHostImagesPreview(): void {
@@ -6191,7 +6344,25 @@ export class StationRuntime {
   /**
    * Shutdown the runtime
    */
-  async shutdown(): Promise<void> {
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+
+    // Reserve the shutdown before stopping producers or waiting for boot.
+    let resolveAttempt!: (shutdown: Promise<void>) => void;
+    const attempt = new Promise<void>((resolve) => {
+      resolveAttempt = resolve;
+    }).catch((error) => {
+      this.shutdownPromise = null;
+      throw error;
+    });
+    this.shutdownPromise = attempt;
+    resolveAttempt(this.runShutdown());
+    return attempt;
+  }
+
+  private async runShutdown(): Promise<void> {
+    this.stopConversationTitleGeneration?.();
+    this.stopConversationTitleGeneration = undefined;
     if (this.taskRecordings && !this.taskRecordingsShutdown) {
       this.taskRecordingsShutdown = this.taskRecordings.dispose();
       void this.taskRecordingsShutdown.catch(() => {});
@@ -6218,11 +6389,9 @@ export class StationRuntime {
     // prototype-built doubles: the boot-time prerequisite priming must settle
     // rather than outlive the runtime.
     this.enginePrerequisitePrimingAbort?.abort();
-    // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
-    // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
-    // reason as the line above — prototype-built doubles have no fields.
+    // Stop an in-flight store probe before waiting for initialization because
+    // the probe owns a child process and graceful shutdown ends in process.exit.
     this.stopStoreIntegrityVerification?.();
-    if (this.shutdownPromise) return this.shutdownPromise;
     // Settle any in-flight initialize() before tearing down — its rejection
     // is expected here (we are shutting down under it) and must not escape
     // as an unhandled rejection attributed to someone else.
@@ -6231,13 +6400,7 @@ export class StationRuntime {
     }
     this.stopObservingRuntimeConfigurationSources();
     this.agentConfigurationMutationsClosed = true;
-    this.shutdownPromise = this.shutdownAfterConfigurationDrain().catch(
-      (error) => {
-        this.shutdownPromise = null;
-        throw error;
-      },
-    );
-    return this.shutdownPromise;
+    await this.shutdownAfterConfigurationDrain();
   }
 
   private retireSelfHostedBroker(): Promise<void> {
@@ -6257,9 +6420,91 @@ export class StationRuntime {
     return this.selfHostedBrokerShutdown;
   }
 
+  private trackTaskLifecycleWrite(
+    pending: Set<Promise<void>>,
+    operation: () => Promise<void>,
+  ): void {
+    const task = Promise.resolve()
+      .then(operation)
+      .catch((error) => {
+        this.logger.warn('Task lifecycle write failed', {
+          error: errorMessage(error),
+        });
+      });
+    pending.add(task);
+    void task.then(
+      () => pending.delete(task),
+      () => pending.delete(task),
+    );
+  }
+
+  private retryDeferredTaskWorktreeFinalizations(): void {
+    if (this.taskWorktreeRetryAdmissionClosed) return;
+    this.trackTaskLifecycleWrite(this.taskWorktreeRetries, () =>
+      this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
+    );
+  }
+
+  private async drainTaskLifecycleWrites(
+    pending: Set<Promise<void>> | undefined,
+    deadline: number,
+    name: string,
+  ): Promise<void> {
+    if (!pending?.size) return;
+    const settled = await awaitSettlementWithin(
+      Promise.allSettled(pending),
+      Math.max(0, deadline - performance.now()),
+    );
+    if (!settled) {
+      throw new Error(
+        `Station shutdown timed out waiting for ${name}; the Station home lease remains held.`,
+      );
+    }
+  }
+
+  private async settleSessionExitWrites(
+    taskLifecycleDeadline: number,
+  ): Promise<void> {
+    this.stopTaskLifecycleEvents?.();
+    this.stopTaskLifecycleEvents = undefined;
+    const sessionExitWrites = await Promise.allSettled([
+      this.drainTaskLifecycleWrites(
+        this.sessionExitFinalizations,
+        taskLifecycleDeadline,
+        'Session exit finalizations',
+      ),
+      this.drainTaskLifecycleWrites(
+        this.assignmentClaimUpdates,
+        taskLifecycleDeadline,
+        'assignment claim updates',
+      ),
+    ]);
+    const pendingWriterFailures = sessionExitWrites.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (pendingWriterFailures.length > 0) {
+      throw new AggregateError(
+        pendingWriterFailures,
+        'Runtime shutdown cleanup was incomplete.',
+      );
+    }
+  }
+
   private async shutdownAfterConfigurationDrain(): Promise<void> {
     this.recordRuntimeLifecycle('stopping');
-    await this.drainConfigurationQueues();
+    this.taskWorktreeRetryAdmissionClosed = true;
+    const taskLifecycleDeadline = performance.now() + this.drainGraceMs();
+    const [taskWorktreeRetries, configuration] = await Promise.allSettled([
+      this.drainTaskLifecycleWrites(
+        this.taskWorktreeRetries,
+        taskLifecycleDeadline,
+        'deferred Task worktree retries',
+      ),
+      this.drainConfigurationQueues(),
+    ]);
+    if (taskWorktreeRetries.status === 'rejected')
+      throw taskWorktreeRetries.reason;
+    if (configuration.status === 'rejected') throw configuration.reason;
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
@@ -6382,6 +6627,7 @@ export class StationRuntime {
     } catch (error) {
       failures.push(error);
     }
+    let sessionExitWritersPending = false;
     try {
       const optionalNetworkShutdownTasks = [
         this.usageTelemetry
@@ -6399,6 +6645,14 @@ export class StationRuntime {
         stopHealthChecks: this.stopHealthChecks,
         schedulerService: this.schedulerService,
         orchestrationService: this.orchestrationService,
+        settleSessionExitWrites: async () => {
+          try {
+            await this.settleSessionExitWrites(taskLifecycleDeadline);
+          } catch (error) {
+            sessionExitWritersPending = true;
+            throw error;
+          }
+        },
         attachedSessionFollowService: this.attachedSessionFollowService,
         consoleBridgeService: this.consoleBridgeService,
         voltAgent: this.voltAgent,
@@ -6442,14 +6696,13 @@ export class StationRuntime {
         optionalNetworkShutdownTasks,
       });
     } catch (error) {
-      failures.push(error);
-    }
-    try {
-      await Promise.all([
-        MCPManager.releaseAllNativeStationControlConnections(this.mcpCustody),
-        releaseAllNativeStationControlClients(this.mcpCustody),
-      ]);
-    } catch (error) {
+      if (sessionExitWritersPending) {
+        if (failures.length === 0) throw error;
+        throw new AggregateError(
+          [...failures, error],
+          'Runtime shutdown cleanup was incomplete.',
+        );
+      }
       failures.push(error);
     }
     try {

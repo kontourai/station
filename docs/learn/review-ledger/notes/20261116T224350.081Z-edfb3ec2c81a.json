@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Reviewed against this change: ConversationBody only passes the new sendQueuedForUploads prop to ChatInputArea. No claim in this document describes those surfaces; prose unchanged.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

@@ -1752,6 +1752,25 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
     );
     expect(bodyOf(call!)).toMatchObject({ delegation });
+
+    fetchMock.mockClear();
+    const restricted = { ...delegation, toolAllowlistConstraints: [[]] };
+    const { delegateTask } = await import('../station-control-delegation.js');
+    await expect(
+      delegateTask({
+        target: savedTarget(),
+        prompt: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('preserves detail-less remote foreground indeterminacy and ambiguous responses', async () => {
@@ -2723,6 +2742,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: a foreground send names no respawn intent; the service derives
+    // it from who caused the turn.
+    expect(
+      (sendTurn?.[2] as { resourceAdmissionIntent?: string } | undefined)
+        ?.resourceAdmissionIntent,
+    ).toBeUndefined();
   });
 
   test('derives queued/background admission from the fixed background route seam', async () => {
@@ -2756,6 +2781,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: the send's own respawn of a cold Session stays background too.
+    expect(sendTurn?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'queued_background',
+    });
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {
@@ -6269,5 +6298,386 @@ describe('#5051 a session-list request folds the read model once', () => {
       await service.shutdown();
       eventStore.close();
     }
+  });
+});
+
+describe('#5077 task event cursors are bounded by the per-thread high water', () => {
+  const TASK_ID = 'task-events-gap';
+  const authority = sessionReadAuthorityFromRequest(
+    'shared-user',
+    undefined,
+    undefined,
+  );
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  /**
+   * A real EventStore + OrchestrationService holding one delegated task whose
+   * thread sequences run 1..8: session.started, the launch binding, then six
+   * text deltas (`delta-1`..`delta-6` at sequences 3..8).
+   */
+  async function withDelegatedTask(
+    run: (fixture: {
+      eventStore: EventStore;
+      service: OrchestrationService;
+      deleteEvents: (...eventIds: string[]) => void;
+    }) => Promise<void>,
+  ) {
+    const eventStore = new EventStore(
+      join(makeTempDir('task-events-gap-'), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      service.initialize();
+      const at = '2026-11-16T00:00:00.000Z';
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: TASK_ID,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'gap-started',
+        provider: 'claude',
+        threadId: TASK_ID,
+        sessionId: TASK_ID,
+        method: 'session.started',
+        metadata: { userId: 'shared-user' },
+        createdAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'gap-configured',
+        provider: 'claude',
+        threadId: TASK_ID,
+        sessionId: TASK_ID,
+        method: 'session.configured',
+        metadata: {
+          taskId: TASK_ID,
+          conversationId: TASK_ID,
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+          userId: 'shared-user',
+        },
+        createdAt: at,
+      });
+      for (let index = 1; index <= 6; index += 1) {
+        eventStore.appendEvent({
+          eventId: `delta-${index}`,
+          provider: 'claude',
+          threadId: TASK_ID,
+          method: 'content.text-delta',
+          itemId: 'item-1',
+          delta: `part ${index}`,
+          createdAt: at,
+        });
+      }
+      const deleteEvents = (...eventIds: string[]) => {
+        const remove = eventStore['db'].prepare(
+          'DELETE FROM orchestration_events WHERE id = ?',
+        );
+        for (const eventId of eventIds) remove.run(eventId);
+      };
+      await run({ eventStore, service, deleteEvents });
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  }
+
+  async function pageThrough(
+    read: (cursor: string | undefined) => Promise<{
+      events: Array<{ sequence: number; eventId?: string }>;
+      eventCount: number;
+      nextCursor: string;
+      hasMore: boolean;
+    }>,
+  ) {
+    const seen: Array<{ sequence: number; eventId?: string }> = [];
+    const cursors: string[] = [];
+    let cursor: string | undefined;
+    for (let pages = 0; pages < 20; pages += 1) {
+      const page = await read(cursor);
+      seen.push(
+        ...page.events.map(({ sequence, eventId }) => ({ sequence, eventId })),
+      );
+      cursors.push(page.nextCursor);
+      cursor = page.nextCursor;
+      if (!page.hasMore) return { seen, cursors, eventCount: page.eventCount };
+    }
+    throw new Error('task event paging did not finish');
+  }
+
+  test('pages every remaining event in order across per-thread sequence gaps', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ eventStore, service, deleteEvents }) => {
+      // Sequences 4 and 6 go; 8 (the thread's high water) stays. Six events
+      // remain, so the final page's nextSequence (8) exceeds the count.
+      deleteEvents('delta-2', 'delta-4');
+      expect(eventStore.countEventsByThread(TASK_ID)).toBe(6);
+
+      const { seen, cursors, eventCount } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 2, readAuthority: authority },
+          service as never,
+        ),
+      );
+
+      expect(seen).toEqual([
+        { sequence: 1, eventId: 'gap-started' },
+        { sequence: 2, eventId: 'gap-configured' },
+        { sequence: 3, eventId: 'delta-1' },
+        { sequence: 5, eventId: 'delta-3' },
+        { sequence: 7, eventId: 'delta-5' },
+        { sequence: 8, eventId: 'delta-6' },
+      ]);
+      expect(cursors).toEqual([
+        'station-task-events:v1:2',
+        'station-task-events:v1:5',
+        'station-task-events:v1:8',
+      ]);
+      expect(eventCount).toBe(6);
+
+      // A cursor above the count but within the high water is a valid resume.
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:7',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).resolves.toMatchObject({
+        events: [{ sequence: 8, eventId: 'delta-6' }],
+        nextCursor: 'station-task-events:v1:8',
+        hasMore: false,
+      });
+    });
+  });
+
+  test('still refuses a cursor beyond the high water of a gapped thread', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ service, deleteEvents }) => {
+      deleteEvents('delta-2', 'delta-4');
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:9',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow(
+        'The task event cursor is ahead of the available task history; restart without a cursor',
+      );
+    });
+  });
+
+  test('pages a gap-free thread exactly as before', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ service }) => {
+      const { seen, cursors, eventCount } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 3, readAuthority: authority },
+          service as never,
+        ),
+      );
+      expect(seen.map(({ sequence }) => sequence)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8,
+      ]);
+      expect(cursors).toEqual([
+        'station-task-events:v1:3',
+        'station-task-events:v1:6',
+        'station-task-events:v1:8',
+      ]);
+      expect(eventCount).toBe(8);
+      await expect(
+        observeDelegatedTaskEvents(
+          {
+            taskId: TASK_ID,
+            cursor: 'station-task-events:v1:9',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow('ahead of the available task history');
+    });
+  });
+
+  // Every Station since the founding commit answers a remote task-events read
+  // through its own `/delegations/:taskId/events` route and validates the page
+  // against its own store; the calling client only relays the canonical page.
+  // So a client of any version paging a newer, gapped host never applies the
+  // count check itself. This drives the client's canonical path against the
+  // real route over a gapped store.
+  test('a client reading a gapped host through the canonical route pages without a client-side bound', async () => {
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    const { createOrchestrationRoutes } = await import(
+      '../../routes/orchestration/orchestration.js'
+    );
+    await withDelegatedTask(async ({ service, deleteEvents }) => {
+      deleteEvents('delta-2', 'delta-4');
+      const host = createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'shared-user',
+        observeDelegatedTaskEvents: (input) =>
+          observeDelegatedTaskEvents(
+            { ...input, readAuthority: authority },
+            service as never,
+          ),
+      });
+      const routed: string[] = [];
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        const prefix = `${CURRENT_API}/api/orchestration`;
+        if (url.startsWith(`${prefix}/delegations/`)) {
+          routed.push(url.slice(prefix.length));
+          return host.request(url.slice(prefix.length));
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      // No local service: this is the relaying client, not the host.
+      const { seen, cursors } = await pageThrough((cursor) =>
+        observeDelegatedTaskEvents({ taskId: TASK_ID, cursor, limit: 2 }),
+      );
+      expect(seen.map(({ sequence }) => sequence)).toEqual([1, 2, 3, 5, 7, 8]);
+      expect(cursors.at(-1)).toBe('station-task-events:v1:8');
+      expect(routed).toHaveLength(3);
+    });
+  });
+
+  // A newer client reading a page from a host that predates
+  // `highWaterSequence` falls back to the count, which is that host's high
+  // water because its log has no gaps.
+  test('falls back to the event count for a page without a high water', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    const binding = {
+      method: 'session.configured',
+      createdAt: '2026-11-16T00:00:00.000Z',
+      metadata: {
+        taskId: TASK_ID,
+        environmentId: 'environment-current',
+        environmentName: 'Current environment',
+        targetKind: 'agent',
+        targetId: 'reviewer',
+      },
+    };
+    const olderHost = (page: {
+      eventCount: number;
+      nextSequence: number;
+      sequences: number[];
+      highWaterSequence?: number;
+    }) => {
+      const session = {
+        threadId: TASK_ID,
+        lifecycleState: 'completed',
+        eventCount: page.eventCount,
+        delegation: {
+          taskId: TASK_ID,
+          environmentId: 'environment-current',
+          environmentName: 'Current environment',
+          targetKind: 'agent',
+          targetId: 'reviewer',
+        },
+      };
+      const detail = { session, events: [binding] };
+      return {
+        readSession: vi.fn(async () => detail),
+        readCurrentConversationSession: vi.fn(async () => detail),
+        readSessionEventPage: vi.fn(async () => ({
+          session,
+          events: page.sequences.map((sequence) => ({
+            sequence,
+            event: binding,
+          })),
+          nextSequence: page.nextSequence,
+          hasMore: false,
+          ...(page.highWaterSequence === undefined
+            ? {}
+            : { highWaterSequence: page.highWaterSequence }),
+        })),
+      };
+    };
+
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 2,
+          sequences: [1, 2],
+        }) as never,
+      ),
+    ).resolves.toMatchObject({ nextCursor: 'station-task-events:v1:2' });
+    await expect(
+      observeDelegatedTaskEvents(
+        {
+          taskId: TASK_ID,
+          cursor: 'station-task-events:v1:3',
+          readAuthority: authority,
+        },
+        olderHost({ eventCount: 2, nextSequence: 3, sequences: [] }) as never,
+      ),
+    ).rejects.toThrow('ahead of the available task history');
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+        }) as never,
+      ),
+    ).rejects.toThrow('The selected Station returned invalid task event state');
+    // The same page with a high water is a valid gapped page.
+    await expect(
+      observeDelegatedTaskEvents(
+        { taskId: TASK_ID, readAuthority: authority },
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+          highWaterSequence: 3,
+        }) as never,
+      ),
+    ).resolves.toMatchObject({
+      events: [{ sequence: 1 }, { sequence: 3 }],
+      nextCursor: 'station-task-events:v1:3',
+    });
   });
 });

@@ -158,7 +158,14 @@ describe('probeServerConnection', () => {
         new AbortController().signal,
         brokerRoute,
       ),
-    ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: {
+        kind: 'local-authority',
+        code: 'station_application_authority_required',
+      },
+    });
     expect(transport).toHaveBeenCalledTimes(1);
     expect(direct).not.toHaveBeenCalled();
   });
@@ -470,7 +477,11 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'host-unavailable',
+        evidence: { kind: 'http', phase: 'handshake', status: 503 },
+      });
     });
 
     it('recognizes Station own UI proxy 504 upstream timeout as the same recovering host (#1654)', async () => {
@@ -491,7 +502,11 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'host-unavailable',
+        evidence: { kind: 'http', phase: 'handshake', status: 504 },
+      });
     });
 
     it('keeps a bare 504 in the foreign or unusable responder bucket (#1654)', async () => {
@@ -511,7 +526,11 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'unexpected-response',
+        evidence: { kind: 'http', phase: 'handshake', status: 504 },
+      });
     });
 
     it('keeps an unknown 503 in the foreign or unusable responder bucket', async () => {
@@ -525,10 +544,14 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'unexpected-response',
+        evidence: { kind: 'http', phase: 'handshake', status: 503 },
+      });
     });
 
-    it('reads a 401 on the public handshake as a rejected device', async () => {
+    it('retains the public response phase when the handshake returns 401', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         Response.json(
           { error: { code: 'authentication_required' } },
@@ -544,7 +567,16 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'authentication-failed',
+        evidence: {
+          kind: 'http',
+          phase: 'handshake',
+          status: 401,
+          code: 'authentication_required',
+        },
+      });
     });
 
     it('reads a 403 origin refusal as origin policy, not a credential problem', async () => {
@@ -558,7 +590,16 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'origin-not-allowed' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'origin-not-allowed',
+        evidence: {
+          kind: 'http',
+          phase: 'handshake',
+          status: 403,
+          code: 'origin_forbidden',
+        },
+      });
     });
 
     it('reads a 404 as something that is not a Station, not an absent host', async () => {
@@ -572,7 +613,11 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'unexpected-response',
+        evidence: { kind: 'http', phase: 'handshake', status: 404 },
+      });
     });
 
     it('reads a 200 whose body is not JSON as something else answering', async () => {
@@ -594,7 +639,7 @@ describe('probeServerConnection', () => {
       ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
     });
 
-    it('reads an insufficient-scope 403 on the protected request as a device credential problem', async () => {
+    it('retains the protected response and code for an insufficient-scope 403', async () => {
       vi.spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(Response.json(handshake))
         .mockResolvedValueOnce(
@@ -612,7 +657,16 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'authentication-failed',
+        evidence: {
+          kind: 'http',
+          phase: 'authenticated',
+          status: 403,
+          code: 'insufficient_scope',
+        },
+      });
     });
 
     it('reads a client-protocol refusal on the protected request as this app being too old (#2962)', async () => {
@@ -636,7 +690,16 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'client-protocol-unsupported' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'client-protocol-unsupported',
+        evidence: {
+          kind: 'http',
+          phase: 'authenticated',
+          status: 426,
+          code: 'client_protocol_unsupported',
+        },
+      });
     });
 
     it('carries the client-protocol header cross-origin only once the handshake advertised it (#2962)', async () => {
@@ -688,7 +751,11 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'unexpected-response',
+        evidence: { kind: 'http', phase: 'authenticated', status: 426 },
+      });
     });
 
     it('reads a 500 on the protected request as an unusable answer', async () => {
@@ -702,7 +769,11 @@ describe('probeServerConnection', () => {
           'environment-1',
           new AbortController().signal,
         ),
-      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+      ).resolves.toEqual({
+        ok: false,
+        reason: 'unexpected-response',
+        evidence: { kind: 'http', phase: 'authenticated', status: 500 },
+      });
     });
 
     it('still reports a genuine transport failure as unreachable', async () => {
@@ -721,6 +792,65 @@ describe('probeServerConnection', () => {
     });
   });
 
+  it('preserves the authentication limiter code on the protected response', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json(handshake))
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            error: { code: 'authentication_rate_limited' },
+          },
+          { status: 429 },
+        ),
+      );
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        'fixture-credential',
+        'environment-1',
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: {
+        kind: 'http',
+        phase: 'authenticated',
+        status: 429,
+        code: 'authentication_rate_limited',
+      },
+    });
+  });
+
+  it('records an invalid local application authority without an HTTP status', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json(handshake),
+    );
+    setStationHealthRouteResolver((_origin, _route, authenticated) => {
+      if (authenticated) {
+        throw Object.assign(new Error('fixture authority mismatch'), {
+          code: 'station_application_authority_invalid',
+        });
+      }
+      return null;
+    });
+    await expect(
+      probeServerConnection(
+        'https://station.example.test',
+        undefined,
+        'environment-1',
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: {
+        kind: 'local-authority',
+        code: 'station_application_authority_invalid',
+      },
+    });
+  });
+
   it('distinguishes authentication rejection', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(Response.json(handshake))
@@ -732,7 +862,11 @@ describe('probeServerConnection', () => {
         'environment-1',
         new AbortController().signal,
       ),
-    ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: { kind: 'http', phase: 'authenticated', status: 401 },
+    });
   });
 
   it('flags a live host that no longer serves clients this old', async () => {
@@ -903,7 +1037,11 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     );
     await expect(
       checkServerHealthDetailed('http://station.example:3141'),
-    ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'host-unavailable',
+      evidence: { kind: 'http', phase: 'authenticated', status: 503 },
+    });
   });
 
   it('reports a rejected credential as authentication-failed, not unreachable', async () => {
@@ -916,7 +1054,11 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     );
     await expect(
       checkServerHealthDetailed('http://station.example:3141', 'stale-token'),
-    ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: { kind: 'http', phase: 'authenticated', status: 401 },
+    });
   });
 
   it('does NOT treat origin policy as an auth failure — pairing cannot fix it', async () => {
@@ -936,7 +1078,16 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     );
     await expect(
       checkServerHealthDetailed('http://station.example:3141'),
-    ).resolves.toEqual({ ok: false, reason: 'origin-not-allowed' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'origin-not-allowed',
+      evidence: {
+        kind: 'http',
+        phase: 'authenticated',
+        status: 403,
+        code: 'origin_forbidden',
+      },
+    });
   });
 
   /**
@@ -958,7 +1109,16 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     );
     await expect(
       checkServerHealthDetailed('http://station.example:3141', 'scoped-token'),
-    ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: {
+        kind: 'http',
+        phase: 'authenticated',
+        status: 403,
+        code: 'insufficient_scope',
+      },
+    });
   });
 
   it('refuses to guess which 403 it is when nothing coded the body', async () => {
@@ -970,7 +1130,11 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     );
     await expect(
       checkServerHealthDetailed('http://station.example:3141'),
-    ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'unexpected-response',
+      evidence: { kind: 'http', phase: 'authenticated', status: 403 },
+    });
   });
 
   it('still reports a genuine transport failure as unreachable', async () => {

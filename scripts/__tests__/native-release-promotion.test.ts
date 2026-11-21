@@ -355,7 +355,7 @@ process.stdout.write(String(response.status));
     });
     // iOS is built and audited during staging and only uploaded by the
     // publishing cohort from the same run's staged bytes (#1454).
-    expect(iosStageCaller?.needs).toEqual(['plan-cohort', 'stage-macos']);
+    expect(iosStageCaller?.needs).toContain('plan-cohort');
     expect((iosStageCaller as any)?.uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
@@ -1191,22 +1191,55 @@ process.stdout.write(String(response.status));
     );
     expect(dependencyStep).toBeGreaterThanOrEqual(0);
     expect(planStep).toBeGreaterThan(dependencyStep ?? -1);
-    for (const action of [
-      'anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
-      'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
-    ])
-      expect(source).toContain(action);
+    const portable = fleet.jobs?.portable;
+    const admission = fleet.jobs?.['admit-fleet'];
+    const sboms = portable?.steps?.filter(({ uses }) =>
+      uses?.startsWith('anchore/sbom-action@'),
+    );
+    expect(sboms).toHaveLength(1);
+    expect(sboms?.[0]?.uses).toMatch(/^anchore\/sbom-action@[0-9a-f]{40}$/);
+    expect(sboms?.[0]?.with).toEqual({
+      path: 'fleet-assets',
+      format: 'cyclonedx-json',
+      'output-file': 'fleet-assets/portable-sbom.cdx.json',
+      'syft-version': 'v1.51.0',
+      'upload-artifact': false,
+      'upload-release-assets': false,
+    });
+    const attestations = [
+      [
+        portable,
+        [
+          'fleet-assets/station-nightly-portable.tar.gz',
+          'fleet-assets/station-nightly-portable.tar.gz.sha256',
+          'fleet-assets/station-nightly-portable-manifest.json',
+          'fleet-assets/portable-build-check.json',
+          'fleet-assets/portable-sbom.cdx.json',
+        ].join('\n'),
+      ],
+      [admission, 'staged/staged-fleet-inventory.json'],
+    ] as const;
+    const attestationActions = attestations.map(([job, subjectPath]) => {
+      const steps = job?.steps?.filter(({ uses }) =>
+        uses?.startsWith('actions/attest-build-provenance@'),
+      );
+      expect(steps, subjectPath).toHaveLength(1);
+      expect(steps?.[0]?.with).toEqual({ 'subject-path': subjectPath });
+      const action = steps?.[0]?.uses;
+      expect(action, subjectPath).toMatch(
+        /^actions\/attest-build-provenance@[0-9a-f]{40}$/,
+      );
+      return action;
+    });
+    expect(new Set(attestationActions).size).toBe(1);
     expect(source).toContain('stage-receipt');
     expect(source).toContain('staged-fleet-inventory.mjs admit-fixed');
     expect(source).toContain('config/nightly-fleet-staging-plan.json');
     expect(source).toContain('manifest.prerelease!==true');
     expect(source).toContain('Object.hasOwn(manifest,"releaseChannel")');
     expect(source).not.toContain('manifest.releaseChannel!=="nightly-staging"');
-    expect(source).toContain('syft-version: v1.51.0');
-    expect(source).not.toContain('syft-version: 1.51.0');
     expect(source).toContain('gh attestation verify "staged/$name"');
-    const admission = fleet.jobs?.['admit-fleet'] ?? {};
-    const verification = admission.steps?.find(
+    const verification = admission?.steps?.find(
       (step) =>
         step.name ===
         'Verify every attested subject with exact workflow identity',

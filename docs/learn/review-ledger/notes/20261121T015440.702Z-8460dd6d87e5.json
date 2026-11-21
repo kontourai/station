@@ -1,0 +1,13 @@
+{
+  "revision": "7f45673f0bf8ea01fdf930964c508e9492ed17cb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked mobile Inbox refresh feedback against the guides. The status now sits above the selection tray and clears floating New chat. Refresh commands, menu navigation and saved filters are unchanged.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked mobile Inbox refresh feedback against the guides. The status now sits above the selection tray and clears floating New chat. Refresh commands, menu navigation and saved filters are unchanged.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked mobile Inbox refresh feedback against the guides. The status now sits above the selection tray and clears floating New chat. Refresh commands, menu navigation and saved filters are unchanged.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked mobile Inbox refresh feedback against the guides. The status now sits above the selection tray and clears floating New chat. Refresh commands, menu navigation and saved filters are unchanged.","inputs":["src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]}
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "revision": "3f5c71bb421acb2a1a282ac63a5838fc68aef4a9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5113: WorkloadResources entry now states workload notices go to engine-process subscribers via watchChildWorkloadNotices with no adapter knowledge, and names each adapter's delivery channel (Claude hooks additionalContext / UserPromptSubmit; Codex turn/steer / next turn/start) plus the runtime.warning; checked against workload-resources.ts, claude-adapter.ts, codex-adapter-transport.ts and codex-adapter.ts.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","packages/shared/src/child-workload.ts","src-server/providers/adapters/claude-adapter.ts","src-server/services/infra/workload-resources.ts","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5113: replaced 'Station does not push the warning into the engine's turn' with the notice contract: transitions only, sanitized comm names, 360-char bound, warning codes, per-adapter timing, coalescing, 10-minute expiry, no delivery after session end, and station.engine.workload_notices; checked against engine-workload-notices.ts and both adapters.","inputs":["docs/guides/development.md","packages/shared/src/child-workload.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/claude-code-spawn.ts","src-server/providers/adapters/codex-adapter.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"Regenerated with docs:metrics:generate; adds station.engine.workload_notices with its closed provider_family, kind and outcome attributes.","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5113: added workload-memory-pressure and workload-memory-pressure-cleared as warning/false rows, matching PROVIDER_FAILURE_KINDS and its pinned test.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#5113 adds PostToolUseFailure and UserPromptSubmit SDK callback hooks and additionalContext on PostToolUse only when a workload notice is pending, plus a runtime.warning per notice; checked citing docs: their claims about tool policy, PreToolUse, PostToolUse web-read marking, connections, starter work and session API are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#5113: turn/start may carry one extra Station workload-notice text item ahead of the user's input; the published turn.started prompt is unchanged. Citing docs make no claim about turn/start input composition that this contradicts.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#5113: the transport subscribes to all workload notices instead of only kills, publishes pressure runtime.warnings and steers notices with turn/steer without publishing a steer turn.started; kill warning and marker unchanged. Citing docs' claims hold.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5113: the transport subscribes to all workload notices instead of only kills, publishes pressure runtime.warnings and steers notices with turn/steer without publishing a steer turn.started; kill warning and marker unchanged. Citing docs' claims hold.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5113: the transport subscribes to all workload notices instead of only kills, publishes pressure runtime.warnings and steers notices with turn/steer without publishing a steer turn.started; kill warning and marker unchanged. Citing docs' claims hold.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#5113: the transport subscribes to all workload notices instead of only kills, publishes pressure runtime.warnings and steers notices with turn/steer without publishing a steer turn.started; kill warning and marker unchanged. Citing docs' claims hold.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#5113: the transport subscribes to all workload notices instead of only kills, publishes pressure runtime.warnings and steers notices with turn/steer without publishing a steer turn.started; kill warning and marker unchanged. Citing docs' claims hold.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#5113: the transport subscribes to all workload notices instead of only kills, publishes pressure runtime.warnings and steers notices with turn/steer without publishing a steer turn.started; kill warning and marker unchanged. Citing docs' claims hold.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#5113: adds the optional per-session workloadNotices queue to the Codex session record; no documented field contract changes.","inputs":["src-server/providers/adapters/codex-adapter-types.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5113: the engine process owner forwards its spawned child's workload notices to onWorkloadNotice listeners until the child exits; spawn, stderr and exit behavior unchanged.","inputs":["src-server/providers/adapters/claude-code-spawn.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5113: the engine process owner forwards its spawned child's workload notices to onWorkloadNotice listeners until the child exits; spawn, stderr and exit behavior unchanged.","inputs":["src-server/providers/adapters/claude-code-spawn.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5113: the OOM listener set became a notice listener set; pressure enter/exit and the existing post-alive kill announcement are emitted to it once per transition. Logging, metrics, kill accounting and close verdicts are unchanged; citing docs remain accurate (development.md updated separately).","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5113: the OOM listener set became a notice listener set; pressure enter/exit and the existing post-alive kill announcement are emitted to it once per transition. Logging, metrics, kill accounting and close verdicts are unchanged; citing docs remain accurate (development.md updated separately).","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5113: the OOM listener set became a notice listener set; pressure enter/exit and the existing post-alive kill announcement are emitted to it once per transition. Logging, metrics, kill accounting and close verdicts are unchanged; citing docs remain accurate (development.md updated separately).","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#5113: the OOM listener set became a notice listener set; pressure enter/exit and the existing post-alive kill announcement are emitted to it once per transition. Logging, metrics, kill accounting and close verdicts are unchanged; citing docs remain accurate (development.md updated separately).","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"#5113: the OOM listener set became a notice listener set; pressure enter/exit and the existing post-alive kill announcement are emitted to it once per transition. Logging, metrics, kill accounting and close verdicts are unchanged; citing docs remain accurate (development.md updated separately).","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5113: ChildWorkloadLaunch.watchOomKills became watchNotices; watchChildWorkloadOomKills is now a filter over watchChildWorkloadNotices. The README's launcher, spawn and outcome claims are unchanged.","inputs":["packages/shared/src/child-workload.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5113: ChildWorkloadLaunch.watchOomKills became watchNotices; watchChildWorkloadOomKills is now a filter over watchChildWorkloadNotices. The README's launcher, spawn and outcome claims are unchanged.","inputs":["packages/shared/src/child-workload.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#5113: ChildWorkloadLaunch.watchOomKills became watchNotices; watchChildWorkloadOomKills is now a filter over watchChildWorkloadNotices. The README's launcher, spawn and outcome claims are unchanged.","inputs":["packages/shared/src/child-workload.ts"]},
+
+    {"path":"packages/shared/README.md","note":"#5113: ChildWorkloadLaunch.watchOomKills became watchNotices; watchChildWorkloadOomKills is now a filter over watchChildWorkloadNotices. The README's launcher, spawn and outcome claims are unchanged.","inputs":["packages/shared/src/child-workload.ts"]},
+
+    {"path":"docs/architecture.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"#5113 adds the station.engine.workload_notices counter only; citing docs' monitoring and architecture claims are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#5113 adds the WORKLOAD_MEMORY_PRESSURE(_CLEARED)_CODE runtime.warning constants; no existing export changes.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5113 adds the WORKLOAD_MEMORY_PRESSURE(_CLEARED)_CODE runtime.warning constants; no existing export changes.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5113 adds the WORKLOAD_MEMORY_PRESSURE(_CLEARED)_CODE runtime.warning constants; no existing export changes.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5113 adds the WORKLOAD_MEMORY_PRESSURE(_CLEARED)_CODE runtime.warning constants; no existing export changes.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#5113 adds the WORKLOAD_MEMORY_PRESSURE(_CLEARED)_CODE runtime.warning constants; no existing export changes.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5113 maps the two pressure codes to warning; contracts.md table updated.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5113 maps the two pressure codes to warning; contracts.md table updated.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Pins the two pressure codes and the project_held code already mapped on main (#5098) but missing from the pin.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The pinned SDK options shape now lists the PostToolUseFailure and UserPromptSubmit hooks; no other expectation changed.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The pinned SDK options shape now lists the PostToolUseFailure and UserPromptSubmit hooks; no other expectation changed.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

@@ -1150,6 +1150,16 @@ export function createRegistryRoutes(
       configLoader.getProjectHomeDir(),
     );
     if (result.success && reloadSkills) await reloadSkills().catch(() => {});
+    if (result.reason === 'not-owned' && result.writeRefusal)
+      return c.json(
+        {
+          success: false,
+          code: 'skill-not-owned',
+          message: result.writeRefusal.detail,
+          details: result.writeRefusal,
+        },
+        409,
+      );
     return c.json(result, result.success ? 200 : 500);
   });
 

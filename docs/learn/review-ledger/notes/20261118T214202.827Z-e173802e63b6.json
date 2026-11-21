@@ -1,0 +1,7 @@
+{
+  "revision": "994126446272527aadcf68352206373c03c226f0",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Connections guide changes. The terminal opens only for the matching Station and its existing authority check. Project sharing and credential ownership stay as documented.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

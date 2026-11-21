@@ -38,10 +38,12 @@ import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
 import { describeStationFailure } from '../utils/stationFailure';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
+import { PageCallout } from './PageCallout';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
 import {
+  kontourReceivesOnlyLite,
   SHARING_LABELS,
   type TelemetryChoiceAuthority,
 } from './UsageSharingChoices';
@@ -397,6 +399,9 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         : Math.min(1000 * 2 ** failureCount, 30_000),
   });
   const status = useTelemetryStatus(query.data?.publishers !== undefined);
+  const authorCanReceiveFull =
+    !!status.data?.authorEndpoint &&
+    !kontourReceivesOnlyLite(status.data.publishers.kontour);
   const author = useQuery({
     queryKey: [
       'usage-telemetry-disclosure',
@@ -405,7 +410,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
       'kontour',
       status.data?.authorEndpoint,
     ],
-    enabled: !!status.data?.authorEndpoint,
+    enabled: authorCanReceiveFull,
     queryFn: ({ signal }) =>
       scoped
         ? getJson(
@@ -437,6 +442,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     query.data?.inventoryRevision,
     status.data?.liteInventoryRevision,
     status.data?.authorEndpoint,
+    authorCanReceiveFull,
     author.data?.acknowledged,
     dntActive,
   ]);
@@ -454,7 +460,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
           (state.reason === 'DNT' ||
             (state.userChoice === 'full' &&
               (id === 'kontour'
-                ? !!status.data.authorEndpoint && !author.data?.acknowledged
+                ? authorCanReceiveFull && !author.data?.acknowledged
                 : !query.data?.acknowledged)) ||
             (state.tier === 'lite' &&
               status.data.liteNotices?.[id]?.inventoryRevision !==
@@ -512,7 +518,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     data: query.data
       ? {
           ...query.data,
-          ...(author.data
+          ...(authorCanReceiveFull && author.data
             ? {
                 authorDisclosure: author.data as Disclosure & {
                   destination: string;
@@ -522,12 +528,12 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         }
       : undefined,
     dismissalRevision,
-    isError: query.isError || author.isError,
+    isError: query.isError || (authorCanReceiveFull && author.isError),
     readError: query.isError,
     settled:
       !query.isLoading &&
       (!query.data?.publishers || !status.isLoading) &&
-      (!status.data?.authorEndpoint || !author.isLoading),
+      (!authorCanReceiveFull || !author.isLoading),
     // `events` is read with Object.entries below: a host that answers with an
     // unexpected shape (older build, error envelope) must degrade to showing
     // nothing, not throw through the app shell and blank the window.
@@ -1387,15 +1393,29 @@ export function UsageTelemetryDisclosureStep({
  */
 export function UsageTelemetryDisclosure({
   firstRun = false,
+  offerOnHome = false,
 }: {
   firstRun?: boolean;
+  offerOnHome?: boolean;
 }) {
   const keepRef = useRef<HTMLButtonElement>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const { data, isError, settled, outstanding, dismissalRevision } =
     useUsageTelemetryDisclosureState();
   const decision = useUsageTelemetryDecision(data);
   if (!settled || !data?.events || (!firstRun && isError)) return null;
   if (firstRun && !outstanding) return null;
+  if (offerOnHome && !reviewOpen)
+    return (
+      <PageCallout
+        calloutId="review-usage-sharing"
+        ariaLabel="Usage sharing"
+        title="Usage sharing"
+        action={
+          <Button onClick={() => setReviewOpen(true)}>Review choices</Button>
+        }
+      />
+    );
 
   if (data.publishers)
     return firstRun ? (

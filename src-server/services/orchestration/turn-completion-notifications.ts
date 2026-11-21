@@ -36,9 +36,8 @@
  * Station-delegated child whose result returns to its parent announces no
  * finish of its own. Failures, stops, approvals and questions are not held.
  *
- * Body is deliberately minimal (`Agent finished in session <threadId>`) —
- * never the turn's `outputText` — matching archive#1225's guardrail against
- * a push notification leaking response content.
+ * The notice names the chat and what the reader can review there. It omits
+ * the turn's response and provider error.
  *
  * The EventBus callback stays synchronous and delegates to NotificationService's
  * one ordered, rejection-safe async adapter. The inner try/catch records an
@@ -53,6 +52,7 @@ import {
 } from '@kontourai/station-contracts/notification';
 import {
   type CanonicalRuntimeEvent,
+  describeAcpTurnStopFailure,
   isProviderTriggeredTurn,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -135,6 +135,13 @@ interface TurnCompletionOrchestrationService {
 type Cancel = () => void;
 
 export interface TurnCompletionNotificationOptions {
+  /**
+   * #5072: the local Project (`ProjectConfig.id`) the session recorded at
+   * its start, stamped on the record so the Project's notification level and
+   * foreground suppression apply. Absent or `undefined`: no Project.
+   */
+  resolveProjectId?: (threadId: string) => string | undefined;
+  resolveChatTitle?: (threadId: string) => string | undefined;
   /** See {@link TurnCompletionOrchestrationService.readFinishedAlertHold}. */
   readFinishedAlertHold?: (threadId: string) => readonly string[];
   /** Defaults to {@link FINISHED_ALERT_CONFIRM_MS}. */
@@ -291,6 +298,8 @@ async function deliverTurnCompletionPush(input: {
    * not a terminal event the card folds.
    */
   onActivityCard?: boolean;
+  resolveProjectId?: (threadId: string) => string | undefined;
+  resolveChatTitle?: (threadId: string) => string | undefined;
 }): Promise<'scheduled' | 'skipped_no_recipient' | 'skipped_external'> {
   const {
     orchestrationService,
@@ -300,6 +309,14 @@ async function deliverTurnCompletionPush(input: {
     outcome,
     onActivityCard,
   } = input;
+  // Decoration only: a lookup that throws leaves the record Project-less,
+  // never undelivered.
+  let projectId: string | undefined;
+  try {
+    projectId = input.resolveProjectId?.(threadId) || undefined;
+  } catch {
+    projectId = undefined;
+  }
   if (orchestrationService.isReadOnlyAttachedSession(threadId))
     return 'skipped_external';
   const presenceSubject =
@@ -307,6 +324,16 @@ async function deliverTurnCompletionPush(input: {
   // No subject means no one may read this session: a push would announce a
   // turn to devices whose owner cannot open it.
   if (presenceSubject === undefined) return 'skipped_no_recipient';
+  const chatTitle = input.resolveChatTitle?.(threadId);
+  const chat = chatTitle ? `“${chatTitle}”` : 'the chat';
+  const next = {
+    done: 'see the result',
+    stopped: 'see where work stopped',
+    replied: 'read the reply',
+    failed: 'review the error',
+    'reply-failed': 'review the error',
+  }[outcome];
+
   // No live-stream check here: the delivery router decides per surface
   // (focused + live in-app stream → in-app only). Skipping on any open
   // stream silenced every surface while one idle client stayed connected.
@@ -318,7 +345,11 @@ async function deliverTurnCompletionPush(input: {
   // mutes, which apply to what an agent chose to send, off these records.
   const envelope: NotificationEnvelopeV1 = {
     v: 1,
-    source: { kind: 'system', subsystem: TURN_COMPLETION_SOURCE },
+    source: {
+      kind: 'system',
+      subsystem: TURN_COMPLETION_SOURCE,
+      ...(projectId ? { projectId } : {}),
+    },
     audience: { kind: 'session-readers', sessionId: threadId },
     // The urgency the legacy category already ranked as
     // (`classifyNotificationCategory`): a stop is quiet like a finish.
@@ -344,10 +375,7 @@ async function deliverTurnCompletionPush(input: {
               : outcome === 'replied'
                 ? 'Your agent replied'
                 : 'Your agent finished',
-      body:
-        outcome === 'reply-failed'
-          ? `Your agent's reply on its own failed in session ${threadId}`
-          : `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
+      body: `Open ${chat} to ${next}.`,
       priority:
         outcome === 'failed' || outcome === 'reply-failed' ? 'high' : 'normal',
       dedupeTag: `turn-completion:${threadId}:${turnId}`,
@@ -356,6 +384,7 @@ async function deliverTurnCompletionPush(input: {
         sessionKind: SESSION_KIND,
         threadId,
         turnId,
+        ...(chatTitle ? { chatTitle } : {}),
         ...(onActivityCard ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true } : {}),
       },
     },
@@ -373,13 +402,17 @@ export function resolveTurnCompletionOutcome(
   event: Pick<CanonicalRuntimeEvent, 'method'> & {
     provider?: CanonicalRuntimeEvent['provider'];
     retriable?: boolean;
+    finishReason?: unknown;
+    stopReason?: unknown;
+    metadata?: unknown;
   },
 ): TurnOutcome | undefined {
-  if (event.method === 'turn.completed') return 'done';
+  if (event.method === 'turn.completed')
+    return describeAcpTurnStopFailure(event) ? 'failed' : 'done';
   // station#2235: a recovery-synthesized abort (`recoveryTerminal`) maps
   // here like any abort — deliberately, not by omission. The needs_input
   // attention path schedules no offline push, so this is the crash's ONLY
-  // offline signal ("Agent failed in session …"), the same payoff
+  // offline signal ("Your agent needs attention"), the same payoff
   // archive#3473 claims for the codex-crash push above. The in-app copy is
   // owned by the interrupted-turn banner: the delivery router keeps a
   // focused, live surface to its in-app step, and the client does not toast
@@ -801,6 +834,8 @@ export function wireTurnCompletionNotifications(
         turnId: writing.turnId,
         outcome: writing.outcome,
         onActivityCard: writing.onActivityCard,
+        resolveProjectId: options.resolveProjectId,
+        resolveChatTitle: options.resolveChatTitle,
       });
     } catch (error) {
       if (writingFinishes.get(threadId) !== writing) return;
@@ -1039,27 +1074,21 @@ export function wireTurnCompletionNotifications(
   // `turn.aborted`. Retain that one exact turn identity long enough to join
   // the two events without changing the notification system into a reader of
   // the event store's durable projection.
-  const settledStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const settledStops = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; reported: boolean }
+  >();
   const stopKey = (threadId: string, turnId: string) => `${threadId}:${turnId}`;
 
   const rememberSettledStop = (threadId: string, turnId: string): void => {
     const key = stopKey(threadId, turnId);
-    const existing = settledStopTimers.get(key);
-    if (existing) clearTimeout(existing);
+    const existing = settledStops.get(key);
+    if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
-      settledStopTimers.delete(key);
+      settledStops.delete(key);
     }, SETTLED_STOP_NOTIFICATION_RETENTION_MS);
     timer.unref?.();
-    settledStopTimers.set(key, timer);
-  };
-
-  const consumeSettledStop = (threadId: string, turnId: string): boolean => {
-    const key = stopKey(threadId, turnId);
-    const timer = settledStopTimers.get(key);
-    if (!timer) return false;
-    clearTimeout(timer);
-    settledStopTimers.delete(key);
-    return true;
+    settledStops.set(key, { timer, reported: existing?.reported ?? false });
   };
 
   const touchTurnIdentityAnchorEviction = (threadId: string): void => {
@@ -1218,6 +1247,12 @@ export function wireTurnCompletionNotifications(
             return;
           }
 
+          const settledStop =
+            event.method === 'turn.completed' || event.method === 'turn.aborted'
+              ? settledStops.get(stopKey(event.threadId, event.turnId))
+              : undefined;
+          if (settledStop?.reported) return;
+
           // The terminal is accepted: the turn a held episode was waiting
           // on has ended, whatever it is about to be reported as.
           const episode = heldFinishes.get(event.threadId);
@@ -1227,11 +1262,10 @@ export function wireTurnCompletionNotifications(
           // finishReason:'cancelled'; the settled-stop fact is the proof that
           // this particular completion was a stop, while an unaccompanied
           // cancelled completion keeps its existing done mapping.
-          if (
-            (event.method === 'turn.completed' ||
-              event.method === 'turn.aborted') &&
-            consumeSettledStop(event.threadId, event.turnId)
-          ) {
+          if (settledStop) {
+            // Keep the exact Stop until its normal expiry. A legacy
+            // duplicate terminal must not turn it into a finished alert.
+            settledStop.reported = true;
             // #2324 (D1): a provider turn is never reported "stopped" — the
             // Stop was the user's own act on a reply they did not ask for.
             if (providerTurn) {
@@ -1268,7 +1302,7 @@ export function wireTurnCompletionNotifications(
               });
               return;
             }
-            outcome = 'replied';
+            if (outcome === 'done') outcome = 'replied';
           }
           if (providerTurn && outcome === 'failed') outcome = 'reply-failed';
 
@@ -1362,6 +1396,8 @@ export function wireTurnCompletionNotifications(
               orchestrationService,
               event,
             ),
+            resolveProjectId: options.resolveProjectId,
+            resolveChatTitle: options.resolveChatTitle,
           });
           turnCompletionNotificationOps.add(1, { outcome, result });
         } catch (error) {
@@ -1463,8 +1499,8 @@ export function wireTurnCompletionNotifications(
     }
     turnIdentityAnchorEvictionTimers.clear();
     turnIdentityAnchors.clear();
-    for (const timer of settledStopTimers.values()) clearTimeout(timer);
-    settledStopTimers.clear();
+    for (const { timer } of settledStops.values()) clearTimeout(timer);
+    settledStops.clear();
     for (const episode of heldFinishes.values()) episode.cancelConfirm?.();
     for (const writing of writingFinishes.values()) writing.cancelRetry?.();
     // Unwiring is not settling: the saved episodes stay for the next start.
@@ -1511,6 +1547,10 @@ export function wireInternalStopRedispatchFailureNotifications(
   orchestrationService: TurnCompletionOrchestrationService,
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
+  options: Pick<
+    TurnCompletionNotificationOptions,
+    'resolveProjectId' | 'resolveChatTitle'
+  > = {},
 ): () => void {
   return eventBus.subscribe((message: TurnCompletionEventMessage) => {
     notificationService.dispatch(
@@ -1530,6 +1570,8 @@ export function wireInternalStopRedispatchFailureNotifications(
             threadId: message.data.threadId,
             turnId: message.data.turnId,
             outcome: 'failed',
+            resolveProjectId: options.resolveProjectId,
+            resolveChatTitle: options.resolveChatTitle,
           });
           turnCompletionNotificationOps.add(1, { outcome: 'failed', result });
         } catch (error) {

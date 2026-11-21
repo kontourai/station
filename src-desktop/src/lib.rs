@@ -175,12 +175,16 @@ fn native_app_channel(identifier: &str, dev_build: bool) -> &'static str {
     } else if dev_build || identifier.starts_with("io.kontourai.station.dev.") {
         "dev"
     } else {
-        channel_ports_generated::desktop_channel_from_identifier(identifier).unwrap_or("unsupported")
+        channel_ports_generated::desktop_channel_from_identifier(identifier)
+            .unwrap_or("unsupported")
     }
 }
 
 #[cfg(not(mobile))]
-fn admit_native_startup_channel(identifier: &str, dev_build: bool) -> Result<Option<&'static str>, String> {
+fn admit_native_startup_channel(
+    identifier: &str,
+    dev_build: bool,
+) -> Result<Option<&'static str>, String> {
     match native_app_channel(identifier, dev_build) {
         "dev" => Ok(None),
         "stable" => Ok(Some("stable")),
@@ -2558,6 +2562,36 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     }
 }
 
+/// Android denies hard links in the app sandbox. Publish the already-synced
+/// file in the same directory, without the overwrite semantics of rename.
+#[cfg(target_os = "android")]
+fn publish_android_profile_genesis(
+    temporary: &std::path::Path,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let source = CString::new(temporary.as_os_str().as_bytes())?;
+    let destination = CString::new(path.as_os_str().as_bytes())?;
+    // SAFETY: both paths are live NUL-terminated C strings for this call.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            source.as_ptr(),
+            libc::AT_FDCWD,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
 fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
@@ -2593,7 +2627,11 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
             .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
         drop(file);
         // A completed inode is published without replacing an existing store.
-        match std::fs::hard_link(&temporary, path) {
+        #[cfg(target_os = "android")]
+        let publication = publish_android_profile_genesis(&temporary, path);
+        #[cfg(not(target_os = "android"))]
+        let publication = std::fs::hard_link(&temporary, path);
+        match publication {
             Ok(()) => {
                 sync_profile_store_directory(parent)?;
                 Ok(())
@@ -6462,11 +6500,8 @@ fn profile_lock_birth_with_current_process_cache(
 fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>, String> {
     static CURRENT_BIRTH: std::sync::OnceLock<(u32, String)> = std::sync::OnceLock::new();
     profile_lock_birth_with_current_process_cache(pid, &CURRENT_BIRTH, || {
-        let resource_dir = simplified_sidecar_resource_dir(
-            &app.path()
-                .resource_dir()
-                .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
-        );
+        let resource_dir = desktop_runtime_resource_dir(app)
+            .map_err(|error| format!("locate packaged process identity authority: {error}"))?;
         profile_lock_birth_observation(pid, profile_lock_birth_bridge(&resource_dir, pid))
     })
 }
@@ -10169,11 +10204,34 @@ fn decide_home_ownership_from_runtime(resource_dir: &Path, home: &Path) -> HomeO
 #[cfg(not(mobile))]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// The packaged resource directory must be normalized before Node sees it:
-/// Windows verbatim paths (`\\?\`) are not accepted by Node's module resolver.
-#[cfg(not(mobile))]
-fn simplified_sidecar_resource_dir(resource_dir: &Path) -> PathBuf {
-    dunce::simplified(resource_dir).to_path_buf()
+#[cfg(all(
+    not(mobile),
+    not(all(target_os = "linux", feature = "appimage-runtime"))
+))]
+fn desktop_runtime_resource_dir(app: &AppHandle) -> tauri::Result<PathBuf> {
+    // Windows verbatim paths are not accepted by Node's module resolver.
+    Ok(dunce::simplified(&app.path().resource_dir()?).to_path_buf())
+}
+
+#[cfg(all(target_os = "linux", feature = "appimage-runtime"))]
+fn desktop_runtime_resource_dir(_app: &AppHandle) -> tauri::Result<PathBuf> {
+    Ok(appimage_runtime_resource_dir(
+        &tauri::utils::platform::current_exe()?,
+    )?)
+}
+
+// The bundle overlay puts the runtime beside usr/bin, inside the same AppDir
+// as this executable. Anchor it to the executable instead of inherited APPDIR.
+#[cfg(any(
+    all(test, unix),
+    all(target_os = "linux", feature = "appimage-runtime")
+))]
+fn appimage_runtime_resource_dir(executable: &Path) -> std::io::Result<PathBuf> {
+    let bin = executable
+        .parent()
+        .filter(|dir| executable.is_absolute() && dir.ends_with("usr/bin"))
+        .ok_or_else(|| std::io::Error::other("Station AppImage executable is outside usr/bin"))?;
+    Ok(bin.with_file_name("share").join("Station"))
 }
 
 /// Present packaged entrypoint for the desktop-owned Command Station sidecar.
@@ -15024,7 +15082,9 @@ pub fn run() {
     let context = tauri::generate_context!();
 
     #[cfg(not(mobile))]
-    if let Err(error) = admit_native_startup_channel(&context.config().identifier, cfg!(debug_assertions)) {
+    if let Err(error) =
+        admit_native_startup_channel(&context.config().identifier, cfg!(debug_assertions))
+    {
         eprintln!("Station startup refused: {error}");
         std::process::exit(1);
     }
@@ -15568,7 +15628,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                         }
                     }
                 }
-                let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
+                let resource_dir = desktop_runtime_resource_dir(app.handle())?;
                 let packaged_channel = admit_native_startup_channel(
                     &app.config().identifier,
                     cfg!(debug_assertions),
@@ -20267,11 +20327,16 @@ mod tests {
         assert!(parse_pinned_desktop_port(Some("not-a-port")).is_err());
     }
 
-    #[cfg(not(mobile))]
+    #[cfg(unix)]
     #[test]
-    fn resource_normalization_preserves_regular_paths() {
-        let resource_dir = Path::new("/bundle/resources");
-        assert_eq!(simplified_sidecar_resource_dir(resource_dir), resource_dir);
+    fn appimage_runtime_is_resolved_inside_the_executables_appdir() {
+        let executable = Path::new("/tmp/.mount_station/usr/bin/station");
+        assert_eq!(
+            appimage_runtime_resource_dir(executable).unwrap(),
+            Path::new("/tmp/.mount_station/usr/share/Station"),
+        );
+        assert!(appimage_runtime_resource_dir(Path::new("usr/bin/station")).is_err());
+        assert!(appimage_runtime_resource_dir(Path::new("/tmp/other/bin/station")).is_err());
     }
 
     #[test]
@@ -22398,6 +22463,38 @@ mod tests {
             .unwrap_err()
             .contains("refusing to recreate"));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn mobile_profile_genesis_preserves_an_existing_legacy_document() {
+        let root = tempfile::tempdir().unwrap();
+        let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+        let existing = r#"{
+          "schemaVersion": 1,
+          "revision": 7,
+          "defaultProfile": "paired",
+          "profiles": [
+            {"schemaVersion":1,"name":"paired","endpoint":"http://127.0.0.1:3842","credentialRef":{"kind":"station-bearer","id":"fixture-ref"},"setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1}
+          ],
+          "projectProfiles": {}
+        }"#;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options
+            .open(&path)
+            .unwrap()
+            .write_all(existing.as_bytes())
+            .unwrap();
+
+        ensure_mobile_profile_store_genesis(&path).unwrap();
+        write_empty_station_profile_store(&path).unwrap();
+        assert_eq!(read_station_profile_store(&path).unwrap(), existing);
+        assert!(path.with_file_name(".profiles-initialized").is_file());
     }
 
     #[test]
@@ -25405,11 +25502,23 @@ mod tests {
             native_app_channel("io.kontourai.station.nightly", false),
             "nightly"
         );
-        assert_eq!(native_app_channel("io.kontourai.station.beta", true), "unsupported");
-        assert_eq!(native_app_channel("io.kontourai.station.dev.instance", false), "dev");
+        assert_eq!(
+            native_app_channel("io.kontourai.station.beta", true),
+            "unsupported"
+        );
+        assert_eq!(
+            native_app_channel("io.kontourai.station.dev.instance", false),
+            "dev"
+        );
         #[cfg(not(mobile))]
-        assert_eq!(admit_native_startup_channel("io.kontourai.station.dev.instance", false), Ok(None));
-        assert_eq!(channel_ports_generated::desktop_channel_from_identifier("io.kontourai.station.beta"), None);
+        assert_eq!(
+            admit_native_startup_channel("io.kontourai.station.dev.instance", false),
+            Ok(None)
+        );
+        assert_eq!(
+            channel_ports_generated::desktop_channel_from_identifier("io.kontourai.station.beta"),
+            None
+        );
         assert_eq!(
             pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(
                 "io.kontourai.station.dev.dev.release.7",
@@ -26472,11 +26581,22 @@ mod standalone_storage_order_tests {
         ] {
             let calls = std::cell::Cell::new(0);
             let result = prepare_desktop_station_storage(
-                identifier, debug, home.clone(), &home,
-                |_| { calls.set(calls.get() + 1); Ok(()) },
-                |_| { calls.set(calls.get() + 1); Ok(()) },
+                identifier,
+                debug,
+                home.clone(),
+                &home,
+                |_| {
+                    calls.set(calls.get() + 1);
+                    Ok(())
+                },
+                |_| {
+                    calls.set(calls.get() + 1);
+                    Ok(())
+                },
             );
-            assert!(result.unwrap_err().contains("unsupported native application identity"));
+            assert!(result
+                .unwrap_err()
+                .contains("unsupported native application identity"));
             assert_eq!(calls.get(), 0);
             assert!(!home.exists());
         }

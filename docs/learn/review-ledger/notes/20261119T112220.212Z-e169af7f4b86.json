@@ -1,0 +1,27 @@
+{
+  "revision": "11487b7dfbb7c78461856a28e1b118d4d0c1b959",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the authenticated Project list and its local metadata presence flag through the actual Project reader and canonical knowledge writer. The member projection still follows current Project admissions. The flag describes metadata and Project knowledge describes document and index status.","inputs":["docs/reference/api.md","src-server/domain/file-storage-adapter.ts","src-server/services/knowledge/knowledge-storage.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked Knowledge Settings migration, index and upload recovery, the document list retry and single or bulk removal outcomes against the existing controls. The recovery rows ask for the observed list before another removal. This is a bounded #5073 update.","inputs":["docs/user/concepts.md","src-ui/src/views/project-settings/KnowledgeSection.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the added Project list metadata field explanation. Existing terminal and integration route descriptions retain their request and response contracts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the added Project list metadata field explanation. Existing terminal and integration route descriptions retain their request and response contracts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"The boolean metadata field is unchanged in shape. Its comment names the existing local document metadata observation. Project lifecycle and overview settings keep their existing contracts.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"The boolean metadata field is unchanged in shape. Its comment names the existing local document metadata observation. Project lifecycle and overview settings keep their existing contracts.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The boolean metadata field is unchanged in shape. Its comment names the existing local document metadata observation. Project lifecycle and overview settings keep their existing contracts.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Project list projection and preserved the existing configuration identity and member response boundaries. It now reads a metadata presence fact from the local Knowledge owner.","inputs":["src-server/domain/file-storage-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the Project list projection and preserved the existing configuration identity and member response boundaries. It now reads a metadata presence fact from the local Knowledge owner.","inputs":["src-server/domain/file-storage-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed current and legacy metadata paths and the directory identity observations before and after scanning. The Project catalogue reads file presence only. The storage writer, root transactions, and external store semantics are unchanged. The replaced-root mutant failed and the restored route suite passed.","inputs":["src-server/services/knowledge/knowledge-storage.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed current and legacy metadata paths and the directory identity observations before and after scanning. The Project catalogue reads file presence only. The storage writer, root transactions, and external store semantics are unchanged. The replaced-root mutant failed and the restored route suite passed.","inputs":["src-server/services/knowledge/knowledge-storage.ts"]}
+  ]
+}

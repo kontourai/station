@@ -18,7 +18,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConversationContextResetDialog } from '../components/chat-dock/ConversationContextResetDialog';
-import { contextBoundaryUiStorageKey } from '../components/chat-dock/conversationContextBoundaryUiState';
+import { rememberContextBoundaryIntent } from '../components/chat-dock/conversationContextBoundaryUiState';
 import { useConversationBoundaryDialogs } from '../components/chat-dock/useConversationBoundaryDialogs';
 import {
   _resetOutboundQueueStorage,
@@ -31,17 +31,16 @@ const API_BASE = 'http://station.test';
 const CONVERSATION_ID = 'conversation-under-reset';
 const IDEMPOTENCY_KEY = 'idem-1';
 
+const authority = {
+  namespace: 'station-boundary-owner',
+  actorId: 'user',
+  isCurrent: () => true,
+};
+
 function seedStoredBoundary(): void {
-  window.localStorage.setItem(
-    contextBoundaryUiStorageKey(CONVERSATION_ID),
-    JSON.stringify({
-      idempotencyKey: IDEMPOTENCY_KEY,
-      boundaryId: 'boundary-1',
-      conversationId: CONVERSATION_ID,
-      policy: 'empty-next-cold-start',
-      status: 'reserved',
-      priorTranscriptInjected: false,
-    }),
+  rememberContextBoundaryIntent(
+    { ...authority, conversationId: CONVERSATION_ID, sessionId: 'session-1' },
+    { idempotencyKey: IDEMPOTENCY_KEY, policy: 'empty-next-cold-start' },
   );
 }
 
@@ -55,6 +54,7 @@ function DockBoundaryHook() {
       agentSlug: 'codex',
     } as ChatSession,
     allSessions: [],
+    contextBoundaryAuthority: authority,
   });
   return null;
 }
@@ -102,6 +102,7 @@ describe('conversation context-boundary status cache', () => {
         <DockBoundaryHook />
         <ConversationContextResetDialog
           apiBase={API_BASE}
+          authority={authority}
           conversationId={CONVERSATION_ID}
           sessionId="session-1"
           eligibility={{ kind: 'reserve' }}

@@ -36,6 +36,8 @@ test.use({
 });
 
 const THREAD_ID = 'thread-load-stability';
+// The composer's placeholder while the conversation-open read is in flight.
+const OPENING_PLACEHOLDER = 'Start typing. You can send once this chat opens…';
 const CPU_THROTTLE_RATE = 4;
 // Code-split chunks a transcript row needs after its first paint: the Markdown
 // renderer, the worker-backed highlighter and the completed-turn footers.
@@ -163,7 +165,7 @@ async function openThrottledConversation(
   );
   await expect(page.locator('.chat-input textarea')).toHaveAttribute(
     'placeholder',
-    'Loading chat…',
+    OPENING_PLACEHOLDER,
   );
   return { conversationOpen, lateChunks, transcript, cdp };
 }
@@ -178,7 +180,7 @@ async function expectConversationLoaded(page: Page) {
   );
   await expect(page.locator('.chat-input textarea')).not.toHaveAttribute(
     'placeholder',
-    'Loading chat…',
+    OPENING_PLACEHOLDER,
   );
 }
 
@@ -350,37 +352,29 @@ test('the composer measuring itself never opens a gap under the newest message',
   await expect(transcript).toBeVisible();
 });
 
-test("the long-load row keeps the transcript's inset on a phone", async ({
+test('a long load over a shown transcript adds no row and keeps the draft open', async ({
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
   const { conversationOpen, lateChunks, transcript } =
     await openThrottledConversation(page, { holdMarkdownRenderer: false });
   lateChunks.release();
-  const sentence = page
-    .locator('.chat-dock__body > .session-history-controls')
-    .getByText('This conversation is taking longer to load.', {
-      exact: false,
-    });
-  await expect(sentence).toBeVisible({ timeout: 20_000 });
+  // Past the long-wait delay, the announcement names the longer wait...
+  await expect(page.getByTestId('chat-dock-loading-announcement')).toHaveText(
+    /Taking longer than usual/,
+    { timeout: 20_000 },
+  );
   await page.screenshot({ path: testInfo.outputPath('long-wait-390.png') });
-  const gutter = await transcript.evaluate(
-    (element) => Number.parseFloat(getComputedStyle(element).paddingLeft) || 0,
-  );
-  const row = await page
-    .locator('.chat-dock__body > .session-history-controls')
-    .boundingBox();
-  const text = await sentence.boundingBox();
-  const viewport = page.viewportSize()!;
-  expect(gutter).toBeGreaterThan(0);
-  expect(row).not.toBeNull();
-  expect(text).not.toBeNull();
-  // The words sit inside the same gutter as the transcript's rows.
-  expect(text!.x - row!.x).toBeGreaterThanOrEqual(gutter - 0.5);
-  expect(text!.x).toBeGreaterThanOrEqual(gutter - 0.5);
-  expect(text!.x + text!.width).toBeLessThanOrEqual(
-    viewport.width - gutter + 0.5,
-  );
+  // ...but nothing is drawn under the rows (no row, no new-chat escape), and
+  // the draft stays editable while Send waits for the open read.
+  await expect(
+    page.locator('.chat-dock__body > .session-history-controls'),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Start new chat' }),
+  ).toHaveCount(0);
+  await expect(page.locator('.chat-input textarea')).toBeEditable();
+  await expect(transcript).toBeVisible();
   conversationOpen.release();
   await expectConversationLoaded(page);
 });

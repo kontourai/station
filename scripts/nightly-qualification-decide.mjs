@@ -133,9 +133,8 @@ export function decideQualifiedNightly({
       publish: false,
       reason: `already attempted: refs/tags/nightly-version-code/${reserved.code} reserves ${reserved.sha} without a native ledger row, so a Nightly at this source failed or is still running; retry by dispatching Nightly`,
     };
-  if (recovery.recover) return { publish: true, reason: recovery.reason };
   const newest = ships[0];
-  if (newest) {
+  if (newest && (!recovery.recover || !sourceShips.includes(newest))) {
     const age = now.getTime() - newest.at;
     if (age < intervalMs)
       return {
@@ -143,6 +142,7 @@ export function decideQualifiedNightly({
         reason: `published recently: ${newest.channel} ${newest.version} at ${newest.sha} was recorded ${newest.timestampUtc}, less than ${intervalMs / 3_600_000}h ago`,
       };
   }
+  if (recovery.recover) return { publish: true, reason: recovery.reason };
   return {
     publish: true,
     reason: newest

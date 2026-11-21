@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ConversationBody now renders ConversationLoadingStage for a first load, keeps the draft open while the open read resolves, and passes approvalsHeld while a cached transcript revalidates. The module map's ownership and dependency claims are unchanged; its 'taking longer than usual' text is the desktop boot cover.","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

@@ -20,10 +20,14 @@ import {
   ProjectSharedTaskRefusal,
 } from '../../services/projects/project-shared-task-store.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
+import { sharedTaskChangeStream } from './shared-task-change-stream.js';
 
 export function createProjectSharedTaskRoutes(deps: {
   service: ProjectSharedTaskService;
-  room: Pick<ProjectTaskRoomRuntime, 'sharedHistory' | 'sharedDocument'>;
+  room: Pick<
+    ProjectTaskRoomRuntime,
+    'sharedHistory' | 'sharedDocument' | 'watchSharedMessages'
+  >;
   scope(request: Request, slug: string): Promise<ProjectMembershipScope>;
   authority(request: Request): Promise<ProjectSharedTaskAuthority>;
 }) {
@@ -228,6 +232,19 @@ export function createProjectSharedTaskRoutes(deps: {
         c.req.param('taskId'),
         authority,
       );
+      const expectedShare = c.req.query('share');
+      if (expectedShare !== undefined && expectedShare !== admission.shareId)
+        return missing();
+      if (c.req.header('Accept') === 'text/event-stream') {
+        if (!expectedShare) return missing();
+        return guarded(
+          sharedTaskChangeStream(c, (notify) =>
+            deps.room.watchSharedMessages(admission.taskId, notify),
+          ),
+          admission,
+          authority,
+        );
+      }
       const value = await deps.room.sharedHistory({
         taskId: admission.taskId,
         request: c.req.raw,
@@ -283,6 +300,9 @@ export function createProjectSharedTaskRoutes(deps: {
         c.req.param('taskId'),
         authority,
       );
+      const expectedShare = c.req.query('share');
+      if (expectedShare !== undefined && expectedShare !== admission.shareId)
+        return missing();
       const value = await deps.room.sharedDocument({
         taskId: admission.taskId,
         request: c.req.raw,

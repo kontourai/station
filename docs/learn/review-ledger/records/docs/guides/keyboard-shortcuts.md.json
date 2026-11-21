@@ -28,7 +28,9 @@
 
     "src-ui/src/components/chat-dock/inbox-dismissals.tsx",
 
-    "src-ui/src/__tests__/inbox-dismissal.test.tsx"
+    "src-ui/src/__tests__/inbox-dismissal.test.tsx",
+
+    "src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx"
   ],
 
   "checks": [

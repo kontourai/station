@@ -18,8 +18,10 @@
 //
 // Recorded, reasoned exceptions (not migrated, not gaps — see CLAUDE.md
 // "State primitives"): `FullScreenLoader`/`FullScreenError`
-// (`@kontourai/station-sdk`, boot-level splash) and `LoadingDots`
-// (`../LoadingDots`, active-generation indicator).
+// (`@kontourai/station-sdk`, boot-level splash), `LoadingDots`
+// (`../LoadingDots`, active-generation indicator) and
+// `ConversationLoadingStage` (`../conversation`, a conversation's first load:
+// the splash's mark and step line at transcript size).
 
 export {
   Skeleton,

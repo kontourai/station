@@ -1,0 +1,15 @@
+{
+  "revision": "d3f9b1433c8773654ddc6f0f0ab972531aa52071",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The dialog measures the visible height and the consumer opts into an inset sheet. Snooze keeps one accessible menu trigger as eligibility changes. Reviewed the two new inventory entries against their shared surface owners.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","src-ui/src/components/ActionOverflowMenu.tsx","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"The filter uses the dialog viewport and existing panel and text tokens. The theme and reduced-motion controls keep the documented owners.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"The responsive inventory and visual viewport change concern client dialog placement. The documented route and server patterns are unaffected.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The new child menu and grouped filters use the shared dialog. Direct Inbox buttons collapse through shared dock device state, and disabled Snooze uses the same overflow trigger.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The responsive dialog retains its viewport, dismissal and keyboard focus ownership. The inset sheet and mobile menu consumers follow the UI routing guidance.","inputs":["src-ui/AGENTS.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

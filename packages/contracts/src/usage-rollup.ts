@@ -53,6 +53,14 @@ export interface PricingSnapshot {
 /** The absence of a price is evidence too; never render it as a zero. */
 export type UsagePricingStatus = 'priced' | 'partial' | 'unpriced';
 
+export interface OpenCodeStepModelObservation {
+  source: 'opencode-step-started';
+  assistantMessageId: string;
+  /** Exact OpenCode providerID and model.id from the same step. */
+  providerId: string;
+  modelId: string;
+}
+
 export interface UsageReceipt {
   /** Stable receipt identity. Replacement receipts retain this identity. */
   id: string;
@@ -63,6 +71,7 @@ export interface UsageReceipt {
   stationId: string;
   provider: string;
   model?: string;
+  servedModelObservation?: OpenCodeStepModelObservation;
   /** Opaque engine/profile attribution; absent means the account is unknown. */
   accountKey?: string;
   /**
@@ -81,6 +90,8 @@ export interface UsageReceipt {
   turnId?: string;
   conversationId?: string;
   taskId?: string;
+  /** The Project the Session ran in (#5068), from its start record. */
+  projectSlug?: string;
   occurredAt?: string;
   /** When Station observed this fact. Undefined is an honest legacy gap. */
   observedAt?: string;
@@ -170,6 +181,7 @@ export type UsageRollupGroupBy =
   | 'station'
   | 'conversation'
   | 'task'
+  | 'project'
   | 'day'
   | 'connection'
   | 'modelConnection';
@@ -185,6 +197,8 @@ export interface UsageRollupRow {
   modelConnectionId?: string;
   conversationId?: string;
   taskId?: string;
+  /** Set on `groupBy: 'project'` rows with recorded attribution. */
+  projectSlug?: string;
   day?: string;
   inputTokens?: number;
   outputTokens?: number;
@@ -283,4 +297,27 @@ export function isPublishedTariffBasis(
         Number.isFinite(basis.reasoningPerMillion) &&
         basis.reasoningPerMillion >= 0))
   );
+}
+
+/**
+ * #5068: a Project's total and its coordinator's share from its per-Task
+ * rollup rows (`groupBy: 'task'` filtered to the Project). Every receipt lands
+ * in exactly one row: the coordinator's (no Task) or one Task's. Tokens are
+ * input plus output; a row that reported neither adds nothing, and a total
+ * nothing reported to is `undefined`, never zero.
+ */
+export function projectUsageTotals(rows: readonly UsageRollupRow[]): {
+  total?: number;
+  coordinator?: number;
+} {
+  let total: number | undefined;
+  let coordinator: number | undefined;
+  for (const row of rows) {
+    if (row.inputTokens === undefined && row.outputTokens === undefined)
+      continue;
+    const value = (row.inputTokens ?? 0) + (row.outputTokens ?? 0);
+    total = (total ?? 0) + value;
+    if (!row.taskId) coordinator = (coordinator ?? 0) + value;
+  }
+  return { total, coordinator };
 }

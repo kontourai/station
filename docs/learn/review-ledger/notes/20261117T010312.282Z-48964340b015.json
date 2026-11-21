@@ -1,0 +1,11 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked: inbox rows add a hover/focus dwell prefetch of the transcript window (no touch); hover-card behavior, row layout and responsive claims unchanged.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked: inbox rows add a hover/focus dwell prefetch of the transcript window (no touch); hover-card behavior, row layout and responsive claims unchanged.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: inbox rows add a hover/focus dwell prefetch of the transcript window (no touch); hover-card behavior, row layout and responsive claims unchanged.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

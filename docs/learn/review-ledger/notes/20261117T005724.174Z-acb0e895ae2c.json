@@ -1,0 +1,7 @@
+{
+  "revision": "f954ac92a932201768a482b34d48c46c04781fb6",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Replay count corrected to 28 of 36 skipped, as the independent run of the real probe produced.","inputs":["docs/guides/releasing.md",".github/workflows/publish-packages.yml"]}
+  ]
+}

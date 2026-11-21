@@ -31,7 +31,10 @@ import {
   NOTIFICATION_TTL_MS,
 } from '@kontourai/station-shared/notification-priority';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
-import { notificationOps } from '../../telemetry/metrics.js';
+import {
+  notificationOps,
+  notificationRetentionPruned,
+} from '../../telemetry/metrics.js';
 import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
@@ -65,6 +68,37 @@ const ACTION_LEASE_MS = 30_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 const PRINCIPAL_FEED_MAX = 100;
 const PRINCIPAL_FEED_MAX_BYTES = 16 * 1024 * 1024;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** #5052: days a settled record is kept after it settled. */
+const DEFAULT_NOTIFICATION_RETENTION_DAYS = 30;
+/** A tombstone hit refreshes its retention at most this often (one write). */
+const TOMBSTONE_REFRESH_MS = DAY_MS;
+type SettledStatus = 'expired' | 'actioned' | 'dismissed';
+
+/**
+ * #5052: what retention keeps of a pruned record that held a dedupe tag. A
+ * producer that schedules the tag again (a provider poll, a fixed scheduler
+ * tag, an agent's dedupe key) must find the settled decision, not create and
+ * deliver a fresh record. `retainedAt` starts at the prune and moves to the
+ * last schedule that hit it (at most daily); the tombstone is forgotten once
+ * it is older than the retention window, so a tag is remembered for as long
+ * as its producer keeps asking, and one window after it stops.
+ */
+type DedupeTombstone = {
+  dedupeTag: string;
+  id: string;
+  source: string;
+  status: SettledStatus;
+  settledAt: string;
+  retainedAt: string;
+};
+
+/** Tombstones read lazily, under the notification mutation lock. */
+type TombstoneLedger = {
+  find(dedupeTag: string): DedupeTombstone | undefined;
+  touch(tombstone: DedupeTombstone): void;
+  drop(dedupeTag: string): void;
+};
 type NotificationDismissal = 'dismissed' | 'not-found' | 'action-dispatching';
 type NotificationDismissalResult =
   | { outcome: 'dismissed'; notification: StoredNotification }
@@ -139,6 +173,11 @@ export interface NotificationServiceOptions {
   onAsyncDispatchError?: (operation: string, error: unknown) => void;
   /** Injectable only for deterministic bounded-shutdown tests. */
   shutdownTimeoutMs?: number;
+  /**
+   * #5052: days a settled record is kept. Defaults to
+   * `STATION_NOTIFICATION_RETENTION_DAYS`, else 30.
+   */
+  retentionDays?: number;
 }
 
 export class NotificationStoreValidationError extends Error {
@@ -288,6 +327,8 @@ export class NotificationService {
   private acceptingAsyncDispatch = true;
   private shutdownPromise: Promise<void> | undefined;
   private readonly shutdownTimeoutMs: number;
+  private readonly tombstoneStore: JsonFileStore<DedupeTombstone[]>;
+  private readonly retentionMs: number;
 
   constructor(
     private eventBus: EventBus,
@@ -326,6 +367,26 @@ export class NotificationService {
     this.onAsyncDispatchError = options.onAsyncDispatchError;
     this.shutdownTimeoutMs =
       options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+    const retentionDays =
+      options.retentionDays ??
+      readPositiveInteger(
+        process.env.STATION_NOTIFICATION_RETENTION_DAYS,
+        DEFAULT_NOTIFICATION_RETENTION_DAYS,
+      );
+    if (!Number.isSafeInteger(retentionDays) || retentionDays < 1)
+      throw new TypeError('Notification retention days must be positive');
+    this.retentionMs = retentionDays * DAY_MS;
+    // A dismissal remembered here is as durable an operator decision as the
+    // record it replaced, so a damaged file is not read as "no tombstones".
+    this.tombstoneStore = new JsonFileStore<DedupeTombstone[]>(
+      join(dataDir, 'notification-tombstones.json'),
+      [],
+      {
+        onCorruption: 'throw',
+        durableAtomicWrite: true,
+        metricStore: 'notification-tombstones',
+      },
+    );
   }
 
   /**
@@ -381,6 +442,10 @@ export class NotificationService {
 
   async start(): Promise<void> {
     if (!this.acceptingAsyncDispatch) return;
+    // #5052: settle-time retention runs on every write; this pass covers a
+    // home that settled records and then went quiet. It writes only when
+    // something is old enough to remove.
+    await this.mutate(() => ({ result: undefined }));
     // Reschedule any persisted pending notifications
     for (const n of await this.read()) {
       if (!this.acceptingAsyncDispatch) return;
@@ -768,146 +833,176 @@ export class NotificationService {
     let displaced: string | undefined;
     let remaining = 0;
     let actionsChanged = false;
+    let tombstoned = false;
     const now = new Date().toISOString();
-    const { notification, created, updated } = await this.mutate((all) => {
-      // Dedupe by tag. The fresh read happens while holding the mutation
-      // lock, so a stale schedule cannot restore a concurrent dismissal or
-      // publish a second notification for the same provider item.
-      if (opts.dedupeTag) {
-        let existing = all.find(
-          (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
-        );
-        if (existing && existing.source !== source) {
-          // A record under a source that is neither internal nor a
-          // registered provider can only have come from a request before
-          // #2597 (whose body chose any source: `api`, the SDK's `sdk`, a
-          // plugin string). That tag was never its to hold, so the writer
-          // takes it over (whatever its status) rather than being blocked
-          // forever. An internal/provider record still owns its tag.
-          // Ownership is evaluated now: a provider's records lose it while
-          // that provider is not registered (a removed or failed plugin) and
-          // may then be taken over by a colliding writer. Conversely a
-          // pre-#2597 request squat labelled with an internal or provider
-          // source name keeps ownership and is not reclaimable.
-          if (!this.ownsDedupeTags(existing.source)) {
-            all.splice(all.indexOf(existing), 1);
-            displaced = existing.id;
-            remaining = all.length + 1;
-            existing = undefined;
-          } else {
-            throw new NotificationDedupeSourceConflictError();
+    const { notification, created, updated } = await this.mutate(
+      (all, tombstones) => {
+        // Dedupe by tag. The fresh read happens while holding the mutation
+        // lock, so a stale schedule cannot restore a concurrent dismissal or
+        // publish a second notification for the same provider item.
+        if (opts.dedupeTag) {
+          let existing = all.find(
+            (n) => (n.metadata as any)?.dedupeTag === opts.dedupeTag,
+          );
+          if (existing && existing.source !== source) {
+            // A record under a source that is neither internal nor a
+            // registered provider can only have come from a request before
+            // #2597 (whose body chose any source: `api`, the SDK's `sdk`, a
+            // plugin string). That tag was never its to hold, so the writer
+            // takes it over (whatever its status) rather than being blocked
+            // forever. An internal/provider record still owns its tag.
+            // Ownership is evaluated now: a provider's records lose it while
+            // that provider is not registered (a removed or failed plugin) and
+            // may then be taken over by a colliding writer. Conversely a
+            // pre-#2597 request squat labelled with an internal or provider
+            // source name keeps ownership and is not reclaimable.
+            if (!this.ownsDedupeTags(existing.source)) {
+              all.splice(all.indexOf(existing), 1);
+              displaced = existing.id;
+              remaining = all.length + 1;
+              existing = undefined;
+            } else {
+              throw new NotificationDedupeSourceConflictError();
+            }
           }
-        }
-        // Only the trusted path may rewrite an enveloped record: an untrusted
-        // update would replace metadata wholesale and strip its envelope.
-        if (
-          existing &&
-          !envelope &&
-          Object.hasOwn(existing.metadata ?? {}, 'envelope')
-        ) {
-          throw new NotificationReservedFieldError('dedupeTag');
-        }
-        if (existing) {
-          // archive#1912: a dismissal is a real, terminal user decision.
-          if (existing.status === 'dismissed' || existing.actionLease) {
+          // Only the trusted path may rewrite an enveloped record: an untrusted
+          // update would replace metadata wholesale and strip its envelope.
+          if (
+            existing &&
+            !envelope &&
+            Object.hasOwn(existing.metadata ?? {}, 'envelope')
+          ) {
+            throw new NotificationReservedFieldError('dedupeTag');
+          }
+          if (existing) {
+            // archive#1912: a dismissal is a real, terminal user decision.
+            if (existing.status === 'dismissed' || existing.actionLease) {
+              return {
+                result: {
+                  notification: existing,
+                  created: false,
+                  updated: false,
+                },
+              };
+            }
+            // archive#3442 round 2 (HIGH-2): a dedupe-update used to leave
+            // `category` untouched while freely rewriting `title`/`priority` —
+            // so a turn that later fails after an earlier "done" schedule (or
+            // vice versa) ended up with a title/category that contradicted
+            // each other, and a stale ttl. This update path never emits an
+            // event (see below: `created`/`updated` branch, no
+            // `NOTIFICATION_DELIVERED`), so the reachable consumers of this
+            // stale `category` are the persisted row itself, the REST list, the
+            // history facets (pages/notificationHistoryFilters.ts:69,89,92,110),
+            // and the ttl default computed below — not the push pipeline. A
+            // caller-supplied ttl still always wins; otherwise re-derive the
+            // default from the NEW category rather than freezing the ttl the
+            // record was created with.
+            //
+            // The re-derived ttl still measures from the ORIGINAL
+            // `deliveredAt`, not this update's `updatedAt` (scheduleExpiryTimer
+            // below: `deadline = deliveredAt + ttl`). A row delivered as
+            // `turn-failed` well inside its 24h ttl and corrected to
+            // `turn-completed` (900_000ms ttl) minutes later can therefore
+            // compute a deadline already in the past and expire ~immediately —
+            // the corrected "Your agent finished" row can vanish from the inbox
+            // right after it's written. Arguably correct by policy (a done
+            // notice this stale IS stale); left as documented behavior rather
+            // than changed, since it is a product policy call this fix round
+            // should not make unilaterally.
+            const outcome = classifyNotificationCategory(opts.category);
+            const defaultTtl = outcome
+              ? NOTIFICATION_TTL_MS[outcome]
+              : undefined;
+            const ttl = opts.ttl ?? defaultTtl ?? existing.ttl;
+            actionsChanged =
+              JSON.stringify(existing.actions ?? null) !==
+              JSON.stringify(opts.actions ?? null);
+            if (opts.actions === undefined) delete existing.actions;
+            if (opts.body === undefined) delete existing.body;
+            Object.assign(existing, {
+              ...(opts.actions === undefined ? {} : { actions: opts.actions }),
+              ...(opts.body === undefined ? {} : { body: opts.body }),
+              metadata: {
+                ...metadata,
+                ...(opts.dedupeTag === undefined
+                  ? {}
+                  : { dedupeTag: opts.dedupeTag }),
+              },
+              category: opts.category,
+              priority: opts.priority ?? existing.priority,
+              scheduledAt: opts.scheduledAt ?? existing.scheduledAt,
+              ...(ttl === undefined ? {} : { ttl }),
+              title: opts.title,
+              updatedAt: now,
+              revision: existing.revision + 1,
+            });
+            return {
+              result: { notification: existing, created: false, updated: true },
+              next: all,
+            };
+          }
+          // #5052: retention removed the record this tag named. Its settled
+          // decision stands, as it would have for the record: nothing is
+          // created, delivered or pushed again. Ownership is decided as for a
+          // live record (above).
+          const tombstone = tombstones.find(opts.dedupeTag);
+          if (tombstone && tombstone.source !== source) {
+            if (this.ownsDedupeTags(tombstone.source))
+              throw new NotificationDedupeSourceConflictError();
+            tombstones.drop(opts.dedupeTag);
+          } else if (tombstone) {
+            tombstones.touch(tombstone);
+            tombstoned = true;
             return {
               result: {
-                notification: existing,
+                notification: tombstoneNotification(
+                  tombstone,
+                  opts,
+                  metadata,
+                  opts.dedupeTag,
+                ),
                 created: false,
                 updated: false,
               },
             };
           }
-          // archive#3442 round 2 (HIGH-2): a dedupe-update used to leave
-          // `category` untouched while freely rewriting `title`/`priority` —
-          // so a turn that later fails after an earlier "done" schedule (or
-          // vice versa) ended up with a title/category that contradicted
-          // each other, and a stale ttl. This update path never emits an
-          // event (see below: `created`/`updated` branch, no
-          // `NOTIFICATION_DELIVERED`), so the reachable consumers of this
-          // stale `category` are the persisted row itself, the REST list, the
-          // history facets (pages/notificationHistoryFilters.ts:69,89,92,110),
-          // and the ttl default computed below — not the push pipeline. A
-          // caller-supplied ttl still always wins; otherwise re-derive the
-          // default from the NEW category rather than freezing the ttl the
-          // record was created with.
-          //
-          // The re-derived ttl still measures from the ORIGINAL
-          // `deliveredAt`, not this update's `updatedAt` (scheduleExpiryTimer
-          // below: `deadline = deliveredAt + ttl`). A row delivered as
-          // `turn-failed` well inside its 24h ttl and corrected to
-          // `turn-completed` (900_000ms ttl) minutes later can therefore
-          // compute a deadline already in the past and expire ~immediately —
-          // the corrected "Your agent finished" row can vanish from the inbox
-          // right after it's written. Arguably correct by policy (a done
-          // notice this stale IS stale); left as documented behavior rather
-          // than changed, since it is a product policy call this fix round
-          // should not make unilaterally.
-          const outcome = classifyNotificationCategory(opts.category);
-          const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
-          const ttl = opts.ttl ?? defaultTtl ?? existing.ttl;
-          actionsChanged =
-            JSON.stringify(existing.actions ?? null) !==
-            JSON.stringify(opts.actions ?? null);
-          if (opts.actions === undefined) delete existing.actions;
-          if (opts.body === undefined) delete existing.body;
-          Object.assign(existing, {
-            ...(opts.actions === undefined ? {} : { actions: opts.actions }),
-            ...(opts.body === undefined ? {} : { body: opts.body }),
-            metadata: {
-              ...metadata,
-              ...(opts.dedupeTag === undefined
-                ? {}
-                : { dedupeTag: opts.dedupeTag }),
-            },
-            category: opts.category,
-            priority: opts.priority ?? existing.priority,
-            scheduledAt: opts.scheduledAt ?? existing.scheduledAt,
-            ...(ttl === undefined ? {} : { ttl }),
-            title: opts.title,
-            updatedAt: now,
-            revision: existing.revision + 1,
-          });
-          return {
-            result: { notification: existing, created: false, updated: true },
-            next: all,
-          };
         }
-      }
 
-      // archive#1100 AC2: a caller-supplied ttl always wins; otherwise default
-      // to the per-outcome TTL for categories this ranking knows about.
-      const outcome = classifyNotificationCategory(opts.category);
-      const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
-      const notification: StoredNotification = {
-        id: randomUUID(),
-        source,
-        category: opts.category,
-        title: opts.title,
-        ...(opts.body === undefined ? {} : { body: opts.body }),
-        priority: opts.priority ?? 'normal',
-        status: opts.scheduledAt ? 'pending' : 'delivered',
-        scheduledAt: opts.scheduledAt ?? null,
-        deliveredAt: opts.scheduledAt ? null : now,
-        ...((opts.ttl ?? defaultTtl) === undefined
-          ? {}
-          : { ttl: opts.ttl ?? defaultTtl }),
-        ...(opts.actions === undefined ? {} : { actions: opts.actions }),
-        metadata: {
-          ...metadata,
-          ...(opts.dedupeTag === undefined
+        // archive#1100 AC2: a caller-supplied ttl always wins; otherwise default
+        // to the per-outcome TTL for categories this ranking knows about.
+        const outcome = classifyNotificationCategory(opts.category);
+        const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
+        const notification: StoredNotification = {
+          id: randomUUID(),
+          source,
+          category: opts.category,
+          title: opts.title,
+          ...(opts.body === undefined ? {} : { body: opts.body }),
+          priority: opts.priority ?? 'normal',
+          status: opts.scheduledAt ? 'pending' : 'delivered',
+          scheduledAt: opts.scheduledAt ?? null,
+          deliveredAt: opts.scheduledAt ? null : now,
+          ...((opts.ttl ?? defaultTtl) === undefined
             ? {}
-            : { dedupeTag: opts.dedupeTag }),
-        },
-        createdAt: now,
-        updatedAt: now,
-        revision: 1,
-      };
-      return {
-        result: { notification, created: true, updated: false },
-        next: [...all, notification],
-      };
-    });
+            : { ttl: opts.ttl ?? defaultTtl }),
+          ...(opts.actions === undefined ? {} : { actions: opts.actions }),
+          metadata: {
+            ...metadata,
+            ...(opts.dedupeTag === undefined
+              ? {}
+              : { dedupeTag: opts.dedupeTag }),
+          },
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        };
+        return {
+          result: { notification, created: true, updated: false },
+          next: [...all, notification],
+        };
+      },
+    );
 
     if (displaced) {
       this.clearTimer(displaced);
@@ -918,6 +1013,7 @@ export class NotificationService {
       });
     }
     if (created) notificationOps.add(1, { op: 'schedule' });
+    else if (tombstoned) notificationOps.add(1, { op: 'tombstone-hit' });
 
     if (created && notification.status === 'delivered') {
       this.eventBus.emit(
@@ -986,9 +1082,13 @@ export class NotificationService {
     });
   }
 
-  async markStatus(id: string, status: Notification['status']): Promise<void> {
-    const notification = await this.updateStatus(id, status);
-    this.clearTimer(id);
+  async markStatus(
+    id: string,
+    status: Notification['status'],
+    expected?: { source: string; revision: number },
+  ): Promise<void> {
+    const notification = await this.updateStatus(id, status, expected);
+    if (notification || !expected) this.clearTimer(id);
     if (notification) {
       this.eventBus.emit(
         SERVER_EVENTS.NOTIFICATION_UPDATED,
@@ -1204,12 +1304,27 @@ export class NotificationService {
     status?: string[];
     category?: string[];
   }): Promise<Notification[]> {
+    return (await this.readFiltered(opts)).map(toPublicNotification);
+  }
+
+  /** Internal snapshot for callers that must retire only the row they read. */
+  async listWithRevision(opts?: { status?: string[]; category?: string[] }) {
+    return (await this.readFiltered(opts)).map((row) => ({
+      notification: toPublicNotification(row),
+      revision: row.revision,
+    }));
+  }
+
+  private async readFiltered(opts?: {
+    status?: string[];
+    category?: string[];
+  }) {
     let results = await this.read();
     if (opts?.status?.length)
       results = results.filter((n) => opts.status!.includes(n.status));
     if (opts?.category?.length)
       results = results.filter((n) => opts.category!.includes(n.category));
-    return results.map(toPublicNotification);
+    return results;
   }
 
   async clearAll(
@@ -1257,39 +1372,46 @@ export class NotificationService {
     };
   }
 
+  private armNotificationWakeup(
+    id: string,
+    deadline: number,
+    operation: 'scheduled-delivery' | 'notification-expiry',
+    due: (timer: ReturnType<typeof setTimeout>) => Promise<void>,
+  ): void {
+    if (!this.acceptingAsyncDispatch) return;
+    this.clearTimer(id);
+    const remaining = deadline - Date.now();
+    // Node clamps larger delays to 1ms. Wake in bounded steps and retain
+    // the original deadline, including when the wall clock moves backwards.
+    const timer = setTimeout(
+      () => {
+        if (this.timers.get(id) !== timer) return;
+        if (Date.now() < deadline)
+          this.armNotificationWakeup(id, deadline, operation, due);
+        else this.dispatch(operation, () => due(timer));
+      },
+      Math.min(2_147_483_647, Math.max(0, remaining)),
+    );
+    this.timers.set(id, timer);
+  }
+
   private scheduleTimer(n: StoredNotification): void {
-    if (!this.acceptingAsyncDispatch || !n.scheduledAt) return;
-    const delay = Math.max(0, new Date(n.scheduledAt).getTime() - Date.now());
-    this.timers.set(
+    const scheduledAt = n.scheduledAt;
+    if (!scheduledAt) return;
+    this.armNotificationWakeup(
       n.id,
-      setTimeout(
-        () =>
-          this.dispatch('scheduled-delivery', () =>
-            this.deliver(n.id, n.revision, n.scheduledAt!),
-          ),
-        delay,
-      ),
+      Date.parse(scheduledAt),
+      'scheduled-delivery',
+      (timer) => this.deliver(n.id, n.revision, scheduledAt, timer),
     );
   }
 
   private scheduleExpiryTimer(n: StoredNotification): void {
-    if (!this.acceptingAsyncDispatch || !n.ttl || n.ttl <= 0 || !n.deliveredAt)
-      return;
-    // Deadline is measured from the ORIGINAL `deliveredAt`, never
-    // `updatedAt` — see the dedupe-update ttl re-derivation comment above
-    // (`schedule()`) for the documented consequence when a category-changing
-    // update shortens the ttl after delivery.
-    const deadline = new Date(n.deliveredAt).getTime() + n.ttl;
-    const delay = Math.max(0, deadline - Date.now());
-    this.timers.set(
-      n.id,
-      setTimeout(
-        () =>
-          this.dispatch('notification-expiry', () =>
-            this.expire(n.id, n.revision, deadline),
-          ),
-        delay,
-      ),
+    if (!n.ttl || n.ttl <= 0 || !n.deliveredAt) return;
+    // TTL is measured from the original delivery, including after dedupe.
+    const deadline = Date.parse(n.deliveredAt) + n.ttl;
+    this.armNotificationWakeup(n.id, deadline, 'notification-expiry', (timer) =>
+      this.expire(n.id, n.revision, deadline, timer),
     );
   }
 
@@ -1297,16 +1419,20 @@ export class NotificationService {
     id: string,
     revision: number,
     scheduledAt: string,
+    timer: ReturnType<typeof setTimeout>,
   ): Promise<void> {
-    this.clearTimer(id);
     const n = await this.mutate((all) => {
       const notification = all.find((candidate) => candidate.id === id);
       if (
+        this.timers.get(id) !== timer ||
         notification?.status !== 'pending' ||
         notification.revision !== revision ||
-        notification.scheduledAt !== scheduledAt ||
-        Date.now() < new Date(scheduledAt).getTime()
-      ) {
+        notification.scheduledAt !== scheduledAt
+      )
+        return { result: undefined };
+      // The clock may have changed while this mutation waited for its turn.
+      if (Date.now() < Date.parse(scheduledAt)) {
+        this.scheduleTimer(notification);
         return { result: undefined };
       }
       notification.status = 'delivered';
@@ -1315,31 +1441,38 @@ export class NotificationService {
       notification.revision += 1;
       return { result: notification, next: all };
     });
-    if (!n) return;
-    notificationOps.add(1, { op: 'deliver' });
-    this.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_DELIVERED,
-      toPublicNotification(n) as unknown as Record<string, unknown>,
-    );
-    this.scheduleExpiryTimer(n);
+    if (n) {
+      notificationOps.add(1, { op: 'deliver' });
+      this.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        toPublicNotification(n) as unknown as Record<string, unknown>,
+      );
+    }
+    if (this.timers.get(id) === timer) {
+      this.clearTimer(id);
+      if (n) this.scheduleExpiryTimer(n);
+    }
   }
 
   private async expire(
     id: string,
     revision: number,
     deadline: number,
+    timer: ReturnType<typeof setTimeout>,
   ): Promise<void> {
     const expired = await this.mutate((all) => {
       const notification = all.find((candidate) => candidate.id === id);
       if (
+        this.timers.get(id) !== timer ||
         notification?.status !== 'delivered' ||
         notification.revision !== revision ||
         !notification.deliveredAt ||
         !notification.ttl ||
-        new Date(notification.deliveredAt).getTime() + notification.ttl !==
-          deadline ||
-        Date.now() < deadline
-      ) {
+        Date.parse(notification.deliveredAt) + notification.ttl !== deadline
+      )
+        return { result: undefined };
+      if (Date.now() < deadline) {
+        this.scheduleExpiryTimer(notification);
         return { result: undefined };
       }
       notification.status = 'expired';
@@ -1347,12 +1480,12 @@ export class NotificationService {
       notification.revision += 1;
       return { result: notification, next: all };
     });
-    if (!expired) return;
-    this.clearTimer(id);
-    this.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_UPDATED,
-      toPublicNotification(expired) as unknown as Record<string, unknown>,
-    );
+    if (this.timers.get(id) === timer) this.clearTimer(id);
+    if (expired)
+      this.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_UPDATED,
+        toPublicNotification(expired) as unknown as Record<string, unknown>,
+      );
   }
 
   private partitionClear(
@@ -1526,13 +1659,19 @@ export class NotificationService {
   private async updateStatus(
     id: string,
     status: Notification['status'],
+    expected?: { source: string; revision: number },
   ): Promise<StoredNotification | undefined> {
     return this.mutate((all) => {
       const n = all.find((notification) => notification.id === id);
       if (
         !n ||
         n.status === 'dismissed' ||
-        n.actionLease?.phase === 'dispatching'
+        n.actionLease?.phase === 'dispatching' ||
+        (expected !== undefined &&
+          (n.source !== expected.source ||
+            n.revision !== expected.revision ||
+            n.actionLease !== undefined ||
+            (n.status !== 'pending' && n.status !== 'delivered')))
       ) {
         return { result: undefined };
       }
@@ -1549,9 +1688,17 @@ export class NotificationService {
    * particular, the transition reads only after the lock is held: retaining
    * a prior array from before a concurrent dismiss, clear, timer delivery, or
    * provider update would otherwise publish that stale array back to disk.
+   *
+   * #5052: every mutation first drops settled records whose settle time is
+   * older than the retention window, so the transition never sees them and
+   * the document it writes is bounded by recent and active work. Pruning
+   * alone also writes; a mutation that neither changes nor prunes does not.
    */
   private async mutate<T>(
-    mutation: (notifications: StoredNotification[]) => {
+    mutation: (
+      notifications: StoredNotification[],
+      tombstones: TombstoneLedger,
+    ) => {
       result: T;
       next?: StoredNotification[];
     },
@@ -1559,14 +1706,65 @@ export class NotificationService {
     const release = await this.acquireMutationLock(
       `${this.storePath}.mutation`,
     );
+    let committed: {
+      result: T;
+      pruned: StoredNotification[];
+      retainedCount: number;
+    };
     try {
-      const outcome = mutation(this.readUnderMutationLock());
-      if (outcome.next)
-        this.store.write(validateNotificationDocument(outcome.next));
-      return outcome.result;
+      const nowMs = Date.now();
+      const { kept, pruned } = partitionRetention(
+        this.readUnderMutationLock(),
+        nowMs - this.retentionMs,
+      );
+      const tombstones = new TombstoneSession(
+        this.tombstoneStore,
+        nowMs,
+        this.retentionMs,
+      );
+      const outcome = mutation(kept, tombstones);
+      tombstones.record(pruned);
+      // Tombstones are published first. A crash between the two writes
+      // leaves a record beside its tombstone (the next write prunes it
+      // again); the other order would forget a dismissed tag.
+      tombstones.commit();
+      const next = outcome.next ?? (pruned.length > 0 ? kept : undefined);
+      let retainedCount = kept.length;
+      if (next) {
+        const document = validateNotificationDocument(next);
+        this.store.write(document);
+        retainedCount = document.length;
+      }
+      committed = { result: outcome.result, pruned, retainedCount };
     } finally {
       await release();
     }
+    if (committed.pruned.length > 0)
+      this.notifyPruned(committed.pruned, committed.retainedCount);
+    return committed.result;
+  }
+
+  private notifyPruned(
+    pruned: StoredNotification[],
+    retainedCount: number,
+  ): void {
+    const byStatus = new Map<string, number>();
+    for (const notification of pruned)
+      byStatus.set(
+        notification.status,
+        (byStatus.get(notification.status) ?? 0) + 1,
+      );
+    for (const [status, count] of byStatus)
+      notificationRetentionPruned.add(count, { status });
+    logger.debug('Notification retention removed settled records', {
+      prunedCount: pruned.length,
+      retainedCount,
+    });
+    // Open inbox and history views refetch, as after a clear.
+    this.eventBus.emit(SERVER_EVENTS.NOTIFICATION_CLEARED, {
+      clearedCount: pruned.length,
+      retainedCount,
+    });
   }
 
   private async read(): Promise<StoredNotification[]> {
@@ -1758,6 +1956,171 @@ export class NotificationService {
       }
     }
   }
+}
+
+const SETTLED_STATUSES: ReadonlySet<string> = new Set<SettledStatus>([
+  'expired',
+  'actioned',
+  'dismissed',
+]);
+
+/**
+ * #5052: a record is pruned only when it is settled and its last change (its
+ * settle, or a later dedupe update that touched it) is older than `horizonMs`.
+ * Delivered and pending records, and anything an action lease holds, stay.
+ */
+function partitionRetention(
+  all: StoredNotification[],
+  horizonMs: number,
+): { kept: StoredNotification[]; pruned: StoredNotification[] } {
+  const kept: StoredNotification[] = [];
+  const pruned: StoredNotification[] = [];
+  for (const notification of all) {
+    if (
+      SETTLED_STATUSES.has(notification.status) &&
+      !notification.actionLease &&
+      Date.parse(notification.updatedAt) < horizonMs
+    )
+      pruned.push(notification);
+    else kept.push(notification);
+  }
+  return { kept, pruned };
+}
+
+class TombstoneSession implements TombstoneLedger {
+  private entries: Map<string, DedupeTombstone> | undefined;
+  private dirty = false;
+
+  constructor(
+    private readonly store: Pick<
+      JsonFileStore<DedupeTombstone[]>,
+      'read' | 'write'
+    >,
+    private readonly nowMs: number,
+    private readonly retentionMs: number,
+  ) {}
+
+  /**
+   * Read once, on first use. A tombstone whose `retainedAt` is past the
+   * window is forgotten: never matched, and left out of the next write
+   * (forgetting alone does not write).
+   */
+  private load(): Map<string, DedupeTombstone> {
+    if (this.entries) return this.entries;
+    const horizon = this.nowMs - this.retentionMs;
+    this.entries = new Map();
+    for (const tombstone of validateTombstoneDocument(this.store.read()))
+      if (Date.parse(tombstone.retainedAt) >= horizon)
+        this.entries.set(tombstone.dedupeTag, tombstone);
+    return this.entries;
+  }
+
+  find(dedupeTag: string): DedupeTombstone | undefined {
+    return this.load().get(dedupeTag);
+  }
+
+  /** A schedule that hit it: keep it a window from now (at most daily). */
+  touch(tombstone: DedupeTombstone): void {
+    if (this.nowMs - Date.parse(tombstone.retainedAt) < TOMBSTONE_REFRESH_MS)
+      return;
+    tombstone.retainedAt = new Date(this.nowMs).toISOString();
+    this.dirty = true;
+  }
+
+  drop(dedupeTag: string): void {
+    if (this.load().delete(dedupeTag)) this.dirty = true;
+  }
+
+  record(pruned: StoredNotification[]): void {
+    const retainedAt = new Date(this.nowMs).toISOString();
+    for (const notification of pruned) {
+      const dedupeTag = notification.metadata?.dedupeTag;
+      if (typeof dedupeTag !== 'string') continue;
+      this.load().set(dedupeTag, {
+        dedupeTag,
+        id: notification.id,
+        source: notification.source,
+        status: notification.status as SettledStatus,
+        settledAt: notification.updatedAt,
+        retainedAt,
+      });
+      this.dirty = true;
+    }
+  }
+
+  commit(): void {
+    if (!this.dirty || !this.entries) return;
+    this.store.write([...this.entries.values()]);
+  }
+}
+
+const TOMBSTONE_FIELDS = [
+  'dedupeTag',
+  'id',
+  'source',
+  'status',
+  'settledAt',
+  'retainedAt',
+];
+
+function validateTombstoneDocument(value: unknown): DedupeTombstone[] {
+  if (!Array.isArray(value)) throw new NotificationStoreValidationError();
+  const tags = new Set<string>();
+  for (const tombstone of value) {
+    if (
+      !isRecord(tombstone) ||
+      Object.keys(tombstone).length !== TOMBSTONE_FIELDS.length ||
+      TOMBSTONE_FIELDS.some((field) => !Object.hasOwn(tombstone, field)) ||
+      !isCanonicalText(tombstone.dedupeTag) ||
+      tags.has(tombstone.dedupeTag) ||
+      !isNotificationId(tombstone.id) ||
+      !isCanonicalText(tombstone.source) ||
+      typeof tombstone.status !== 'string' ||
+      !SETTLED_STATUSES.has(tombstone.status) ||
+      !isCanonicalTimestamp(tombstone.settledAt) ||
+      !isCanonicalTimestamp(tombstone.retainedAt)
+    )
+      throw new NotificationStoreValidationError();
+    tags.add(tombstone.dedupeTag);
+  }
+  return value as DedupeTombstone[];
+}
+
+/**
+ * The answer to a schedule whose tag names a pruned record: that record's
+ * id and settled status with the content just asked for. Nothing stores it.
+ */
+function tombstoneNotification(
+  tombstone: DedupeTombstone,
+  opts: ScheduleNotificationOpts,
+  metadata: Record<string, unknown>,
+  dedupeTag: string,
+): StoredNotification {
+  return {
+    id: tombstone.id,
+    source: tombstone.source,
+    category: opts.category,
+    title: opts.title,
+    ...(opts.body === undefined ? {} : { body: opts.body }),
+    priority: opts.priority ?? 'normal',
+    status: tombstone.status,
+    scheduledAt: null,
+    deliveredAt: tombstone.status === 'dismissed' ? null : tombstone.settledAt,
+    ...(opts.actions === undefined ? {} : { actions: opts.actions }),
+    metadata: { ...metadata, dedupeTag },
+    createdAt: tombstone.settledAt,
+    updatedAt: tombstone.settledAt,
+    revision: 1,
+  };
+}
+
+function readPositiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (!value || !/^\d+$/.test(value)) return fallback;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function isActiveApprovalNotification(notification: Notification): boolean {

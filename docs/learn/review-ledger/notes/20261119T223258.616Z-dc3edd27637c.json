@@ -1,0 +1,17 @@
+{
+  "revision": "a55e2a2ea8fa17dc276256dd82a931fa1698aef4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked touch cancellation against both row callers. Native touch movement is canceled only after the hook takes a horizontal drag. Linux Chromium reproduced the suppressed tap before the fix and activated Remove once after it. A vertical gesture still scrolled a split list of swipe-enabled rows.","inputs":["src-ui/src/hooks/useSwipeActions.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Checked touch cancellation against both row callers. Native touch movement is canceled only after the hook takes a horizontal drag. Linux Chromium reproduced the suppressed tap before the fix and activated Remove once after it. A vertical gesture still scrolled a split list of swipe-enabled rows.","inputs":["src-ui/src/hooks/useSwipeActions.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked touch cancellation against both row callers. Native touch movement is canceled only after the hook takes a horizontal drag. Linux Chromium reproduced the suppressed tap before the fix and activated Remove once after it. A vertical gesture still scrolled a split list of swipe-enabled rows.","inputs":["src-ui/src/hooks/useSwipeActions.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the shared row binds the native listener only while swipe is enabled and releases it on removal. Existing Details, long press, preview eligibility and dismiss and snooze actions keep their paths. Focused Inbox coverage passed.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked that the shared row binds the native listener only while swipe is enabled and releases it on removal. Existing Details, long press, preview eligibility and dismiss and snooze actions keep their paths. Focused Inbox coverage passed.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the shared row binds the native listener only while swipe is enabled and releases it on removal. Existing Details, long press, preview eligibility and dismiss and snooze actions keep their paths. Focused Inbox coverage passed.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

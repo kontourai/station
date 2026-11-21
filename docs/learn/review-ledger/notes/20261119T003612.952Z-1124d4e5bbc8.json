@@ -1,0 +1,7 @@
+{
+  "revision": "9469cab2594b074859718b1b2ea1c13e992e4a7c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the browser Project lifecycle fixture. Inline creation preserves draft and attachment across a catalog retry. The Git starter case enters through Home and verifies a single Coding apply request and its canonical layout route.","inputs":["tests/project-lifecycle.spec.ts"]}
+  ]
+}

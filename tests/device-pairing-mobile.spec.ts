@@ -58,118 +58,26 @@ test.afterAll(async () => {
 
 const CONNECTION_ENTRY_TIMEOUT_MS = 15_000;
 
+function isDeviceSessionCookie({ name }: { name: string }): boolean {
+  return /^(?:__Host-)?station-device(?:-[a-f0-9]{16})?$/.test(name);
+}
+
 async function openConnections(page: Page): Promise<Locator> {
+  // These contexts have a saved Station. Wait for its switcher to mount:
+  // the setup reminder can render first, and All connections opens Models.
+  const stationSwitcher = page
+    .getByTestId('app-toolbar-connection')
+    .and(page.getByRole('button', { name: /^Choose Station/ }));
+  await stationSwitcher.click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  await page
+    .getByRole('menu', { name: 'Choose Station', exact: true })
+    .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+    .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+
   const dialog = page.getByRole('dialog');
-  const setupLauncher = page.getByTestId('setup-launcher');
-  // By test id, not by name: ChatDockMobileConnection derives its accessible
-  // name from the same connectionIndicatorLabel, so on a phone both it and the
-  // toolbar chip start with "Manage Stations" (archive#3297 + archive#3311).
-  const directConnections = page.getByTestId('app-toolbar-connection');
-  const moreActions = page.getByRole('button', { name: 'More actions' });
-  const addComputer = page.getByRole('button', {
-    name: 'Add computer',
-    exact: true,
-  });
-  const controlThisStation = page.getByRole('button', {
-    name: /Control this Station from another device/,
-  });
-  const managerControl = dialog.getByRole('button', {
-    name: /^(?:Request access|Add a Station address|Scan a QR code|Enter a pairing code|Paired devices)$/,
-  });
-
-  // A fresh container can have its HTTP endpoint ready before the lazy UI
-  // shell has rendered its first actionable control. Wait for a concrete path
-  // into Connections instead of choosing a fallback from an instantaneous
-  // visibility snapshot, which otherwise leaves Playwright's broad action
-  // timeout to hide the actual missing UI state.
-  await expect
-    .poll(
-      async () =>
-        (await dialog.isVisible()) ||
-        (await setupLauncher.isVisible()) ||
-        (await directConnections.isVisible()) ||
-        (await moreActions.isVisible()),
-      { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
-    )
-    .toBe(true);
-
-  if ((await dialog.isVisible()) && (await managerControl.first().isVisible()))
-    return dialog;
-  // #2278 sequences authority observation ahead of the App mount, so on a
-  // fresh home the setup-launcher (mounted above the provider) can win the
-  // entry race while the toolbar chip is still settling. The launcher
-  // navigates to the Connections hub, which has no manager entry — prefer
-  // the chip's in-place manager dialog, waiting boundedly for it when the
-  // launcher is already showing. If the chip never settles, fall through
-  // to the pre-existing launcher path below.
-  if (
-    !(await directConnections.isVisible()) &&
-    (await setupLauncher.isVisible())
-  ) {
-    try {
-      await expect
-        .poll(async () => await directConnections.isVisible(), {
-          timeout: CONNECTION_ENTRY_TIMEOUT_MS,
-        })
-        .toBe(true);
-    } catch {
-      // Authority never settled the chip; the launcher path below still
-      // applies and the manager poll gates the outcome either way.
-    }
-  }
-  if (await directConnections.isVisible()) {
-    await directConnections.click();
-    const stationSwitcher = page.getByRole('menu', { name: 'Choose Station' });
-    await expect
-      .poll(
-        async () =>
-          (await stationSwitcher.isVisible()) ||
-          (await managerControl.first().isVisible()) ||
-          (await addComputer.isVisible()) ||
-          (await controlThisStation.isVisible()),
-        { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
-      )
-      .toBe(true);
-    if (await stationSwitcher.isVisible()) {
-      await stationSwitcher
-        .getByRole('menuitem', { name: 'Manage Stations', exact: true })
-        .click();
-    }
-  } else if (await setupLauncher.isVisible()) {
-    await setupLauncher
-      .getByRole('button', { name: 'All connections' })
-      .click();
-    await page.waitForURL(/\/connections(?:\?|$)/);
-  } else {
-    await moreActions.click();
-    const menu = page.locator('.app-toolbar__overflow-menu');
-    await expect(menu).toBeVisible();
-    await menu
-      .getByRole('button', { name: 'Connections', exact: true })
-      .click();
-  }
-
-  // Connection entry points can either open the legacy manager or navigate to
-  // the Connections hub. The hub's "Open Connections" empty-state action is
-  // intentionally not a manager trigger; pairing now begins at Add computer.
-  // Do not admit that notice as readiness: it can appear behind a still-loading
-  // manager and send this helper into the wrong Add computer branch.
-  // Converge through the goal chooser and require a manager-specific control
-  // so the chooser dialog cannot be mistaken for the destination.
-  await expect
-    .poll(
-      async () =>
-        (await managerControl.first().isVisible()) ||
-        (await addComputer.isVisible()) ||
-        (await controlThisStation.isVisible()),
-      { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
-    )
-    .toBe(true);
-  if (!(await managerControl.first().isVisible())) {
-    if (!(await controlThisStation.isVisible())) await addComputer.click();
-    await controlThisStation.click();
-  }
-  await expect(managerControl.first()).toBeVisible({
+  await expect(
+    dialog.getByRole('button', { name: 'Enter a pairing code', exact: true }),
+  ).toBeVisible({
     timeout: CONNECTION_ENTRY_TIMEOUT_MS,
   });
   return dialog;
@@ -330,31 +238,24 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
   await context.close();
 });
 
-/**
- * The surfaces an UNPAIRED device actually has, and only those.
- *
- * A device with a saved Station and no access never reaches the shell: it
- * lands on the onboarding gate ("Connect to your Station host"), and its
- * request, its wait and the host's refusal are all reported by the request
- * panel that gate opens. The shell's own connection manager offers the same
- * journey per-row as "Request access to <name>"
- * (`connectionNeedsAccessRequest`) — but that row is for a device that HAS a
- * shell and lost access, which is a different scenario, so this one does not
- * pretend it might be there. That confusion is what archive#3753 was: the
- * phone context silently inherited the suite-wide device session, so it was
- * never unpaired, the shell rendered, and the leg waited for a per-row button
- * the product had no reason to offer.
- *
- * The shell's own wording for these same two states lives in
- * `src-ui/src/components/OnboardingGate.tsx` and
- * `src-ui/src/components/PendingPairingReconciler.tsx`; the panel's is in
- * `packages/connect/src/react/DevicePairingPanel.tsx`. Two components own one
- * fact — noted here so the next reader does not read this file's single
- * spelling as the only one.
- */
 async function openPhoneAccessRequest(page: Page): Promise<void> {
+  await expect(
+    page.getByRole('heading', { name: 'Connect your phone', exact: true }),
+  ).toBeVisible({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(
+    new URL(page.url()).hostname,
+  );
+  if (loopback) {
+    // GuidedConnect offers the loopback request inside the native disclosure.
+    await page
+      .getByText('Other ways to connect', { exact: true })
+      .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
+  }
   await page
-    .getByRole('button', { name: 'Request access', exact: true })
+    .getByRole('button', {
+      name: loopback ? 'Request access' : 'Request access to this Station',
+      exact: true,
+    })
     .click({ timeout: CONNECTION_ENTRY_TIMEOUT_MS });
   await expect(page.getByRole('dialog')).toBeVisible();
 }
@@ -461,9 +362,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await phone.goto(baseURL);
   const phoneSessionCookiesBeforeRequest = (
     await phoneContext.storageState()
-  ).cookies.filter((cookie) =>
-    ['__Host-station-device', 'station-device'].includes(cookie.name),
-  );
+  ).cookies.filter(isDeviceSessionCookie);
   expect(
     phoneSessionCookiesBeforeRequest,
     'the phone must reach this Station with no device session at all — see the note at the top of this test',
@@ -486,9 +385,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await denyButton.click();
   await expectPhoneDeclined(phone);
   expect(
-    (await phoneContext.storageState()).cookies.filter((cookie) =>
-      ['__Host-station-device', 'station-device'].includes(cookie.name),
-    ),
+    (await phoneContext.storageState()).cookies.filter(isDeviceSessionCookie),
   ).toEqual(phoneSessionCookiesBeforeRequest);
 
   await expectPhoneCanRequestAgain(phone);
@@ -542,14 +439,15 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
     )
     .toEqual({ hasPhoneStoredCredential: false, hasDeviceSession: true });
   const persisted = await phoneContext.storageState();
-  const deviceCookie = persisted.cookies.find((cookie) =>
-    ['__Host-station-device', 'station-device'].includes(cookie.name),
-  );
+  const deviceCookies = persisted.cookies.filter(isDeviceSessionCookie);
+  expect(deviceCookies).toHaveLength(1);
+  const [deviceCookie] = deviceCookies;
   expect(deviceCookie).toMatchObject({
+    name: expect.stringMatching(/^(?:__Host-)?station-device-[a-f0-9]{16}$/),
     httpOnly: true,
     sameSite: 'Strict',
   });
-  expect(deviceCookie!.expires).toBeGreaterThan(Date.now() / 1_000);
+  expect(deviceCookie.expires).toBeGreaterThan(Date.now() / 1_000);
   const replayStatus = await phone.evaluate(
     async ({ offerId, requestId, proof }) =>
       fetch('/.well-known/station/v1/pairing/exchange', {
@@ -605,7 +503,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await phoneContext.close();
 });
 
-test('unpaired mobile tour displays every step and returns to connection setup', async ({
+test('unpaired mobile tour and sample shortcuts return to connection setup', async ({
   browser,
   baseURL,
 }) => {
@@ -621,9 +519,9 @@ test('unpaired mobile tour displays every step and returns to connection setup',
       .click();
     const sample = page.getByTestId('unpaired-sample-workspace');
     await expect(sample).toBeVisible();
-    for (let step = 1; step <= 4; step++) {
+    for (let step = 1; step <= 3; step++) {
       const coachmark = page.getByTestId('first-run-coachmark');
-      await expect(coachmark).toContainText(`Step ${step} of 4`);
+      await expect(coachmark).toContainText(`Step ${step} of 3`);
       await expect(
         sample.locator('[data-first-run-anchor]').first(),
       ).toBeVisible();
@@ -634,12 +532,29 @@ test('unpaired mobile tour displays every step and returns to connection setup',
       ).toBe(true);
       await coachmark
         .getByRole('button', {
-          name: step === 4 ? 'Done' : 'Next',
+          name: step === 3 ? 'Done' : 'Next',
           exact: true,
         })
         .click();
     }
-    await expect(page.getByTestId('first-run-coachmark')).toHaveCount(0);
+    const coachmark = page.getByTestId('first-run-coachmark');
+    await expect(coachmark).toHaveCount(0);
+    await sample.getByRole('button', { name: 'Open sample inbox' }).click();
+    await expect(
+      sample.getByRole('heading', { name: 'Review the draft' }),
+    ).toBeFocused();
+
+    await sample.getByRole('button', { name: 'Customize' }).press('Enter');
+    await coachmark
+      .getByRole('button', { name: 'Skip the tour' })
+      .press('Enter');
+    await sample
+      .getByRole('button', { name: 'Open sample Schedule' })
+      .press('Enter');
+    await expect(
+      sample.getByRole('heading', { name: 'Weekly digest' }),
+    ).toBeFocused();
+
     await page
       .getByRole('button', { name: 'Connect your Station', exact: true })
       .first()

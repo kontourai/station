@@ -1772,7 +1772,31 @@
 
     "src-server/routes/evidence/task-code-reviews.ts",
 
-    "src-ui/src/components/chat/BrowserTurnActivity.tsx"
+    "src-ui/src/components/chat/BrowserTurnActivity.tsx",
+
+    "src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx",
+
+    "src-server/services/projects/project-room-coordinator.ts",
+
+    "src-server/services/projects/project-room-coordinator-store.ts",
+
+    "src-server/runtime/routes/project-room-coordinator-runtime.ts",
+
+    "src-server/runtime/routes/project-room-agent-runtime.ts",
+
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "packages/sdk/src/query-domains/projectRooms.ts",
+
+    "src-ui/src/hooks/orchestration/engineStartWaits.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
   ],
 
   "checks": [

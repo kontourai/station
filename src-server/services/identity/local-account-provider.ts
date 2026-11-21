@@ -221,7 +221,7 @@ export async function createLocalAccountProvider(
     // Member passkeys need Station-owned usernames; email accounts stay
     // password-only until their verified-contact rules cover passkeys.
     const memberPasskeys = localUsername
-      ? createMemberPasskeys({
+      ? await createMemberPasskeys({
           publicOrigin: host.publicOrigin,
           basePath: host.basePath,
           database,

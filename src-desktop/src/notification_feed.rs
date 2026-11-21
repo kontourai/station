@@ -82,9 +82,15 @@
 //! alert that has not been posted yet (a retract later in the same read).
 //!
 //! **Click** focuses the app and hands the entry's `link` to the main webview
-//! (`station://notification-open`, then `take_notification_open_link`). The
-//! link is accepted only as an in-app path; anything else opens the app
-//! where it was. No URL is ever opened outside the app.
+//! (`station://notification-open`, then `take_notification_open_link`),
+//! together with the Station origin the alert was read from
+//! ([`NotificationOpen`]). The link is accepted only as an in-app path;
+//! anything else opens the app where it was. No URL is ever opened outside
+//! the app. The origin is this consumer's own record of where it read the
+//! entry, never a feed field: the webview opens the link on the saved
+//! Station at that origin, switching to it when another one is active by
+//! then, so an alert clicked after a Station switch never opens its session
+//! id on the wrong Station.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -181,6 +187,27 @@ pub(crate) struct Alert {
     pub title: String,
     pub body: Option<String>,
     pub link: Option<String>,
+    /// The Station origin this consumer read the alert from.
+    pub origin: String,
+}
+
+/// What a click hands the webview: the alert's in-app link and the Station
+/// origin it was read from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NotificationOpen {
+    pub link: String,
+    pub origin: String,
+}
+
+impl Alert {
+    /// What a click on this alert opens, or `None` when it has no link.
+    pub(crate) fn open_target(&self) -> Option<NotificationOpen> {
+        self.link.clone().map(|link| NotificationOpen {
+            link,
+            origin: self.origin.clone(),
+        })
+    }
 }
 
 /// What one OS call did.
@@ -946,6 +973,7 @@ impl FeedConsumer {
                                 title: title.clone(),
                                 body: body.clone(),
                                 link: in_app_link(link.as_deref()),
+                                origin: origin.to_string(),
                             },
                             key,
                         });
@@ -1290,7 +1318,7 @@ mod host {
     /// reports: a host that manages it runs the consumer thread.
     pub(crate) struct NotificationFeed {
         consumer: SharedConsumer<CursorFile>,
-        open_link: Mutex<Option<(String, Instant)>>,
+        open_link: Mutex<Option<(NotificationOpen, Instant)>>,
         sink: Mutex<Option<OsAlertSink>>,
     }
 
@@ -1431,7 +1459,7 @@ mod host {
 
     /// Record the link a click asked for and bring the app forward. The
     /// webview takes the link once; a stale one expires.
-    fn open_from_click(app: &AppHandle, link: Option<String>) {
+    fn open_from_click(app: &AppHandle, link: Option<NotificationOpen>) {
         if let Some(link) = link {
             if let Some(state) = app.try_state::<NotificationFeed>() {
                 *state
@@ -1489,7 +1517,7 @@ mod host {
             self: &Arc<Self>,
             id: String,
             generation: u64,
-            link: Option<String>,
+            link: Option<NotificationOpen>,
             shown: Shown,
         ) {
             #[cfg(all(unix, not(target_os = "macos")))]
@@ -1629,7 +1657,7 @@ mod host {
             let late = {
                 let shared = Arc::clone(&self.shared);
                 let id = alert.notification_id.clone();
-                let link = alert.link.clone();
+                let link = alert.open_target();
                 move |shown: notify_rust::error::Result<Shown>| {
                     if let Ok(shown) = shown {
                         shared.present(id, generation, link, shown);
@@ -1645,7 +1673,7 @@ mod host {
                     self.shared.present(
                         alert.notification_id.clone(),
                         generation,
-                        alert.link.clone(),
+                        alert.open_target(),
                         shown,
                     );
                     OsOutcome::Done
@@ -1710,12 +1738,13 @@ mod host {
             .hand_over(init_consumer(&app), &origin, cursor)
     }
 
-    /// The link the last notification click asked for, once. Main window only.
+    /// The link the last notification click asked for and the Station
+    /// origin its alert was read from, once. Main window only.
     #[tauri::command]
     pub(crate) fn take_notification_open_link<R: Runtime>(
         window: tauri::WebviewWindow<R>,
         app: AppHandle<R>,
-    ) -> Option<String> {
+    ) -> Option<NotificationOpen> {
         if window.label() != "main" {
             return None;
         }
@@ -2152,6 +2181,57 @@ mod tests {
         );
         assert_eq!(sink.posted[0].link, None);
         assert_eq!(sink.posted[1].link.as_deref(), Some("/?surface=activity"));
+    }
+
+    #[test]
+    fn a_click_names_the_station_origin_its_alert_was_read_from() {
+        // Two Stations' feeds read by the same consumer: each click hands
+        // the webview the origin that alert came from, so one clicked after
+        // switching Stations opens on its own Station, not the active one.
+        let mut consumer = FeedConsumer::with_cursors(HashMap::from([
+            ("https://a.example".to_string(), stored(0, "run-a")),
+            ("https://b.example".to_string(), stored(0, "run-b")),
+        ]));
+        let (mut sink, mut store) = (FakeSink::default(), MemoryStore::default());
+        consumer.apply(
+            "https://a.example",
+            &feed(1, vec![alert(1, "n-a")], "run-a"),
+            false,
+            mono(0),
+            &mut sink,
+            &mut store,
+        );
+        consumer.apply(
+            "https://b.example",
+            &feed(1, vec![alert(1, "n-b")], "run-b"),
+            false,
+            mono(0),
+            &mut sink,
+            &mut store,
+        );
+        let targets: Vec<_> = sink.posted.iter().map(Alert::open_target).collect();
+        assert_eq!(
+            targets,
+            vec![
+                Some(NotificationOpen {
+                    link: "/?surface=activity".into(),
+                    origin: "https://a.example".into(),
+                }),
+                Some(NotificationOpen {
+                    link: "/?surface=activity".into(),
+                    origin: "https://b.example".into(),
+                }),
+            ]
+        );
+        // The webview reads it as `{ link, origin }`.
+        assert_eq!(
+            serde_json::to_value(targets[0].as_ref().unwrap()).unwrap(),
+            serde_json::json!({ "link": "/?surface=activity", "origin": "https://a.example" })
+        );
+        // No link, nothing to open.
+        let mut linkless = sink.posted[0].clone();
+        linkless.link = None;
+        assert_eq!(linkless.open_target(), None);
     }
 
     #[test]

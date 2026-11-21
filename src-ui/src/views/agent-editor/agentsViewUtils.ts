@@ -87,7 +87,6 @@ type AgentLike = {
   // member audience also requires the `project` a clone does not keep.
   audience: 'exclude',
   delegation: 'exclude',
-  streaming: 'exclude',
   commands: 'exclude',
   ui: 'exclude',
   provenance: 'exclude',
@@ -161,8 +160,6 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
       askBeforeUse: [...(agent.toolsConfig?.askBeforeUse || [])],
-      // #2613: carried through, not yet editable here (#2658). Modelled so a
-      // save writes back exactly what was loaded; absent stays absent.
       unattendedAutoApprove: agent.toolsConfig?.unattendedAutoApprove || [],
       browser: agent.toolsConfig?.browser !== false,
     },
@@ -218,9 +215,7 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
       askBeforeUse: [...(agent.toolsConfig?.askBeforeUse || [])],
-      // #2613: a copy starts without the source's unattended opt-in. It is a
-      // standing grant to run with nobody present, and the editor cannot
-      // show it yet (#2658), so a copy must not inherit it unseen.
+      // A copy needs its own opt-in to use tools with nobody present.
       unattendedAutoApprove: [],
       browser: agent.toolsConfig?.browser !== false,
     },
@@ -276,6 +271,11 @@ export function validateAgentForm(
   );
   if (requiresPrompt && !form.prompt.trim()) {
     errors.prompt = 'System prompt is required';
+  }
+  if (form.maxSteps) {
+    const steps = Number(form.maxSteps);
+    if (!Number.isInteger(steps) || steps < 1 || steps > 100)
+      errors.maxSteps = 'Enter a whole number from 1 to 100.';
   }
   if (isCreating) {
     if (!form.slug.trim()) errors.slug = 'Slug is required';
@@ -419,7 +419,7 @@ export function agentSaveErrorMessage(error: unknown): string {
 
 export function buildAgentPayload(
   form: AgentFormData,
-  options: { isCreating?: boolean } = {},
+  options: { isCreating?: boolean; previousMaxSteps?: string } = {},
 ) {
   return {
     slug: agentId(form.slug),
@@ -429,7 +429,11 @@ export function buildAgentPayload(
     model: form.modelId || undefined,
     region: form.region || undefined,
     guardrails: form.guardrails || undefined,
-    maxSteps: form.maxSteps ? parseInt(form.maxSteps, 10) : undefined,
+    maxSteps: form.maxSteps
+      ? Number(form.maxSteps)
+      : options.previousMaxSteps
+        ? null
+        : undefined,
     // Send `tools` when ANY of its fields carries state. Gating on
     // mcpServers alone silently discarded available/autoApprove/aliases for
     // an agent with no MCP servers — a save the editor reported as success

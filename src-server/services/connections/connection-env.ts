@@ -1,6 +1,12 @@
+import { sanitizeConnectionConfigHome } from '@kontourai/station-contracts/connection';
 import { managedEngineEnvironmentLocked } from '../../security/managed-engine-limits.js';
 import { BOOT_INTERNAL_SECRET_ENV_KEYS } from '../../utils/child-process-environment.js';
 import { expandTilde } from '../../utils/paths.js';
+
+export {
+  appHomeActive,
+  sanitizeConnectionConfigHome,
+} from '@kontourai/station-contracts/connection';
 
 /**
  * station#2072: per-connection env + config-home overrides for the Claude
@@ -67,36 +73,6 @@ export function sanitizeConnectionEnvMap(
     sanitized[rawKey] = rawVal;
   }
   return sanitized;
-}
-
-/**
- * Sanitizes `AgentConnectionSettings.config.configHome`. Returned
- * as-authored (tilde kept): expansion is a spawn-time concern, so a
- * persisted value never bakes in one machine's home directory. Non-empty
- * after trimming, no NUL — the byte a spawned env value cannot carry.
- */
-export function sanitizeConnectionConfigHome(
-  value: unknown,
-): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.includes('\u0000')) return undefined;
-  return trimmed;
-}
-
-/**
- * station#2072 precedence: an explicit `configHome` WINS over the
- * `useAppHome` opt-in — the connection env layer carries the home key and
- * the station-managed profile is neither ensured nor applied. A selected
- * credential profile still wins over both (its resolution order is
- * documented on `AgentExecutionConfig.credentialProfileRef` and unchanged);
- * an explicit configHome applies only when no profile was selected.
- */
-export function appHomeActive(
-  config: Record<string, unknown> | undefined,
-): boolean {
-  if (sanitizeConnectionConfigHome(config?.configHome)) return false;
-  return config?.useAppHome === true;
 }
 
 const CONNECTION_CONFIG_HOME_ENV_KEYS = {

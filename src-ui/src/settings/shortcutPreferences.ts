@@ -43,8 +43,8 @@ export function writeSkillShortcuts(overrides: ShortcutOverrides) {
   deviceSettingsStore.set('skillShortcuts', overrides);
 }
 
-export function bindingSignature(binding: ShortcutBinding): string {
-  return `${[...binding.modifiers].sort().join('+')}|${binding.key.toLowerCase()}`;
+export function normalizeShortcutKey(key: string): string {
+  return key === ' ' ? 'space' : key.toLowerCase();
 }
 
 export function browserReservedReason(binding: ShortcutBinding): string | null {

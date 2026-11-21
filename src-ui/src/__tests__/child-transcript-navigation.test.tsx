@@ -604,15 +604,19 @@ test('a read already in flight is not cancelled by a request for earlier message
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(history.fetchPreviousPage).not.toHaveBeenCalled();
 });
-test('the breadcrumb is one trail: the parent crumb goes back and one separator joins it to the child', async () => {
+test('the breadcrumb names the current child, shows one separator, and offers a back action', async () => {
   render(tree());
   fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
   const trail = await screen.findByRole('navigation', {
     name: 'Chat breadcrumb',
   });
-  expect(trail.textContent).toBe('‹Parent chat/Nested review');
-  expect(trail.textContent).not.toContain('›');
-  fireEvent.click(within(trail).getByRole('button', { name: 'Parent chat' }));
+  const crumbs = within(trail);
+  expect(crumbs.getByRole('button', { name: 'Parent chat' })).toBeTruthy();
+  expect(crumbs.getAllByText('/')).toHaveLength(1);
+  expect(crumbs.getByText('Nested review').getAttribute('aria-current')).toBe(
+    'page',
+  );
+  fireEvent.click(crumbs.getByRole('button', { name: 'Back to parent chat' }));
   expect(
     screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
   ).toBeNull();

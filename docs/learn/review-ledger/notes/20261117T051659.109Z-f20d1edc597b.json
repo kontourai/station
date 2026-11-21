@@ -1,0 +1,11 @@
+{
+  "revision": "33a564892674adaeb268e07e72cbd3ef99476dd6",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md now describes pullRequestFeedbackActive, PullRequestHeadReview and the review-findings delivery in the pull-request-feedback entry; other citing pages make no claim about that subpath.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md now describes pullRequestFeedbackActive, PullRequestHeadReview and the review-findings delivery in the pull-request-feedback entry; other citing pages make no claim about that subpath.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md now describes pullRequestFeedbackActive, PullRequestHeadReview and the review-findings delivery in the pull-request-feedback entry; other citing pages make no claim about that subpath.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

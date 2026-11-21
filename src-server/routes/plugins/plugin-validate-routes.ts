@@ -45,7 +45,7 @@
  * For an author, a pane that silently never appears is the defect, so it is
  * an error here.
  */
-import { existsSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type {
   ConflictInfo,
@@ -82,6 +82,10 @@ import {
   resolvePluginValidateSource,
 } from '../../services/plugins/plugin-validate-source.js';
 import type { Logger } from '../../utils/logger.js';
+import {
+  canonicalPath,
+  isCanonicalPathStrictlyWithin,
+} from '../../utils/path-containment.js';
 import {
   errorMessage,
   getBody,
@@ -426,23 +430,20 @@ function checkEntrypoint(
   pluginDir: string,
   entrypoint: string,
 ): { path: string; present: boolean } {
-  // Containment is decided on real paths, as the install build's
-  // `assertRealPathInside` decides it: an entrypoint that is a symlink to a
-  // file outside the package reads as present to a lexical check and then
-  // fails the build.
-  const root = realpathSync(pluginDir);
+  // Match the install build's physical containment check.
+  const root = canonicalPath(pluginDir);
   const lexical = join(root, entrypoint);
-  const lexicalInside = lexical.startsWith(`${root}${sep}`);
+  const lexicalInside = isCanonicalPathStrictlyWithin(root, lexical);
   const shown = lexicalInside
     ? relative(root, lexical).split(sep).join('/')
     : entrypoint;
   let target: string;
   try {
-    target = realpathSync(lexical);
+    target = canonicalPath(lexical);
   } catch {
     return { path: shown, present: false };
   }
-  const inside = target !== root && target.startsWith(`${root}${sep}`);
+  const inside = isCanonicalPathStrictlyWithin(root, target);
   let present = false;
   try {
     present = inside && statSync(target).isFile();

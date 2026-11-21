@@ -1,0 +1,89 @@
+{
+  "revision": "8ce49812d8eccaf5465b7831039d64ec1b7c8e14",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"The ingress Compose, proxy rules and smoke upstream remain outside the new Task and adoption drains. The runtime changes provide no public TLS or ingress qualification.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Added the ordered writer joins and deadline retention. Traced subscription intake, finalization before orchestration, shutdown exit claims, EventStore close and home lease in StationRuntime. Focused runtime tests hold these operations across the relevant boundary.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Compared TaskGraph/TaskDispatcher ownership and shutdown placements with the runtime delta. Session finalization and durable Task worktree retry are joined before stopping orchestration. Claims drain before EventStore. Conversation delivery and transcript ownership retain their documented paths. Checked Agent storage passes the signal only to lock admission.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-agents.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the runtime diff against tool policy composition, approval grants and provider paths. The new canonical exit and boot drains leave those producer and authorization paths intact. The historical provider probes were not repeated.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked default Agent and Engine connection ownership through registry save and native adoption. Shutdown may stop a wait before a new write commits. Identity binding and refusal of conflicting owners still apply.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/domain/agent-registry.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Compared Agent persistence lock changes with governance receipt and declaration terminology. Optional boot cancellation does not alter fields, receipt authorship, or evidence grades.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Compared the scoped Agent lock change with operation and notification terms. Agent save durability still begins under the existing lock and publishes through the existing transaction. The shutdown signal only gates its admission.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked startup and normal connection setup composition. Engine detection and first-run actions keep their existing identity and profile behavior. Shutdown may interrupt automatic adoption lock admission.","inputs":["docs/design/connections-onboarding.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Reviewed the runtime delta against the proposed isolation boundary. Local writer custody adds no execution sandbox or tenant guarantee.","inputs":["docs/design/hosted-execution-isolation.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Checked the shared birth-fingerprint lock and synchronous registry callers. Cancelable admission belongs to the async API. Sync publication, guard/claim handling and release keep their existing protocol. Focused shared lock and orphan suites passed.","inputs":["docs/design/instance-registry.md","packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Traced ConfigLoader and StationRuntime changes against MCP host selection and teardown. Agent lock admission does not alter MCP settings or render admission. The runtime now retains resources on a task-writer drain failure. Browser qualification was not repeated.","inputs":["docs/design/mcp-ui-host.md","src-server/domain/config-loader.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the shutdown diff against operator device/passkey ownership and disposal. The new writer gates cover task and adoption work. Enrollment, session scope and mutation confirmation are unaffected by those gates.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Compared Agent lock and runtime join changes with package admission and retained-generation disposal. Successful teardown keeps plugin release ordering. Shutdown can stop before disposing providers when assignment work is still live. Install and reclaim interfaces retain existing behavior.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/domain/config-loader.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Verified task writer tracking and boot lock signals do not change principal or verified-session authority. The rollout account and membership distinctions remain historical/classified as recorded.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked runtime shutdown changes around membership construction and close. The join can retain membership resources if early finalization is blocked. Membership authority and routes keep their existing interfaces.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Compared ConfigLoader Agent lock threading and runtime task drain with policy persistence, activation and verification. Policy schema and applied CAS still use their existing owners. A task drain failure can retain runtime resources for cleanup.","inputs":["docs/design/registry-trust-policy.md","src-server/domain/config-loader.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"Checked the shared change against the documented reconciler lock and its synchronous callers. Only async acquisition opts into an AbortSignal. Guard, release and mutation publication semantics still interoperate.","inputs":["docs/design/station-instance-reconciler.md","packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Clarified terminal Task authority and later retry after a turn or Session ends. Traced startup orphan sweep, turn/session events, admission closure and the join before orchestration. Runtime and Task worktree owner tests passed.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the finalization/claim order against room shutdown and parking. Finalizers already admitted settle before orchestration, and shutdown-generated exits can release claims before the store closes. Preserved the scope of the historical room fixture.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked Reserved Station Agent and default Agent registry terms against seed, native adoption and identity locks. A canceled write does not create a new registry or Agent ownership category.","inputs":["docs/glossary.md","src-server/domain/agent-registry.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Traced ConfigLoader create/mutate admission, native engine materialization and runtime call sites. Automatic boot passes a shutdown signal. Manual configuration retains its documented options, model and permission resolution.","inputs":["docs/guides/agent-configuration.md","src-server/domain/config-loader-agents.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Checked authored command and Agent config persistence callers against the optional lock signal. Command precedence and expansion are outside the boot-only cancellation path.","inputs":["docs/guides/commands.md","src-server/domain/config-loader-agents.ts","src-ui/src/__tests__/useActiveChatSessionMessaging.test.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Updated automatic adoption explanation after tracing interrupted registry lock waits and partial connection/Agent settlement. A real contended registry test preserved committed bytes and cleared waiter files. Existing recovery test covers repairing a partial adoption on a later run.","inputs":["docs/guides/connections.md","src-server/domain/config-loader-agents.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed shutdown join at the EventStore and home runtime lease boundaries. Deadline exhaustion leaves maintenance excluded while the claim writer remains live. Existing supervisor grace differences remain tracked in #1831 and were reviewed from source only.","inputs":["docs/guides/deployment.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked startup/stop ordering and authority against the runtime delta. Gateway setup, scope and relay logic are outside the changed writers. A failed early drain can retain runtime resources until cleanup is retried.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Compared runtime changes against preview binding and refusal. The writer joins do not change any preview gate or enable a capability.","inputs":["docs/guides/feature-previews.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked passkey composition, dedicated consent listener and shutdown relative to the new waits. No enrollment or per-action authentication contract changes. No device execution.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked plugin boot/disposal call sites and Agent configuration setters. Claim drains run before plugin subscriptions and public server modules are disposed. Admission and plugin settings retain their existing scopes.","inputs":["docs/guides/plugins.md","src-server/domain/config-loader.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked authored Agent create/mutate paths against native adoption cancellation. Scoped lock signals do not change the delegation, request handling or Skill editing interfaces exercised by the guide.","inputs":["docs/guides/self-configuring-agent.md","src-server/domain/config-loader-agents.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Compared the ConfigLoader delta with override and Skill loading interfaces. The optional signal is for Agent create/mutate lock admission callers. Portable plugin manifests and override validation retain current behavior.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed runtime changes against smoke-fixture admission, config selection and failure retention. Added coverage is for shutdown custody and lock contention. It supplies no new smoke run evidence.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked changed storage and composition against API claims. Agent and connection requests keep their existing validation and output contracts. Task exit drain ordering is internal to runtime shutdown.","inputs":["docs/reference/api.md","src-server/domain/config-loader-agents.ts","src-server/domain/config-loader.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked config loading and persistence claims against Registry/Agent locking and StationRuntime drain. No config field, default or data shape changes. The boot owner opts into pre-publication cancellation.","inputs":["docs/reference/config.md","src-server/domain/config-loader-agents.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked runtime session exit and shared lifecycle changes against documented package interfaces. Async lock options are additive and server-local in these callers. Runtime store custody does not change session or task contracts.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the runtime/config delta against feature toggles and startup composition. No environment variable, port, or deployment default changes. Platform timing is source-derived and remains a separate issue.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the current room path through runtime session finalization and canonical exit subscription. New bounds protect EventStore custody. The browser acceptance evidence remains prior and was not rerun.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared adoption and registry changes with documented Engine, Agent and work ownership. Automatic adoption remains detection-based and preserves identity rules. No cross-platform, provider or rendering qualification inferred.","inputs":["docs/reference/station-docs.md","src-server/domain/agent-registry.ts","src-server/runtime/bootstrap/native-engine-adoption.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Compared runtime and cold-start test deltas with station_started activation and bounded telemetry flush. New tests hold task writers and interrogate actual store/lease; they do not qualify telemetry transport. The combined cold-start suite passed.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked Agent/Engine, connection and startup adoption explanations against the registry delta. A connection remains distinct from its Agent materialization and does not imply readiness.","inputs":["docs/user/concepts.md","src-server/domain/agent-registry.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed runtime changes against user-visible preview and settings binding. Teardown writer accounting does not introduce a setting, change preview state or activate a device.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Checked runtime ordering against the Fieldwork host lifecycle. The added writer gate can make shutdown fail before cleanup instead of closing live resources. No browser or example runtime qualification was repeated.","inputs":["examples/fieldwork-review/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Compared Agent persistence and native-adoption call changes against the example's authored config and delegation tools. Lock protocol and config schema still support the example. No example live run.","inputs":["examples/self-configuring-agent/README.md","src-server/domain/config-loader-agents.ts","src-server/runtime/bootstrap/native-engine-adoption.ts"]}
+  ]
+}

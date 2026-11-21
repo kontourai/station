@@ -414,7 +414,9 @@
 
     "packages/contracts/src/workspace-home-role.ts",
 
-    "src-ui/src/views/home/home-role-projection.ts"
+    "src-ui/src/views/home/home-role-projection.ts",
+
+    "packages/contracts/src/project-room-coordinator.ts"
   ],
 
   "checks": [

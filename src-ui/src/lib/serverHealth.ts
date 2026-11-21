@@ -1,6 +1,7 @@
 import {
   type ConnectionFailureReason,
   type ConnectionHealthCheckResult,
+  type ConnectionHealthFailureEvidence,
   classifyHttpFailureResponse,
   classifyNativeTransportRefusal,
   HEALTH_PROBE_TIMEOUT_MS,
@@ -46,7 +47,11 @@ function relayAuthorityFailure(
     code === 'station_application_authority_required' ||
     code === 'station_application_authority_invalid'
   )
-    return { ok: false, reason: 'authentication-failed' };
+    return {
+      ok: false,
+      reason: 'authentication-failed',
+      evidence: { kind: 'local-authority', code },
+    };
   if (code === 'station_relay_route_stale')
     return { ok: false, reason: 'undetermined' };
   return null;
@@ -190,16 +195,25 @@ async function readStationErrorCode(
  * archive#3297 — the single derivation both probes below use for a non-OK
  * HTTP response, so they can never disagree again about what a status means.
  */
-async function reasonForFailedResponse(
+async function failedResponse(
   response: Response,
-): Promise<ConnectionFailureReason> {
-  if (await isStationUiProxyUnavailableResponse(response)) {
-    return 'host-unavailable';
-  }
-  return classifyHttpFailureResponse(
-    response.status,
-    await readStationErrorCode(response),
-  );
+  phase: Extract<ConnectionHealthFailureEvidence, { kind: 'http' }>['phase'],
+): Promise<ConnectionHealthCheckResult> {
+  const { status } = response;
+  const proxyUnavailable = await isStationUiProxyUnavailableResponse(response);
+  const code = await readStationErrorCode(response);
+  return {
+    ok: false,
+    reason: proxyUnavailable
+      ? 'host-unavailable'
+      : classifyHttpFailureResponse(status, code),
+    evidence: {
+      kind: 'http',
+      phase,
+      status,
+      ...(code === undefined ? {} : { code }),
+    },
+  };
 }
 
 export function checkServerHealth(
@@ -237,15 +251,7 @@ export async function checkServerHealthDetailed(
       credential,
     );
     if (response.ok) return { ok: true };
-    // archive#3297: both probes now share one derivation
-    // (`classifyHttpFailureResponse`), and it reads the coded body rather
-    // than guessing from the status. The comment that used to sit here said
-    // this server "returns 403 for origin policy, never for a rejected
-    // credential" — that was incomplete: `runtime-http.ts` also answers 403
-    // `insufficient_scope` for a credential it recognizes but will not
-    // accept, which IS a device-credential outcome. Keying on the number
-    // alone could not tell the two apart in either direction.
-    return { ok: false, reason: await reasonForFailedResponse(response) };
+    return await failedResponse(response, 'authenticated');
   } catch (error) {
     const relayFailure = relayAuthorityFailure(error);
     if (relayFailure) return relayFailure;
@@ -340,17 +346,8 @@ async function probeUntilAnswered(
       },
       brokerRoute,
     );
-    // archive#3297: this line was the defect the issue was filed about. The
-    // public handshake answering 401 — or 403, or 404 — proves the address
-    // answered, and collapsing all three into 'unreachable' told a phone
-    // whose credential had gone stale that its Station "may be off, asleep,
-    // or on another network". Forty lines above, `checkServerHealthDetailed`
-    // had the mapping right; the two probes now share one derivation.
     if (!handshakeResponse.ok) {
-      return {
-        ok: false,
-        reason: await reasonForFailedResponse(handshakeResponse),
-      };
+      return await failedResponse(handshakeResponse, 'handshake');
     }
     let handshake: {
       schemaVersion?: unknown;
@@ -410,10 +407,7 @@ async function probeUntilAnswered(
       brokerRoute,
     );
     if (!identityResponse.ok) {
-      return {
-        ok: false,
-        reason: await reasonForFailedResponse(identityResponse),
-      };
+      return await failedResponse(identityResponse, 'authenticated');
     }
     const identity = (await identityResponse.json()) as { bootId?: unknown };
     return typeof identity.bootId === 'string' && identity.bootId

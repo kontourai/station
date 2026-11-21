@@ -1,0 +1,7 @@
+{
+  "revision": "994126446272527aadcf68352206373c03c226f0",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the provider recovery codes and the fixed GitHub and GitLab commands. The picker retries the same catalog. Terminal launch is offered for the matching host and a dock Project. The command is copied for the operator to run.","inputs":["docs/guides/connections.md","src-server/routes/projects/repository-acquisition-routes.ts","src-server/services/projects/repository-provider-catalog.ts","src-ui/src/components/modals/RepositoryProviderPicker.tsx","src-ui/src/views/project-settings/ProjectRepositoryAccess.tsx","src-ui/src/views/project-settings/ProjectRepositorySources.tsx"]}
+  ]
+}

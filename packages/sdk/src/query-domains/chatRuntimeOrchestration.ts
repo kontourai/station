@@ -160,6 +160,12 @@ export class AdoptSessionError extends Error {
    * retry (a folder Station will not continue in), for showing as written.
    */
   readonly refusal?: string;
+  /**
+   * Station's typed refusal code, when it sent one. `continuation_source_active`
+   * means the source is still running and nothing was created; the same
+   * request with `continueWhileSourceActive` proceeds.
+   */
+  readonly code?: string;
 
   constructor(input: {
     failureClass: AdoptSessionFailureClass;
@@ -168,6 +174,7 @@ export class AdoptSessionError extends Error {
     status?: number;
     cause?: unknown;
     refusal?: string;
+    code?: string;
   }) {
     super(input.message);
     this.name = 'AdoptSessionError';
@@ -176,6 +183,7 @@ export class AdoptSessionError extends Error {
     this.status = input.status;
     this.cause = input.cause;
     if (input.refusal) this.refusal = input.refusal;
+    if (input.code) this.code = input.code;
   }
 }
 
@@ -308,11 +316,13 @@ export async function fetchConversationContextBoundaryStatus(
   conversationId: string,
   idempotencyKey: string,
   apiBase?: string,
+  request?: Pick<ClientRequestOptions, 'signal' | 'requestScope'>,
 ): Promise<ConversationContextBoundaryProjection> {
   return getConversationContextBoundaryStatus(
     await resolveApiBase(apiBase),
     conversationId,
     idempotencyKey,
+    request,
   );
 }
 
@@ -320,19 +330,29 @@ export function useConversationContextBoundaryStatusQuery(
   conversationId: string,
   idempotencyKey: string,
   apiBase?: string,
-  config?: QueryConfig<ConversationContextBoundaryProjection>,
+  config?: QueryConfig<ConversationContextBoundaryProjection> &
+    Pick<ClientRequestOptions, 'requestScope'>,
 ) {
   const query = orchestrationQueries.contextBoundary(
     conversationId,
     idempotencyKey,
   );
+  const requestScope = config?.requestScope;
   return useApiQuery(
-    [...query.queryKey, apiBase ?? 'default'],
-    () =>
+    [
+      ...query.queryKey,
+      apiBase ?? 'default',
+      ...(requestScope ? [requestScope.authorityKey] : []),
+    ],
+    (signal) =>
       fetchConversationContextBoundaryStatus(
         conversationId,
         idempotencyKey,
         apiBase,
+        {
+          signal,
+          requestScope,
+        },
       ),
     {
       enabled:
@@ -1204,6 +1224,7 @@ function rejectedContinuation(
   status: number,
   detail?: string,
   retryable?: unknown,
+  code?: unknown,
 ): AdoptSessionError {
   const statusMessage =
     status === 401 || status === 403
@@ -1221,6 +1242,7 @@ function rejectedContinuation(
     retryable: !permanent,
     status,
     ...(permanent && detail ? { refusal: detail } : {}),
+    ...(typeof code === 'string' && code ? { code } : {}),
   });
 }
 
@@ -1230,6 +1252,8 @@ export async function adoptOrchestrationSession(input: {
   intent?: AdoptOrchestrationSessionIntent;
   /** #3386: where a conversation no project claims continues. */
   target?: AdoptSessionTarget;
+  /** Continue although Station reads the source as still running. */
+  continueWhileSourceActive?: true;
 }): Promise<AdoptedSessionResult> {
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const intent = input.intent ?? createAdoptOrchestrationSessionIntent();
@@ -1245,6 +1269,9 @@ export async function adoptOrchestrationSession(input: {
           sourceThreadId: input.sourceThreadId,
           idempotencyKey: intent.idempotencyKey,
           ...(input.target ? { target: input.target } : {}),
+          ...(input.continueWhileSourceActive
+            ? { continueWhileSourceActive: true }
+            : {}),
         }),
       },
     );
@@ -1275,6 +1302,7 @@ export async function adoptOrchestrationSession(input: {
     data?: AdoptedSessionResult;
     error?: string;
     retryable?: unknown;
+    code?: unknown;
   };
   try {
     result = (await response.json()) as typeof result;
@@ -1311,6 +1339,7 @@ export async function adoptOrchestrationSession(input: {
       response.status,
       result.error?.trim(),
       result.retryable,
+      result.code,
     );
   return result.data as AdoptedSessionResult;
 }

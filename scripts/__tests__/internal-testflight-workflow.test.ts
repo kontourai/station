@@ -23,7 +23,7 @@ const workflow = load(source) as {
 };
 
 describe('internal iOS TestFlight cohort workflow', () => {
-  test('build delivery uses the verified pnpm bootstrap before managed install', () => {
+  test('build delivery installs verified pnpm and Swift bridge prerequisites', () => {
     const reusable = load(delivery) as {
       jobs: {
         deliver: {
@@ -31,7 +31,7 @@ describe('internal iOS TestFlight cohort workflow', () => {
             name?: string;
             uses?: string;
             run?: string;
-            with?: unknown;
+            with?: { targets?: string; components?: string };
           }>;
         };
       };
@@ -49,6 +49,14 @@ describe('internal iOS TestFlight cohort workflow', () => {
     expect(steps[setup].with).toBeUndefined();
     expect(node).toBeGreaterThan(setup);
     expect(install).toBeGreaterThan(node);
+    const rust = steps.findIndex((step) =>
+      step.uses?.startsWith('dtolnay/rust-toolchain@'),
+    );
+    expect(rust).toBeGreaterThan(install);
+    expect(steps[rust].with?.targets).toBe('aarch64-apple-ios');
+    expect((steps[rust].with?.components ?? '').split(/[,\s]+/)).toContain(
+      'llvm-tools',
+    );
   });
   test('external distribution is a non-blocking Nightly opt-in, excluded from internal authority', () => {
     const reusable = load(delivery) as {

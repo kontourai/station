@@ -4,6 +4,56 @@ import {
 } from './managed-engine-install.js';
 import { isObjectRecord } from './record-guard.js';
 
+export interface EngineInstallTerminalView {
+  projectSlug: string;
+  projectId: string;
+  bindingKey: string;
+  terminalId: string;
+  operationId?: string;
+  status: 'starting' | 'running' | 'exited' | 'failed';
+  exitCode: number | null;
+}
+
+export interface EngineInstallTerminalSetup {
+  name: string;
+  command: string;
+  allowed: boolean;
+  canStop: boolean;
+  terminal: EngineInstallTerminalView | null;
+}
+
+export interface EngineStationToolsSetup {
+  agentSlug: string | null;
+  supported: boolean;
+  selected: boolean;
+  recommended?: { id: string; name: string; command: string; args: string[] };
+}
+
+/** Safe setup facts: no commands, paths, accounts, or credential values. */
+export interface ACPEngineSetupEntry {
+  id: string;
+  name: string;
+  source: 'core' | 'plugin' | 'custom';
+  detected: boolean | null;
+  configured: boolean;
+  enabled: boolean;
+  status: ACPStatusValue | 'not-connected';
+  setupPath: string;
+  handshakeObservedAt: string | null;
+  /** An advertised channel is not proof that tools were delivered to a turn. */
+  httpTools: 'advertised' | 'not-advertised' | 'unknown';
+  connectionId: string | null;
+  relatedConnectionIds: string[];
+  nextAction:
+    | 'install'
+    | 'connect'
+    | 'enable'
+    | 'check'
+    | 'inspect'
+    | 'review-setup'
+    | 'choose-existing';
+}
+
 export interface ACPConnectionConfig {
   id: string;
   name: string;
@@ -246,6 +296,14 @@ export function compareEngineVersions(a: string, b: string): number {
 }
 
 export interface ACPEngineAuthDescriptor {
+  /** Reviewed built-in CLI login, offered only after its help advertises the required flag. */
+  terminalLogin?: {
+    id: string;
+    name: string;
+    args: string[];
+    helpArgs: string[];
+    requiredHelpText: string;
+  };
   /**
    * A non-interactive command (argv, no shell) documented to report sign-in
    * status. Run only from built-in entries, and only together with
@@ -645,6 +703,26 @@ export function validateACPEngineDescriptor(
       errors.push('auth must be an object');
     } else {
       const auth = entry.auth;
+      if (auth.terminalLogin !== undefined) {
+        const login = auth.terminalLogin;
+        if (
+          !isObjectRecord(login) ||
+          !isBoundedText(login.id) ||
+          !isBoundedText(login.name) ||
+          !isBoundedText(login.requiredHelpText)
+        )
+          errors.push(
+            'auth.terminalLogin needs bounded id, name and requiredHelpText',
+          );
+        if (isObjectRecord(login)) {
+          boundedStringList(login.args, 'auth.terminalLogin.args', errors);
+          boundedStringList(
+            login.helpArgs,
+            'auth.terminalLogin.helpArgs',
+            errors,
+          );
+        }
+      }
       if (auth.statusCommand !== undefined) {
         boundedStringList(auth.statusCommand, 'auth.statusCommand', errors);
       }

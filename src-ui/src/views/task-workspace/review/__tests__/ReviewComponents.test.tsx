@@ -1154,9 +1154,7 @@ it('reports a link copy the origin cannot do instead of failing with a TypeError
     fireEvent.click(screen.getByRole('button', { name: 'Thread 1 actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link' }));
     expect(
-      await screen.findByText(
-        "Couldn't copy — this browser refused clipboard access",
-      ),
+      await screen.findByText("Couldn't copy to the clipboard"),
     ).toBeTruthy();
   } finally {
     if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);

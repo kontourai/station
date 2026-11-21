@@ -1,0 +1,7 @@
+{
+  "revision": "8f4226ef1b80cb23da7596a57a41ad16e63c3940",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the migration writer-admission fix against EventStore construction and canonical positive-start index consumers. Top-level startup now reserves the SQLite writer before reading schema state; existing caller-owned transactions retain savepoints. The index definition, strict same-name schema validation and user-visible contracts are unchanged. Real two-connection WAL controls reproduced the prior database-is-locked failure and pass after repair; concurrent EventStore constructors and usage-export route checks pass. This does not establish hosted or installed release qualification.","inputs":["src-server/domain/migrations/019-positive-turn-start-index.ts"]}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "revision": "25057917861ecceab35ace98277b6a5581515ec9",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against 2505791786: cleanLabel removes controls, terminal escapes, bidi embedding/override/isolate controls and invisible fillers and keeps ZWJ, ZWNJ, variation selectors, LRM/RLM and emoji tag sequences (each tested, and fault-injected in both directions); joiner-only labels are refused; length bounds cut whole graphemes.","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"A deleted import's receiver code passes through as conversation_import_deleted with its own copy; other refusal mappings and the tunnel are unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"A deleted import's receiver code passes through as conversation_import_deleted with its own copy; other refusal mappings and the tunnel are unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"A deleted import's receiver code passes through as conversation_import_deleted with its own copy; other refusal mappings and the tunnel are unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"A deleted import's receiver code passes through as conversation_import_deleted with its own copy; other refusal mappings and the tunnel are unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"A deleted import's receiver code passes through as conversation_import_deleted with its own copy; other refusal mappings and the tunnel are unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"A deleted import's receiver code passes through as conversation_import_deleted with its own copy; other refusal mappings and the tunnel are unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only the quote comparison moved to the shared draftQuoteKeys (same key as before); behavior unchanged.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only the quote comparison moved to the shared draftQuoteKeys (same key as before); behavior unchanged.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"Only the owner-device bullet's label-cleaning sentence changed; citing pages refer to other sections.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds draftQuoteKeys, the draft-quote key both handoff paths compare with; existing exports unchanged.","inputs":["src-ui/src/utils/answer-quotes.ts"]}
+  ]
+}

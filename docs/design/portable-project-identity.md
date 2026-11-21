@@ -35,8 +35,8 @@
 > Current onboarding uses a separate host-CLI repository catalog to select an
 > explicit HTTPS or SSH transport, then the durable acquisition service verifies
 > a working copy. A catalog identity does not choose an execution binding or
-> grant credentials. New Project also permits knowledge, connected-tool and
-> blank starts. Source attachment preserves an existing primary. Attaching the first
+> grant credentials. New Project can start with a blank workspace or a repository.
+> Add documents and connected tools after creation. Source attachment preserves an existing primary. Attaching the first
 > repository requires an explicit code-work choice and selects that resource for
 > execution. See [repository onboarding](../guides/connections.md#start-a-project-from-a-repository).
 

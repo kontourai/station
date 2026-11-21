@@ -1,0 +1,25 @@
+{
+  "revision": "de4f81b68c87fcf90ce2b6a809bb1b754e42cdf9",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked: the barrel adds useReopenTaskOnOverviewMutation and TaskOverviewReopenUnsupportedError. Citing pages describe other exports and the barrel's role, which is unchanged.","inputs":["packages/sdk/src/index.ts"]}
+  ]
+}

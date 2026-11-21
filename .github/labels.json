@@ -185,6 +185,11 @@
       "name": "multiplayer:pilot",
       "color": "0E8A16",
       "description": "Bounded M1 handoff slice; implementation waits on the epic interface and ownership gates."
+    },
+    {
+      "name": "full-checks",
+      "color": "5319E7",
+      "description": "Runs the heavy PR: CI checks before arming (STATION_PR_HEAVY_CHECKS=when-armed)"
     }
   ]
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The Home/continuity row still describes mobile-chat-composer accurately (composer reachability and mobile geometry); the new attachment tests are within that scope; prose unchanged. mobile-chat-composer.spec.ts replaces the popover test with strip/preview/picker checks and adds send-during-upload and failed-upload tests.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

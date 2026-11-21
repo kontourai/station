@@ -1,0 +1,25 @@
+{
+  "revision": "c2d0dc0c9436970a9907cf63c71577580edaf9a6",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the formatted cancellation helper. Stop and interrupt refresh the cancellation marker and evict older markers to the existing limit. The documented cancellation and attribution behavior holds.","inputs":["src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

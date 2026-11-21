@@ -1,0 +1,15 @@
+{
+  "revision": "6ac186906496309ce778c74f283776dfeda5d267",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the schema-admission paragraph added to deployment. A registered migration retains POSIX directory and file permission bits in its staging copy before transformation. Provisioning, startup routing, telemetry setup and published deployment recommendations remain as documented.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the schema-admission paragraph added to deployment. A registered migration retains POSIX directory and file permission bits in its staging copy before transformation. Provisioning, startup routing, telemetry setup and published deployment recommendations remain as documented.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the schema-admission paragraph added to deployment. A registered migration retains POSIX directory and file permission bits in its staging copy before transformation. Provisioning, startup routing, telemetry setup and published deployment recommendations remain as documented.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the schema-admission paragraph added to deployment. A registered migration retains POSIX directory and file permission bits in its staging copy before transformation. Provisioning, startup routing, telemetry setup and published deployment recommendations remain as documented.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the schema-admission paragraph added to deployment. A registered migration retains POSIX directory and file permission bits in its staging copy before transformation. Provisioning, startup routing, telemetry setup and published deployment recommendations remain as documented.","inputs":["docs/guides/deployment.md"]}
+  ]
+}

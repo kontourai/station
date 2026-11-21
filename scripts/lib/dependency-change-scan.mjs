@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript-api';
+import { listSuiteFiles } from './path-read-pin-scan.mjs';
 import { readPnpmLockfile } from './pnpm-lockfile.mjs';
 import { collectCorpusTestFiles } from './spawned-script-scan.mjs';
 import { workspaceManifestPaths } from './workspace-dependency-satisfaction.mjs';
@@ -391,4 +392,55 @@ export function directImporterTests({
   }
   for (const files of importers.values()) files.sort();
   return importers;
+}
+
+/**
+ * Direct imports of changed component files in UI suites. This bounded
+ * fallback uses the UI's relative and @/ source resolution only.
+ * @param {string} root
+ * @param {readonly string[]} paths
+ * @returns {{path: string, reasons: string[]}[]}
+ */
+export function directUiComponentImporterTests(root, paths) {
+  const components = new Map(paths.map((path) => [resolve(root, path), path]));
+  if (!components.size) return [];
+  const baseUrl = resolve(root, 'src-ui/src');
+  const options = {
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    baseUrl,
+    paths: { '@/*': ['*'] },
+  };
+  const cache = ts.createModuleResolutionCache(root, (name) => name, options);
+  const tests = [];
+  for (const path of listSuiteFiles(root, ['src-ui/src'])) {
+    const absolute = resolve(root, path);
+    const source = readFileSync(absolute, 'utf8');
+    const matches = new Set();
+    for (const { fileName } of ts.preProcessFile(source, true, true)
+      .importedFiles) {
+      if (
+        !fileName.startsWith('./') &&
+        !fileName.startsWith('../') &&
+        !fileName.startsWith('@/')
+      )
+        continue;
+      const resolved = ts.resolveModuleName(
+        fileName,
+        absolute,
+        options,
+        ts.sys,
+        cache,
+      ).resolvedModule?.resolvedFileName;
+      const component = components.get(resolved);
+      if (component) matches.add(component);
+    }
+    if (matches.size)
+      tests.push({
+        path,
+        reasons: [...matches]
+          .sort()
+          .map((component) => `Direct UI component import: ${component}`),
+      });
+  }
+  return tests;
 }

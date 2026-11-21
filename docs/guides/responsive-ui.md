@@ -127,8 +127,10 @@ the sheet scrolls or activates what it started on.
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification, toolbar-menu and palette
-tiers as well as sticky/dialog/system. A surface popover stays above the dock
-but below navigation and notification chrome. A menu opened from the toolbar
+tiers as well as sticky/dialog/system. A desktop surface popover stays above
+the dock and below navigation and notification chrome. An anchored popover
+takes the dialog layer when it presents as a phone sheet. The dock's command
+launcher and mobile task context also portal to the dialog layer. A menu opened from the toolbar
 (or the sidebar's account control) sits just above notifications, because the
 toolbar's right end opens into their column; its dismiss backdrop stays below
 them. A modal dialog supersedes notification chrome.
@@ -271,12 +273,13 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-lg` (18px). Desktop density remains owned by each surface; the
 person's Comfortable or Compact choice sets only the base text tokens and
 never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
-The embedded mobile Inbox uses two-line titles, project artwork and engine
-marks, short status labels, and a separate recency timestamp. Search opens
-from its icon without opening the keyboard on Inbox entry. The dock header
-owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
+Desktop and mobile Inbox cards allow two lines for the title. The metadata reads project first, then agent, as it does on Home. The status column shows one elapsed, scheduled or recency time. A task opens
+from its row. Its work-chat disclosure stays separate. Desktop row actions
+appear on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
-behind a conversation, retaining its search and list position.
+behind a conversation, retaining its search and list position. While reading a
+chat, **Inbox** in Chat actions opens the same list. **Browse all conversations**
+opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
 header has no project picker, including while empty or showing Inbox. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
@@ -285,10 +288,10 @@ with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share
 [ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
-Agent/model trigger opens Run setup, containing the existing
+Agent/model trigger opens Agent & model, containing the existing
 [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
 trigger labels truncate; the sheet owns the full choices. On desktop a picker
-opened from Run setup takes the panel's place (`yieldToChildPopover` on
+opened from Agent & model takes the panel's place (`yieldToChildPopover` on
 `ResponsiveDialogSurface`) and is clamped inside the composer column
 (`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge
@@ -323,7 +326,7 @@ Stations are under **More ways to connect**. Native capability and coarse-pointe
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
-The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
+The collapsed mobile Inbox bar’s **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled
 states. The relay UX screenshot harness omits the real dock and uses stubbed
@@ -336,7 +339,7 @@ keep their own motion. The global reduced-motion reset still applies. Source
 rules describe the treatment; browser checks at narrow widths, both themes,
 long content and short heights establish whether controls remain reachable.
 
-The status pill's entry, body morph and details entrance use backwards fill in
+Expanded activity opens in a popup anchored above the composer so the transcript cannot clip child links or Cancel. The anchored popup appears at its measured position. The status pill’s entry, body morph and in-place details entrance use backwards fill in
 [their stylesheet](../../src-ui/src/components/status/live-status.css). Their
 final frame matches the resting opacity and transform, so completed effects
 release instead of retaining an animated stacking context. Exit and celebration
@@ -349,18 +352,31 @@ cannot add a scroll row below a dock that fills the viewport.
 ### Phone app toolbar
 
 On a phone the Station chip shows its dot and the connected Station's name in
-every state. Its width fits short names and caps long names with an ellipsis.
-State changes and overlaid Station notices preserve that width, keeping nearby
-controls still. That name takes priority over the app wordmark:
-the wordmark wraps away whole wherever the row cannot hold it, and the logo
-stays. [`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts)
-measures the row at every phone width it supports.
+every state. The app wordmark wraps away whole before the Station name yields
+space, and the home logo stays. The Station name can then ellipsize to keep
+the toolbar's controls inside the side gutters. Holding the Station chip
+reveals the full name. The notification badge shows `9+` above nine, and the
+button's accessible name states the exact count.
+
+[`toolbar-reachability`](../../tests/toolbar-reachability.spec.ts) checks
+each visible control's center and the right gutter with a long Station name
+and the capped badge, including widths on either side of the tight-gap rule.
+
+Shared tooltips use Station's 12px label size. Secondary metadata such as
+message timestamps may use 11px.
 
 ### Action rows
 
 A header, toolbar or action row shows at most two labelled actions. Further
 actions go into an overflow menu; an icon-only button with an accessible name
 does not count.
+
+Check action placement in the clean, edited and pending states. In Project
+settings, Back stays beside the Project name and Save appears at the
+trailing edge for a pending draft, including while viewing an autosaving
+section. In a wizard, keep Continue in the same place across steps. Verify
+the actual clickable area of adjacent compact actions and the keyboard focus
+destination after an action disappears.
 
 Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
@@ -493,9 +509,9 @@ Android device.
 ### Inbox swipe actions
 
 The Sheet gestures device preview also enables a left swipe on touch inbox rows
-in the dock panel and embedded mobile Inbox. The shared row reveals the existing clock
-and × with labels and 72px-wide targets. A swipe only reveals the controls; the
-clock opens Snooze choices and × dismisses with Undo. A right swipe closes the
+in the dock panel and embedded mobile Inbox. The row reveals 72px-wide
+controls, with Snooze before Settle or Dismiss. A swipe only reveals the
+controls. Snooze opens the time choices; Dismiss offers Undo. A right swipe closes the
 rail. Vertical movement stays available to the scroll container, and the swipe’s
 trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
@@ -505,8 +521,15 @@ work, or deleting a draft. Inbox search reveals matching dismissed items and
 their Restore action. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
-adopted into Station.
+adopted into Station. With Open and Settled inbox on, an eligible owned chat
+offers Settle. An owned chat that cannot be settled yet can be dismissed from
+this Inbox. Settled chats also offer Dismiss to put them away from this view.
+Hide records a third-party Session on the host for the person.
+The actions are available in the row, swipe tray and Details.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+On desktop, move the pointer from an Inbox row into its preview to scroll
+long content such as Basis. The preview stays inside the window as late
+details arrive. Escape or scrolling the Inbox closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains
@@ -525,15 +548,19 @@ checks remain necessary.
 
 A chat on a phone is full screen, as in a messaging app: opening one from
 Home, the Inbox, the drawer or a started draft maximizes the dock. The half
-height is a deliberate peek. The open dock's bar carries a 44px **Full screen
-chat** / **Restore chat size** control beside its leading control, so both
-states are one tap. With no chat yet, the bar offers New chat and the
-Inbox title, not a pressed **Back to chat** or Chat actions.
+height is a deliberate peek. The app toolbar keeps the drawer and Station switcher
+above the dock at every height. The trailing extent button switches between
+full and half height. Collapsing a chat keeps its title and actions in the bar.
+Tap the title to resume or open Chat actions to reveal the dock and its menu.
+A collapsed Inbox still offers Inbox and New chat.
+In Inbox, the down arrow collapses the dock. In chat, Back returns to Inbox
+or, when reading a subagent, to its parent.
 
-The drawer lists places and Projects. The chat bar's **Inbox** remains the
-conversation list; the drawer does not duplicate it with Recent chats.
-The collapsed chat bar offers **Full screen chat** directly in its leading
-button slot, preserving the one-row layout and 44px target at narrow widths.
+Inbox floats **New chat** above the list. In an open chat it lives in the
+chat actions menu. At narrow widths the Inbox menu also holds Search and
+Filter. Filters combine Station, Project and status. Hold a conversation or
+choose **Select conversations** to select rows. The tray offers Snooze,
+Settle and Dismiss according to the selected rows’ eligibility.
 
 The answer's **⋯** sheet lists the answer's actions itself (Provenance,
 Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose

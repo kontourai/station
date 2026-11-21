@@ -1,10 +1,23 @@
 diff --git a/dist/index.js b/dist/index.js
-index c27134bb2277fe30a95fb44455092657bf5d2be4..4801069f5a8728350a5aaecf54cd37e22f77a06d 100644
+index c27134b..90e51b4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -13257,7 +13257,12 @@ var MemoryManager = class {
-       });
-     }
+@@ -7154,3 +7154,3 @@ var WebSocketLogProcessor = class _WebSocketLogProcessor {
+ // src/observability/logs/remote-log-processor.ts
+-var import_exporter_logs_otlp_http = require("@opentelemetry/exporter-logs-otlp-http");
++var import_exporter_logs_otlp_http = { get OTLPLogExporter() { return require("@opentelemetry/exporter-logs-otlp-http").OTLPLogExporter; } };
+ var import_sdk_logs = require("@opentelemetry/sdk-logs");
+@@ -7273,3 +7273,3 @@ var RemoteLogProcessor = class {
+ // src/observability/processors/lazy-remote-export-processor.ts
+-var import_exporter_trace_otlp_http = require("@opentelemetry/exporter-trace-otlp-http");
++var import_exporter_trace_otlp_http = { get OTLPTraceExporter() { return require("@opentelemetry/exporter-trace-otlp-http").OTLPTraceExporter; } };
+ var import_sdk_trace_base = require("@opentelemetry/sdk-trace-base");
+@@ -8029,3 +8029,3 @@ var import_api_logs3 = require("@opentelemetry/api-logs");
+ var import_core = require("@opentelemetry/core");
+-var import_otlp_transformer = require("@opentelemetry/otlp-transformer");
++var import_otlp_transformer = { get JsonLogsSerializer() { return require("@opentelemetry/otlp-transformer").JsonLogsSerializer; }, get JsonTraceSerializer() { return require("@opentelemetry/otlp-transformer").JsonTraceSerializer; } };
+ var import_resources2 = require("@opentelemetry/resources");
+@@ -13259,3 +13259,8 @@ var MemoryManager = class {
      if (options?.persistInput !== false) {
 -      this.handleSequentialBackgroundOperations(context8, input, userId, conversationId);
 +      // Station must not let a fast response overtake its input in durable history.
@@ -14,24 +27,48 @@ index c27134bb2277fe30a95fb44455092657bf5d2be4..4801069f5a8728350a5aaecf54cd37e2
 +      }
 +      await this.saveCurrentInput(context8, input, userId, conversationId);
      }
-     return { messages, conversationId };
-   }
-@@ -32374,7 +32379,7 @@ var Agent = class {
-                     oc.logger?.debug?.("Failed to persist deferred messages", { error });
-                   });
+@@ -32376,3 +32381,3 @@ var Agent = class {
                  }
 -                void flushObservability(
 +                await flushObservability(
                    this.getObservability(),
-                   oc.logger ?? this.logger,
-                   this.observabilityAuthWarningState,
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 0652f237fbf9ae47fa2d312ecfed2ea18cee3b18..07dcf96ca0304ddabb17fdba29def7558e7b3111 100644
+index 0652f23..03245a9 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -13075,7 +13075,12 @@ var MemoryManager = class {
-       });
-     }
+@@ -6933,3 +6933,4 @@ var WebSocketLogProcessor = class _WebSocketLogProcessor {
+ // src/observability/logs/remote-log-processor.ts
+-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
++import { createRequire as __voltagentOtlpCreateRequire } from "node:module";
++var __voltagentOtlpRequire = __voltagentOtlpCreateRequire(import.meta.url);
+ import {
+@@ -7026,2 +7027,3 @@ var RemoteLogProcessor = class {
+       const headers = voltOpsClient.getAuthHeaders();
++      const { OTLPLogExporter } = __voltagentOtlpRequire("@opentelemetry/exporter-logs-otlp-http");
+       const exporter = new OTLPLogExporter({
+@@ -7054,3 +7056,2 @@ var RemoteLogProcessor = class {
+ // src/observability/processors/lazy-remote-export-processor.ts
+-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+@@ -7147,2 +7148,3 @@ var LazyRemoteExportProcessor = class {
+       const headers = voltOpsClient.getAuthHeaders();
++      const { OTLPTraceExporter } = __voltagentOtlpRequire("@opentelemetry/exporter-trace-otlp-http");
+       const exporter = new OTLPTraceExporter({
+@@ -7815,3 +7817,2 @@ import { logs as logs3 } from "@opentelemetry/api-logs";
+ import { ExportResultCode } from "@opentelemetry/core";
+-import { JsonLogsSerializer, JsonTraceSerializer } from "@opentelemetry/otlp-transformer";
+ import { defaultResource as defaultResource2, resourceFromAttributes as resourceFromAttributes2 } from "@opentelemetry/resources";
+@@ -8226,3 +8227,3 @@ var FetchTraceExporter = class {
+     try {
+-      const payloadBytes = JsonTraceSerializer.serializeRequest(items);
++      const payloadBytes = __voltagentOtlpRequire("@opentelemetry/otlp-transformer").JsonTraceSerializer.serializeRequest(items);
+       const body = (textDecoder ?? new TextDecoder()).decode(payloadBytes);
+@@ -8299,3 +8300,3 @@ var FetchLogExporter = class {
+     try {
+-      const payloadBytes = JsonLogsSerializer.serializeRequest(items);
++      const payloadBytes = __voltagentOtlpRequire("@opentelemetry/otlp-transformer").JsonLogsSerializer.serializeRequest(items);
+       const body = (textDecoder ?? new TextDecoder()).decode(payloadBytes);
+@@ -13077,3 +13078,8 @@ var MemoryManager = class {
      if (options?.persistInput !== false) {
 -      this.handleSequentialBackgroundOperations(context8, input, userId, conversationId);
 +      // Station must not let a fast response overtake its input in durable history.
@@ -41,14 +78,8 @@ index 0652f237fbf9ae47fa2d312ecfed2ea18cee3b18..07dcf96ca0304ddabb17fdba29def755
 +      }
 +      await this.saveCurrentInput(context8, input, userId, conversationId);
      }
-     return { messages, conversationId };
-   }
-@@ -32204,7 +32209,7 @@ var Agent = class {
-                     oc.logger?.debug?.("Failed to persist deferred messages", { error });
-                   });
+@@ -32206,3 +32212,3 @@ var Agent = class {
                  }
 -                void flushObservability(
 +                await flushObservability(
                    this.getObservability(),
-                   oc.logger ?? this.logger,
-                   this.observabilityAuthWarningState,

@@ -273,6 +273,13 @@ export interface TaskMemoryStore {
   countOpenQuestions(
     incarnations: readonly TaskMemoryIncarnation[],
   ): Map<string, number>;
+  /**
+   * #5064: each Task incarnation's current summary text and when it was
+   * written, in one read per chunk; Tasks with no summary are absent.
+   */
+  currentSummaries(
+    incarnations: readonly TaskMemoryIncarnation[],
+  ): Map<string, { text: string; createdAt: string }>;
 }
 
 interface SummaryRow {
@@ -973,6 +980,41 @@ export function createSqliteTaskMemoryStore(
             ? { askedBySessionId: record.author.sessionId }
             : {}),
         }));
+    },
+
+    currentSummaries(incarnations) {
+      const summaries = new Map<string, { text: string; createdAt: string }>();
+      const wanted = new Map(
+        incarnations.map((entry) => [entry.taskId, entry.taskCreatedAt]),
+      );
+      const ids = [...wanted.keys()];
+      for (let start = 0; start < ids.length; start += COUNT_CHUNK) {
+        const chunk = ids.slice(start, start + COUNT_CHUNK);
+        const rows = db
+          .prepare(
+            `SELECT s.task_id, s.task_created_at, s.text, s.created_at
+               FROM task_summary_revisions s
+              WHERE s.task_id IN (${chunk.map(() => '?').join(', ')})
+                AND s.revision = (
+                  SELECT MAX(r.revision) FROM task_summary_revisions r
+                   WHERE r.task_id = s.task_id
+                     AND r.task_created_at = s.task_created_at)`,
+          )
+          .all(...chunk) as Array<{
+          task_id: string;
+          task_created_at: string;
+          text: string;
+          created_at: string;
+        }>;
+        // Only the incarnation asked about, as for open questions.
+        for (const row of rows)
+          if (wanted.get(row.task_id) === row.task_created_at)
+            summaries.set(row.task_id, {
+              text: row.text,
+              createdAt: row.created_at,
+            });
+      }
+      return summaries;
     },
 
     countOpenQuestions(incarnations) {

@@ -1,0 +1,15 @@
+{
+  "revision": "b18546b35e43c9adc80e39d679276ed3a91b35ad",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the formatter-only line wrap of the fixed capacity message. The status, response bytes, Task scope and persistence code are identical.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the formatter-only line wrap of the fixed capacity message. The status, response bytes, Task scope and persistence code are identical.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/station-topology.md","note":"Reviewed the formatter-only line wrap of the fixed capacity message. The status, response bytes, Task scope and persistence code are identical.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the formatter-only line wrap of the fixed capacity message. The status, response bytes, Task scope and persistence code are identical.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the formatter-only line wrap of the fixed capacity message. The status, response bytes, Task scope and persistence code are identical.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]}
+  ]
+}

@@ -3,8 +3,10 @@ import type { TerminalAttribution } from '@kontourai/station-contracts/orchestra
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
+  interpretAcpTurnStop,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
+  type RuntimeErrorEvent,
   type SessionState,
 } from '@kontourai/station-contracts/runtime-events';
 import type {
@@ -20,6 +22,11 @@ import {
 } from '@kontourai/station-contracts/session-lifecycle';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
+import {
+  delegatedRuntimeFailureGuidance,
+  nativeUsageLimitReason,
+} from '../../providers/delegated-runtime-failure.js';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import {
   formatProviderQuotaEventText,
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
@@ -134,6 +141,51 @@ export function createManualSessionTransitionEvent(
   };
 }
 
+/**
+ * The lifecycle and run folds read the same turn outcomes. Keep all raw
+ * rows for chronology, request settlement, and transcript history.
+ */
+export function* projectReadTurnOutcomes(
+  events: CanonicalRuntimeEvent[],
+): Iterable<CanonicalRuntimeEvent> {
+  let failure: RuntimeErrorEvent | undefined;
+  let anchor: TurnIdentityAnchor | undefined;
+  for (const fact of events) {
+    const event =
+      fact.method === 'turn.completed' ? interpretAcpTurnStop(fact) : fact;
+    const nextAnchor = nextTurnIdentityAnchor(anchor, event);
+    if (
+      event.method === 'turn.started' &&
+      failure &&
+      !acceptsTurnTerminalEvent(failure, nextAnchor)
+    ) {
+      failure = undefined;
+    } else if (
+      event.method === 'runtime.error' &&
+      event.turnId !== undefined &&
+      !isDeferredRetriableTurnError(event) &&
+      acceptsTurnTerminalEvent(event, anchor)
+    ) {
+      failure = event;
+    } else if (
+      failure &&
+      (event.method === 'turn.completed' || event.method === 'turn.aborted') &&
+      event.turnId === failure.turnId &&
+      (event.invocationId === failure.invocationId ||
+        isInvocationlessRecoveryAbort(event)) &&
+      acceptsTurnTerminalEvent(event, anchor)
+    ) {
+      if (
+        event.method !== 'turn.completed' ||
+        !PROVIDER_PROVEN_FINISH_REASONS.has(event.finishReason ?? '')
+      )
+        continue;
+    }
+    anchor = nextAnchor;
+    yield event;
+  }
+}
+
 export function projectSessionLifecycle(options: {
   session: ProviderSession;
   events: CanonicalRuntimeEvent[];
@@ -167,7 +219,9 @@ export function projectSessionLifecycle(options: {
   // discard it) without disturbing `nextActiveTurnId`'s "is a turn open"
   // semantics anywhere else. See `nextTurnIdentityAnchor`'s doc.
   let turnIdentityAnchor: TurnIdentityAnchor | undefined;
-  for (const event of withoutCompletedTurnRecovery(options.events)) {
+  for (const event of projectReadTurnOutcomes(
+    withoutCompletedTurnRecovery(options.events),
+  )) {
     const transition = deriveLifecycleTransition(
       event,
       lifecycleState,
@@ -282,9 +336,14 @@ export function projectSessionLifecycle(options: {
     transitionSource = 'runtime';
   }
 
-  const lastBlockingError = [...options.events]
-    .reverse()
-    .find((event) => event.method === 'runtime.error');
+  const lastBlockingError =
+    terminalEvent?.method === 'runtime.error'
+      ? terminalEvent
+      : lifecycleState === 'failed'
+        ? [...options.events]
+            .reverse()
+            .find((event) => event.method === 'runtime.error')
+        : undefined;
   if (!blockedReason && lastBlockingError?.method === 'runtime.error') {
     blockedReason = lastBlockingError.message;
   }
@@ -401,6 +460,11 @@ function projectTerminalAttribution(options: {
   }
 
   if (options.terminalEvent?.method === 'runtime.error') {
+    const guidance =
+      nativeUsageLimitReason(options.terminalEvent)?.detail ??
+      delegatedRuntimeFailureGuidance(options.terminalEvent.code);
+    if (guidance) return { kind: 'runtime_error', detail: guidance };
+
     // #2265: a classified provider-plan quota exhaustion carries its
     // wait/check/reset guidance in the notice itself, composed ONLY from
     // re-validated bounded facts. The reset text is provider-reported

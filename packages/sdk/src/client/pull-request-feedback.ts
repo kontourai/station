@@ -1,6 +1,7 @@
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
   type ConversationPullRequestFeedback,
+  type ProjectPullRequestFeedbackDefaults,
   type PullRequestFeedbackByPullRequest,
   type PullRequestFeedbackOwner,
   type PullRequestFeedbackSettings,
@@ -115,6 +116,7 @@ export async function getPullRequestFeedbackByPullRequest(
 /**
  * Set a pull request's switches in this chat. Another chat's feedback is
  * refused (409, see {@link pullRequestFeedbackOwnerOf}) unless `move`.
+ * Leaving `reviewEachHead` out keeps the value this chat stored.
  */
 export async function writePullRequestFeedback(
   apiBase: string,
@@ -124,7 +126,8 @@ export async function writePullRequestFeedback(
     settings: Pick<
       PullRequestFeedbackSettings,
       'fixFailingChecks' | 'addressReviewComments'
-    >;
+    > &
+      Partial<Pick<PullRequestFeedbackSettings, 'reviewEachHead'>>;
     move?: boolean;
   },
   options?: ClientRequestOptions,
@@ -171,4 +174,150 @@ export async function turnOffPullRequestFeedback(
       identity,
     }),
   );
+}
+
+const defaultsPath = (apiBase: string, projectSlug: string) => {
+  if (!projectSlug) throw new Error('Project identity is required');
+  return `${apiBase}/api/pull-request-feedback/projects/${encodeURIComponent(projectSlug)}/defaults`;
+};
+
+function projectDefaultsOf(
+  value: ProjectPullRequestFeedbackDefaults,
+  projectSlug: string,
+): ProjectPullRequestFeedbackDefaults {
+  if (value.projectSlug !== projectSlug || !value.settings)
+    throw new Error('Pull request feedback response has the wrong identity');
+  return value;
+}
+
+/** A Project's agent feedback defaults, and whether the reader may change them. */
+export async function getProjectPullRequestFeedbackDefaults(
+  apiBase: string,
+  projectSlug: string,
+  options?: ClientRequestOptions,
+): Promise<ProjectPullRequestFeedbackDefaults> {
+  return projectDefaultsOf(
+    await read<ProjectPullRequestFeedbackDefaults>(
+      await getJson(defaultsPath(apiBase, projectSlug), options),
+    ),
+    projectSlug,
+  );
+}
+
+/**
+ * Set a Project's defaults (this Station's owner only). They apply to pull
+ * requests set up from now on, never to one already set up. Leaving
+ * `reviewEachHead` out keeps the stored value.
+ */
+export async function writeProjectPullRequestFeedbackDefaults(
+  apiBase: string,
+  projectSlug: string,
+  settings: Pick<
+    PullRequestFeedbackSettings,
+    'fixFailingChecks' | 'addressReviewComments'
+  > &
+    Partial<Pick<PullRequestFeedbackSettings, 'reviewEachHead'>>,
+  options?: ClientRequestOptions,
+): Promise<ProjectPullRequestFeedbackDefaults> {
+  return projectDefaultsOf(
+    await read<ProjectPullRequestFeedbackDefaults>(
+      await mutateJson(defaultsPath(apiBase, projectSlug), 'PUT', options, {
+        settings: {
+          fixFailingChecks: settings.fixFailingChecks,
+          addressReviewComments: settings.addressReviewComments,
+          ...(settings.reviewEachHead === undefined
+            ? {}
+            : { reviewEachHead: settings.reviewEachHead }),
+        },
+      }),
+    ),
+    projectSlug,
+  );
+}
+
+/**
+ * Remove a pull request found on the chat's Task branch from the chat, for
+ * good: its feedback stops unless it is also linked or kept there.
+ */
+export async function removeDerivedPullRequest(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/derived'),
+      'DELETE',
+      options,
+      {
+        identity,
+      },
+    ),
+  );
+}
+
+/**
+ * Run Station's review of the pull request's current head again (or for
+ * the first time, before it held still). Refused (409) while the Project's
+ * review limit is reached or the head cannot be reviewed.
+ */
+export async function reviewPullRequestHeadAgain(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/head-review/again'),
+      'POST',
+      options,
+      { identity },
+    ),
+  );
+}
+
+/**
+ * Send the current head review's required findings to the agent, even
+ * with "Address review comments" off. The feedback caps still apply.
+ */
+export async function sendPullRequestHeadReviewFindings(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/head-review/send'),
+      'POST',
+      options,
+      { identity },
+    ),
+  );
+}
+
+/** The refusals Station words itself for Review again and Send to agent. */
+const HEAD_REVIEW_REFUSALS = new Set([
+  'pull_request_head_review_not_started',
+  'pull_request_head_review_nothing_to_send',
+  'pull_request_feedback_paused',
+]);
+
+/**
+ * Why Review again or Send to agent did not go, as display text: the
+ * server composes these sentences itself (a busy Project, the daily limit,
+ * no reviewer, a pause), so they are shown as they come. Undefined for any
+ * other failure, which callers describe as usual.
+ */
+export function pullRequestHeadReviewRefusal(
+  error: unknown,
+): string | undefined {
+  return error instanceof StationHttpError &&
+    error.status === 409 &&
+    typeof error.code === 'string' &&
+    HEAD_REVIEW_REFUSALS.has(error.code)
+    ? error.message
+    : undefined;
 }

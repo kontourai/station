@@ -55,7 +55,7 @@
     {
       "id": "server-update-download-policy",
       "label": "Automatic server download",
-      "help": "A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.",
+      "help": "Choose when the server downloads an update.",
       "scope": "station",
       "section": "system",
       "route": "/settings?view=system&highlight=server-update-download-policy",
@@ -76,6 +76,14 @@
       "section": "system",
       "route": "/settings?view=system&highlight=log-level",
       "configKey": "logLevel"
+    },
+    {
+      "id": "local-accounts",
+      "label": "Accounts and sign-in",
+      "help": "Manage who can sign in to this Station when local accounts are enabled.",
+      "scope": "station",
+      "section": "system",
+      "route": "/settings?view=system&highlight=local-accounts"
     },
     {
       "id": "backup-restore",
@@ -165,6 +173,13 @@
       "scope": "station",
       "section": "answer-shares",
       "route": "/settings?view=answer-shares&highlight=shared-answers"
+    },
+    {
+      "id": "github-automations",
+      "label": "GitHub automations",
+      "scope": "station",
+      "section": "github-automations",
+      "route": "/settings?view=github-automations&highlight=github-automations"
     },
     {
       "id": "plugin-visibility",
@@ -335,6 +350,14 @@
       "configKey": "telemetryTier"
     },
     {
+      "id": "usage-disclosure",
+      "label": "What usage sharing includes",
+      "help": "Review the fields this Station reports for each usage sharing choice.",
+      "scope": "informational",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=usage-disclosure"
+    },
+    {
       "id": "telemetry-destination",
       "label": "Telemetry destination",
       "scope": "informational",
@@ -444,7 +467,7 @@
     {
       "id": "default-agent-instructions",
       "label": "Default Agent Instructions",
-      "help": "Every agent starts its context with these instructions, ahead of its own.",
+      "help": "Station prepends these to prompts it builds, uses them in place of its built-in prompt, and omits them for external engines.",
       "scope": "defaults",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-agent-instructions",
@@ -453,7 +476,7 @@
     {
       "id": "template-variables",
       "label": "Template Variables",
-      "help": "Agent instructions can reference these values as {{key}} instead of repeating them.",
+      "help": "Station expands {{key}} in prompts it builds, while external engines receive the authored placeholders.",
       "scope": "defaults",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=template-variables",
@@ -471,7 +494,7 @@
     {
       "id": "default-max-turns",
       "label": "Default max turns",
-      "help": "Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.",
+      "help": "Set the fallback step limit for supported runs on Station’s own engine, while external engines use their own limits.",
       "scope": "station",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-max-turns",
@@ -595,6 +618,15 @@
       "configKey": "defaultChatFontSize"
     },
     {
+      "id": "model-picker-preferences",
+      "label": "Model picker preferences",
+      "help": "The model picker in your interface orders, hides, and highlights models as you arranged them.",
+      "scope": "account",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=model-picker-preferences",
+      "configKey": "modelPickerPreferences"
+    },
+    {
       "id": "chat-title-model",
       "label": "Chat title model",
       "help": "Choose the model that names a chat after its first reply.",
@@ -712,6 +744,15 @@
       "configKey": "accentColor"
     },
     {
+      "id": "skill-shortcuts",
+      "label": "Skill shortcuts",
+      "help": "Skills on this device run from the keys assigned to them here.",
+      "scope": "device",
+      "section": "keyboard-shortcuts",
+      "route": "/settings?view=keyboard-shortcuts&highlight=skill-shortcuts",
+      "configKey": "skillShortcuts"
+    },
+    {
       "id": "keyboard-shortcuts",
       "label": "Keyboard shortcuts",
       "help": "Commands on this device respond to the keys you assigned instead of their default bindings.",
@@ -807,7 +848,7 @@
     {
       "id": "personal-knowledge-store",
       "label": "My knowledge store",
-      "scope": "station",
+      "scope": "personal",
       "section": "knowledge",
       "route": "/settings?view=knowledge&highlight=personal-knowledge-store"
     },

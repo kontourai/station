@@ -1,0 +1,11 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Only the pull-request-feedback paragraph gained the defaults and by-head types; glossary terms, contracts AGENTS rules and integration guidance citing contracts.md are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the pull-request-feedback paragraph gained the defaults and by-head types; glossary terms, contracts AGENTS rules and integration guidance citing contracts.md are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Only the pull-request-feedback paragraph gained the defaults and by-head types; glossary terms, contracts AGENTS rules and integration guidance citing contracts.md are unaffected.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

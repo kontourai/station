@@ -4,6 +4,7 @@ import type {
   ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
+import type { EngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -13,6 +14,7 @@ import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
+import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
 import { useDockSlotDevice, useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
@@ -26,6 +28,7 @@ import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
+  nonAcpApprovalEngine,
   type SessionApprovalOverride,
 } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
@@ -51,11 +54,17 @@ import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
+import type { StartComposerVoice } from '../chat-start/StartComposer';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { AgentIcon } from '../icons/AgentIcon';
+import { BrandIcon } from '../icons/BrandIcon';
+import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
+import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
+import type { ChildReplyRun } from './ChildWorkInstructionPanel';
 import { ComposerIconAction } from './ComposerIconAction';
+import { ComposerMessageField } from './ComposerMessageField';
 import {
   appendComposerSessionReference,
   composerDisplayValue,
@@ -195,10 +204,10 @@ interface ChatInputAreaProps {
    * stopped being true seconds into a turn that ran for minutes.
    */
   turnInFlight: boolean;
+  stopInActivity?: boolean;
   /**
-   * What Enter does while a turn is in flight. Steer is the default on
-   * engines that can take mid-turn input; queue is the only path otherwise
-   * (and whenever this send carries attachments).
+   * Whether the running turn offers an explicit steer. A follow-up queues
+   * by default, including when the engine can steer.
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
@@ -267,6 +276,7 @@ interface ChatInputAreaProps {
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * The session approval override: the pending pick, else the confirmed one
    * (`sessionApprovalOverride`, #2334). Not read from `modelRuntimeOptions`,
@@ -275,6 +285,7 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  acpRequestedModeId?: string;
   /**
    * #3290: an ACP session's approval control, from its connection
    * (`acpApprovalControl`). `engineId` is the engine identity the approval
@@ -291,7 +302,7 @@ interface ChatInputAreaProps {
   slashCommands: SlashCommand[];
   // Handlers
   onInputChange: (value: string) => void;
-  onSend: () => Promise<void>;
+  onSend: (intent?: 'steer') => Promise<void>;
   onCancel: () => void;
   onClearInput: () => void;
   selectAttachmentFiles?: (files: File[]) => Promise<void>;
@@ -314,10 +325,23 @@ interface ChatInputAreaProps {
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   /**
+   * The host already sends this draft once its uploads finish (a new chat's
+   * first message), so Send waits with it instead of sending a second time.
+   */
+  sendQueuedForUploads?: boolean;
+  /**
    * The latest send-failure notice, one line. Shown in the composer only when
    * a dock too short for the transcript steps it aside (the notice lives there).
    */
   sendFailureNotice?: string;
+  /** A quiet line above the draft about what the next send also does. */
+  composerNotice?: string;
+  stagedAgentNotice?: {
+    label: string;
+    onUndo?: () => void;
+    onCheck?: () => void;
+    checkLabel?: string;
+  };
   /**
    * A send queued to retry by itself, with its Discard. The controls row shows
    * the button only when the dock is too short to show the transcript that
@@ -406,9 +430,10 @@ interface ChatInputAreaProps {
   /** A record may continue into a new owned chat instead of replying here. */
   submitAction?: { label: string; placeholder: string };
   /**
-   * The conversation's open read is still in flight: the composer is disabled
-   * and its placeholder names the wait. It occupies no new space, so the
-   * transcript above keeps its height.
+   * The conversation's open read is still in flight: Send is disabled and
+   * the placeholder names the wait. With `allowDraftWhileDisabled` the draft
+   * stays editable, so a slow open does not cost the user their typing. It
+   * occupies no new space, so the transcript above keeps its height.
    */
   loadingConversation?: boolean;
   onStartNewChat?: (
@@ -473,7 +498,61 @@ function sizeDraft(
   return floor;
 }
 
+export type ChildImageControls = Pick<
+  ChatInputAreaProps,
+  | 'fileAttachmentsSupported'
+  | 'sessionId'
+  | 'attachments'
+  | 'attachmentStages'
+  | 'selectAttachmentFiles'
+  | 'modelSupportsAttachments'
+  | 'attachmentError'
+  | 'onRetryAttachmentStage'
+  | 'onCancelAttachmentStage'
+  | 'onReplaceAttachmentFile'
+  | 'onRemoveAttachment'
+  | 'onClearAttachments'
+  | 'sendBlockedReason'
+  | 'removalUnblocksSend'
+>;
+
+type ChildReplyProps = Pick<
+  ChatInputAreaProps,
+  | 'input'
+  | 'textareaRef'
+  | 'disabled'
+  | 'onInputChange'
+  | 'onSend'
+  | 'onClearInput'
+  | 'fontSize'
+  | 'dockHeight'
+  | 'voiceState'
+  | 'voiceSupported'
+  | 'voiceUnsupportedReason'
+  | 'voiceError'
+  | 'onVoiceStart'
+  | 'onVoiceStop'
+  | 'turnInFlight'
+  | 'allowDraftWhileDisabled'
+  | 'onRestorePortableDraft'
+  | 'agentLabel'
+  | 'currentModel'
+  | 'executionEngineId'
+  | 'agentIcon'
+> &
+  Partial<ChildImageControls> & { childReply: true };
+
+type ComposerProps =
+  | (ChatInputAreaProps & { childReply?: false })
+  | (ChildReplyProps &
+      Partial<
+        Record<Exclude<keyof ChatInputAreaProps, keyof ChildReplyProps>, never>
+      >);
+
+export function ChatInputArea(props: ChildReplyProps): React.ReactElement;
+export function ChatInputArea(props: ChatInputAreaProps): React.ReactElement;
 export function ChatInputArea({
+  childReply,
   activity,
   activityRef,
   contextMeter,
@@ -487,19 +566,20 @@ export function ChatInputArea({
   hasQuotedContext = false,
   draftText,
   quoteContext,
-  attachments,
+  attachments = [],
   textareaRef,
   onEnabledChange,
   disabled,
   allowDraftWhileDisabled = false,
   turnInFlight,
+  stopInActivity = false,
   busySteeringKind = 'native',
   busyQueueTakesFiles = false,
   busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
   stopPending = false,
-  modelSupportsAttachments,
+  modelSupportsAttachments = false,
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
@@ -515,12 +595,12 @@ export function ChatInputArea({
   modelsLoading = false,
   agentDefaultModel,
   defaultModelSource,
-  availableModels,
+  availableModels = [],
   pickerModels,
   modelProviders,
   currentProviderId,
   currentExecutionAgentId,
-  modelQuery,
+  modelQuery = null,
   agentConnectionId,
   modelRuntimeOptions,
   executionMode,
@@ -531,12 +611,14 @@ export function ChatInputArea({
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  reportedApprovalReviewer,
   approvalModeOverride,
   acpSessionModes = [],
   acpApproval,
   acpCurrentModeId,
-  commandQuery,
-  slashCommands,
+  acpRequestedModeId,
+  commandQuery = null,
+  slashCommands = [],
   onInputChange,
   onSend,
   onCancel,
@@ -545,12 +627,15 @@ export function ChatInputArea({
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
+  composerNotice,
+  stagedAgentNotice,
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
   removalUnblocksSend: removalUnblocksSendProp = false,
   attachmentStages = [],
   sendBlockedReason: sendBlockedReasonProp,
+  sendQueuedForUploads = false,
   onRetryAttachmentStage,
   onCancelAttachmentStage,
   onReplaceAttachmentFile,
@@ -591,7 +676,7 @@ export function ChatInputArea({
   submitAction,
   loadingConversation = false,
   onStartNewChat,
-}: ChatInputAreaProps) {
+}: ComposerProps) {
   const textareaDisabled = disabled && !allowDraftWhileDisabled;
   useEffect(() => {
     onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
@@ -604,11 +689,11 @@ export function ChatInputArea({
   const selectModel = (model: SelectableModel) => {
     if (isMobile && model.executionAgentId !== currentExecutionAgentId)
       runSetupClose.current?.();
-    onModelSelect(model);
+    onModelSelect?.(model);
   };
   const resetModel = () => {
     if (isMobile && currentExecutionAgentId) runSetupClose.current?.();
-    onModelReset();
+    onModelReset?.();
   };
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
@@ -627,7 +712,7 @@ export function ChatInputArea({
   // command, never the connection id.
   const approvalEngineId = acpApproval
     ? acpApproval.engineId
-    : (agentConnectionId ?? null);
+    : nonAcpApprovalEngine(agentConnectionId);
   // Steering takes text only (`steerTurn` carries an input string). A host
   // with `followUpAttachments` queues a draft's files with it; on any other
   // the mid-turn queue holds text only, so a draft with files cannot join a
@@ -636,6 +721,7 @@ export function ChatInputArea({
   const busyAttachmentReason =
     turnInFlight &&
     !busyQueueTakesFiles &&
+    !(childReply && modelSupportsAttachments) &&
     (attachments.length > 0 || attachmentStages.length > 0)
       ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
       : undefined;
@@ -643,38 +729,40 @@ export function ChatInputArea({
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  // A follow-up during a running turn steers it when the engine takes the
-  // message natively (it joins the turn at its next tool boundary). Safe-stop
-  // steering ends the turn early, so there Queue stays the default. An
-  // explicit choice holds until the conversation changes.
-  const [chosenSendMode, setSendMode] = useState<'queue' | 'steer' | null>(
-    null,
-  );
-  const sendMode =
-    chosenSendMode ?? (busySteeringKind === 'native' ? 'steer' : 'queue');
+  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
     void sessionId;
-    setSendMode(null);
+    setSendMode('queue');
     setSendModeOpen(false);
+    setSendAfterUploads(false);
   }, [sessionId]);
   const { chatReturnBehavior } = useDeviceSettings();
-  const { coarsePointer } = useDockSlotDevice();
+  const { coarsePointer, viewportWidth } = useDockSlotDevice();
   const returnSends =
     chatReturnBehavior === 'send' ||
     (chatReturnBehavior === 'auto' && !coarsePointer);
   const submitPending = useRef(false);
   const [submitting, setSubmitting] = useState(false);
+  // Send while a file is still uploading: the send waits for the upload and
+  // goes by itself once every file is staged, never without its files. An
+  // upload that fails (or is stopped or removed) drops the wait; its chip
+  // then says why, with Retry or Remove.
+  const uploadsInFlight = hasUploadsInFlight(attachmentStages);
+  const [sendAfterUploads, setSendAfterUploads] = useState(false);
+  const waitingForUploads = sendQueuedForUploads || sendAfterUploads;
   const submit = async () => {
-    if (submitPending.current) return;
+    if (submitPending.current || sendQueuedForUploads) return;
+    if (uploadsInFlight) {
+      setSendAfterUploads(true);
+      return;
+    }
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (
-        turnInFlight &&
-        (sendMode === 'queue' || busyFollowUp !== 'steer') &&
-        onQueueFollowUp
-      ) {
+      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
+        await onSend('steer');
+      } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
       } else {
         await onSend();
@@ -683,6 +771,27 @@ export function ChatInputArea({
       submitPending.current = false;
       setSubmitting(false);
     }
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `submit` is this render's closure over the settled draft; the wait's own state is the trigger.
+  useEffect(() => {
+    if (!sendAfterUploads) return;
+    if (sendBlockedReason || attachmentError || disabled) {
+      setSendAfterUploads(false);
+      return;
+    }
+    if (uploadsInFlight) return;
+    setSendAfterUploads(false);
+    void submit();
+  }, [
+    sendAfterUploads,
+    uploadsInFlight,
+    sendBlockedReason,
+    attachmentError,
+    disabled,
+  ]);
+  const removeAttachment = (id: string) => {
+    setSendAfterUploads(false);
+    onRemoveAttachment?.(id);
   };
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
   const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
@@ -728,10 +837,14 @@ export function ChatInputArea({
     mentionRequestScope?.apiBase,
     mentionRequestScope?.authorityKey,
   ]);
+  const engineId = parseEngineId(acpApproval?.engineId ?? executionEngineId);
+  const sessionEngineId =
+    executionEngineId === 'acp' ? engineId : parseEngineId(executionEngineId);
   const isOverride = currentModelSource === 'session override';
   const effectiveModelId = currentModel || agentDefaultModel;
   const effectiveModelInfo = availableModels.find(
-    (model) => model.id === effectiveModelId,
+    (model) =>
+      model.id === effectiveModelId || model.originalId === effectiveModelId,
   );
   // archive#1012: an alias/default entry hides which model the engine actually runs
   // ("Default (recommended)" told the owner nothing while an outdated host
@@ -752,7 +865,9 @@ export function ChatInputArea({
   // phone, beside a caption that already names the engine.
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
-    : 'Model';
+    : childReply
+      ? 'Model not reported'
+      : 'Model';
   // Only an effort this chat requests is named; otherwise the engine's own
   // default applies and the pill does not guess it.
   const effortLabel =
@@ -783,8 +898,8 @@ export function ChatInputArea({
     : aliasLabel;
   const agentEngineMoveSentence = agentEngineMove
     ? agentEngineMove.nextTurn
-      ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
-      : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      ? `Next message: ${agentEngineMove.to}.`
+      : `Session engine: ${executionEngineLabel ?? 'engine unknown'}. Agent default: ${agentEngineMove.to}.`
     : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',
@@ -806,7 +921,12 @@ export function ChatInputArea({
     .join(' ');
   // The shared handoff reason names no action ("Send a message first."), so
   // the refused state names it here, where the action is known.
-  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${
+  const routeSuffix = agentRoute ? ` · via ${agentRoute}` : undefined;
+  const setupAgentLabel =
+    routeSuffix && agentLabel?.endsWith(routeSuffix)
+      ? agentLabel.slice(0, -routeSuffix.length)
+      : agentLabel;
+  const agentAccessibleLabel = `Agent: ${setupAgentLabel ?? 'current Agent'}.${agentRoute ? ` Connection: ${agentRoute}.` : ''} ${
     agentHandoffDisabled
       ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
       : 'Change Agent'
@@ -820,13 +940,16 @@ export function ChatInputArea({
   // A composer whose sending the server refused invites no typing: its
   // reason, under the draft, says why.
   const placeholder =
+    (childReply ? 'Type a message…' : undefined) ??
     submitAction?.placeholder ??
     (sendRefused
       ? ''
       : workspaceRefused
         ? 'This conversation continues from its original workspace — start a new chat to work here'
         : loadingConversation
-          ? 'Loading chat…'
+          ? allowDraftWhileDisabled
+            ? 'Start typing. You can send once this chat opens…'
+            : 'Loading chat…'
           : allowDraftWhileDisabled
             ? turnInFlight
               ? 'Draft a follow-up while this turn finishes…'
@@ -840,8 +963,11 @@ export function ChatInputArea({
               : mentionLocation && mentionRequestScope
                 ? 'Type a message — @ files, / for commands…'
                 : 'Type a message — / for commands…');
-  const composerTokens = parseComposerTokens(input);
-  const displayInput = composerDisplayValue(input, composerTokens);
+  const modelPickerOpen = modelQuery !== null && !input.startsWith('/model ');
+  const composerTokens = childReply ? [] : parseComposerTokens(input);
+  const displayInput = childReply
+    ? input
+    : composerDisplayValue(input, composerTokens);
 
   // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
@@ -849,9 +975,11 @@ export function ChatInputArea({
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
   const overLimitBy =
-    (draftText === undefined
-      ? composerMentionWireLength(input, composerTokens)
-      : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
+    (childReply
+      ? input.length
+      : draftText === undefined
+        ? composerMentionWireLength(input, composerTokens)
+        : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
   // A blocked Send is disabled; it must not keep the active accent that reads
   // as "ready". The send-mode segment takes the same accent when Send is ready
@@ -859,6 +987,7 @@ export function ChatInputArea({
   const sendReady =
     !isOverLimit &&
     !sendBlockedReason &&
+    !waitingForUploads &&
     (workspaceRefused || hasSendableDraft);
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
@@ -1122,7 +1251,7 @@ export function ChatInputArea({
       data-popover-boundary=""
       ref={composerRootRef}
     >
-      {modelQuery !== null && !input.startsWith('/model ') && (
+      {!childReply && modelPickerOpen && (
         <ResponsiveDialogSurface
           layer="popover"
           ariaLabel="Model"
@@ -1171,6 +1300,11 @@ export function ChatInputArea({
                 providers={modelProviders}
                 currentProviderId={currentProviderId}
                 currentExecutionAgentId={currentExecutionAgentId}
+                connectionLabel={
+                  agentEngineMove?.nextTurn
+                    ? agentEngineMove.to
+                    : executionEngineLabel
+                }
                 bindingLabel={
                   currentExecutionAgentId
                     ? 'Conversation override'
@@ -1193,7 +1327,7 @@ export function ChatInputArea({
 
       {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
-        {agentEngineMove?.nextTurn && (
+        {!stagedAgentNotice && agentEngineMove?.nextTurn && (
           // The closed Run setup trigger has no room for a destination name,
           // so the one fact that changes what the next send does gets its own
           // line at every width (the open panel's caption repeats it).
@@ -1204,17 +1338,29 @@ export function ChatInputArea({
             </span>
           </p>
         )}
+        {stagedAgentNotice && (
+          <p className="chat-input__next-turn-notice">
+            {stagedAgentNotice.label}{' '}
+            {stagedAgentNotice.onCheck && (
+              <Button onClick={stagedAgentNotice.onCheck}>
+                {stagedAgentNotice.checkLabel}
+              </Button>
+            )}
+            {stagedAgentNotice.onUndo && (
+              <Button onClick={stagedAgentNotice.onUndo}>Undo</Button>
+            )}
+          </p>
+        )}
+        {composerNotice && (
+          <p className="chat-input__composer-notice">{composerNotice}</p>
+        )}
         <div className="chat-input__activity" ref={activityRef}>
           {activity}
         </div>
       </div>
 
       <div className="chat-input__capsule">
-        <fieldset
-          className="chat-input__textarea-wrapper"
-          aria-label="Message composer"
-          tabIndex={-1}
-        >
+        <ComposerMessageField>
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
               fallback={<SkeletonBlock label="Attachment controls" />}
@@ -1222,7 +1368,7 @@ export function ChatInputArea({
               <ComposerAttachmentStrip
                 attachments={attachments}
                 stages={attachmentStages}
-                onRemove={onRemoveAttachment}
+                onRemove={removeAttachment}
                 onRetry={onRetryAttachmentStage}
                 onCancel={onCancelAttachmentStage}
                 onReplaceFile={onReplaceAttachmentFile}
@@ -1258,11 +1404,33 @@ export function ChatInputArea({
               )}
             </div>
           )}
-          {attachmentNotice && !sendBlockedReason && !attachmentError && (
-            <div className="chat-input__attachment-notice" role="status">
-              {attachmentNotice}
+          {waitingForUploads && !sendBlockedReason && !attachmentError && (
+            <div
+              className="chat-input__attachment-notice chat-input__upload-wait"
+              role="status"
+            >
+              Sends when uploads finish
+              {sendAfterUploads && (
+                <span className="chat-input__blocked-actions">
+                  <button
+                    type="button"
+                    className="chat-input__blocked-action"
+                    onClick={() => setSendAfterUploads(false)}
+                  >
+                    Don't send
+                  </button>
+                </span>
+              )}
             </div>
           )}
+          {attachmentNotice &&
+            !waitingForUploads &&
+            !sendBlockedReason &&
+            !attachmentError && (
+              <div className="chat-input__attachment-notice" role="status">
+                {attachmentNotice}
+              </div>
+            )}
           {sendFailureNotice && (
             <div className="chat-input__send-failure" role="status">
               {sendFailureNotice}
@@ -1280,7 +1448,7 @@ export function ChatInputArea({
                 value={input}
                 onChange={(next) => {
                   onInputChange(next);
-                  updateFromInput(next);
+                  updateFromInput?.(next);
                 }}
                 onFocusInput={() => textareaRef.current?.focus()}
                 tokens={composerTokens}
@@ -1312,7 +1480,7 @@ export function ChatInputArea({
                     },
                   );
                   onInputChange(next);
-                  updateFromInput(next);
+                  updateFromInput?.(next);
                   setMentionQuery(null);
                   requestAnimationFrame(() => {
                     if (mentionGeneration.current !== generation) return;
@@ -1326,23 +1494,27 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
-          {modelQuery !== null && input.startsWith('/model ') && (
-            <React.Suspense fallback={null}>
-              <ModelSelectorAutocomplete
-                query={modelQuery}
-                models={(pickerModels ?? availableModels).map((m) => ({
-                  ...m,
-                  originalId: m.originalId || m.id,
-                }))}
-                currentModel={currentModel}
-                agentDefaultModel={agentDefaultModel}
-                anchorRef={textareaRef}
-                onSelect={onModelSelect}
-                onClose={onModelClose}
-              />
-            </React.Suspense>
-          )}
-          {commandQuery !== null && (
+          {!childReply &&
+            modelQuery !== null &&
+            input.startsWith('/model ') && (
+              <React.Suspense fallback={null}>
+                <ModelSelectorAutocomplete
+                  query={modelQuery}
+                  models={(pickerModels ?? availableModels).map((m) => ({
+                    ...m,
+                    originalId: m.originalId || m.id,
+                  }))}
+                  currentModel={currentModel}
+                  agentDefaultModel={agentDefaultModel}
+                  anchorRef={textareaRef}
+                  onSelect={onModelSelect}
+                  onClose={onModelClose}
+                />
+              </React.Suspense>
+            )}
+          {/* A command runs on select, so a draft-only composer (busy wait,
+              conversation still opening) opens no selector. */}
+          {!childReply && commandQuery !== null && !disabled && (
             <React.Suspense fallback={null}>
               <SlashCommandSelector
                 query={commandQuery}
@@ -1354,6 +1526,7 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           <textarea
+            maxLength={childReply ? CHAT_INPUT_MAX_CHARS : undefined}
             ref={textareaRef}
             data-native-image-paste={
               selectAttachmentFiles && modelSupportsAttachments
@@ -1383,7 +1556,7 @@ export function ChatInputArea({
             tabIndex={0}
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);
-              updateFromInput(input);
+              updateFromInput?.(input);
               // Blur closes the file picker; refocusing inside an `@` query brings it
               // back, as it does for the other pickers. Read the caret a frame later: a
               // click focuses on mousedown, before the caret moves to the click point.
@@ -1403,15 +1576,17 @@ export function ChatInputArea({
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
-              closeAll();
+              closeAll?.();
               // The file picker is portaled out of the composer, so it no
               // longer hides with it; close it like the other pickers.
               setMentionQuery(null);
             }}
             onChange={(e) => {
-              const next = reconcileComposerDisplay(input, e.target.value);
+              const next = childReply
+                ? e.target.value
+                : reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
-              updateFromInput(next);
+              updateFromInput?.(next);
               syncMentionQuery(
                 next,
                 e.target.selectionStart ?? e.target.value.length,
@@ -1420,6 +1595,11 @@ export function ChatInputArea({
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
+              if (childReply && !selectAttachmentFiles) {
+                if (!event.clipboardData.getData('text/plain'))
+                  event.preventDefault();
+                return;
+              }
               event.preventDefault();
               void selectAttachmentFiles?.(files);
             }}
@@ -1489,7 +1669,7 @@ export function ChatInputArea({
                 authority: mentionAuthority!,
               });
               onInputChange(next);
-              updateFromInput(next);
+              updateFromInput?.(next);
               setSessionReferencesOpen(false);
               textareaRef.current?.focus();
             }}
@@ -1546,7 +1726,7 @@ export function ChatInputArea({
                   if (e.key === 'Backspace' || e.key === 'Delete') {
                     const next = `${input.slice(0, adjacentMention.canonicalStart)}${input.slice(adjacentMention.canonicalEnd)}`;
                     onInputChange(next);
-                    updateFromInput(next);
+                    updateFromInput?.(next);
                   }
                   const nextCursor =
                     e.key === 'ArrowRight'
@@ -1569,20 +1749,24 @@ export function ChatInputArea({
                   mentionQuery !== null)
               ) {
                 e.preventDefault();
-                closeAll();
+                closeAll?.();
                 setMentionQuery(null);
                 return;
               }
 
               if (e.key === 'Tab' && !e.shiftKey) return;
 
-              if (e.key === 'ArrowUp' && !input.includes('\n')) {
+              if (onHistoryUp && e.key === 'ArrowUp' && !input.includes('\n')) {
                 e.preventDefault();
                 onHistoryUp();
                 return;
               }
 
-              if (e.key === 'ArrowDown' && !input.includes('\n')) {
+              if (
+                onHistoryDown &&
+                e.key === 'ArrowDown' &&
+                !input.includes('\n')
+              ) {
                 e.preventDefault();
                 onHistoryDown();
                 return;
@@ -1598,7 +1782,9 @@ export function ChatInputArea({
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
                 } else if (
-                  (input.trim() || hasQuotedContext) &&
+                  (input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0) &&
                   !isOverLimit &&
                   !sendBlockedReason &&
                   !disabled
@@ -1631,28 +1817,30 @@ export function ChatInputArea({
               {voiceError}
             </div>
           )}
-        </fieldset>
+        </ComposerMessageField>
         <div className="chat-controls-row">
-          <React.Suspense fallback={null}>
-            <FileAttachmentInput
-              attachments={attachments}
-              onFilesSelected={selectAttachmentFiles ?? (async () => {})}
-              onRemove={onRemoveAttachment}
-              onClearAll={onClearAttachments}
-              // A running turn does not disable the paperclip: files join the
-              // draft for the next message (`busyAttachmentReason` says why
-              // they cannot steer or queue). Only a composer that cannot
-              // take input at all, or a model that takes nothing, refuses.
-              disabled={
-                disabled ||
-                (!modelSupportsAttachments && !fileAttachmentsSupported)
-              }
-              supportsImages={modelSupportsAttachments}
-              supportsFiles={fileAttachmentsSupported}
-              unavailableReason={disabled ? undefined : attachUnavailableReason}
-              onUnavailable={onAttachUnavailable}
-            />
-          </React.Suspense>
+          {(!childReply || modelSupportsAttachments) && (
+            <React.Suspense fallback={null}>
+              <FileAttachmentInput
+                attachments={attachments}
+                onFilesSelected={selectAttachmentFiles ?? (async () => {})}
+                // A running turn does not disable the paperclip: files join the
+                // draft for the next message (`busyAttachmentReason` says why
+                // they cannot steer or queue). Only a composer that cannot
+                // take input at all, or a model that takes nothing, refuses.
+                disabled={
+                  disabled ||
+                  (!modelSupportsAttachments && !fileAttachmentsSupported)
+                }
+                supportsImages={modelSupportsAttachments}
+                supportsFiles={fileAttachmentsSupported}
+                unavailableReason={
+                  disabled ? undefined : attachUnavailableReason
+                }
+                onUnavailable={onAttachUnavailable}
+              />
+            </React.Suspense>
+          )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
@@ -1677,6 +1865,7 @@ export function ChatInputArea({
           )}
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
+              textOnly={!!childReply}
               hideTrigger={isMobile}
               input={input}
               quotes={quoteContext}
@@ -1769,50 +1958,137 @@ export function ChatInputArea({
                 .join(' · ')}
               effort={effortLabel}
               icon={agentIcon}
-              engineId={parseEngineId(
-                acpApproval?.engineId ?? executionEngineId,
-              )}
+              engineId={engineId}
               // The move shows on the closed trigger at every width; a
               // next-turn move has its own notice above the draft instead.
               notice={
                 agentEngineMove && !agentEngineMove.nextTurn
-                  ? 'Agent moved'
+                  ? 'Default differs'
                   : undefined
               }
               description={agentEngineMoveSentence}
             >
-              {onOpenAgentHandoff && (
-                <ComposerChoice
-                  ref={agentHandoffTriggerRef}
-                  // On a phone the handoff dialog replaces Run setup rather
-                  // than stacking over it.
-                  closesRunSetup={isMobile}
-                  className="chat-input__agent-btn"
-                  onClick={
-                    agentHandoffDisabled ? undefined : onOpenAgentHandoff
-                  }
-                  aria-disabled={agentHandoffDisabled}
-                  aria-haspopup="dialog"
-                  aria-label={agentAccessibleLabel}
-                  title={agentAccessibleLabel}
-                  caption="Agent"
-                  icon={agentIcon}
-                  valueClassName="chat-input__agent-name"
-                  value={
-                    <>
-                      {agentLabel ?? 'Current Agent'}
-                      {agentRoute && (
-                        <span className="chat-input__agent-route">
-                          {' · '}
-                          {agentRoute}
+              {(onOpenAgentHandoff ||
+                executionEngineLabel ||
+                agentEngineMove) && (
+                <div className="composer-run-panel__agent">
+                  <ComposerChoice
+                    ref={agentHandoffTriggerRef}
+                    // On a phone the handoff dialog replaces Run setup rather
+                    // than stacking over it.
+                    closesRunSetup={isMobile}
+                    className="chat-input__agent-btn"
+                    onClick={
+                      agentHandoffDisabled ? undefined : onOpenAgentHandoff
+                    }
+                    aria-disabled={!onOpenAgentHandoff || agentHandoffDisabled}
+                    aria-haspopup={onOpenAgentHandoff ? 'dialog' : undefined}
+                    aria-label={
+                      onOpenAgentHandoff
+                        ? agentAccessibleLabel
+                        : `Agent: ${setupAgentLabel ?? 'Current Agent'}`
+                    }
+                    title={
+                      onOpenAgentHandoff ? agentAccessibleLabel : undefined
+                    }
+                    caption="Agent"
+                    icon={
+                      executionEngineLabel || agentEngineMove
+                        ? undefined
+                        : agentIcon || <AgentGlyph />
+                    }
+                    valueClassName="chat-input__agent-name"
+                    value={
+                      <>
+                        <span className="composer-run-panel__identity-name">
+                          {setupAgentLabel ?? 'Current Agent'}
                         </span>
-                      )}
-                    </>
-                  }
-                />
+                        {viewportWidth > 360 &&
+                          agentEngineMove &&
+                          !agentEngineMove.nextTurn && (
+                            <span className="composer-run-panel__engine-status">
+                              Engine differs
+                            </span>
+                          )}
+                        {agentRoute &&
+                          !executionEngineLabel &&
+                          !agentEngineMove && (
+                            <span className="chat-input__agent-route">
+                              {' · Connection: '}
+                              {agentRoute}
+                            </span>
+                          )}
+                      </>
+                    }
+                  />
+                  {(executionEngineLabel || agentEngineMove) && (
+                    <details className="composer-run-panel__engine-details">
+                      <summary
+                        aria-label={
+                          agentEngineMove && !agentEngineMove.nextTurn
+                            ? 'Engine details. Engine differs from Agent default'
+                            : 'Engine details'
+                        }
+                      >
+                        <span
+                          className="composer-run-panel__engine-agent"
+                          aria-hidden="true"
+                        >
+                          {agentIcon || <AgentGlyph />}
+                        </span>
+                        <span
+                          className="composer-run-panel__engine-mark"
+                          aria-hidden="true"
+                        >
+                          <BrandIcon
+                            name=""
+                            engineId={sessionEngineId ?? undefined}
+                            size={16}
+                            fallback={<EngineGlyph />}
+                          />
+                        </span>
+                        {agentEngineMove && !agentEngineMove.nextTurn && (
+                          <span
+                            className="composer-run-panel__engine-dot"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </summary>
+                      <div className="composer-run-panel__routing">
+                        {executionEngineLabel && (
+                          <span className="chat-input__chip-caption-engine">
+                            {agentEngineMove?.nextTurn
+                              ? 'Previous engine: '
+                              : 'Current engine: '}
+                            {executionEngineLabel}
+                          </span>
+                        )}
+                        {agentRoute && <span>Connection: {agentRoute}</span>}
+                        {agentEngineMove && (
+                          <span className="chat-input__engine-moved">
+                            {agentEngineMove.nextTurn
+                              ? `Next turn on ${agentEngineMove.to}`
+                              : `Agent default: ${agentEngineMove.to}`}
+                          </span>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
               )}
               <ComposerChoice
                 ref={modelButtonRef}
+                icon={
+                  effectiveModelInfo ? (
+                    <ModelIcon model={effectiveModelInfo} />
+                  ) : (
+                    <BrandIcon
+                      name="Model"
+                      engineId={sessionEngineId ?? undefined}
+                      fallback={<EngineGlyph />}
+                    />
+                  )
+                }
                 changedForConversation={Boolean(
                   currentExecutionAgentId || isOverride,
                 )}
@@ -1827,29 +2103,26 @@ export function ChatInputArea({
                 title={modelAccessibleLabel}
                 caption={
                   <>
-                    {/* The move hint has its own line below the engine name,
-                    so it needs no separator and is never cut. */}
-                    <span className="chat-input__chip-caption-engine">
-                      {executionEngineLabel ?? 'Engine & model'}
-                    </span>
-                    {/* The closed Run setup trigger says "Agent moved"; here
-                    the open panel names the destination. */}
-                    {agentEngineMove && (
-                      <span className="chat-input__engine-moved">
-                        {agentEngineMove.nextTurn
-                          ? `Next turn on ${agentEngineMove.to}`
-                          : `Agent now on ${agentEngineMove.to}`}
-                      </span>
+                    Model
+                    {!agentEngineMove && executionEngineLabel && (
+                      <>
+                        {' · '}
+                        <span className="chat-input__chip-caption-engine">
+                          {executionEngineLabel}
+                        </span>
+                      </>
                     )}
-                    {currentExecutionAgentId ? (
-                      <span className="chat-input__chip-caption-engine">
-                        {' · Conversation override'}
-                      </span>
-                    ) : null}
                   </>
                 }
                 value={
-                  effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+                  <>
+                    <span className="composer-run-panel__identity-name">
+                      {modelLabel}
+                    </span>
+                    {effortLabel && (
+                      <span className="composer-run-panel__effort">{` · ${effortLabel}`}</span>
+                    )}
+                  </>
                 }
                 valueClassName="chat-input__model-name"
               />
@@ -1889,11 +2162,8 @@ export function ChatInputArea({
                   <AcpSessionModeChip
                     key={sessionId}
                     modes={modeChoices}
-                    currentModeId={
-                      typeof modelRuntimeOptions?.mode === 'string'
-                        ? modelRuntimeOptions.mode
-                        : acpCurrentModeId
-                    }
+                    currentModeId={acpCurrentModeId}
+                    requestedModeId={acpRequestedModeId}
                     onChange={onAcpSessionModeChange}
                   />
                 </React.Suspense>
@@ -1910,8 +2180,12 @@ export function ChatInputArea({
                   engineHasModes={acpSessionModes.length > 0}
                 />
               ) : (
+                !childReply &&
                 executionMode === EXECUTION_MODE.EXTERNAL &&
-                approvalModeKnobSupported(approvalEngineId) && (
+                approvalModeKnobSupported(
+                  approvalEngineId,
+                  acpApproval?.control,
+                ) && (
                   <ApprovalModeChip
                     // Structural reset (not blur-dependent) for the chip's local
                     // confirm state when the active session changes — this
@@ -1919,6 +2193,7 @@ export function ChatInputArea({
                     // remount otherwise (archive#727 3).
                     key={sessionId}
                     engineConnectionId={approvalEngineId}
+                    acpControl={acpApproval?.control}
                     toolPolicyDelivery={toolPolicyDelivery}
                     sessionOverride={approvalModeOverride?.mode}
                     sessionOverrideState={approvalModeOverride?.state}
@@ -1935,6 +2210,7 @@ export function ChatInputArea({
                     }
                     stationDefault={approvalModeStationDefault}
                     lastAppliedApprovalMode={lastAppliedApprovalMode}
+                    reportedApprovalReviewer={reportedApprovalReviewer}
                     onChange={onApprovalModeChange}
                   />
                 )
@@ -1949,7 +2225,7 @@ export function ChatInputArea({
             className="chat-input__send-group"
             data-stop-placement={isMobile ? 'trailing' : undefined}
           >
-            {turnInFlight && !isMobile && (
+            {turnInFlight && onCancel && !stopInActivity && !isMobile && (
               <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -1995,6 +2271,7 @@ export function ChatInputArea({
                 disabled={
                   disabled ||
                   submitting ||
+                  waitingForUploads ||
                   isOverLimit ||
                   !!sendBlockedReason ||
                   (workspaceRefused
@@ -2066,7 +2343,7 @@ export function ChatInputArea({
                 </button>
               )}
             </div>
-            {turnInFlight && isMobile && (
+            {turnInFlight && onCancel && !stopInActivity && isMobile && (
               <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -2149,7 +2426,7 @@ export function ChatInputArea({
               requestScope={mentionRequestScope}
               onChange={(next) => {
                 onInputChange(next);
-                updateFromInput(next);
+                updateFromInput?.(next);
               }}
               onClose={() => setSessionReferencesOpen(false)}
               onCandidateDragged={(candidate) =>
@@ -2162,5 +2439,92 @@ export function ChatInputArea({
         )}
       </div>
     </div>
+  );
+}
+
+/** Child instructions are addressed to a specific live turn. Their
+ * delivery owner supplies the submission; the editor shares the chat capsule. */
+export function ChildInstructionForm({
+  name,
+  editorId,
+  run,
+  images,
+  voice,
+  text,
+  onChange,
+  sending,
+  onSubmit,
+}: {
+  name: string;
+  editorId: string;
+  run?: ChildReplyRun;
+  images?: ChildImageControls;
+  voice?: StartComposerVoice;
+  text: string;
+  onChange(value: string): void;
+  sending: boolean;
+  onSubmit?: () => Promise<void>;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { chatFontSize } = useDeviceSettings();
+  if (run)
+    return (
+      <ChatInputArea
+        childReply
+        agentLabel={run.engineLabel ?? 'Subagent'}
+        agentIcon={<AgentIcon agent={{ name }} size={18} />}
+        executionEngineId={run.engineId}
+        currentModel={run.model}
+        textareaRef={textareaRef}
+        input={text}
+        onInputChange={onChange}
+        onClearInput={() => onChange('')}
+        onRestorePortableDraft={onChange}
+        {...images}
+        fileAttachmentsSupported={false}
+        onSend={async () => {
+          await onSubmit?.();
+        }}
+        disabled={sending || !onSubmit}
+        allowDraftWhileDisabled={!sending && !onSubmit}
+        turnInFlight
+        fontSize={chatFontSize ?? 14}
+        dockHeight={window.innerHeight}
+        voiceState={voice?.state}
+        voiceSupported={voice?.supported}
+        voiceUnsupportedReason={voice?.unsupportedReason}
+        voiceError={voice?.error}
+        onVoiceStart={voice?.onStart}
+        onVoiceStop={voice?.onStop}
+      />
+    );
+  const ready = !!text.trim() && !!onSubmit && !sending;
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready) void onSubmit?.();
+      }}
+    >
+      <label htmlFor={editorId}>Send to {name}</label>
+      <textarea
+        id={editorId}
+        aria-label={`Send to ${name}`}
+        className="editor-textarea"
+        rows={3}
+        value={text}
+        disabled={sending}
+        onChange={(event) => onChange(event.target.value)}
+        maxLength={CHAT_INPUT_MAX_CHARS}
+      />
+      <Button
+        type="submit"
+        className="tap-target"
+        disabled={!ready}
+        pending={sending}
+      >
+        Send
+      </Button>
+    </form>
   );
 }

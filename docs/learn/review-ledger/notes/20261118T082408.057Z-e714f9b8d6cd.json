@@ -1,0 +1,67 @@
+{
+  "revision": "b5a58c4f5d322206dc620636aa782c5fcca2c976",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Traced the queue's two readers and the accepted receipt through their bound query keys. The dock keeps a lightweight mounted snapshot, the opened inbox owns polling and removal, and the sender publishes through its existing dispatch chunk.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/QueuedMessages.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useConversationInbox.ts","src-ui/src/lib/foregroundMessageDispatch.ts","src-ui/src/hooks/useConversationInboxSnapshot.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Verified the dock still observes and counts the same conversation and request authority. The snapshot import leaves inbox polling and removal in the lazy list.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced exact scoped reads, receipt deduplication, retry and withdrawal through the inbox list. Verified that these operations load with the list and preserve its snapshot contract.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Traced exact scoped reads, receipt deduplication, retry and withdrawal through the inbox list. Verified that these operations load with the list and preserve its snapshot contract.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced exact scoped reads, receipt deduplication, retry and withdrawal through the inbox list. Verified that these operations load with the list and preserve its snapshot contract.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed queued admission and first-turn cache refresh through the already-loaded dispatch module. The send uses the same request scope, receipt and Session and conversation identities.","inputs":["src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified that the foreground sender still checks the queued receipt, publishes it on the exact inbox key and refreshes a draft or first-send failure after the first accepted start.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Verified that the foreground sender still checks the queued receipt, publishes it on the exact inbox key and refreshes a draft or first-send failure after the first accepted start.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Verified that the foreground sender still checks the queued receipt, publishes it on the exact inbox key and refreshes a draft or first-send failure after the first accepted start.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Verified that the foreground sender still checks the queued receipt, publishes it on the exact inbox key and refreshes a draft or first-send failure after the first accepted start.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified that the foreground sender still checks the queued receipt, publishes it on the exact inbox key and refreshes a draft or first-send failure after the first accepted start.","inputs":["src-ui/src/lib/foregroundMessageDispatch.ts"]}
+  ]
+}

@@ -32,7 +32,8 @@ regenerated with the gallery baseline.</sub>
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
-[Getting started](docs/user/getting-started.md) ·
+[Quickstart](docs/user/getting-started.md#quickstart) ·
+[Product tour](docs/learn/walkthroughs.md) ·
 [Concepts](docs/user/concepts.md) ·
 [Contributing](CONTRIBUTING.md)
 
@@ -79,6 +80,9 @@ Editing Tasks and running agents from that entry aren’t available yet. Review
 and member-presence UI include Feature Previews. Pairing connects your own
 devices; it isn’t team access. Read [sharing setup and current limits](docs/guides/deployment-authentication.md)
 before inviting someone.
+
+Plugins reports incomplete update checks and keeps the updates it found. See the
+[plugin guide](docs/guides/plugins.md) for installation, recovery and inspection.
 
 Plugins can also provide team-specific work surfaces. See [integrating Station](docs/guides/integrating-station.md)
 for supported extension contracts and deployment boundaries.

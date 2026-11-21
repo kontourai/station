@@ -1,0 +1,141 @@
+{
+  "revision": "5a2b93089ceafce6b4d1889af9db523813368462",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the guidance against the CommandLauncher and mobile ActiveWorkContextFrame portals, the anchored ComposerActionsMenu sheet, and the existing notification CSS. Live component browser controls verify the approval overlap, Escape and focus return.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/index.css","src-ui/src/components/chat-dock/CommandLauncher.tsx","src-ui/src/components/chat-dock/ActiveWorkContextFrame.tsx","src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the shared scrim, panel and layer rules against the current notification host and mounted modal behavior. The two body-portaled dock modals use the established dialog layer. Existing CSS consumers for themes, responsive geometry, typography and platform chrome keep those rules.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared consumer's anchored and phone presentation, focus and gesture behavior. The phone sheet resolves the declared popover to the existing dialog tier, while desktop anchoring, visual viewport geometry and history are unchanged. Chromium hit-testing and real keyboard actions verify the modal interaction.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the shared consumer's anchored and phone presentation, focus and gesture behavior. The phone sheet resolves the declared popover to the existing dialog tier, while desktop anchoring, visual viewport geometry and history are unchanged. Chromium hit-testing and real keyboard actions verify the modal interaction.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the shared consumer's anchored and phone presentation, focus and gesture behavior. The phone sheet resolves the declared popover to the existing dialog tier, while desktop anchoring, visual viewport geometry and history are unchanged. Chromium hit-testing and real keyboard actions verify the modal interaction.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the shared consumer's anchored and phone presentation, focus and gesture behavior. The phone sheet resolves the declared popover to the existing dialog tier, while desktop anchoring, visual viewport geometry and history are unchanged. Chromium hit-testing and real keyboard actions verify the modal interaction.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the shared consumer's anchored and phone presentation, focus and gesture behavior. The phone sheet resolves the declared popover to the existing dialog tier, while desktop anchoring, visual viewport geometry and history are unchanged. Chromium hit-testing and real keyboard actions verify the modal interaction.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

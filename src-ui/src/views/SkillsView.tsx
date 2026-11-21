@@ -107,9 +107,33 @@ function skillWriteRefusalNote(refusal: SkillWriteRefusal): string {
   const remedy = Object.hasOwn(SKILL_WRITE_REMEDY, refusal.reason)
     ? SKILL_WRITE_REMEDY[refusal.reason]
     : undefined;
-  return remedy
-    ? `Read-only. ${refusal.detail} ${remedy}`
-    : `Read-only. ${refusal.detail}`;
+  return remedy ? `${refusal.detail} ${remedy}` : refusal.detail;
+}
+
+function skillMutationRefusal(error: unknown): SkillWriteRefusal | undefined {
+  if (
+    !(error instanceof Error) ||
+    !('code' in error) ||
+    error.code !== 'skill-not-owned' ||
+    !('details' in error)
+  )
+    return;
+  const details = error.details;
+  if (
+    !details ||
+    typeof details !== 'object' ||
+    !('reason' in details) ||
+    typeof details.reason !== 'string' ||
+    !('packageDirectory' in details) ||
+    typeof details.packageDirectory !== 'string' ||
+    !Object.hasOwn(SKILL_WRITE_REMEDY, details.reason)
+  )
+    return;
+  return {
+    reason: details.reason as SkillWriteRefusalReason,
+    detail: 'The skill package was read-only when Station checked.',
+    packageDirectory: details.packageDirectory,
+  };
 }
 
 export function SkillsView({
@@ -135,6 +159,11 @@ export function SkillsView({
   >(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [writeFailure, setWriteFailure] = useState<{
+    selection: string | null;
+    authorityKey: string | undefined;
+    refusal: SkillWriteRefusal;
+  }>();
   const splitPaneSelectedId = isCreating ? '__new__' : selectedId;
   const [form, setForm] = useState<SkillForm>(EMPTY_SKILL_FORM);
   const formRef = useRef(form);
@@ -145,6 +174,11 @@ export function SkillsView({
   const { showToast } = useToast();
   const { apiBase } = useApiBase();
   const requestAuthorityScope = useHostRequestAuthorityScope();
+  const mutationRefusal =
+    writeFailure?.selection === rawSelectedId &&
+    writeFailure?.authorityKey === requestAuthorityScope?.authorityKey
+      ? writeFailure?.refusal
+      : undefined;
   const select = useCallback(
     (id: string) =>
       navigate(
@@ -335,7 +369,22 @@ export function SkillsView({
           applyReturnFocus([search]);
         });
       },
-      onError: () => showToast('Failed to remove skill'),
+      onError: (error) => {
+        const refusal = skillMutationRefusal(error);
+        if (
+          refusal &&
+          removalAttemptRef.current === attempt &&
+          removalScopeRef.current === scope &&
+          authority?.isCurrent() !== false
+        ) {
+          setWriteFailure({
+            selection: rawSelectedId,
+            authorityKey: authority?.authorityKey,
+            refusal,
+          });
+        }
+        showToast('The skill could not be removed.');
+      },
     });
   }
   // This view already owns the exact active Station origin. Passing it into
@@ -362,6 +411,7 @@ export function SkillsView({
   useEffect(() => {
     setIsCreating(rawSelectedId === 'new');
     setIsEditing(false);
+    setWriteFailure(undefined);
   }, [rawSelectedId]);
 
   useEffect(() => {
@@ -402,6 +452,8 @@ export function SkillsView({
     const payload = buildSkillPayload(form);
     const submittedForm = form;
     const submittedSelection = rawSelectedId;
+    const authority = requestAuthorityScope;
+    setWriteFailure(undefined);
     try {
       if (isCreating) {
         await createLocalMutation.mutateAsync(payload);
@@ -417,10 +469,28 @@ export function SkillsView({
       if (isCreating) setPendingCreatedSkill(payload.name);
       setDirty(false);
     } catch (error) {
+      const refusal = skillMutationRefusal(error);
+      if (
+        refusal &&
+        !isCreating &&
+        selectionRef.current === submittedSelection &&
+        authority?.isCurrent() !== false
+      ) {
+        setWriteFailure({
+          selection: submittedSelection,
+          authorityKey: authority?.authorityKey,
+          refusal,
+        });
+      }
       showToast(
-        error instanceof Error
+        isCreating ||
+          (error instanceof Error &&
+            'status' in error &&
+            error.status === 400 &&
+            'details' in error &&
+            error.details !== undefined)
           ? userFacingErrorMessage(error)
-          : 'Failed to save skill',
+          : 'The changes could not be saved.',
       );
     }
   }
@@ -550,6 +620,7 @@ export function SkillsView({
   const sourceLabel = selected
     ? skillSourceLabel(selected.origin)
     : 'Source unrecorded';
+  const writeRefusal = mutationRefusal ?? selected?.writeRefusal;
   const statsSummary = selected ? formatSkillStatsSummary(selected) : null;
   const showEditor = isCreating || isEditing;
   const variables = formVariables(form);
@@ -775,11 +846,11 @@ export function SkillsView({
                         advice that cannot be followed. The fallback covers a
                         server that stated no decision: Save is still withheld,
                         and saying so without a reason beats inventing one. */}
-                    {!editableLocal && (
+                    {(!editableLocal || mutationRefusal) && (
                       <>
                         <p className="skill-detail__source-note">
-                          {selected?.writeRefusal
-                            ? skillWriteRefusalNote(selected.writeRefusal)
+                          {writeRefusal
+                            ? `${mutationRefusal ? '' : 'Read-only. '}${skillWriteRefusalNote(writeRefusal)}`
                             : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
                         </p>
                         {/* The path is AUTHOR-CONTROLLED — a plugin names its
@@ -791,14 +862,12 @@ export function SkillsView({
                             read as a session-expiry notice pointing the reader
                             at another domain (#1655 review low). React escapes
                             markup; framing was the whole attack. */}
-                        {selected?.writeRefusal?.packageDirectory && (
+                        {writeRefusal?.packageDirectory && (
                           <p className="skill-detail__source-path">
                             <span className="skill-detail__source-path-label">
                               Package directory
                             </span>
-                            <code>
-                              {selected.writeRefusal.packageDirectory}
-                            </code>
+                            <code>{writeRefusal.packageDirectory}</code>
                           </p>
                         )}
                       </>

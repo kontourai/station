@@ -94,11 +94,28 @@ export function PluginManagementView({
     togglePreviewSkip,
     toggleProjectSelection,
     toggleProvider,
+    updateCheck,
     updateMutation,
     updatePlugin,
     updates,
   } = usePluginManagementViewModel();
   const [showNewPlugin, setShowNewPlugin] = useState(false);
+  const checkStatus = updateCheck.isError
+    ? 'unavailable'
+    : updateCheck.data?.status;
+  const checkMessage = updateCheck.isFetching
+    ? 'Checking for plugin updates…'
+    : checkStatus === 'unavailable'
+      ? 'Plugin update check unavailable.'
+      : checkStatus === 'partial'
+        ? 'Some plugin update sources could not be checked.'
+        : checkStatus === 'unknown'
+          ? 'This Station did not report whether the update check completed.'
+          : updateCheck.data?.managedByPolicy?.length
+            ? 'Some plugin updates are managed by policy.'
+            : checkStatus === 'complete' && updates.length === 0
+              ? 'No plugin updates found.'
+              : null;
 
   return (
     <>
@@ -148,6 +165,22 @@ export function PluginManagementView({
               Browse Registry
             </Button>
           </>
+        }
+        listIntro={
+          checkMessage && (
+            <div className="plugins__update-check">
+              <span role="status">{checkMessage}</span>
+              {checkStatus && checkStatus !== 'complete' && (
+                <Button
+                  size="sm"
+                  disabled={updateCheck.isFetching}
+                  onClick={() => void updateCheck.refetch()}
+                >
+                  Retry update check
+                </Button>
+              )}
+            </div>
+          )
         }
         emptyIcon={<PlugGlyph />}
         emptyDescription="Select a plugin from the list or install a new one"

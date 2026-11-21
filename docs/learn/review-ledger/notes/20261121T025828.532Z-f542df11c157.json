@@ -1,0 +1,15 @@
+{
+  "revision": "a712345361119f9986923415d69d5a0e9422f6a3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the text-only child configuration of ChatInputArea against the parent editor. Send accepts the child draft through the existing turn-bound instruction command. Activity uses the pill center and composer bounds for its portalled card.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useAnchoredPopup.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"The activity panel now uses center alignment and border-box sizing. The pill still owns its entry, state changes, clock, and reduced motion behavior.","inputs":["docs/design/motion.md","src-ui/src/components/status/live-status.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked anchored popup geometry at 320, 390 and 1440 pixels. Expanded activity stays over its pill with edge clearance; the shared popup continues to choose an available vertical position above the composer.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/status/live-status.css"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified ChildWorkInstructionPanel still passes the exact reporter thread, child, turn and input id to useSteerChildWorkMutation and reads receipts via useChildWorkInstructionsQuery. The standard Send control changes presentation only.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat/ChildWorkInstructionPanel.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked conversation navigation, the shared child reply editor and selection controls. The existing Inbox and child back paths remain available and the selection tray retains the documented eligibility rules.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

@@ -81,6 +81,7 @@ export function applyACPStatusEvent(
         queryKey[2] === 'catalog'),
   });
   for (const name of [
+    'engine-setup',
     'acp-connections',
     'acp-unregistered-connections',
     'acp-connection-registry',

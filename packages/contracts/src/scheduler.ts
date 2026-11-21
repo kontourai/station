@@ -243,8 +243,19 @@ export interface SchedulerJob {
    * `target` and `monitor`. Set at create; it cannot move to another Project.
    */
   projectId?: string;
-  /** Server-recorded creator a targeted run acts as. Read-only. */
+  /**
+   * Server-recorded creator every run acts as (#2377 slice D: untargeted
+   * jobs too; #5126: a Project job's Task too). Who may change or run a job
+   * is decided by it for every job. Read-only.
+   */
   createdBy?: Readonly<{ userId: string }>;
+  /**
+   * #2377 slice D: present when the job has no recorded owner (a job created
+   * before owners were recorded, on a shared or hosted Station). Its runs
+   * have no Station tools until a person re-creates it; a Project job's
+   * runs start no Task at all (#5126). Read-only.
+   */
+  ownerNeeded?: string;
   /** Failed runs since the last success, newest first. Read-only. */
   consecutiveFailures?: number;
   /** When the last successful run completed. Read-only. */
@@ -256,6 +267,8 @@ export interface SchedulerJob {
   retryDelaySecs?: number;
   lastRun?: string;
   nextRun?: string;
+  /** Forecast for the requested week, in UTC. Omitted on normal list reads. */
+  weekOccurrences?: { times: string[]; truncated: boolean };
   /** Read-only server-issued identity for an exact unattended-tool grant. */
   unattendedPrincipal?: { kind: 'scheduled-job'; jobId: string };
   /** Optional deterministic external observation run before an agent turn. */
@@ -315,8 +328,8 @@ export interface AddJobOpts {
 }
 
 /**
- * Who a targeted automation acts as when it runs: the admitted creator, as
- * the create route resolved them. Replayed exactly, never strengthened.
+ * Who an automation acts as when it runs: the admitted creator, as the
+ * create route resolved them. Replayed exactly, never strengthened.
  */
 export type SchedulerAutomationCreator = Readonly<{
   userId: string;
@@ -351,7 +364,15 @@ export interface SchedulerProviderStats {
   }[];
 }
 
+export interface SchedulerRowIssue {
+  jobId: string;
+  name: string;
+  reason: 'invalid-json' | 'invalid-job';
+}
+
 export interface SchedulerProviderStatus {
+  /** Available only to the Station operator. */
+  rowIssues?: SchedulerRowIssue[];
   running: boolean;
   jobCount: number;
   lastTickAt?: string | null;

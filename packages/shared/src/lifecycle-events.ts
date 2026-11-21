@@ -292,7 +292,7 @@ type BirthSource = 'lock' | 'default';
 type BirthProbe = { timeoutMs?: number; windowsShell?: string };
 
 type LockEffect =
-  | { kind: 'sleep'; ms: number }
+  | { kind: 'sleep'; ms: number; signal?: AbortSignal }
   | {
       kind: 'birth';
       pid: number;
@@ -312,8 +312,8 @@ function* lookupBirth(
   return (yield { kind: 'birth', pid, source, fresh, probe }) ?? null;
 }
 
-function* sleep(ms: number): LockGen<void> {
-  yield { kind: 'sleep', ms };
+function* sleep(ms: number, signal?: AbortSignal): LockGen<void> {
+  yield { kind: 'sleep', ms, signal };
 }
 
 export type LockInspection = {
@@ -966,12 +966,15 @@ function* deletePublishedUnderExistingGuardGen(
 function* acquireGen(
   lock: string,
   options: FileMutationLockOptions,
+  signal?: AbortSignal,
 ): LockGen<LockInspection> {
+  signal?.throwIfAborted();
   const timeoutMs = options.timeoutMs ?? 10_000;
   // Own-pid, fail-closed: retry spurious lookup failures (#1057). Injected
   // fingerprints (tests) stay single-call; the in-loop reclaim lookups stay
   // single-attempt (their null is fail-safe).
   const birth = yield* ownBirthGen(options);
+  signal?.throwIfAborted();
   if (!birth) throw missingOwnBirthError('lock', options);
   const token = randomUUID();
   const temporary = `${lock}.${token}.tmp`;
@@ -992,6 +995,7 @@ function* acquireGen(
       birth,
       deadline,
       options,
+      signal,
     );
   } finally {
     try {
@@ -1039,25 +1043,30 @@ function* acquireWithTemporaryGen(
   birth: string,
   deadline: number,
   options: FileMutationLockOptions,
+  signal?: AbortSignal,
 ): LockGen<LockInspection> {
   while (true) {
+    signal?.throwIfAborted();
     if (existsSync(`${lock}.guard`)) {
       try {
         if (yield* reclaimOrphanGuardGen(lock, options, birth)) continue;
       } catch {
         // Invalid or unverifiable guard ownership fails closed.
       }
+      signal?.throwIfAborted();
       if (Date.now() >= deadline) {
         throw new Error('lifecycle journal lock guard is held');
       }
-      yield* sleep(10);
+      yield* sleep(10, signal);
       continue;
     }
-    if ((yield* activeClaimsGen(lock, undefined)).length > 0) {
+    const activeClaims = yield* activeClaimsGen(lock, undefined);
+    signal?.throwIfAborted();
+    if (activeClaims.length > 0) {
       if (Date.now() >= deadline) {
         throw new Error('lifecycle journal guard reclamation is active');
       }
-      yield* sleep(10);
+      yield* sleep(10, signal);
       continue;
     }
     try {
@@ -1071,14 +1080,16 @@ function* acquireWithTemporaryGen(
         // Atomic publication makes this transient; retry rather than reclaim.
       }
       if (observed && !(yield* ownerAliveGen(observed.owner, 'default'))) {
+        signal?.throwIfAborted();
         options.hooks?.afterStaleInspect?.(lock, observed);
         yield* guardedDeleteLockGen(lock, observed, options);
         continue;
       }
+      signal?.throwIfAborted();
       if (Date.now() >= deadline) {
         throw new Error('lifecycle journal lock is held by a live process');
       }
-      yield* sleep(10);
+      yield* sleep(10, signal);
       continue;
     }
     const owned = inspectLock(lock);
@@ -1151,7 +1162,14 @@ async function runLockGenAsync<T>(
   while (!step.done) {
     const effect = step.value;
     if (effect.kind === 'sleep') {
-      await sleepAsync(effect.ms);
+      try {
+        await sleepAsync(effect.ms, undefined, { signal: effect.signal });
+      } catch (error) {
+        step = generator.throw(
+          effect.signal?.aborted ? effect.signal.reason : error,
+        );
+        continue;
+      }
       step = generator.next();
       continue;
     }
@@ -1206,13 +1224,18 @@ export type FileMutationLock = (
  * promisified child-process probe, so the server's event loop keeps serving
  * requests while this caller waits. Server-side request/boot paths should
  * prefer this variant; short-lived CLI and process-exit paths may keep the
- * sync form.
+ * sync form. An AbortSignal cancels admission before publication. Once a
+ * publication or guard transaction begins, its cleanup runs to completion.
+ * A successful acquisition always requires release, even after abort.
  */
 export async function acquireFileMutationLockAsync(
   lock: string,
-  options: FileMutationLockOptions = {},
+  options: FileMutationLockOptions & { signal?: AbortSignal } = {},
 ): Promise<() => Promise<void>> {
-  const owned = await runLockGenAsync(acquireGen(lock, options), options);
+  const owned = await runLockGenAsync(
+    acquireGen(lock, options, options.signal),
+    options,
+  );
   return async () => {
     try {
       await runLockGenAsync(

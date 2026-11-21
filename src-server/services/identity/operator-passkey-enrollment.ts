@@ -29,10 +29,9 @@ import {
   randomInt,
   timingSafeEqual,
 } from 'node:crypto';
-import {
-  generateRegistrationOptions,
-  type PublicKeyCredentialCreationOptionsJSON,
-  type RegistrationResponseJSON,
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
 import { operatorPasskeyEnrollmentOps } from '../../telemetry/metrics.js';
@@ -375,6 +374,9 @@ export class OperatorPasskeyEnrollmentService {
     const registry = this.#openRegistry();
     // A new challenge replaces any earlier one: only the latest is valid.
     request.challenge = null;
+    const { generateRegistrationOptions } = await import(
+      '@simplewebauthn/server'
+    );
     const options = await generateRegistrationOptions({
       rpName: 'Station operator',
       rpID: rpId,
@@ -442,6 +444,9 @@ export class OperatorPasskeyEnrollmentService {
       if (hasCrossOriginClientData(response)) {
         throw new Error('cross-origin ceremony');
       }
+      const { verifyRegistrationResponse } = await import(
+        '@simplewebauthn/server'
+      );
       verification = await verifyRegistrationResponse({
         response,
         expectedChallenge: challenge.value,

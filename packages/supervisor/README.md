@@ -52,3 +52,12 @@ only Node built-ins, so it runs with no `node_modules` beside it;
 npm run typecheck:supervisor
 npm run test:focused -- packages/supervisor/src/__tests__/handoff.test.ts
 ```
+
+### Bounded setup commands (protocol 1.4)
+
+A workload host can advertise `maxRuntimeMs` through the read-only `capabilities`
+operation. A core requires that observation before starting an installer with
+a lifetime. The workload host enforces the limit even while no core is attached;
+a core restart does not reset it. Older supervisors/hosts refuse the negotiated
+operation before the installer starts. Existing unbounded terminal sessions keep
+their prior protocol behavior.

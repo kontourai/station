@@ -204,6 +204,14 @@ export function PluginRecoveryPanel({
                 .map((dependency) => dependency.id)
                 .join(', ') || 'None'}
             </p>
+            {basis.dependencies.map((dependency) => (
+              <PluginRegistryTrustSection
+                key={dependency.id}
+                trust={dependency.registryTrust}
+                context="installed"
+                dependency={dependency.id}
+              />
+            ))}
             {basis.permissions.pendingConsent.some(
               (entry) => entry.tier === 'trusted',
             ) && (

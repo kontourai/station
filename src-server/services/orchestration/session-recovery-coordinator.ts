@@ -13,9 +13,13 @@ import type {
 } from '@kontourai/station-contracts/connection-recovery';
 import {
   type CanonicalRuntimeEvent,
+  type EngineStartAdmissionIntent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
+  type TurnDispatchOrigin,
   type TurnStartedEvent,
+  turnDispatchOrigin,
+  turnResourceAdmissionIntent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { dispatchableChatAttachments } from '../../providers/sessions/chat-attachments.js';
@@ -1316,6 +1320,10 @@ export class SessionRecoveryCoordinator {
     modelOptions?: Record<string, string | number | boolean>;
     recoveryCorrelationId: string;
     signal: AbortSignal;
+    dispatchOrigin: TurnDispatchOrigin;
+    resourceAdmissionIntent?: EngineStartAdmissionIntent;
+    sourceTurnId: string;
+    sourceClientTurnId?: string;
   } {
     const dispatchable = dispatchableChatAttachments(source.attachments);
     return {
@@ -1328,6 +1336,13 @@ export class SessionRecoveryCoordinator {
       ...this.sourceModelConfiguration(source),
       recoveryCorrelationId,
       signal,
+      // Attribution and admission policy are independent server-owned facts.
+      dispatchOrigin: turnDispatchOrigin(source),
+      resourceAdmissionIntent: turnResourceAdmissionIntent(source),
+      sourceTurnId: source.turnId,
+      ...(source.clientTurnId
+        ? { sourceClientTurnId: source.clientTurnId }
+        : {}),
     };
   }
 

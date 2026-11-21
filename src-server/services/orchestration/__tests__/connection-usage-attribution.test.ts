@@ -25,7 +25,6 @@ function usageReads(store: EventStore): SessionTranscriptReads {
     sessionAttributionFor: () => null,
     listEventPayloads: () => [],
     listResolvedEventPayloads: () => [],
-    readUsageRevision: () => 'fixture',
     listUsageEventPayloads: () => [],
     listUsageReceiptEvents: (options) => store.listUsageReceiptEvents(options),
     listUsageCoverageEvents: (options) =>

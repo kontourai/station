@@ -85,6 +85,189 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 const makeCreateHome = trackTempDirs();
 
 describe('executeForegroundMessage', () => {
+  test.each([
+    {
+      name: 'missing local allowlist',
+      required: { allowedTools: ['repo_read'] },
+      recorded: {},
+      accepted: false,
+    },
+    {
+      name: 'retained local allowlist',
+      required: { allowedTools: ['repo_read'] },
+      recorded: { allowedTools: ['repo_read'] },
+      accepted: true,
+    },
+    {
+      name: 'missing blocked tool without an allowlist',
+      required: { blockedTools: ['repo_write'] },
+      recorded: {},
+      accepted: false,
+    },
+    {
+      name: 'retained blocked tool without an allowlist',
+      required: { blockedTools: ['repo_write'] },
+      recorded: { blockedTools: ['repo_write'] },
+      accepted: true,
+    },
+    {
+      name: 'stronger deny-all without an allowlist',
+      required: { blockedTools: ['repo_write'] },
+      recorded: { blockedTools: ['*'] },
+      accepted: true,
+    },
+    {
+      name: 'missing approval denial without an allowlist',
+      required: { denyApprovals: true },
+      recorded: { denyApprovals: false },
+      accepted: false,
+    },
+    {
+      name: 'retained approval denial without an allowlist',
+      required: { denyApprovals: true },
+      recorded: { denyApprovals: true },
+      accepted: true,
+    },
+  ])(
+    'Session reuse preserves $name',
+    async ({ required, recorded, accepted }) => {
+      const deps = dependencies();
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+        userId: 'owner',
+      }));
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'active-child',
+        startRequired: false,
+      }));
+      const lineage = {
+        mode: 'isolated-child' as const,
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: agentId('parent'),
+        rootAgentSlug: agentId('root'),
+      };
+      deps.readSessionStartMetadata = vi.fn(() => ({
+        delegation: { ...lineage, ...recorded },
+      }));
+      const sending = executeForegroundMessage(
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'Retain the original restrictions',
+          userId: 'owner',
+          delegation: { ...lineage, ...required },
+        },
+        deps,
+      );
+      if (accepted) {
+        await sending;
+        expect(deps.sendTurn).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(sending).rejects.toMatchObject({
+          code: 'delegation_lineage_unavailable',
+        });
+        expect(deps.sendTurn).not.toHaveBeenCalled();
+      }
+      expect(deps.startSession).not.toHaveBeenCalled();
+    },
+  );
+
+  test('Session reuse retains the requested restrictions across target-resolution awaits', async () => {
+    const deps = dependencies();
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: agentId('parent'),
+      rootAgentSlug: agentId('root'),
+      blockedTools: ['repo_write'],
+      denyApprovals: true,
+    };
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+      userId: 'owner',
+    }));
+    deps.resolveConversationSession = vi.fn(async () => {
+      delegation.blockedTools.length = 0;
+      delegation.denyApprovals = false;
+      return { sessionId: 'active-child', startRequired: false };
+    });
+    deps.readSessionStartMetadata = vi.fn(() => ({
+      delegation: { ...delegation, blockedTools: [], denyApprovals: false },
+    }));
+    await expect(
+      executeForegroundMessage(
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'Use the policy captured before the await',
+          userId: 'owner',
+          delegation,
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(deps.startSession).not.toHaveBeenCalled();
+    expect(deps.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test.each(['claude', 'station-agent'])(
+    'inherited constraints refuse %s before any work starts',
+    async (provider) => {
+      const deps = dependencies();
+      deps.getAgent = async () => ({
+        slug: 'station',
+        available: true,
+        execution: { agentConnectionId: engineConnectionId(provider) },
+      });
+      deps.getConnection = async () => ({
+        id: provider,
+        name: provider,
+        kind: 'agent',
+        type: provider,
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        config: { provider },
+        prerequisites: [],
+      });
+      const input = {
+        target: {
+          environment: { kind: 'current' as const },
+          agent: agentId('station'),
+        },
+        message: 'Remain restricted',
+        userId: 'owner',
+        delegation: {
+          mode: 'isolated-child' as const,
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: agentId('parent'),
+          rootAgentSlug: agentId('root'),
+          toolAllowlistConstraints: [['github_*']],
+        },
+      };
+      await expect(executeForegroundMessage(input, deps)).rejects.toMatchObject(
+        { code: 'delegation_lineage_unavailable' },
+      );
+      expect(deps.readSessionBinding).not.toHaveBeenCalled();
+      expect(deps.startSession).not.toHaveBeenCalled();
+      expect(deps.sendTurn).not.toHaveBeenCalled();
+      await executeForegroundMessage({ ...input, delegation: undefined }, deps);
+      expect(deps.startSession).toHaveBeenCalledTimes(1);
+      expect(deps.sendTurn).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('durably marks a claimed foreground create before the real session-start port', async () => {
     const home = makeCreateHome('foreground-create-mark-');
     const deps = dependencies();
@@ -954,6 +1137,55 @@ describe('executeForegroundMessage', () => {
     expect(reordered).toBe(first);
     expect(changed).not.toBe(first);
   });
+  test('a staged handoff with an indeterminate earlier effect cannot repeat the provider start', async () => {
+    const deps = dependencies();
+    deps.getAgent = vi.fn(async (_access, id) => ({
+      slug: id,
+      available: true,
+    }));
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'agent-a',
+    }));
+    const sessionId = 'conversation:test:session:b';
+    deps.prepareConversationHandoff = vi.fn(async () => ({
+      marker: {
+        predecessorSessionId: 'conversation:test',
+        sessionId,
+        targetAgentId: 'agent-b',
+        targetEnvironmentId: 'environment-kontour',
+      },
+      outcome: 'existing' as const,
+      carried: ['authorizedTranscript'],
+      reset: ['providerNativeCursor'],
+    }));
+    deps.readConversationHandoffEffect = vi.fn(async () => ({
+      marker: { sessionId },
+      status: 'indeterminate' as const,
+    }));
+    await expect(
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          conversationId: 'conversation:test',
+          message: 'First turn',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('agent-b'),
+            expectedEngine: { kind: 'station' },
+          },
+          handoffIntent: createConversationHandoffIntent('handoff-key', {
+            expectedCurrentSessionId: 'conversation:test',
+            contextPolicy: 'continue-from-history',
+          }),
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    expect(deps.startSession).not.toHaveBeenCalled();
+    expect(deps.sendTurn).not.toHaveBeenCalled();
+  });
+
   test('retries an accepted handoff with one stable provider-turn claim', async () => {
     const deps = dependencies();
     deps.getAgent = vi.fn(async (_access, id) => ({
@@ -1076,6 +1308,7 @@ describe('executeForegroundMessage', () => {
           environmentId: 'environment-kontour',
         }),
       }),
+      { pendingStartClientTurnId: 'client-turn-1' },
     );
     expect(deps.sendTurn).toHaveBeenCalledWith(
       expect.anything(),

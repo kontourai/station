@@ -32,6 +32,7 @@ import {
   setStreamConnectionState,
   subscribeStreamConnectionState,
 } from '../../hooks/orchestration/streamConnectionState';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { checkHostCompatibility } from '../../lib/compatibility';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
@@ -81,6 +82,7 @@ function isLoopbackEndpoint(url: string): boolean {
 // Guardrailed by proof:repo-governance.
 export function ConnectionBannerSource() {
   const { activeConnection, apiBase, removeConnection } = useConnections();
+  const activeStationName = useActiveStationName();
   const { isDesktop } = usePlatformProfile();
   const { status, reason, failureStreak, blocked, recheck } =
     useConnectionStatus({
@@ -155,7 +157,8 @@ export function ConnectionBannerSource() {
     !isDesktop &&
     new URL(endpoint).origin !== window.location.origin &&
     failureStreak >= 3 &&
-    reason !== 'busy';
+    reason !== 'busy' &&
+    reason !== 'authentication-rate-limited';
 
   /**
    * archive#3297 — a banner requires a decision.
@@ -241,12 +244,12 @@ export function ConnectionBannerSource() {
       failureStreak >= 3 &&
       notice.connected
     ) {
-      const name = activeConnection?.name || 'Station';
+      const name = activeStationName || 'Station';
       const explanation =
-        reason === 'busy'
-          ? `${name} is busy.`
-          : reason === 'timeout'
-            ? `${name} didn't answer in time.`
+        reason === 'authentication-rate-limited' || reason === 'timeout'
+          ? connectionFailureCopy(reason, name).summary
+          : reason === 'busy'
+            ? `${name} is busy.`
             : `Connection to ${name} lost.`;
       const message = blocked
         ? `${explanation} Reconnect needs attention.`
@@ -263,7 +266,7 @@ export function ConnectionBannerSource() {
     }
   }, [
     activeConnection?.id,
-    activeConnection?.name,
+    activeStationName,
     showDecision,
     showCompat,
     credentialOwned,
@@ -291,8 +294,8 @@ export function ConnectionBannerSource() {
     }
     const copy = connectionFailureCopy(
       reason,
-      activeConnection?.name || apiBase,
-      activeConnection?.url || apiBase,
+      activeConnection?.name,
+      endpoint,
     );
     const hasStaleContext = activeConnection?.lastSuccessAt !== undefined;
     const connectionId = activeConnection?.id;
@@ -406,14 +409,21 @@ export function ConnectionBannerSource() {
                   },
                 ];
               })()
-            : [
-                {
-                  label: 'Try now',
-                  onClick: () => {
-                    recheck();
+            : reason === 'relay-authority-unavailable'
+              ? [
+                  {
+                    label: 'Open Connections',
+                    onClick: () => openConnectionsModal({ mode: 'list' }),
                   },
-                },
-              ],
+                ]
+              : [
+                  {
+                    label: 'Try now',
+                    onClick: () => {
+                      recheck();
+                    },
+                  },
+                ],
     });
 
     return () => {
@@ -425,9 +435,8 @@ export function ConnectionBannerSource() {
     blocked,
     activeConnection?.id,
     activeConnection?.name,
-    activeConnection?.url,
     activeConnection?.lastSuccessAt,
-    apiBase,
+    endpoint,
     recheck,
     removeConnection,
     removeArmed,

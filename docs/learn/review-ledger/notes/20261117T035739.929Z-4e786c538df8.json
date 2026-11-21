@@ -1,0 +1,13 @@
+{
+  "revision": "ccdfe42f0f3c896cb89ab73fad712f127e2a1d40",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added one exception row for the attached reader's still-running caution actions; responsive-ui, theming, frontend and backend pattern references to the inventory's format and meaning remain accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Added one exception row for the attached reader's still-running caution actions; responsive-ui, theming, frontend and backend pattern references to the inventory's format and meaning remain accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Added one exception row for the attached reader's still-running caution actions; responsive-ui, theming, frontend and backend pattern references to the inventory's format and meaning remain accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Added one exception row for the attached reader's still-running caution actions; responsive-ui, theming, frontend and backend pattern references to the inventory's format and meaning remain accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

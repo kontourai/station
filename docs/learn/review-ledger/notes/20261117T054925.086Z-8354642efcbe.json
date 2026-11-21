@@ -1,0 +1,7 @@
+{
+  "revision": "8a7278cb06da232f90ae344a40e07efcdf7ce044",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Narrowed the exporter timing to when VoltAgent's default observability finds a VoltOps client, matching tryInitialize in the patched dist/index.mjs (only reached when the processor exists, i.e. voltOpsSync sampling is not never, and a global VoltOps client is set).","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

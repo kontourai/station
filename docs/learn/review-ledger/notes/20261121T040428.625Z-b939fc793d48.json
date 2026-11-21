@@ -1,0 +1,17 @@
+{
+  "revision": "aac51eb745412b86283559593c3d438f04d8b804",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The managed-chat ADR still points to the current orchestration API. The new child image command variant preserves its parent session route and documented permission checks.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the glossary, integration guide and contract authoring guidance against the new optional child-turn image capability and the existing typed-message boundary.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the glossary, integration guide and contract authoring guidance against the new optional child-turn image capability and the existing typed-message boundary.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the glossary, integration guide and contract authoring guidance against the new optional child-turn image capability and the existing typed-message boundary.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the integration guide and SDK authoring guidance. Images use the existing child SDK method with a structured message; the referenced package and entry point are unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the integration guide and SDK authoring guidance. Images use the existing child SDK method with a structured message; the referenced package and entry point are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -5,6 +5,7 @@ import {
 import {
   isRejectedPlugin,
   type Plugin,
+  type PluginUpdateSummary,
   type PreviewData,
   type ReadyPlugin,
   type ReinstallFromSource,
@@ -32,7 +33,11 @@ export function filterPlugins(plugins: Plugin[], search: string) {
   });
 }
 
-export function buildPluginListItems(plugins: Plugin[]) {
+export function buildPluginListItems(
+  plugins: Plugin[],
+  updates: readonly PluginUpdateSummary[] = [],
+) {
+  const available = new Set(updates.map((update) => update.name));
   return plugins.map((plugin) =>
     isRejectedPlugin(plugin)
       ? {
@@ -43,7 +48,7 @@ export function buildPluginListItems(plugins: Plugin[]) {
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Needs recovery · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Needs recovery · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${available.has(plugin.name) ? ' · Update available' : ''}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }

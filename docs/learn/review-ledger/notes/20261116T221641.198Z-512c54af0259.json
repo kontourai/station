@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Feature preview row now says feedback can also be turned on once for a Project in its settings' Agent feedback, matching ProjectSettingsView's gated section.","inputs":["docs/user/settings.md","src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

@@ -157,22 +157,58 @@ describe('independent scheduled delivery and full qualification', () => {
   });
 });
 
-it('passes Actions read permission through both publisher callers and orders platforms after settlement independently of failure', () => {
+it('passes Actions read permission through both publisher callers', () => {
   const cohort = read('nightly-native-cohort.yml');
   expect(nightly.jobs['native-cohort'].permissions?.actions).toBe('read');
   for (const name of ['promote-android', 'promote-macos'])
     expect(cohort.jobs[name].permissions?.actions).toBe('read');
+});
+
+it('requests one hosted macOS runner at a time while staging the native cohort', () => {
   const stage = read('nightly-native-stage.yml');
-  for (const name of ['stage-ios', 'stage-windows']) {
-    expect(stage.jobs[name].if).toContain('always()');
-    expect(stage.jobs[name].if).toContain('!cancelled()');
-    expect(stage.jobs[name].if).toContain(
-      "needs.plan-cohort.result == 'success'",
-    );
-    expect(stage.jobs[name].if).not.toMatch(
-      /needs\.stage-(android|macos)\.result/,
-    );
+  const needsOf = (job: Job) =>
+    Array.isArray(job.needs) ? job.needs : job.needs ? [job.needs] : [];
+  // GitHub schedules a job once every job in its transitive `needs` closure
+  // has settled, so the closure is what decides when a build can start.
+  const ancestors = (id: string, seen = new Set<string>()): Set<string> => {
+    for (const parent of needsOf(stage.jobs[id])) {
+      if (seen.has(parent)) continue;
+      seen.add(parent);
+      ancestors(parent, seen);
+    }
+    return seen;
+  };
+  const builds = Object.keys(stage.jobs).filter((id) =>
+    id.startsWith('stage-'),
+  );
+  // Pinned independently, so a renamed or added platform build is noticed.
+  expect(builds).toEqual([
+    'stage-android',
+    'stage-macos',
+    'stage-ios',
+    'stage-windows',
+  ]);
+  const guard = expr(
+    "github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true'",
+  );
+  for (const id of ['stage-android', 'stage-macos', 'stage-windows']) {
+    expect([...ancestors(id)], id).toEqual(['plan-cohort']);
+    expect(stage.jobs[id].if, id).toBe(guard);
   }
+  expect([...ancestors('stage-ios')]).toEqual(['plan-cohort', 'stage-macos']);
+  // Treat macOS as a scheduling dependency. The successful plan still owns
+  // iOS admission even if the macOS job failed.
+  expect(stage.jobs['stage-ios'].if).toBe(
+    expr(
+      "!cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true'",
+    ),
+  );
+  // The desktop manifest still needs both desktop builds.
+  expect(needsOf(stage.jobs['assemble-desktop']).sort()).toEqual([
+    'plan-cohort',
+    'stage-macos',
+    'stage-windows',
+  ]);
 });
 describe('Nightly publication admission', () => {
   const publishers = [

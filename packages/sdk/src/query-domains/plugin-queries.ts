@@ -1,9 +1,11 @@
 import type { PluginLifecycleProposal } from '@kontourai/station-contracts/plugin';
 import { _getApiBase } from '../api';
 import {
+  checkPluginUpdates,
   type InstalledPluginRecord,
   listPlugins,
   type PluginRecoveryPreview,
+  type PluginUpdateCheckResult,
   previewPluginRecovery,
 } from '../client/plugins';
 import type { QueryConfig } from '../query-core';
@@ -147,18 +149,23 @@ export function usePluginsQuery(config?: QueryConfig<InstalledPluginRecord[]>) {
   );
 }
 
-export function usePluginUpdatesQuery(config?: QueryConfig<any>) {
+export function usePluginUpdatesQuery(
+  config?: QueryConfig<PluginUpdateCheckResult['updates']>,
+) {
   return useApiQuery(
     ['plugin-updates'],
-    async () => {
-      const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/plugins/check-updates`,
-      );
-      if (!response.ok) return [];
-      const result = await response.json();
-      return result.updates || [];
-    },
+    async (signal) =>
+      (await checkPluginUpdates(await _getApiBase(), { signal })).updates,
+    config,
+  );
+}
+
+export function usePluginUpdateCheckQuery(
+  config?: QueryConfig<PluginUpdateCheckResult>,
+) {
+  return useApiQuery(
+    ['plugin-updates', 'check'],
+    async (signal) => checkPluginUpdates(await _getApiBase(), { signal }),
     config,
   );
 }

@@ -19,7 +19,7 @@ import type { useChatInput } from '../../hooks/useChatInput';
 import type { ChatSession } from '../../types';
 import { ConversationContextResetDialog } from './ConversationContextResetDialog';
 import { ConversationHandoffDialog } from './ConversationHandoffDialog';
-import { writeConversationContextBoundaryUiState } from './conversationContextBoundaryUiState';
+import type { ContinuedOnStation } from './ConversationStationHandoff';
 import {
   acceptConversationHandoffUiState,
   beginConversationHandoffUiState,
@@ -57,6 +57,9 @@ export function ConversationBoundaryDialogs({
   invalidate,
   showToast,
   refetchOrchestrationSessions,
+  continueOnStation,
+  onStageAgentChange,
+  handoffAvailable = true,
 }: {
   dialogs: ConversationBoundaryDialogsState;
   apiBase: string;
@@ -82,6 +85,15 @@ export function ConversationBoundaryDialogs({
   refetchOrchestrationSessions: ReturnType<
     typeof useOrchestrationSessionsQuery
   >['refetch'];
+  handoffAvailable?: boolean;
+  onStageAgentChange?: React.ComponentProps<
+    typeof ConversationHandoffDialog
+  >['onStage'];
+  /** Opens the paired Station's new chat and sends its first turn there. */
+  continueOnStation?: (
+    result: ContinuedOnStation,
+    sourceTitle?: string,
+  ) => void;
 }) {
   const {
     handoffSource,
@@ -92,7 +104,7 @@ export function ConversationBoundaryDialogs({
     contextResetSource,
     setContextResetSource,
     contextBoundarySessionId,
-    setContextBoundaryStored,
+    contextBoundaryAuthority,
     hasLocalDeferredMessages,
   } = dialogs;
   const handoffIsActive = handoffSession?.id === activeSession?.id;
@@ -104,7 +116,7 @@ export function ConversationBoundaryDialogs({
   );
   return (
     <>
-      {handoffSource && handoffSession?.conversationId && (
+      {handoffAvailable && handoffSource && handoffSession?.conversationId && (
         <ConversationHandoffDialog
           // A new dialog per open: request state never crosses chats.
           key={`${handoffSource.id}\0${handoffSource.nonce}`}
@@ -112,6 +124,7 @@ export function ConversationBoundaryDialogs({
           conversationId={handoffSession.conversationId}
           sessionId={handoffSession.id}
           currentAgentId={handoffSession.agentSlug}
+          onStage={handoffIsActive ? onStageAgentChange : undefined}
           executionPreset={handoffSource.executionPreset}
           prepareDraft={
             handoffIsActive ? chatInput.prepareOutgoingText : undefined
@@ -163,6 +176,30 @@ export function ConversationBoundaryDialogs({
               )?.focus();
             });
           }}
+          // Only a chat this Station owns can be carried to a paired one.
+          {...(continueOnStation &&
+          (!handoffSession.stationBinding ||
+            handoffSession.stationBinding.affinity.kind === 'host')
+            ? {
+                onContinuedOnStation: (result: ContinuedOnStation) => {
+                  // As for an Agent handoff: a draft that became the first
+                  // message leaves the composer with its quotes.
+                  if (handoffIsActive && result.clearsComposer) {
+                    chatInput.handleClearInput();
+                    chatDraftsStore.consumeQuotes(
+                      handoffSession.id,
+                      result.sentQuotes,
+                    );
+                  }
+                  setHandoffSource(null);
+                  continueOnStation(result, handoffSession.title);
+                  showToast(
+                    `Continuing on ${result.connection.stationName}`,
+                    'success',
+                  );
+                },
+              }
+            : {})}
           onAccepted={({
             receipt,
             target,
@@ -214,6 +251,12 @@ export function ConversationBoundaryDialogs({
       {contextResetSource &&
         activeSession?.conversationId === contextResetSource.id && (
           <ConversationContextResetDialog
+            key={JSON.stringify([
+              contextBoundaryAuthority?.namespace,
+              activeSession.conversationId,
+              contextBoundarySessionId,
+            ])}
+            authority={contextBoundaryAuthority}
             apiBase={apiBase}
             conversationId={activeSession.conversationId}
             sessionId={contextBoundarySessionId ?? activeSession.id}
@@ -237,13 +280,7 @@ export function ConversationBoundaryDialogs({
                 composerMenuTriggerRef.current?.focus(),
               );
             }}
-            onReserved={(boundary, idempotencyKey) => {
-              setContextBoundaryStored(
-                writeConversationContextBoundaryUiState(
-                  idempotencyKey,
-                  boundary,
-                ),
-              );
+            onReserved={(boundary) => {
               invalidate(orchestrationQueries.sessions().queryKey);
               if (boundary.status === 'reserved')
                 showToast('Agent context reset is ready', 'success');

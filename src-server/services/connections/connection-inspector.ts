@@ -39,6 +39,11 @@ import {
 } from '../../utils/bounded-async.js';
 import { stationOwnsEngineSignIn } from '../acp/acp-engine-descriptors.js';
 import {
+  acpConnectionIcon,
+  builtInAcpEntries,
+  builtInAcpEntryFor,
+} from '../acp/engine-setup.js';
+import {
   type ACPConnectionStatus,
   acpProviderRoutingStatus,
   acpRuntimeCatalogStatus,
@@ -124,6 +129,12 @@ interface ConnectionInspectorDependencies {
   ): InspectedPublicConnection | undefined;
   now(): number;
   onInspectionFailure?(error: unknown): void;
+  observeAdapter?<T>(
+    adapter: ProviderAdapterShape,
+    key: string,
+    signal: AbortSignal,
+    observe: () => Promise<T>,
+  ): Promise<T>;
 }
 
 type AdapterCommands = Array<{
@@ -264,6 +275,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       ),
     );
     throwIfAborted(request.signal);
+    const builtIns = builtInAcpEntries();
     for (const config of acpConnections) {
       const engineIdValue = engineId(config.id);
       const identity = this.dependencies.publicConnection(engineIdValue);
@@ -300,6 +312,10 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       // adapter that claims it now (OpenCode, behind its Feature Preview),
       // otherwise ACP. A chat keeps the provider it started with.
       const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
+      const icon = acpConnectionIcon(
+        config.icon,
+        builtInAcpEntryFor(config, builtIns),
+      );
       connections.push({
         id: identity.id,
         kind: 'agent',
@@ -331,10 +347,9 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           // The connection's saved icon (a built-in's `brand:kiro`), so the
           // engines list draws the same mark for it connected as it does
           // while it is not connected yet.
-          ...(typeof config.icon === 'string' && config.icon
-            ? { icon: config.icon }
-            : {}),
+          ...(icon ? { icon } : {}),
           ...(gatePartial.has(config.id) ? { inspectionPartial: true } : {}),
+          ...(liveStatus ? { acpProbeStatus: liveStatus.status } : {}),
           // `readinessReason` mirrors what `inspectAdapter` projects for
           // runtime adapters: WHY this connection is not ready, from the
           // engine's own observation. For ACP that is the probe's actual
@@ -370,7 +385,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         providerRouting: acpProviderRoutingStatus(liveStatus),
         prerequisites,
         status,
-        lastCheckedAt: null,
+        lastCheckedAt: liveStatus?.handshakeObservedAt ?? null,
       });
     }
     return connections;
@@ -429,18 +444,23 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       request.includeModelCatalog !== false;
     if (discoverModels) {
       try {
-        const discovery = adapter.listModelCatalog
-          ? adapter.listModelCatalog({
-              signal: request.signal,
-              maxEntries: MODEL_OPTION_MAX_ENTRIES,
-            })
-          : adapter.listModels
-            ? adapter
-                .listModels({
-                  signal: request.signal,
-                  maxEntries: MODEL_OPTION_MAX_ENTRIES,
-                })
-                .then((models) => ({ models }))
+        const listCatalog = adapter.listModelCatalog?.bind(adapter);
+        const listModels = adapter.listModels?.bind(adapter);
+        const discoveryOptions = {
+          signal: request.signal,
+          maxEntries: MODEL_OPTION_MAX_ENTRIES,
+        };
+        const discovery = listCatalog
+          ? this.observeAdapter(adapter, 'catalog', request.signal, () =>
+              listCatalog(discoveryOptions),
+            )
+          : listModels
+            ? this.observeAdapter(
+                adapter,
+                'catalog',
+                request.signal,
+                async () => ({ models: await listModels(discoveryOptions) }),
+              )
             : undefined;
         if (discovery) {
           liveCatalog =
@@ -452,6 +472,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       } catch {
         throwIfAborted(request.signal);
         liveDiscoveryFailed = true;
+        probePartial = true;
       }
     }
     const runtimeCatalog = withCanonicalModelIdentity(
@@ -477,8 +498,14 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     if (!hostDiscoveryDisabled && request.includeCommands !== false) {
       try {
         commands = await raceWithSignal(
-          adapter.getCommands?.({ signal: request.signal }) ??
-            Promise.resolve([]),
+          this.observeAdapter(
+            adapter,
+            'commands',
+            request.signal,
+            () =>
+              adapter.getCommands?.({ signal: request.signal }) ??
+              Promise.resolve([]),
+          ),
           request.signal,
         );
       } catch {
@@ -542,8 +569,12 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     partial: () => void,
   ): Promise<Prerequisite[]> {
     try {
-      const probe =
-        adapter.getPrerequisites?.({ signal }) ?? Promise.resolve([]);
+      const probe = this.observeAdapter(
+        adapter,
+        'prerequisites',
+        signal,
+        () => adapter.getPrerequisites?.({ signal }) ?? Promise.resolve([]),
+      );
       return getProviderAdapterRegistrationProvenance(adapter) === 'builtin' &&
         adapter.metadata.abortSettlement === 'await'
         ? await this.inspectWithSettlement(probe, signal)
@@ -578,10 +609,16 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
   ): Promise<Prerequisite[]> {
     try {
       const rows = await raceWithSignal(
-        acpAdapter.getPrerequisites?.({
-          ...(signal ? { signal } : {}),
-          connectionId: config.id,
-        }) ?? Promise.resolve([]),
+        this.observeAdapter(
+          acpAdapter,
+          `prerequisites:${config.id}`,
+          signal,
+          () =>
+            acpAdapter.getPrerequisites?.({
+              ...(signal ? { signal } : {}),
+              connectionId: config.id,
+            }) ?? Promise.resolve([]),
+        ),
         signal,
       );
       return rows.filter(
@@ -601,6 +638,17 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         },
       ];
     }
+  }
+
+  private observeAdapter<T>(
+    adapter: ProviderAdapterShape,
+    key: string,
+    signal: AbortSignal | undefined,
+    observe: () => Promise<T>,
+  ): Promise<T> {
+    return signal && this.dependencies.observeAdapter
+      ? this.dependencies.observeAdapter(adapter, key, signal, observe)
+      : observe();
   }
 
   private async inspectWithSettlement<T>(

@@ -897,6 +897,36 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     chats = {};
   });
 
+  test.each(['dead', 'closed', 'error'])(
+    'an ended %s provider binding cannot be resurrected by a legacy open-turn flag',
+    (status) => {
+      const updates = applyOrdinarySnapshot(
+        {
+          sessions: [
+            {
+              provider: 'claude',
+              threadId: 'ended',
+              status,
+              hasActiveTurn: true,
+            },
+          ],
+        },
+        {
+          ended: {
+            provider: 'claude',
+            orchestrationSessionStarted: true,
+            orchestrationTurnOpen: true,
+          },
+        },
+      );
+      expect(updates.ended).toMatchObject({
+        orchestrationStatus: status,
+        orchestrationTurnOpen: false,
+        status: 'idle',
+      });
+    },
+  );
+
   test('snapshot rehydration prefers a runtime-reported model over a legacy requested selector', () => {
     const updates = applyOrdinarySnapshot(
       {
@@ -980,6 +1010,52 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     expect(updates['thread-unknown']).not.toHaveProperty(
       'lastAppliedApprovalMode',
     );
+  });
+
+  test('snapshot restores the confirmed engine mode and leaves another pending control alone', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'acp',
+            threadId: 'mode-thread',
+            status: 'running',
+            currentModeId: 'code',
+          },
+        ],
+      },
+      {
+        'mode-thread': {
+          requestedProviderOptions: { mode: 'code', effort: 'high' },
+        },
+      },
+    );
+    expect(updates['mode-thread']).toMatchObject({
+      currentModeId: 'code',
+      requestedProviderOptions: { effort: 'high' },
+      orchestrationStatus: 'running',
+    });
+  });
+
+  test('snapshot restores a Codex reviewer independently of approval mode', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'reviewer-thread',
+            status: 'ready',
+            reportedApprovalReviewer: 'automatic',
+            appliedApprovalMode: 'ask',
+          },
+        ],
+      },
+      { 'reviewer-thread': {} },
+    );
+    expect(updates['reviewer-thread']).toMatchObject({
+      reportedApprovalReviewer: 'automatic',
+      lastAppliedApprovalMode: 'ask',
+    });
   });
 
   test('snapshot updates the reported model without eroding a pending picker request', () => {

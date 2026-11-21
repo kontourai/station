@@ -151,7 +151,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: mocks.refetchPlugins,
   }),
   usePluginUpdateMutation: () => ({ mutate: mocks.updateMutate }),
-  usePluginUpdatesQuery: () => ({ data: [] }),
+  usePluginUpdateCheckQuery: () => ({
+    data: { status: 'complete', updates: [] },
+  }),
   reloadPlugins: mocks.reloadPlugins,
   useReloadPluginsMutation: () => ({
     isPending: false,

@@ -274,16 +274,11 @@ test('Station’s runtime still delivers the unlisted arguments through the tool
     delegationAttestation?: string;
     userId?: string;
   };
-  expect(forward!.url).toBe(`${API_BASE}/api/orchestration/chat/delegated`);
-  expect(body.delegation).toMatchObject({
-    parentConversationId: 'conversation-parent',
-  });
-  expect(
-    verifyDelegationContextAttestation(
-      body.delegation!,
-      body.delegationAttestation!,
-    ),
-  ).toBe(true);
+  // #2377 slice D: the runtime stamps no delegation context (the route
+  // derives it from the verified caller), so the send is an ordinary one.
+  expect(forward!.url).toBe(`${API_BASE}/api/orchestration/chat`);
+  expect(body.delegation).toBeUndefined();
+  expect(body.delegationAttestation).toBeUndefined();
   expect(body.userId).toBe('user-1');
 });
 

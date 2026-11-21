@@ -239,9 +239,17 @@ function previewDiagnostics() {
   };
 }
 
+/**
+ * The constant page that hosts the sandboxed frame; it carries no authored
+ * bytes. No referrer, so the frame sees an empty `document.referrer` as it did
+ * under about:blank, and an inert icon, so the browser requests nothing else.
+ */
+export const BOOTSTRAP_PAGE =
+  '<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><link rel="icon" href="data:,"></head><body></body></html>';
+
 // Keep authored values in CDP call arguments, never in JavaScript source.
 const PREVIEW_BOOTSTRAP = `function(documentHtml, token, theme, appearance) {
-  return new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.style='border:0;width:100%;height:100%';frame.srcdoc=documentHtml;document.documentElement.style='height:100%';document.body.style='margin:0;height:100%';const capture=globalThis.__htmlPreview={height:0,entries:[],bytes:0,exceeded:false};let settled=false;addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.data?.token!==token)return;const data=event.data;if(data?.type==='html-preview-overflow')capture.exceeded=true;if(data?.type==='html-preview-console'&&typeof data.text==='string'){capture.bytes+=new TextEncoder().encode(JSON.stringify(data)).length;if(capture.entries.length>=128||capture.bytes>65536)capture.exceeded=true;else capture.entries.push({level:data.level,text:data.text,stack:data.stack});}if(data?.type==='html-preview-size'){capture.height=data.height;if(!settled){settled=true;setTimeout(()=>resolve(true),150)}}});frame.onload=()=>frame.contentWindow.postMessage({type:'html-reply-theme',theme:theme,tokens:appearance},'*');document.body.append(frame)});
+  return new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.referrerPolicy='no-referrer';frame.style='border:0;width:100%;height:100%';frame.srcdoc=documentHtml;document.documentElement.style='height:100%';document.body.style='margin:0;height:100%';const capture=globalThis.__htmlPreview={height:0,entries:[],bytes:0,exceeded:false};let settled=false;addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.data?.token!==token)return;const data=event.data;if(data?.type==='html-preview-overflow')capture.exceeded=true;if(data?.type==='html-preview-console'&&typeof data.text==='string'){capture.bytes+=new TextEncoder().encode(JSON.stringify(data)).length;if(capture.entries.length>=128||capture.bytes>65536)capture.exceeded=true;else capture.entries.push({level:data.level,text:data.text,stack:data.stack});}if(data?.type==='html-preview-size'){capture.height=data.height;if(!settled){settled=true;setTimeout(()=>resolve(true),150)}}});frame.onload=()=>frame.contentWindow.postMessage({type:'html-reply-theme',theme:theme,tokens:appearance},'*');document.body.append(frame)});
 }`;
 
 /** A fresh profile/process per render; never the person's browser-pane profile. */
@@ -306,9 +314,13 @@ export class HtmlReplyPreview {
               },
             }),
           );
+          // A served host page, not about:blank: Chrome 158 aborts when an
+          // about:blank page adds the sandboxed frame (#4917). The frame keeps
+          // its own process and opaque origin.
           const target = await host.openTarget({
             profileDir: directory,
             viewport: { width, height: page.height, deviceScaleFactor: 1 },
+            document: BOOTSTRAP_PAGE,
           });
           const cdp = host.cdp();
           const send = <T>(method: string, params?: object) =>

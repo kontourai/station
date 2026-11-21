@@ -1,0 +1,21 @@
+{
+  "revision": "10f7a45d399916989d453d4d3686285b352b44ad",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the Coding Diff and File Preview File/Changes callers through the Chromium surface at 390 and 1440 in both themes. The toolbar stays reachable, continuation fragments remain in the source-text column, and annotations show relative time with the underlying instant as the tooltip.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Git repository list now includes the containing checkout for a Project subfolder through the same confined read that Diff uses. The owner route still controls location admission, and the real monorepo test checks both answers. The operator's prospective folder scan keeps its previous bounds and owner.","inputs":["docs/reference/sdk.md","src-server/routes/projects/coding.ts"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the repository discovery/read split and the Project, prospective-folder and registered-checkout boundaries. The admitted containing repository contributes one item to the existing 24-result bound. Real Git proves the branch list and Diff agree without changing file or command mutation authority.","inputs":["src-server/routes/projects/coding.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the repository discovery/read split and the Project, prospective-folder and registered-checkout boundaries. The admitted containing repository contributes one item to the existing 24-result bound. Real Git proves the branch list and Diff agree without changing file or command mutation authority.","inputs":["src-server/routes/projects/coding.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the repository discovery/read split and the Project, prospective-folder and registered-checkout boundaries. The admitted containing repository contributes one item to the existing 24-result bound. Real Git proves the branch list and Diff agree without changing file or command mutation authority.","inputs":["src-server/routes/projects/coding.ts"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"The observed provider threads use the shared relative-time formatter. The forge author and read-only behavior, local thread anchors, and working-tree read stay on the current owners.","inputs":["src-ui/src/components/coding-layout/DiffPanel.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"The existing line anchor, highlight and file-state controls retain their identities. A grouped source text cell wraps beside the independent line number. The actual Changes route continues to use the shared Diff surface against HEAD.","inputs":["src-ui/src/workspace-panes/FilePreviewPane.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the on-demand project layout and pane route adapter against the current path and authority selectors. The same shared pane action frame wraps both destinations. Focused route keepers and the normal Coding/File Preview browser pathways pass.","inputs":["src-ui/src/app-shell/AppViewContent.tsx"]}
+  ]
+}

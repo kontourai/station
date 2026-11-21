@@ -1192,6 +1192,7 @@ function coordinatorFor(
   install: Install,
   options: {
     policy?: string;
+    env?: NodeJS.ProcessEnv;
     running?: () =>
       | Array<{ sessionId: string }>
       | Promise<Array<{ sessionId: string }>>;
@@ -1218,7 +1219,7 @@ function coordinatorFor(
       return resolveInstallProvenance(install.moduleDir);
     },
     options: {
-      env: launcherEnv(install),
+      env: options.env ?? launcherEnv(install),
       fetchFn: fetchFn as unknown as typeof fetch,
       pinnedKeys: TEST_KEYS,
       platform: 'linux',
@@ -1286,6 +1287,72 @@ function coordinatorFor(
 }
 
 describe('the server update coordinator (#3851)', () => {
+  test.each([
+    {
+      scenario: 'absent',
+      context: () => ({}),
+      discoveries: 0,
+      supported: false,
+    },
+    {
+      scenario: 'malformed',
+      context: () => ({ STATION_SERVICE_LAUNCHER: '{"protocol":2}' }),
+      discoveries: 0,
+      supported: false,
+    },
+    {
+      scenario: 'foreign root',
+      context: (install: Install) =>
+        launcherEnv(install, { installRoot: makeInstall().installRoot }),
+      discoveries: 1,
+      supported: false,
+    },
+    {
+      scenario: 'different version',
+      context: (install: Install) => launcherEnv(install, { version: NEWER }),
+      discoveries: 1,
+      supported: false,
+    },
+    {
+      scenario: 'active',
+      context: (install: Install) => launcherEnv(install),
+      discoveries: 1,
+      supported: true,
+    },
+    {
+      scenario: 'trial',
+      context: (install: Install) => launcherEnv(install, { role: 'trial' }),
+      discoveries: 1,
+      supported: true,
+    },
+  ])(
+    'resolves launcher context at first use and caches support ($scenario)',
+    async ({ context, discoveries, supported }) => {
+      const install = makeInstall();
+      const env: NodeJS.ProcessEnv = {};
+      const { coordinator, provenanceCalls, request } = coordinatorFor(
+        install,
+        { env },
+      );
+      Object.assign(env, context(install));
+
+      expect((await coordinator.state()).supported).toBe(supported);
+      if (supported) {
+        delete env.STATION_SERVICE_LAUNCHER;
+      } else {
+        expect(await coordinator.stage()).toMatchObject({
+          ok: false,
+          status: 409,
+        });
+        expect(request()).toBeNull();
+        expect(fetchFn).not.toHaveBeenCalled();
+        Object.assign(env, launcherEnv(install));
+      }
+      expect((await coordinator.state()).supported).toBe(supported);
+      expect(provenanceCalls()).toBe(discoveries);
+    },
+  );
+
   test('checks once after the boot delay, not before, and a repeated trigger within the TTL does not refetch', async () => {
     const install = makeInstall();
     const { coordinator, clock, timers, published } = coordinatorFor(install, {

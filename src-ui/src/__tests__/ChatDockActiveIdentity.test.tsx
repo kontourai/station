@@ -14,6 +14,11 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '⌘W',
 }));
 
+vi.mock('../hooks/useReportedDelegationStart', () => ({
+  useReportedDelegationStart: (threadId: string) =>
+    threadId === 'task:review' ? 'CLI (reported)' : null,
+}));
+
 afterEach(cleanup);
 
 /**
@@ -129,6 +134,28 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       screen.getByText('Driven from delegation').getAttribute('title'),
     ).toBe('Driven from a delegated task');
+  });
+
+  test('shows a reported start for the host delegation in a working chat', () => {
+    const { rerender } = render(
+      <ChatDockActiveIdentity
+        session={session}
+        inputOrigin={{ kind: 'delegation', taskId: 'task:review' }}
+        reportedStartThreadId="task:review"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Started from CLI (reported)')).toBeTruthy();
+
+    rerender(
+      <ChatDockActiveIdentity
+        session={session}
+        inputOrigin={{ kind: 'delegation', taskId: 'task:review' }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Started from CLI (reported)')).toBeNull();
+    expect(screen.getByText('Driven from delegation')).toBeTruthy();
   });
 
   test('the title and the context each carry their full text as a tooltip; the title names the context too, which may have stepped aside', () => {

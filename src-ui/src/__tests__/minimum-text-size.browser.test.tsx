@@ -9,11 +9,13 @@ import { scrollBrowserFixture } from './scroll-browser-fixture';
 const fixture = `
 import React from 'react';
 import {createRoot} from 'react-dom/client';
+import {NewChatAction} from './src-ui/src/components/NewChatAction';
 import {CodeBlockFrame} from './src-ui/src/components/chat/CodeBlockFrame';
 import './src-ui/src/components/badges/EngineChip.css';
 import './src-ui/src/components/badges/AttributionChip.css';
 createRoot(document.getElementById('root')).render(
   <div className="chat-dock">
+    <NewChatAction iconOnly />
     <span className="chat-dock__mobile-eyebrow" data-probe="dock subtitle">Codex</span>
     <span className="engine-chip"><span className="engine-chip__pill" data-probe="engine chip">CODEX</span></span>
     <span className="attribution-chip"><span className="attribution-chip__pill" data-probe="attribution chip">AGENT</span></span>
@@ -24,7 +26,7 @@ createRoot(document.getElementById('root')).render(
   </div>);
 `;
 
-test('#4403: dock and chip labels and code read at 12px or more on a phone; a timestamp may be 11px', async () => {
+test('#4403: dock, chip, code and tooltip text read at 12px or more on a phone; a timestamp may be 11px', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(fixture);
   try {
     await page.addStyleTag({
@@ -54,6 +56,15 @@ test('#4403: dock and chip labels and code read at 12px or more on a phone; a ti
     ])
       expect(sizes[label], label).toBeGreaterThanOrEqual(12);
     expect(sizes.timestamp).toBeGreaterThanOrEqual(11);
+    await page.keyboard.press('Tab');
+    const tooltip = page.getByRole('tooltip', { name: 'New chat' });
+    await tooltip.waitFor({ state: 'visible' });
+    expect(
+      await tooltip.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).fontSize),
+      ),
+      'New chat tooltip',
+    ).toBeGreaterThanOrEqual(12);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

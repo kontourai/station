@@ -12,6 +12,38 @@ import {
 
 const OBSERVED = '2026-11-15T12:00:00.000Z';
 
+test.each(['reviewing', 'review-needed'] as const)(
+  'a clean forge head with Station %s stays in review until its review clears',
+  (state) => {
+    const fact = pr('42', { readiness: 'clean', headSha: 'a'.repeat(40) });
+    fact.feedback = { state, headSha: 'a'.repeat(40), reviewEachHead: true };
+    expect(derive({ pullRequests: [fact] }).placement).toEqual({
+      kind: 'lane',
+      lane: 'in_review',
+    });
+    fact.feedback.headSha = 'b'.repeat(40);
+    expect(derive({ pullRequests: [fact] }).placement).toEqual({
+      kind: 'lane',
+      lane: 'in_review',
+    });
+    delete fact.feedback.headSha;
+    expect(derive({ pullRequests: [fact] }).placement).toEqual({
+      kind: 'lane',
+      lane: 'in_review',
+    });
+    if (fact.status.state === 'current') delete fact.status.headSha;
+    expect(derive({ pullRequests: [fact] }).placement).toEqual({
+      kind: 'lane',
+      lane: 'in_review',
+    });
+    delete fact.feedback.reviewEachHead;
+    expect(derive({ pullRequests: [fact] }).placement).toEqual({
+      kind: 'lane',
+      lane: 'ready_to_merge',
+    });
+  },
+);
+
 function task(overrides: Partial<TaskLaneInput['task']> = {}) {
   return {
     id: 'task-a',
@@ -311,6 +343,23 @@ describe('the lane table, one row at a time', () => {
       'prUnknown',
       'PR status unavailable',
       'Open PR',
+    ],
+    [
+      '16a fix attempts used (#5066)',
+      {
+        task: task({
+          status: 'blocked',
+          pullRequestWatchHold: {
+            checks: ['ci / unit-tests'],
+            pullRequest: 'acme/widgets#42',
+            at: OBSERVED,
+          },
+        }),
+      },
+      'lane:needs_you',
+      'fixAttemptsUsed',
+      'Fix attempts used',
+      'Open Task',
     ],
     [
       '16 marked blocked',

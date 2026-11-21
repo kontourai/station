@@ -259,6 +259,23 @@ approvals, or reuse saved text as current online data. Other tabs hear committed
 changes through BroadcastChannel. IndexedDB failure is reported by the setting
 and reader; a failed best-effort history capture cannot fail the live read.
 
+Separately, and never persisted, the page keeps recently read transcript windows
+in memory ([transcriptWindowCache](../../src-ui/src/hooks/orchestration/transcriptWindowCache.ts)):
+at most 12 windows and about 4 MB, least recently used first, keyed by the
+verified app authority, the target Station's authority, the API base, request
+scope and conversation. Switching back to a conversation paints its last window
+while the ordinary read revalidates it; the paint grants no write, which the
+conversation-open read still decides. It never names the current child Session,
+offers no approval answer until the re-read lands, and a failed re-read drops
+the painted rows (so the failure shows) and forgets the copy. A connection switch, authority change or
+sign-out clears it, and a read that began before a clear cannot repopulate it.
+Inbox rows warm it after a short hover or keyboard-focus dwell, one read at a
+time.
+A fresh transcript head read can propose a materialized Session for rebinding
+while the chat still holds the Session it had when that read started. The open
+read then verifies the new binding. Settled history pages keep their transcript
+through later Session changes.
+
 Raw `orchestration-sessions` remain excluded from query persistence: they inherit
 `resumeCursor`, model routing, runtime diagnostics and prompt-derived titles.
 [OfflineSessionIndex](../../src-ui/src/components/OfflineSessionIndex.tsx) projects
@@ -289,6 +306,9 @@ first opened online. New build workers
 activate immediately and remove older shell caches; registration bypasses the
 HTTP worker cache and checks for updates at launch and on returning to the tab.
 An already open page offers **Reload to update** when its controller changes.
+The action appears above the Chat dock. When the dock fills a phone screen,
+the shell reserves a row above the dock header for the action. **Read saved copies** retains a separate position when both
+actions appear.
 A page loaded from the anonymous fallback reloads on reconnect to obtain the
 current runtime bootstrap. Ordinary navigations always request fresh HTML.
 

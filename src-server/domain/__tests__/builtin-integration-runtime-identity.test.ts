@@ -45,6 +45,9 @@ import {
   stationControlRuntimeIdentity,
   stationDocsRuntimeIdentity,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
+import { isCanonicalStationDocsDelivery } from '../../tools/station-docs-binding.js';
+import { materializeStationAgent } from '../agent-registry.js';
 import { ConfigLoader } from '../config-loader.js';
 
 const CONTROL_PATH = ['integrations', 'station-control', 'integration.json'];
@@ -76,6 +79,46 @@ describe('builtin integration runtime identity (station#3063)', () => {
 
   afterEach(() => {
     rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  test('only the unmodified Station Agent and shipped integration qualify for lazy Claude delivery', async () => {
+    const loader = newLoaderWithIdentity(homeDir, 3141);
+    await materializeBuiltinIntegrations(loader);
+    await materializeStationAgent(loader);
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: (slug) => loader.loadAgent(slug),
+      resolveToolServer: (id) => loader.loadIntegration(id),
+      resolveSkillDir: async () => null,
+    });
+    async function delivery() {
+      const { agent } = await resolver({
+        provider: 'claude',
+        threadId: 'station-docs-delivery',
+        metadata: { agentSlug: 'station' },
+      });
+      expect(
+        agent?.toolServers?.some((tool) => tool.id === 'station-docs'),
+      ).toBe(true);
+      if (!agent) throw new Error('Station Agent did not resolve');
+      return isCanonicalStationDocsDelivery(agent);
+    }
+
+    expect(await delivery()).toBe(true);
+    const path = join(homeDir, ...DOCS_PATH);
+    const shipped = await readFile(path, 'utf8');
+    writeFileSync(
+      path,
+      JSON.stringify({ ...JSON.parse(shipped), args: ['custom.js'] }),
+    );
+    expect(await delivery()).toBe(false);
+    writeFileSync(path, shipped);
+    expect(await delivery()).toBe(true);
+
+    await loader.mutateAgent('station', (spec) => ({
+      ...spec,
+      prompt: 'My Station Agent',
+    }));
+    expect(await delivery()).toBe(false);
   });
 
   test('two materializations under DIFFERENT instance identities produce byte-identical files and the second performs zero writes', async () => {

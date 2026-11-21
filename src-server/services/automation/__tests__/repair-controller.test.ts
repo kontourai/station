@@ -1064,3 +1064,120 @@ test('the repair mode check alone refuses an intent whose fingerprint matches th
   ).toEqual([original.id]);
   expect(context.worker).toHaveBeenCalledTimes(1);
 });
+
+/**
+ * #4575: a pending repair intent whose rule disappears (deleted) or stops
+ * being an isolated-repair rule (kind changed) is refused on the next tick,
+ * so restoring the identical rule inside the 72-hour event window, after an
+ * intervening tick, can never dispatch the stale repair.
+ */
+test.each([
+  ['deleted', 'delete'],
+  ['changed to dispatch-task', 'change-kind'],
+] as const)(
+  'a pending repair intent whose rule was %s is refused and never dispatches after the rule is restored (#4575)',
+  async (_label, change) => {
+    const context = await fixture();
+    const original = context.policy.read().rules[0]!;
+    const second = await context.policy.createRule({
+      ...original,
+      name: 'second repair',
+    });
+    await context.policy.setEnabled({
+      kind: 'rule',
+      id: second.id,
+      expectedFingerprint:
+        context.controller.automationConfiguration().fingerprint,
+      mode: 'live',
+    });
+    const source = context.policy.read().sources[0]!;
+    const normalized = normalizeGitHubWorkflowRun(
+      workflowRun({
+        id: 55555559,
+        runAttempt: 2,
+        conclusion: 'failure',
+        updatedAt: new Date(Date.now() - 1000).toISOString(),
+      }),
+      { source, receivedAt: Date.now() },
+    );
+    if (normalized.kind !== 'event') throw new Error(normalized.reason);
+    recordAutomationEvent({
+      ledger: context.ledger,
+      source,
+      rules: context.policy
+        .actionableRules(source.id)
+        .filter((rule) => rule.id === second.id),
+      event: normalized.event,
+      transportId: normalized.event.semanticKey,
+      now: Date.now(),
+    });
+    const intent = context.ledger
+      .listActionIntents()
+      .find((candidate) => candidate.ruleId === second.id);
+    expect(intent?.state).toBe('pending');
+
+    // Hand edits, as an operator restoring a backup would make them.
+    const live = JSON.parse(readFileSync(context.policy.path, 'utf8'));
+    const write = (configuration: unknown) =>
+      writeFileSync(context.policy.path, JSON.stringify(configuration), {
+        mode: 0o600,
+      });
+    if (change === 'delete') {
+      write({
+        ...live,
+        rules: live.rules.filter(
+          (rule: { id: string }) => rule.id !== second.id,
+        ),
+      });
+    } else {
+      // The source must also grant dispatch-task, or the edited file would
+      // be unreadable and the tick would refuse nothing at all.
+      write({
+        ...live,
+        sources: live.sources.map((s: { grants: { actions: string[] }[] }) => ({
+          ...s,
+          grants: s.grants.map((grant) => ({
+            ...grant,
+            actions: [...grant.actions, 'dispatch-task'],
+          })),
+        })),
+        rules: live.rules.map(
+          (rule: { id: string; action: Record<string, unknown> }) =>
+            rule.id === second.id
+              ? {
+                  ...rule,
+                  action: {
+                    kind: 'dispatch-task',
+                    projectId: rule.action.projectId,
+                    agentId: rule.action.agentId,
+                    instructions: rule.action.instructions,
+                    budget: {
+                      maxTurns: 2,
+                      maxTokens: 10_000,
+                      maxWallRuntimeMs: 60_000,
+                    },
+                  },
+                }
+              : rule,
+        ),
+      });
+      expect(context.policy.read().rules.length).toBe(live.rules.length);
+    }
+    // The intervening tick: the intent is refused, not skipped.
+    await context.controller.tick();
+    expect(context.ledger.readIntent(intent!.intentId)).toMatchObject({
+      state: 'refused',
+      reason: 'policy_changed',
+    });
+    // Restore the identical configuration within the event window: the
+    // fingerprint matches again, but the refused intent stays refused.
+    write(live);
+    await context.controller.tick();
+    await context.controller.tick();
+    expect(context.ledger.readIntent(intent!.intentId)?.state).toBe('refused');
+    expect(
+      context.controller.store.list().map((run) => run.intent.ruleId),
+    ).toEqual([original.id]);
+    expect(context.worker).toHaveBeenCalledTimes(1);
+  },
+);

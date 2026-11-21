@@ -1,6 +1,11 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { access, constants as fsConstants, readFile } from 'node:fs/promises';
+import {
+  access,
+  constants as fsConstants,
+  readFile,
+  writeFile,
+} from 'node:fs/promises';
 import { availableParallelism, totalmem } from 'node:os';
 import type {
   WorkloadBudgetStatus,
@@ -8,9 +13,12 @@ import type {
   WorkloadScopeCleanupErrorKind,
   WorkloadScopeCleanupFailure,
   WorkloadScopeCleanupStatus,
+  WorkloadScopePressure,
+  WorkloadScopeProcess,
 } from '@kontourai/station-contracts/system-status';
 import {
   type ChildWorkloadLaunch,
+  type ChildWorkloadNotice,
   type ChildWorkloadOomKill,
   type ChildWorkloadOutcome,
   closeChildWorkload,
@@ -26,6 +34,8 @@ import {
 import {
   workloadScopeCleanupAttempts,
   workloadScopeCleanupBacklog,
+  workloadScopeMemoryPressure,
+  workloadScopeOomKills,
 } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import {
@@ -54,6 +64,8 @@ interface WorkloadLimits {
   tasksMax: number;
   totalTasksMax: number;
   swapMaxBytes: number;
+  /** Share of a scope's memory.max at which it is under pressure. */
+  pressurePercent: number;
 }
 
 interface ActiveWorkload {
@@ -69,7 +81,7 @@ interface ActiveWorkload {
   observed?: (outcome: ChildWorkloadOutcome | undefined) => void;
   /** The scope's cgroup path, resolved once the scope exists. */
   controlGroup?: string;
-  /** `oom_kill` count already announced to {@link oomListeners}. */
+  /** `oom_kill` count already announced to {@link noticeListeners}. */
   oomKillsReported: number;
   /** An engine scope launched with a holder (see holderLaunch). */
   holderLaunched?: boolean;
@@ -90,7 +102,19 @@ interface ActiveWorkload {
   oomKillsPending?: number;
   /** When a poll first saw the count rise (within the 1 s poll interval). */
   lastOomKillAt?: string;
-  oomListeners: Set<(kill: ChildWorkloadOomKill) => void>;
+  /** The scope's largest processes when that poll saw the count rise. */
+  lastOomKillProcesses?: WorkloadScopeProcess[];
+  /** Set while the scope is under memory pressure (see observePressure). */
+  pressure?: WorkloadScopePressure;
+  /**
+   * An engine scope's processes whose OOM score was raised above the
+   * engine's (see raiseCommandOomScores), pruned to those still in it.
+   */
+  oomScoreRaised?: Set<string>;
+  /** Set once raising a command's OOM score failed: no further attempts. */
+  oomScoreRaiseFailed?: boolean;
+  /** The scope's workload-notice subscribers (#5113), engines normally. */
+  noticeListeners: Set<(notice: ChildWorkloadNotice) => void>;
 }
 
 let state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping' = 'unmanaged';
@@ -412,7 +436,19 @@ function limitsFrom(budget: ResolvedWorkloadMemoryBudget): WorkloadLimits {
       2048,
     ),
     swapMaxBytes: memoryBytes('STATION_WORKLOAD_SWAP_MIB', 256, true),
+    pressurePercent: pressurePercent(),
   };
+}
+
+/** Default share of memory.max at which a scope is under pressure. */
+const DEFAULT_PRESSURE_PERCENT = 85;
+
+function pressurePercent(): number {
+  const key = 'STATION_WORKLOAD_PRESSURE_PERCENT';
+  const value = positiveInteger(process.env, key, DEFAULT_PRESSURE_PERCENT);
+  if (value < 50 || value > 99)
+    throw new Error(`${key} must be a whole number from 50 to 99.`);
+  return value;
 }
 
 /**
@@ -523,13 +559,20 @@ function systemctl(args: string[]): Promise<string> {
   });
 }
 
-/** `oom_kill` from a cgroup's `memory.events`, or undefined when unreadable. */
-async function readOomKills(controlGroup: string): Promise<number | undefined> {
+/** A scope's cgroup memory files, or undefined when unreadable. */
+async function readScope(
+  controlGroup: string,
+): Promise<ScopeMemoryReading | undefined> {
   try {
-    return (await readScopeMemory(`${cgroupRoot}${controlGroup}`)).oomKills;
+    return await readScopeMemory(`${cgroupRoot}${controlGroup}`);
   } catch {
     return undefined;
   }
+}
+
+/** `oom_kill` from a cgroup's `memory.events`, or undefined when unreadable. */
+async function readOomKills(controlGroup: string): Promise<number | undefined> {
+  return (await readScope(controlGroup))?.oomKills;
 }
 
 /** The scope's control group once systemd has loaded it. */
@@ -618,12 +661,8 @@ async function observeHolder(
     return;
   }
   if ((entry.holderMisses ?? 0) >= HOLDER_SEARCH_LIMIT) return;
-  const holderCmdline = `${holderBinaries.sleep}\0${HOLDER_SLEEP_SECONDS}\0`;
   for (const pid of pids) {
-    const cmdline = await readFile(`${procRoot}/${pid}/cmdline`, 'utf8').catch(
-      () => '',
-    );
-    if (cmdline !== holderCmdline) continue;
+    if (!(await isHolderCommandLine(pid))) continue;
     const start = await processStart(pid);
     if (start === undefined) continue;
     entry.holder = { pid, start };
@@ -646,6 +685,305 @@ async function observeHolder(
   }
 }
 
+/** Whether a process runs exactly the holder's command line. */
+async function isHolderCommandLine(pid: string): Promise<boolean> {
+  if (!holderBinaries) return false;
+  const cmdline = await readFile(`${procRoot}/${pid}/cmdline`, 'utf8').catch(
+    () => '',
+  );
+  return cmdline === `${holderBinaries.sleep}\0${HOLDER_SLEEP_SECONDS}\0`;
+}
+
+/** A scope's pids, as the kernel lists them, at most `limit`. */
+async function scopePids(
+  controlGroup: string,
+  limit: number,
+): Promise<string[] | undefined> {
+  try {
+    return (await readFile(`${cgroupRoot}${controlGroup}/cgroup.procs`, 'utf8'))
+      .split('\n')
+      .filter((pid) => /^\d+$/.test(pid))
+      .slice(0, limit);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Processes a snapshot reads; a scope runs at most TasksMax (512) tasks. */
+const SNAPSHOT_PID_LIMIT = 512;
+/** The largest processes a snapshot keeps. */
+const SNAPSHOT_TOP = 3;
+/** A snapshot that takes longer is dropped rather than delaying the poll. */
+const SNAPSHOT_TIMEOUT_MS = 500;
+
+/**
+ * The scope's largest processes by resident memory, from cgroup.procs and
+ * each pid's /proc status (`Name`, `VmRSS`). Bounded in processes read and
+ * in time; any failure yields undefined, never an error.
+ */
+async function largestProcesses(
+  controlGroup: string,
+): Promise<WorkloadScopeProcess[] | undefined> {
+  const snapshot = (async () => {
+    const pids = await scopePids(controlGroup, SNAPSHOT_PID_LIMIT);
+    if (!pids) return undefined;
+    const rows = await Promise.all(
+      pids.map(async (pid) => {
+        const status = await readFile(
+          `${procRoot}/${pid}/status`,
+          'utf8',
+        ).catch(() => undefined);
+        const name = status && /^Name:\s*(.*)$/m.exec(status)?.[1]?.trim();
+        const rssKiB = status && /^VmRSS:\s*(\d+)\s*kB/m.exec(status)?.[1];
+        // Kernel threads and exited processes have no resident size.
+        if (!name || !rssKiB) return undefined;
+        return {
+          pid: Number(pid),
+          name: name.slice(0, 64),
+          rssBytes: Number(rssKiB) * 1024,
+        };
+      }),
+    );
+    return rows
+      .filter((row): row is WorkloadScopeProcess => row !== undefined)
+      .sort((a, b) => b.rssBytes - a.rssBytes)
+      .slice(0, SNAPSHOT_TOP);
+  })().catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), SNAPSHOT_TIMEOUT_MS);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([snapshot, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * How far an engine scope's commands are raised above the engine in
+ * `oom_score_adj`. The kernel adds adj × (memory.max / 1000) to a process's
+ * badness in a scope OOM, so +300 counts as 30% of the scope's limit: the
+ * engine is chosen only once no command is left that is within that margin
+ * of its size.
+ */
+const COMMAND_OOM_SCORE_RAISE = 300;
+/** The kernel's largest `oom_score_adj`. */
+const OOM_SCORE_ADJ_MAX = 1000;
+
+async function readOomScoreAdj(pid: string): Promise<number | undefined> {
+  const text = await readFile(`${procRoot}/${pid}/oom_score_adj`, 'utf8').catch(
+    () => undefined,
+  );
+  const value = Number(text?.trim());
+  return text !== undefined && Number.isSafeInteger(value) ? value : undefined;
+}
+
+/**
+ * Makes an engine scope's commands the kernel's first OOM choice over the
+ * engine itself (#5081). Station does not spawn those commands (the engine
+ * does, inside its scope), and an unprivileged process cannot lower any
+ * `oom_score_adj` below the floor it inherited (that takes
+ * CAP_SYS_RESOURCE), so each poll raises every other process in the scope
+ * to the engine's value plus COMMAND_OOM_SCORE_RAISE instead. A process the
+ * same user owns may raise another's score. Processes the engine forks
+ * after a poll inherit the engine's score until the next one (1 s); their
+ * own children inherit the raised score. The holder is left alone, since
+ * killing it frees nothing. A first failure stops further attempts for the
+ * scope.
+ */
+async function raiseCommandOomScores(
+  entry: ActiveWorkload,
+  controlGroup: string,
+): Promise<void> {
+  if (!entry.sessionId || entry.pid === undefined || entry.oomScoreRaiseFailed)
+    return;
+  const leader = String(entry.pid);
+  const leaderScore = await readOomScoreAdj(leader);
+  if (leaderScore === undefined) return;
+  const target = Math.min(
+    OOM_SCORE_ADJ_MAX,
+    leaderScore + COMMAND_OOM_SCORE_RAISE,
+  );
+  // An engine already at the kernel's maximum cannot be put behind anything.
+  if (target <= leaderScore) return;
+  const pids = await scopePids(controlGroup, SNAPSHOT_PID_LIMIT);
+  if (!pids) return;
+  const raised = entry.oomScoreRaised ?? new Set<string>();
+  entry.oomScoreRaised = raised;
+  const present = new Set(pids);
+  for (const pid of raised) if (!present.has(pid)) raised.delete(pid);
+  for (const pid of pids) {
+    if (pid === leader || pid === entry.holder?.pid || raised.has(pid))
+      continue;
+    if (entry.holderLaunched && (await isHolderCommandLine(pid))) continue;
+    const score = await readOomScoreAdj(pid);
+    // Gone already, or no longer readable: nothing to raise.
+    if (score === undefined) continue;
+    if (score < target)
+      try {
+        await writeFile(`${procRoot}/${pid}/oom_score_adj`, String(target));
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT' || code === 'ESRCH') continue;
+        entry.oomScoreRaiseFailed = true;
+        logger.warn(
+          "Could not raise a command's OOM score in an engine scope; a memory kill there may take the engine",
+          { unit: entry.unit, code },
+        );
+        return;
+      }
+    raised.add(pid);
+  }
+}
+
+/**
+ * Tells a scope's subscribers about one transition. A listener that throws
+ * is logged and does not stop the others.
+ */
+function announceNotice(
+  entry: ActiveWorkload,
+  notice: ChildWorkloadNotice,
+): void {
+  for (const listener of entry.noticeListeners) {
+    try {
+      listener(notice);
+    } catch (error) {
+      logger.warn('Workload notice listener failed', {
+        kind: notice.kind,
+        error,
+      });
+    }
+  }
+}
+
+/** Points below the threshold a scope must fall to leave pressure. */
+const PRESSURE_EXIT_MARGIN_PERCENT = 5;
+
+function scopeKind(entry: ActiveWorkload): 'engine' | 'command' {
+  return entry.sessionId ? 'engine' : 'command';
+}
+
+/**
+ * Tracks whether a running scope is near its memory limit (#5081). The
+ * scope enters pressure when its working set (memory.current less inactive
+ * file cache, which reclaim returns cheaply) reaches the configured share of
+ * memory.max, and leaves it once the working set falls
+ * PRESSURE_EXIT_MARGIN_PERCENT points below that share. Each transition is
+ * reported once. `memory.events` `max` is reported with it but does not by
+ * itself mean pressure: it also counts routine page-cache reclaim at the
+ * limit, which a scope that reads many files does all the time.
+ */
+async function observePressure(
+  entry: ActiveWorkload,
+  controlGroup: string,
+  reading: ScopeMemoryReading,
+): Promise<void> {
+  const memoryMaxBytes =
+    typeof reading.maxBytes === 'number'
+      ? reading.maxBytes
+      : entry.memoryMaxBytes;
+  if (!memoryMaxBytes) return;
+  const thresholdPercent = limits?.pressurePercent ?? DEFAULT_PRESSURE_PERCENT;
+  const workingSetBytes = reading.workingSetBytes ?? reading.currentBytes;
+  const share = (workingSetBytes / memoryMaxBytes) * 100;
+  const context = {
+    unit: entry.unit,
+    ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+    workingSetBytes,
+    memoryCurrentBytes: reading.currentBytes,
+    memoryMaxBytes,
+    thresholdPercent,
+    ...(reading.memoryEvents ? { limitEvents: reading.memoryEvents.max } : {}),
+  };
+  if (!entry.pressure) {
+    if (share < thresholdPercent) return;
+    const largest = await largestProcesses(controlGroup);
+    entry.pressure = {
+      since: new Date(clock.now()).toISOString(),
+      thresholdPercent,
+      workingSetBytes,
+      memoryMaxBytes,
+      ...(reading.memoryEvents
+        ? { limitEvents: reading.memoryEvents.max }
+        : {}),
+      ...(largest ? { largestProcesses: largest } : {}),
+    };
+    workloadScopeMemoryPressure.add(1, {
+      transition: 'enter',
+      scope_kind: scopeKind(entry),
+    });
+    logger.warn('A workload scope is near its memory limit', {
+      ...context,
+      ...(largest ? { largestProcesses: largest } : {}),
+    });
+    announceNotice(entry, {
+      kind: 'pressure-enter',
+      workingSetBytes,
+      memoryMaxBytes,
+      thresholdPercent,
+      ...(largest ? { largestProcesses: largest } : {}),
+    });
+    return;
+  }
+  if (share >= thresholdPercent - PRESSURE_EXIT_MARGIN_PERCENT) return;
+  const since = entry.pressure.since;
+  entry.pressure = undefined;
+  workloadScopeMemoryPressure.add(1, {
+    transition: 'exit',
+    scope_kind: scopeKind(entry),
+  });
+  logger.info('A workload scope is no longer near its memory limit', {
+    ...context,
+    pressureSince: since,
+  });
+  announceNotice(entry, {
+    kind: 'pressure-exit',
+    workingSetBytes,
+    memoryMaxBytes,
+    thresholdPercent,
+  });
+}
+
+/**
+ * Reports kills a poll saw in a running scope, at once and whatever became
+ * of the engine: the kernel can kill several processes, the engine last,
+ * within one poll interval, and then no engine is left to be told.
+ */
+async function reportLiveOomKills(
+  entry: ActiveWorkload,
+  controlGroup: string,
+  oomKills: number,
+  newKills: number,
+): Promise<void> {
+  entry.lastOomKillAt = new Date(clock.now()).toISOString();
+  const largest = await largestProcesses(controlGroup);
+  entry.lastOomKillProcesses = largest;
+  workloadScopeOomKills.add(newKills, {
+    source: 'live',
+    scope_kind: scopeKind(entry),
+  });
+  logger.warn('A process in a workload scope was killed for memory', {
+    unit: entry.unit,
+    ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+    oomKills,
+    newKills,
+    ...(entry.memoryMaxBytes === undefined
+      ? {}
+      : { memoryMaxBytes: entry.memoryMaxBytes }),
+    // The survivors: the killed process is already gone.
+    ...(largest ? { largestRemaining: largest } : {}),
+    // What was largest when the scope neared its limit, often the culprit.
+    ...(entry.pressure?.largestProcesses
+      ? {
+          largestAtPressure: entry.pressure.largestProcesses,
+          pressureSince: entry.pressure.since,
+        }
+      : {}),
+  });
+}
+
 /** The scope's leader is the very process launched, still running. */
 async function leaderAlive(entry: ActiveWorkload): Promise<boolean> {
   if (entry.pid === undefined) return false;
@@ -657,11 +995,13 @@ async function leaderAlive(entry: ActiveWorkload): Promise<boolean> {
 }
 
 /**
- * One pass over running scopes: record each scope's kernel OOM kill count
- * and announce kills inside a running engine's scope. Under
- * `OOMPolicy=continue` the kernel kills one process (normally the largest
- * command) and the engine keeps running, so this is the only report of it
- * besides the command's own failure.
+ * One pass over running scopes: record each scope's kernel OOM kill count,
+ * report a rise at once (reportLiveOomKills), track memory pressure, raise
+ * an engine's commands' OOM scores, and announce kills inside a running
+ * engine's scope to its listeners. Under `OOMPolicy=continue` the kernel
+ * kills one process (normally the largest command) and the engine keeps
+ * running, so this is the only report of it besides the command's own
+ * failure.
  */
 async function pollOomKills(): Promise<void> {
   await Promise.allSettled(
@@ -672,11 +1012,20 @@ async function pollOomKills(): Promise<void> {
       const controlGroup = await resolveControlGroup(entry);
       if (!controlGroup) return;
       await observeHolder(entry, controlGroup);
-      const oomKills = await readOomKills(controlGroup);
-      if (oomKills !== undefined && oomKills > (entry.oomKillsPolled ?? 0))
-        entry.lastOomKillAt = new Date().toISOString();
+      await raiseCommandOomScores(entry, controlGroup).catch(() => {});
+      const reading = await readScope(controlGroup);
+      const oomKills = reading?.oomKills;
+      const seenKills = entry.oomKillsPolled ?? 0;
       if (oomKills !== undefined) entry.oomKillsPolled = oomKills;
-      if (entry.oomListeners.size === 0) return;
+      if (oomKills !== undefined && oomKills > seenKills)
+        await reportLiveOomKills(
+          entry,
+          controlGroup,
+          oomKills,
+          oomKills - seenKills,
+        );
+      if (reading) await observePressure(entry, controlGroup, reading);
+      if (entry.noticeListeners.size === 0) return;
       if (oomKills === undefined || oomKills <= entry.oomKillsReported) return;
       // A kill is a command's only once the engine is seen alive after it:
       // a count waits one poll as pending, and the next poll that finds the
@@ -701,17 +1050,18 @@ async function pollOomKills(): Promise<void> {
       });
       entry.oomKillsReported = pending;
       entry.oomKillsPending = oomKills > pending ? oomKills : undefined;
-      logger.warn('A process in a workload scope was killed for memory', {
+      // Already logged when first seen (reportLiveOomKills).
+      logger.debug('Workload OOM kill announced to its engine', {
         unit: entry.unit,
         ...kill,
       });
-      for (const listener of entry.oomListeners) {
-        try {
-          listener(kill);
-        } catch (error) {
-          logger.warn('Workload OOM listener failed', { error });
-        }
-      }
+      announceNotice(entry, {
+        kind: 'oom-kill',
+        kill,
+        ...(entry.lastOomKillProcesses
+          ? { largestProcesses: entry.lastOomKillProcesses }
+          : {}),
+      });
     }),
   );
 }
@@ -962,7 +1312,7 @@ function installScopeLauncher(
       observed,
       memoryMaxBytes: limits.memoryMaxBytes,
       oomKillsReported: 0,
-      oomListeners: new Set(),
+      noticeListeners: new Set(),
     };
     active.set(unit, entry);
     // Only the two user-bus coordinates are borrowed. Restore the target's
@@ -997,6 +1347,9 @@ function installScopeLauncher(
         // The kernel OOM killer picks one process in the scope (normally the
         // largest command) and the engine survives to see that command fail.
         // `kill` would set memory.oom.group and end the engine with it.
+        // Group kill stays off deliberately: with commands' OOM scores raised
+        // above the engine's (raiseCommandOomScores) the kernel takes the
+        // runaway command, not the session.
         '--property=OOMPolicy=continue',
         `--property=TasksMax=${limits.tasksMax}`,
         '--',
@@ -1018,10 +1371,10 @@ function installScopeLauncher(
         monitorLeaders();
       },
       close: () => closeScope(entry, 'close'),
-      watchOomKills(listener) {
-        entry.oomListeners.add(listener);
+      watchNotices(listener) {
+        entry.noticeListeners.add(listener);
         monitorLeaders();
-        return () => entry.oomListeners.delete(listener);
+        return () => entry.noticeListeners.delete(listener);
       },
     } satisfies ChildWorkloadLaunch;
   });
@@ -1157,6 +1510,14 @@ async function closeScope(
       memoryPeakBytes: finiteCounter(properties.MemoryPeak),
       cpuUsageNSec: finiteCounter(properties.CPUUsageNSec),
     };
+    // Kills no poll saw while the scope ran: at or just before its end.
+    const closeKills =
+      oomKills === undefined ? 0 : oomKills - (entry.oomKillsPolled ?? 0);
+    if (closeKills > 0)
+      workloadScopeOomKills.add(closeKills, {
+        source: 'close',
+        scope_kind: scopeKind(entry),
+      });
     recent.push(outcome);
     if (recent.length > 64) recent.shift();
     const failedAttempts = entry.cleanup?.attempts;
@@ -1230,11 +1591,15 @@ export async function inspectWorkloadResources() {
     reason,
     limits,
     slice,
-    active: [...active.values()].map(({ unit, pid, sessionId }) => ({
-      unit,
-      pid,
-      ...(sessionId ? { sessionId } : {}),
-    })),
+    active: [...active.values()].map(
+      ({ unit, pid, sessionId, pressure, lastOomKillAt }) => ({
+        unit,
+        pid,
+        ...(sessionId ? { sessionId } : {}),
+        ...(lastOomKillAt ? { lastOomKillAt } : {}),
+        ...(pressure ? { pressure } : {}),
+      }),
+    ),
     recent: [...recent],
     cleanup: cleanupStatus(),
     memory,
@@ -1330,6 +1695,10 @@ export function workloadBudgetStatus(): WorkloadBudgetStatus {
         ...(entry.lastOomKillAt ? { lastOomKillAt: entry.lastOomKillAt } : {}),
         ...(entry.holderState ? { holder: entry.holderState } : {}),
         ...(entry.holderReason ? { holderReason: entry.holderReason } : {}),
+        ...(entry.lastOomKillProcesses
+          ? { lastOomKillProcesses: entry.lastOomKillProcesses }
+          : {}),
+        ...(entry.pressure ? { pressure: entry.pressure } : {}),
       })),
     cleanup: cleanupStatus(),
   };
@@ -1472,6 +1841,11 @@ export async function inspectSessionWorkload(sessionId: string) {
         launchedMemoryMaxBytes: entry.memoryMaxBytes,
         memory,
         ...(entry.lastOomKillAt ? { lastOomKillAt: entry.lastOomKillAt } : {}),
+        ...(entry.lastOomKillProcesses
+          ? { lastOomKillProcesses: entry.lastOomKillProcesses }
+          : {}),
+        // The engine reads this through workload_status to back off.
+        ...(entry.pressure ? { pressure: entry.pressure } : {}),
       },
     };
   } catch (error) {

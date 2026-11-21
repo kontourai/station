@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TurnStartedEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import {
   connectionRecoveryOutcomes,
   credentialProfileApplication,
@@ -436,6 +438,76 @@ describe('SessionRecoveryCoordinator', () => {
     store.close();
     vi.useRealTimers();
   });
+
+  test.each([
+    ['interactive', 'interactive', undefined],
+    ['interactive', 'interactive', 'queued_background'],
+    ['automation', 'automation', undefined],
+    [undefined, 'unknown', undefined],
+  ] as const)(
+    '#4568: a profile restart of a source turn recorded as %s carries origin %s',
+    async (recorded, carried, resourceAdmissionIntent) => {
+      vi.useFakeTimers();
+      const store = new EventStore(
+        join(makeTempDir('recovery-coordinator-'), 'orchestration.sqlite'),
+      );
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+      const profileAdapter: ProviderAdapterShape = new GateTestAdapter();
+      profileAdapter.metadata.recovery = {
+        sameSession: true,
+        application: 'restart_resume',
+      };
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        adapterForProvider: () => profileAdapter,
+        sendTurn: vi.fn(async () => ({ turnId: 'ordinary-turn' })),
+        restartResume,
+        credentialRecoveryAdapter: {
+          stage: async () => ({
+            candidateProfileRef: 'origin-profile-ref',
+            capability: 'restart_resume',
+          }),
+        },
+        now: () => now,
+      });
+      store.appendEvent({
+        eventId: 'started',
+        provider: 'claude',
+        threadId: 'thread',
+        turnId: 'turn',
+        createdAt: now.toISOString(),
+        method: 'turn.started',
+        prompt: 'authoritative input',
+        clientTurnId: 'source-submission',
+        ...(recorded ? { dispatchOrigin: recorded } : {}),
+        ...(resourceAdmissionIntent ? { resourceAdmissionIntent } : {}),
+      });
+      coordinator.observe({
+        eventId: 'account-exhausted',
+        provider: 'claude',
+        threadId: 'thread',
+        turnId: 'turn',
+        createdAt: now.toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'account capacity exhausted',
+        details: { scope: 'account', retryAfterMs: 0 },
+      });
+      await vi.runAllTimersAsync();
+      expect(restartResume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credentialProfileRef: 'origin-profile-ref',
+          dispatchOrigin: carried,
+          resourceAdmissionIntent,
+          sourceTurnId: 'turn',
+          sourceClientTurnId: 'source-submission',
+        }),
+      );
+      store.close();
+      vi.useRealTimers();
+    },
+  );
 
   test('routes a Claude observed terminal event to exact profile compensation', async () => {
     vi.useFakeTimers();

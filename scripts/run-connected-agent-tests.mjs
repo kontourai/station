@@ -2,12 +2,8 @@
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { runFocusedTests } from './run-focused-tests.mjs';
 
-// Same behavioral coverage and original 10s bound as the prior macro. The
-// high-cardinality EventStore case runs first in its own process-exclusive test file
-// so earlier work in the 190-case general EventStore file cannot spend its
-// lifecycle, so earlier work cannot spend its product-law budget.
-// EventStore is PROCESS_EXCLUSIVE in the resource manifest. The focused owner
-// supplies one worker/no file parallelism; do not recreate a scheduler here.
+// Vitest can reorder files within an invocation. Give the projection its own
+// invocation so it completes before the rest of the suite begins.
 const CONNECTED_AGENT_TESTS = Object.freeze([
   'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',
   'src-server/providers/llm/__tests__/bedrock-adapter.test.ts',
@@ -18,11 +14,20 @@ const CONNECTED_AGENT_TESTS = Object.freeze([
   'src-server/routes/orchestration/__tests__/orchestration.routes.test.ts',
 ]);
 
-export function runConnectedAgentTests(options = {}) {
-  return runFocusedTests(CONNECTED_AGENT_TESTS, {
-    ...options,
-    testTimeoutMs: 10_000,
-  });
+export async function runConnectedAgentTests(options = {}) {
+  let exitCode = 0;
+  for (const files of [
+    CONNECTED_AGENT_TESTS.slice(0, 1),
+    CONNECTED_AGENT_TESTS.slice(1),
+  ]) {
+    const result = await runFocusedTests(files, {
+      ...options,
+      testTimeoutMs: 10_000,
+      reportProgress: true,
+    });
+    exitCode ||= result;
+  }
+  return exitCode;
 }
 
 if (invokedDirectly(import.meta.url)) {

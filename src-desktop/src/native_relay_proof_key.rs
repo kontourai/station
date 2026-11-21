@@ -2018,7 +2018,12 @@ mod tests {
 
         let mut retired_channel = serde_json::to_value(generate_record(&target).unwrap()).unwrap();
         retired_channel["owner"]["channel"] = serde_json::json!("beta");
-        backend.write(&target.account(), &serde_json::to_string(&retired_channel).unwrap()).unwrap();
+        backend
+            .write(
+                &target.account(),
+                &serde_json::to_string(&retired_channel).unwrap(),
+            )
+            .unwrap();
         assert_eq!(vault.restore(&target).unwrap_err(), ProofKeyError::Corrupt);
 
         backend.write(&target.account(), "{truncated").unwrap();

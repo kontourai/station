@@ -261,7 +261,9 @@ test('one panel offers independently labelled app and server downloads, and open
   expect(
     within(panel).getByRole('heading', { name: 'Server · Test Station' }),
   ).toBeTruthy();
-  expect(within(panel).queryByLabelText('Automatic download')).toBeNull();
+  expect(
+    within(panel).queryByLabelText('Automatic desktop app download'),
+  ).toBeNull();
   fireEvent.click(
     within(panel).getByRole('button', { name: 'Download server update' }),
   );
@@ -451,7 +453,7 @@ test.each(
         ? 'Restart server'
         : 'Update server';
     const confirmationTitle = desktop
-      ? 'Restart Station to install 0.1.12?'
+      ? 'Restart Station to update?'
       : target === 'staged-server'
         ? 'Restart the server into 0.8.0-nightly.2?'
         : 'Update and restart the server?';

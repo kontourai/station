@@ -1,0 +1,11 @@
+{
+  "revision": "f30e5b5539232ba44f3da2a2a0efd9906e00b84b",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked Enable after callback extraction. It reads the selected authority and current enabled preference together at activation instead of retaining an obsolete callback dependency. Existing disabled, scope-change and cancellation controls cover this owner.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Checked Enable after callback extraction. It reads the selected authority and current enabled preference together at activation instead of retaining an obsolete callback dependency. Existing disabled, scope-change and cancellation controls cover this owner.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Checked Enable after callback extraction. It reads the selected authority and current enabled preference together at activation instead of retaining an obsolete callback dependency. Existing disabled, scope-change and cancellation controls cover this owner.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]}
+  ]
+}

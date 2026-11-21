@@ -1,0 +1,21 @@
+{
+  "revision": "a15f36c5cbabcbbd30035e6b4d9fe4341c87b96b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared settled-answer row, long Basis standing, hover reveal, keyboard order and phone metadata. The complete Chromium component fixture measures 135px and 220px with real Copy, More and rating controls. The full-app diagnostic exercised Bottom Inbox, the 280px side dock and Inbox-to-chat at 390px with a deterministic history fixture. It does not qualify a physical device or provider.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Compared shared footer wrapping with the cited conversation, placement and responsive claims. Basis remains visible while the row's hover/focus actions keep their existing controls. Containment is checked for all five targets, responsive dock modes keep their existing entry points and the full label remains available to assistive technology. This changes shared presentation only.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Compared shared footer wrapping with the cited conversation, placement and responsive claims. Basis remains visible while the row's hover/focus actions keep their existing controls. Containment is checked for all five targets, responsive dock modes keep their existing entry points and the full label remains available to assistive technology. This changes shared presentation only.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Compared shared footer wrapping with the cited conversation, placement and responsive claims. Basis remains visible while the row's hover/focus actions keep their existing controls. Containment is checked for all five targets, responsive dock modes keep their existing entry points and the full label remains available to assistive technology. This changes shared presentation only.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Compared shared footer wrapping with the cited conversation, placement and responsive claims. Basis remains visible while the row's hover/focus actions keep their existing controls. Containment is checked for all five targets, responsive dock modes keep their existing entry points and the full label remains available to assistive technology. This changes shared presentation only.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Compared shared footer wrapping with the cited conversation, placement and responsive claims. Basis remains visible while the row's hover/focus actions keep their existing controls. Containment is checked for all five targets, responsive dock modes keep their existing entry points and the full label remains available to assistive technology. This changes shared presentation only.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Compared shared footer wrapping with the cited conversation, placement and responsive claims. Basis remains visible while the row's hover/focus actions keep their existing controls. Containment is checked for all five targets, responsive dock modes keep their existing entry points and the full label remains available to assistive technology. This changes shared presentation only.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the strengthened Chromium fixture with the actual rating controls, exact accessible names, tab order and a center hit for each control. The component test supplies the original 135px and wider 220px allocations. A separate full-app probe used ordinary dock and Inbox interactions.","inputs":["src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx"]}
+  ]
+}

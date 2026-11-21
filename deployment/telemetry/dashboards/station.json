@@ -12,7 +12,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Chat Requests",
+      "title": "Primary Chat Requests",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -37,15 +37,16 @@
       },
       "targets": [
         {
-          "expr": "sum(station_chat_requests_total)",
-          "legendFormat": "Total"
+          "expr": "sum(station_chat_requests_total{agent!=\"\"})",
+          "legendFormat": "Primary chat"
         }
-      ]
+      ],
+      "description": "Primary chat finalizations, including failed or canceled requests. Independent invocation route traffic is excluded."
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Active Agents",
+      "title": "Loaded Agents",
       "gridPos": {
         "x": 4,
         "y": 0,
@@ -73,12 +74,13 @@
           "expr": "station_agents_active",
           "legendFormat": "Active"
         }
-      ]
+      ],
+      "description": "Agent objects held in Station’s loaded map. This does not measure concurrent work."
     },
     {
       "id": 9,
       "type": "stat",
-      "title": "MCP Connections",
+      "title": "Tracked MCP Server Entries",
       "gridPos": {
         "x": 8,
         "y": 0,
@@ -104,14 +106,15 @@
       "targets": [
         {
           "expr": "station_mcp_connections",
-          "legendFormat": "Connected"
+          "legendFormat": "Tracked entries"
         }
-      ]
+      ],
+      "description": "MCP status map cardinality, including failed entries."
     },
     {
       "id": 10,
       "type": "stat",
-      "title": "Errors",
+      "title": "Chat Route Errors",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -139,12 +142,13 @@
           "expr": "sum(station_chat_errors_total)",
           "legendFormat": "Total"
         }
-      ]
+      ],
+      "description": "Outer chat-route errors. Stream failures after an SSE response has opened are a separate population."
     },
     {
       "id": 15,
       "type": "stat",
-      "title": "Estimated Cost",
+      "title": "Estimated Primary Chat Cost",
       "gridPos": {
         "x": 16,
         "y": 0,
@@ -174,12 +178,13 @@
           "expr": "sum(station_cost_estimated_total)",
           "legendFormat": "Total"
         }
-      ]
+      ],
+      "description": "Partial positive Bedrock estimates from primary chat, in USD. Provider billing and other engines are outside this estimate."
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "Chat p95",
+      "title": "Primary Chat p95",
       "gridPos": {
         "x": 20,
         "y": 0,
@@ -205,15 +210,16 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(station_chat_duration_milliseconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(station_chat_duration_milliseconds_bucket[5m])))",
           "legendFormat": "p95"
         }
-      ]
+      ],
+      "description": "Global five-minute quantile across all Agent and plugin histogram buckets."
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Requests Over Time",
+      "title": "Primary Chat Request Rate",
       "gridPos": {
         "x": 0,
         "y": 4,
@@ -233,15 +239,16 @@
       },
       "targets": [
         {
-          "expr": "rate(station_chat_requests_total[5m])",
+          "expr": "sum by (agent) (rate(station_chat_requests_total{agent!=\"\"}[5m]))",
           "legendFormat": "{{agent}}"
         }
-      ]
+      ],
+      "description": "Per-Agent primary chat finalizations per second."
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Token Consumption",
+      "title": "Reported Primary Chat Token Rate",
       "gridPos": {
         "x": 12,
         "y": 4,
@@ -261,19 +268,20 @@
       },
       "targets": [
         {
-          "expr": "rate(station_tokens_input_total[5m])",
+          "expr": "sum(rate(station_tokens_input_total[5m]))",
           "legendFormat": "Input"
         },
         {
-          "expr": "rate(station_tokens_output_total[5m])",
+          "expr": "sum(rate(station_tokens_output_total[5m]))",
           "legendFormat": "Output"
         }
-      ]
+      ],
+      "description": "Reported primary chat token usage per second. Missing usage contributes no point."
     },
     {
       "id": 11,
       "type": "bargauge",
-      "title": "Requests by Agent",
+      "title": "Primary Chat Requests by Agent",
       "gridPos": {
         "x": 0,
         "y": 11,
@@ -300,15 +308,16 @@
       },
       "targets": [
         {
-          "expr": "sum by (agent) (station_chat_requests_total)",
+          "expr": "sum by (agent) (station_chat_requests_total{agent!=\"\"})",
           "legendFormat": "{{agent}}"
         }
-      ]
+      ],
+      "description": "Primary chat finalizations grouped by Agent."
     },
     {
       "id": 7,
       "type": "bargauge",
-      "title": "Tool Calls",
+      "title": "Metadata Tool-call Chunks",
       "gridPos": {
         "x": 12,
         "y": 11,
@@ -338,7 +347,8 @@
           "expr": "sum by (tool) (station_tool_calls_total)",
           "legendFormat": "{{tool}}"
         }
-      ]
+      ],
+      "description": "Tool-call chunks seen by MetadataHandler. External-engine bridge calls are outside this count."
     },
     {
       "id": 20,
@@ -356,7 +366,7 @@
     {
       "id": 21,
       "type": "bargauge",
-      "title": "Agent Operations",
+      "title": "Agent Operation Observations",
       "gridPos": {
         "x": 0,
         "y": 17,
@@ -383,15 +393,20 @@
       },
       "targets": [
         {
-          "expr": "sum by (operation) (station_agent_operations_total)",
-          "legendFormat": "{{op}}"
+          "expr": "sum by (op) (station_agent_operations_total{op!=\"\"})",
+          "legendFormat": "Route: {{op}}"
+        },
+        {
+          "expr": "sum by (operation) (station_agent_operations_total{operation!=\"\"})",
+          "legendFormat": "Service: {{operation}}"
         }
-      ]
+      ],
+      "description": "Route and service observations are shown separately. Their sum is not a count of distinct operations."
     },
     {
       "id": 24,
       "type": "bargauge",
-      "title": "Project Operations",
+      "title": "Project Operation Observations",
       "gridPos": {
         "x": 12,
         "y": 17,
@@ -418,10 +433,15 @@
       },
       "targets": [
         {
-          "expr": "sum by (operation) (station_project_operations_total)",
-          "legendFormat": "{{op}}"
+          "expr": "sum by (op, outcome) (station_project_operations_total{op!=\"\"})",
+          "legendFormat": "Route: {{op}} {{outcome}}"
+        },
+        {
+          "expr": "sum by (operation, outcome, source) (station_project_operations_total{operation!=\"\"})",
+          "legendFormat": "Service: {{operation}} {{outcome}} {{source}}"
         }
-      ]
+      ],
+      "description": "Route and service observations are shown separately. Their sum is not a count of distinct operations."
     },
     {
       "id": 30,
@@ -439,7 +459,7 @@
     {
       "id": 31,
       "type": "bargauge",
-      "title": "Plugin Activity",
+      "title": "Plugin Lifecycle Observations",
       "gridPos": {
         "x": 0,
         "y": 23,
@@ -477,12 +497,13 @@
           "expr": "sum by (plugin) (station_plugin_uninstalls_total)",
           "legendFormat": "uninstall: {{plugin}}"
         }
-      ]
+      ],
+      "description": "Reported installs, updates and uninstalls by plugin."
     },
     {
       "id": 32,
       "type": "timeseries",
-      "title": "Plugin Events Over Time",
+      "title": "Plugin Lifecycle Rates",
       "gridPos": {
         "x": 12,
         "y": 23,
@@ -502,18 +523,19 @@
       },
       "targets": [
         {
-          "expr": "rate(station_plugin_installs_total[5m])",
+          "expr": "sum(rate(station_plugin_installs_total[5m]))",
           "legendFormat": "installs"
         },
         {
-          "expr": "rate(station_plugin_updates_total[5m])",
+          "expr": "sum(rate(station_plugin_updates_total[5m]))",
           "legendFormat": "updates"
         },
         {
-          "expr": "rate(station_plugin_uninstalls_total[5m])",
+          "expr": "sum(rate(station_plugin_uninstalls_total[5m]))",
           "legendFormat": "uninstalls"
         }
-      ]
+      ],
+      "description": "Reported lifecycle observations per second."
     },
     {
       "id": 40,
@@ -531,11 +553,11 @@
     {
       "id": 41,
       "type": "bargauge",
-      "title": "Notifications",
+      "title": "Notification Operation Observations",
       "gridPos": {
         "x": 0,
         "y": 29,
-        "w": 8,
+        "w": 6,
         "h": 5
       },
       "datasource": {
@@ -558,19 +580,20 @@
       },
       "targets": [
         {
-          "expr": "sum by (operation) (station_notification_operations_total)",
+          "expr": "sum by (op) (station_notification_operations_total)",
           "legendFormat": "{{op}}"
         }
-      ]
+      ],
+      "description": "Service and route observations grouped by op. Both layers can observe one schedule request."
     },
     {
       "id": 42,
       "type": "bargauge",
-      "title": "Scheduler Jobs",
+      "title": "Confirmed Built-in Job Executions",
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 29,
-        "w": 8,
+        "w": 6,
         "h": 5
       },
       "datasource": {
@@ -593,19 +616,56 @@
       },
       "targets": [
         {
-          "expr": "sum by (status) (station_scheduler_job_runs_total)",
+          "expr": "sum by (status) (station_scheduler_job_runs_total{source=\"built-in\"})",
           "legendFormat": "{{status}}"
         }
-      ]
+      ],
+      "description": "One execution per applied success or confirmed failure. Historic unlabeled series, capacity deferrals, and uncertain invocations are excluded."
+    },
+    {
+      "id": 44,
+      "type": "bargauge",
+      "title": "Scheduler Management Requests",
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "station-prometheus"
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (op) (station_scheduler_management_operations_total)",
+          "legendFormat": "{{op}}"
+        }
+      ],
+      "description": "Create, edit, enable, disable, remove and manual-run requests reaching route dispatch. These do not establish that a job executed."
     },
     {
       "id": 43,
       "type": "timeseries",
-      "title": "Scheduler Job Duration",
+      "title": "Confirmed Built-in Job Duration p95",
       "gridPos": {
-        "x": 16,
+        "x": 18,
         "y": 29,
-        "w": 8,
+        "w": 6,
         "h": 5
       },
       "datasource": {
@@ -625,10 +685,11 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(station_scheduler_job_duration_milliseconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(station_scheduler_job_duration_milliseconds_bucket{source=\"built-in\"}[5m])))",
           "legendFormat": "p95"
         }
-      ]
+      ],
+      "description": "Five-minute elapsed-time quantile for the same confirmed execution population."
     },
     {
       "id": 50,
@@ -646,7 +707,7 @@
     {
       "id": 51,
       "type": "bargauge",
-      "title": "Provider Operations",
+      "title": "Provider Operation Observations",
       "gridPos": {
         "x": 0,
         "y": 35,
@@ -673,15 +734,20 @@
       },
       "targets": [
         {
-          "expr": "sum by (op, type) (station_provider_operations_total)",
-          "legendFormat": "{{op}} ({{type}})"
+          "expr": "sum by (op, type, outcome) (station_provider_operations_total{op!=\"\"})",
+          "legendFormat": "{{op}} {{type}} {{outcome}}"
+        },
+        {
+          "expr": "sum by (operation, provider, reason, outcome, status) (station_provider_operations_total{operation!=\"\"})",
+          "legendFormat": "{{operation}} {{provider}} {{reason}} {{outcome}} {{status}}"
         }
-      ]
+      ],
+      "description": "Route and service observations use op and optional type. Adapter lifecycle observations use operation with provider and outcome dimensions."
     },
     {
       "id": 52,
       "type": "bargauge",
-      "title": "MCP Lifecycle",
+      "title": "MCP Lifecycle Observations",
       "gridPos": {
         "x": 8,
         "y": 35,
@@ -711,12 +777,13 @@
           "expr": "sum by (event, server) (station_mcp_lifecycle_total)",
           "legendFormat": "{{event}}: {{server}}"
         }
-      ]
+      ],
+      "description": "Reported MCP connection lifecycle events by server."
     },
     {
       "id": 53,
       "type": "bargauge",
-      "title": "Knowledge Operations",
+      "title": "Knowledge Operation Observations",
       "gridPos": {
         "x": 16,
         "y": 35,
@@ -743,10 +810,11 @@
       },
       "targets": [
         {
-          "expr": "sum by (operation) (station_knowledge_operations_total)",
+          "expr": "sum by (op) (station_knowledge_operations_total)",
           "legendFormat": "{{op}}"
         }
-      ]
+      ],
+      "description": "Knowledge operations grouped by op."
     },
     {
       "id": 60,
@@ -764,7 +832,7 @@
     {
       "id": 12,
       "type": "timeseries",
-      "title": "Tool Duration (p95)",
+      "title": "Observed Tool Duration p95",
       "gridPos": {
         "x": 0,
         "y": 41,
@@ -791,12 +859,13 @@
           "expr": "histogram_quantile(0.95, sum by (tool, le) (rate(station_tool_duration_milliseconds_bucket[5m])))",
           "legendFormat": "{{tool}}"
         }
-      ]
+      ],
+      "description": "Matched call/result observations from both MetadataHandler and the external-engine bridge. This population differs from Metadata tool-call chunks."
     },
     {
       "id": 13,
       "type": "timeseries",
-      "title": "Chat Duration Distribution",
+      "title": "Primary Chat Duration Quantiles by Agent",
       "gridPos": {
         "x": 12,
         "y": 41,
@@ -828,51 +897,17 @@
           "expr": "histogram_quantile(0.99, sum by (agent, le) (rate(station_chat_duration_milliseconds_bucket[5m])))",
           "legendFormat": "{{agent}} p99"
         }
-      ]
-    },
-    {
-      "id": 14,
-      "type": "timeseries",
-      "title": "Context Overhead vs Input Tokens",
-      "gridPos": {
-        "x": 0,
-        "y": 48,
-        "w": 12,
-        "h": 7
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "station-prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "fillOpacity": 15
-          }
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (agent) (station_tokens_context_total)",
-          "legendFormat": "{{agent}} context"
-        },
-        {
-          "expr": "sum by (agent) (station_tokens_input_total)",
-          "legendFormat": "{{agent}} input"
-        }
-      ]
+      ],
+      "description": "Agent quantiles combine plugin histogram buckets for each Agent."
     },
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Error Rate",
+      "title": "Chat Route Errors per Second",
       "gridPos": {
-        "x": 12,
+        "x": 0,
         "y": 48,
-        "w": 12,
+        "w": 24,
         "h": 7
       },
       "datasource": {
@@ -892,15 +927,16 @@
       },
       "targets": [
         {
-          "expr": "rate(station_chat_errors_total[5m])",
+          "expr": "sum by (agent) (rate(station_chat_errors_total[5m]))",
           "legendFormat": "{{agent}}"
         }
-      ]
+      ],
+      "description": "Outer chat-route error observations per second by Agent."
     },
     {
       "id": 16,
       "type": "bargauge",
-      "title": "Cost by Agent",
+      "title": "Estimated Primary Chat Cost by Agent",
       "gridPos": {
         "x": 0,
         "y": 55,
@@ -932,12 +968,13 @@
           "expr": "sum by (agent) (station_cost_estimated_total)",
           "legendFormat": "{{agent}}"
         }
-      ]
+      ],
+      "description": "Partial positive Bedrock estimates, in USD."
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "Token Usage",
+      "title": "Reported Primary Chat Tokens",
       "gridPos": {
         "x": 12,
         "y": 55,
@@ -968,7 +1005,8 @@
           "expr": "sum(station_tokens_output_total)",
           "legendFormat": "Output"
         }
-      ]
+      ],
+      "description": "Cumulative token values reported during primary chat finalization. Missing token reports contribute no point."
     }
   ]
 }

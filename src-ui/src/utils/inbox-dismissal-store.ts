@@ -200,3 +200,30 @@ export function migrateInboxDismissal(
   if (!Object.hasOwn(entries, newId)) entries[newId] = old;
   write(entries, namespace);
 }
+
+/**
+ * Third-party dismissals of this host's own Sessions (not another Station's,
+ * whose keys carry an environment), which a host that keeps hidden Sessions
+ * per person takes over.
+ */
+export function readHostThirdPartyDismissals(
+  namespace?: string | null,
+): string[] {
+  return Object.entries(readInboxDismissals(namespace))
+    .filter(([key, entry]) => entry.thirdParty && !key.startsWith('['))
+    .map(([key]) => key);
+}
+
+export function dropInboxDismissals(
+  keys: readonly string[],
+  namespace?: string | null,
+) {
+  const entries = readInboxDismissals(namespace);
+  let removed = false;
+  for (const key of keys)
+    if (Object.hasOwn(entries, key)) {
+      delete entries[key];
+      removed = true;
+    }
+  if (removed) write(entries, namespace);
+}

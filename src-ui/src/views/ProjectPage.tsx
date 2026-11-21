@@ -23,6 +23,7 @@ import {
   type ProjectConfig,
   useScopedProjectPageViewQuery,
 } from '../contexts/ProjectsContext';
+import { useForegroundProject } from '../hooks/projectForeground';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -43,20 +44,26 @@ import {
   ProjectAddLayoutModal,
   ProjectLayoutsSection,
 } from './project-page/ProjectLayoutsSection';
+import { ProjectLibrarySection } from './project-page/ProjectLibrarySection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import {
   ProjectNavigation,
   useProjectDestination,
 } from './project-page/ProjectNavigation';
+import { ProjectOverviewSection } from './project-page/ProjectOverviewSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
-import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { useProjectSearch } from './project-page/project-room-navigation';
+import { SetupRecommendationsCard } from './project-page/SetupRecommendationsCard';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
-import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import {
+  ProjectRepositoriesSection,
+  ProjectSourcesSection,
+} from './project-settings/ProjectSourcesSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import './project-page-frame.css';
 import './ProjectPage.css';
 
@@ -210,9 +217,13 @@ function ProjectOperatorPage({
 }: {
   slug: string;
   project: ProjectConfig;
-  requestScope: ProjectRoomProps['requestScope'];
+  requestScope: NonNullable<
+    ReturnType<typeof useScopedProjectPageViewQuery>['requestScope']
+  >;
 }) {
   const { setLayout, navigate, updateParams } = useNavigation();
+  // #5072: this Project's own alerts are not sent here while it is shown.
+  useForegroundProject(project.id);
   // The Tasks section's presentation: the board unless the address asks
   // for the list (`?tasksView=list`).
   const tasksView =
@@ -230,6 +241,7 @@ function ProjectOperatorPage({
   // #4795: on a phone the Project page is its channel list, and a channel
   // is its own full screen; one breakpoint, `MOBILE_MEDIA_QUERY`.
   const phone = useIsMobile();
+  const projectCoordination = useProjectCoordinationPreview();
   const roomScreen = phone && destination === 'room';
   const pageRef = useRef<HTMLDivElement>(null);
   const { openFromList } = useListScrollMemory(
@@ -245,9 +257,19 @@ function ProjectOperatorPage({
   const {
     data: layouts = [],
     isLoading: layoutsLoading,
+    isFetching: layoutsFetching,
     isError: layoutsError,
     refetch: refetchLayouts,
-  } = useProjectLayoutsQuery(slug);
+  } = useProjectLayoutsQuery(slug, {
+    // IndexedDB can still hold the list from before an applied layout.
+    refetchOnMount: 'always',
+  });
+  const layoutsPending = layoutsLoading || layoutsFetching;
+  const layoutOpenNotice = layoutsPending
+    ? 'Layouts are still loading.'
+    : layoutsError
+      ? 'Could not load layouts. Close this picker and retry.'
+      : undefined;
   const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
@@ -265,6 +287,7 @@ function ProjectOperatorPage({
 
   const [showAddLayout, setShowAddLayout] = useState(false);
   const [showAddPane, setShowAddPane] = useState(false);
+  const [layoutOpenBlocked, setLayoutOpenBlocked] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<unknown>(null);
 
@@ -292,10 +315,14 @@ function ProjectOperatorPage({
 
   function openPane(entry: WorkspacePaneAvailabilityCatalogEntry) {
     if (!entry.instance) return;
-    setShowAddPane(false);
     const requiresLayout = workspacePaneRequiresLayoutIdentity(
       entry.descriptor,
     );
+    if (requiresLayout && layoutOpenNotice) {
+      setLayoutOpenBlocked(true);
+      return;
+    }
+    setShowAddPane(false);
     // Every renderer in today's closed `requiresLayout` set reads Coding
     // layout configuration, so Coding is the intentional host capability.
     // Making this generic requires a versioned descriptor field naming its
@@ -359,7 +386,13 @@ function ProjectOperatorPage({
         {!roomScreen && (
           <ProjectPageHeader
             project={project}
+            {...(projectCoordination && project.goal
+              ? { goal: project.goal }
+              : {})}
             gitStatus={gitStatus}
+            invitePeople={() =>
+              navigate(`/projects/${slug}/edit`, { section: 'access' })
+            }
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
         )}
@@ -403,6 +436,20 @@ function ProjectOperatorPage({
                   }}
                 />
               )}
+              <SetupRecommendationsCard
+                requestScope={requestScope}
+                project={{
+                  id: project.id,
+                  slug,
+                  name: project.name || slug,
+                  ...(project.description
+                    ? { description: project.description }
+                    : {}),
+                }}
+                hasRepository={Boolean(
+                  gitStatus?.isRepo || project.repositorySource,
+                )}
+              />
               <div className="project-page__operator-actions">
                 <Button
                   variant="primary"
@@ -414,6 +461,18 @@ function ProjectOperatorPage({
                   Add files
                 </Button>
               </div>
+              {destination === 'overview' && (
+                <ProjectRepositoriesSection
+                  slug={slug}
+                  projectId={project.id}
+                  onManageSources={() => selectDestination('sources')}
+                />
+              )}
+              <ProjectOverviewSection
+                slug={slug}
+                projectId={project.id}
+                autoResolveDays={project.overviewAutoResolveDays}
+              />
               <ProjectLiveWorkSection slug={slug} />
             </section>
 
@@ -533,7 +592,10 @@ function ProjectOperatorPage({
                     <button
                       type="button"
                       className="project-page__add-btn"
-                      onClick={() => setShowAddPane(true)}
+                      onClick={() => {
+                        setLayoutOpenBlocked(false);
+                        setShowAddPane(true);
+                      }}
                     >
                       + Add pane
                     </button>
@@ -554,7 +616,7 @@ function ProjectOperatorPage({
                 <ProjectLayoutsSection
                   slug={slug}
                   layouts={layouts}
-                  loading={layoutsLoading}
+                  loading={layoutsPending}
                   error={layoutsError}
                   onRetry={() => void refetchLayouts()}
                   setLayout={setLayout}
@@ -568,6 +630,7 @@ function ProjectOperatorPage({
             >
               <ProjectTasksSection
                 slug={slug}
+                active={destination === 'tasks'}
                 projectId={project.id}
                 projectWorkingDirectory={project.workingDirectory}
                 gitStatus={gitStatus}
@@ -583,7 +646,12 @@ function ProjectOperatorPage({
               hidden={destination !== 'sources'}
               aria-label="Files and connections"
             >
-              <ProjectSourcesSection slug={slug} projectId={project.id} />
+              <ProjectLibrarySection slug={slug} />
+              <ProjectSourcesSection
+                slug={slug}
+                projectId={project.id}
+                showRepositories={destination === 'sources'}
+              />
               {namespacesQuery.isError && (
                 <ErrorState
                   title="Could not load document categories"
@@ -639,6 +707,7 @@ function ProjectOperatorPage({
         {extensionAccess.dialog}
         <ProjectWorkspacePaneModal
           show={showAddPane}
+          notice={layoutOpenBlocked ? layoutOpenNotice : undefined}
           entries={paneCatalog.entries}
           loading={paneCatalog.isLoading}
           error={paneCatalog.isError}

@@ -1,26 +1,18 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
 @import url("@kontourai/station-sdk/action-control.css");
-/* Console Kit token contract (roadmap), now consumed from the
-   published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
-   Decision: token *definitions* load globally (the published tokens/index.css
-   targets :root and [data-theme="light"]; scoping them under a wrapper class
-   would mean forking the vendor file, which the @kontourai/ui consumer guide
-   forbids), but `--k-*` *consumption* is scoped to the Kontour-facing
-   surfaces — trust panel, readiness panel, flow run console, gate verdict
-   cards. Station's base chrome stays on its own --bg-… and --text-… tokens
-   until the S4 suite-coherence pass. The two namespaces don't overlap, and
-   @kontourai/ui's dark default + [data-theme="light"] skin key off the same
-   documentElement data-theme attribute ThemeToggle already manages, so both
-   token systems flip together. fonts.css supplies the --k-font-* faces
-   (self-hosted woff2, same vendored pattern as Station's own fonts.css
-   import above — #2648). react/styles.css carries
-   the shared primitive class contract (was imported via the deleted mirror). */
+/* Load the kit fonts and tokens before the shared component styles. Station
+   sets the density-sensitive --k-text-sm value in tokens.css. */
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");
 @import url("./styles/control-recipes.css");
 @import url("./styles/layout-recipes.css");
+
+/* Shared kit tooltips are control labels and use Station's readable text size. */
+.tooltip {
+  font-size: var(--text-xs);
+}
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
@@ -1123,74 +1115,8 @@ button:hover {
   font-size: var(--k-text-sm);
 }
 
-/* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
-   presentation; the mobile rule binds them to the visual viewport so the
-   software keyboard cannot push actions below the reachable screen.
- *
- * #1638/#1662: the layer below is the `layer` prop every consumer of
- * `ResponsiveDialogSurface` is REQUIRED to declare, keyed off the attribute
- * the component stamps from it, so the number a surface gets is the kind its
- * author named rather than whatever its feature stylesheet happened to say.
- *
- * The `!important` is load-bearing. Method, because the outcome alone does not
- * establish the cause: for each overlay below, the computed z-index is read in
- * Chromium twice — once as declared, once with `!important` stripped from
- * these three declarations only — AND once on the feature class ALONE. That
- * third reading is what discriminates. Without it, "unaffected by
- * `!important`" is equally well explained by the feature rule never applying
- * at that viewport, which is exactly the trap the last entry sits in.
- *
- * SIX overlays that carry this class set a z-index of their own below the dock
- * (`--layer-dock` 9200; `--layer-notification` 9400). The `!important`
- * arbitrates FIVE:
- *
- *   selector                          alone   +class   stripped
- *   .tool-call-batch-sheet__overlay    1000    10000       1000
- *   .delegation-launcher__overlay        35    10000         35
- *   .command-launcher__overlay           30    10000         30
- *   .active-work-frame__overlay          20    10000         20
- *   .drill-down-overlay                1000    10000       1000
- *
- * The first four are later than this rule in the built entry stylesheet
- * (measured: +24 to +55 KB past it) at equal specificity — single class
- * against single class — so without `!important` source order hands them the
- * feature value. `.drill-down-overlay` is not in the entry sheet at all; it
- * rides a lazily loaded chunk, and the reading above composes that chunk
- * AFTER the entry sheet, which is the order a dynamic import produces. That
- * ordering is the condition for its row, so it is stated rather than implied.
- *
- * Every surface portals to the body now, so one reading its feature value
- * would land behind the dock entirely rather than being clamped by it.
- *
- * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
- * its cause is source order rather than `!important` — which took the third
- * reading to establish. Its `z-index: 70` lives inside the shell mobile
- * breakpoint (the one `useIsMobile` keeps in lockstep: max-width 768px, or a
- * coarse pointer under 540px tall — spelled out rather than quoted verbatim,
- * because the lockstep scanner reads this file as source text and cannot tell
- * a quoted at-rule in prose from a real one). At a desktop viewport it does
- * not apply at all, so any conclusion drawn there is about a rule that was
- * never in the cascade. Measured at 390x844,
- * where it IS live: alone it computes 70, so the rule applies; with this class
- * it computes 10000 both as declared and with `!important` stripped. Its rule
- * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
- * wins on order. Do not cite it as justification for these declarations.
- *
- * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
- * cover a sibling dialog. The `!important` already defeated that before the
- * portal, so it is inert now exactly as it was then — a stacked confirm
- * resolves against its sibling by DOM order, which is what it already did.
- *
- * The remaining overlays that carry this class have nothing to arbitrate, but
- * not for the reason an earlier draft of this comment gave: it said they
- * declare `--layer-dialog` themselves, and seven of them declare no z-index at
- * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
- * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
- * `.agent-actions-overlay`, `.learning-source-overlay`,
- * `.basis-pane-fallback-overlay`). They compute automatically and take
- * whatever these rules give them, which is a different fact with the same
- * consequence. The rest do declare `--layer-dialog`, so they agree with these
- * rules by coincidence rather than by arbitration. */
+/* The shared layer wins over feature styles, including lazy chunks loaded
+   after this stylesheet. Feature classes still own each surface's geometry. */
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
@@ -2578,9 +2504,6 @@ button:hover {
 .active-work-frame__overlay {
   position: fixed;
   inset: 0;
-  /* Local to the dock stacking context, which owns the chrome-level
-     --layer-dock slot. Local stacking stays below 100 by convention. */
-  z-index: 20;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -2606,7 +2529,6 @@ button:hover {
 .command-launcher__overlay {
   position: fixed;
   inset: 0;
-  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3654,9 +3576,13 @@ button:hover {
   will-change: transform;
 }
 
-.chat-scroll-to-bottom:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+/* A tap must not leave the button scaled. Color hovers are not movement
+   and stay outside this query. */
+@media (hover: hover) and (pointer: fine) {
+  .chat-scroll-to-bottom:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .message {
@@ -4123,8 +4049,8 @@ button.background-tasks-banner:focus-visible {
 }
 
 /* archive#1301: visually-hidden live-region sibling
-   for the button variant above — same clip technique as Checkbox.css's
-   `.cb__input` / `.composer-mode-sheet__option-input`. Carries the
+   for the button variant above — same clip technique as
+   `.composer-mode-sheet__option-input`. Carries the
    `role="status"` this text's screen-reader auto-announcement depends on,
    which a `<button>` cannot also carry. */
 
@@ -4176,10 +4102,10 @@ button.background-tasks-banner:focus-visible {
 }
 
 .ephemeral-message {
-  animation: fadeIn var(--motion-slow) var(--ease-in);
+  animation: fadeIn var(--motion-slow) var(--ease-out);
   transition:
-    opacity var(--motion-slow) var(--ease-out),
-    transform var(--motion-slow) var(--ease-out);
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
 }
 
 /* A notice the user reads and acts on (Retry, Dismiss), not a transcript
@@ -4423,7 +4349,7 @@ button.tool-call__line:hover {
 
 .tool-call__status-footer {
   margin-top: 0.5rem;
-  color: var(--success-text);
+  color: var(--k-text);
   font-size: 0.9em;
 }
 
@@ -5412,6 +5338,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .usage-telemetry-disclosure__inventory > summary {
+  min-block-size: var(--touch-target-min, 0px);
+  align-content: center;
   cursor: pointer;
   padding: 8px 0;
   color: var(--text-secondary);
@@ -5896,167 +5824,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   pointer-events: none;
 }
 
-/* Attachment Preview Menu */
-.attachment-menu {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 10000;
-  min-width: 280px;
-  max-width: 400px;
-}
-
-.attachment-menu__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.attachment-menu__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.attachment-menu__count {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.attachment-menu__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.attachment-menu__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background: var(--bg-secondary) !important;
-  border-radius: 4px;
-  border: none !important;
-}
-
-.attachment-menu__item:hover {
-  background: var(--bg-secondary) !important;
-  transform: none !important;
-}
-
-/* The preview trigger is a real button: keyboard users tab to it and press
-   Enter. (The old clickable img carried a keydown handler it could never
-   receive — an img is not focusable — so the preview was pointer-only.) */
-.attachment-menu__thumbnail-button {
-  padding: 0;
-  border: none !important;
-  background: none !important;
-  cursor: pointer;
-  border-radius: 4px;
-  /* The img fills the box; keep the button's own box the same 48px square. */
-  line-height: 0;
-  flex: 0 0 auto !important;
-  transition: box-shadow var(--motion-base) var(--ease-standard);
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__thumbnail-button:hover {
-  background: none !important;
-  transform: none !important;
-}
-
-.attachment-menu__thumbnail-button:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.attachment-menu__thumbnail {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 4px;
-}
-
-.attachment-menu__file-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  font-size: var(--text-5xl);
-  flex-shrink: 0;
-}
-
-.attachment-menu__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.attachment-menu__name {
-  font-size: var(--text-base);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-menu__size {
-  font-size: var(--k-text-xs);
-  color: var(--text-muted);
-}
-
-.attachment-menu__remove-btn {
-  background: none !important;
-  border: none !important;
-  cursor: pointer;
-  padding: 4px;
-  color: var(--text-muted);
-  font-size: var(--text-2xl);
-  line-height: 1;
-  flex: 0 0 auto !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__remove-btn:hover {
-  background: none !important;
-  transform: none !important;
-  color: var(--text-primary);
-}
-
-.attachment-menu__add-btn,
-.attachment-menu__clear-btn {
-  background: none !important;
-  border: none !important;
-  cursor: pointer;
-  font-size: var(--k-text-sm);
-  color: var(--color-primary);
-  font-weight: 600;
-  padding: 2px 4px;
-  flex: 0 0 auto !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__add-btn:hover,
-.attachment-menu__clear-btn:hover {
-  background: none !important;
-  transform: none !important;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   :root {
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
@@ -6065,6 +5832,21 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* The touch floor, set only here: a compact control sizes itself with
        `var(--touch-target-min, <desktop size>)` and needs no media query. */
     --touch-target-min: 44px;
+  }
+
+  /* End the scrollport at the collapsed bar so controls cannot paint under
+     Inbox while the route scrolls. The margin owns the existing reservation. */
+  .app__main:has(> .chat-dock.is-collapsed:not([data-keyboard-hidden]))
+    > .main-content
+    > .content-view {
+    margin-bottom: var(--dock-bottom-clearance);
+    padding-bottom: 0;
+    scroll-padding-bottom: 0;
+  }
+
+  /* The drawer and its backdrop own presses until navigation closes. */
+  .sidebar-backdrop ~ .app__main > .chat-dock.is-collapsed {
+    pointer-events: none;
   }
 
   /* Mobile Safari zooms the whole page when an editable control below 16px
@@ -6292,9 +6074,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      second line that the clip removes, so the app name is either shown in full
      or not at all - a text-overflow ellipsis here is what produced "S...". The
      logo stays (it is the home link) and the toolbar stays one row. The
-     connection chip is a 44px dot, or a dot and a Station name capped at
-     120px when healthy (chat.css), so the lockup is the one member of the row
-     that gives up width. Both children are 22px tall and
+     lockup takes leftover space after the action cluster. Both children are 22px tall and
      share one line, so nothing of the wrapped line peeks into the clip. */
   .app-toolbar__lockup {
     display: flex;
@@ -6305,11 +6085,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* The gap below the first line keeps the wrapped wordmark out of the
        4px the clip margin lends to the focus ring. */
     row-gap: 8px;
-    /* Shrinkable, never below the logo. When the name does not fit, the lockup
-       shrinks to the room there is; the blank remainder is invisible and the
-       action cluster stays put. */
-    flex: 0 1 auto;
+    flex: 1 1 0;
     min-width: 22px;
+    max-width: max-content;
     height: 22px;
     overflow: hidden;
   }
@@ -6428,9 +6206,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-wrap: nowrap;
   }
 
-  /* The wordmark never truncates (see `.app-toolbar__lockup`). The right-hand
-     action cluster stays on-screen at <=390px because the lockup is the one
-     member of the row that gives up width. */
+  /* The action cluster shares the toolbar's single row. */
+  .app-toolbar__actions {
+    flex-wrap: nowrap;
+  }
 
   /* Phone connection chrome is a touchable status dot, with the Station's
      short name beside it when healthy. Its full accessible name and
@@ -6588,41 +6367,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     inset: 0;
     background: rgba(0, 0, 0, 0.3);
     z-index: 19;
-  }
-
-  .attachment-menu {
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    top: calc(
-      var(--responsive-visual-viewport-top, 0px) +
-      var(--app-toolbar-total-height) +
-      var(--space-3)
-    );
-    right: max(12px, var(--safe-right, 0px));
-    bottom: auto;
-    left: max(12px, var(--safe-left, 0px));
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    max-height: min(
-      60dvh,
-      calc(var(--responsive-visual-viewport-height, 100dvh) - 96px)
-    );
-    overflow: hidden;
-  }
-
-  .attachment-menu__list {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-  }
-
-  .attachment-menu__add-btn,
-  .attachment-menu__clear-btn,
-  .attachment-menu__remove-btn {
-    min-width: 44px;
-    min-height: 44px;
   }
 }
 
@@ -7107,157 +6851,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 .acp-badge__dot--pulse {
   animation: acp-pulse var(--motion-status-pulse) var(--ease-standard) infinite;
-}
-
-/* ── Project Dashboard ──────────────────────────────────────────── */
-
-.project-dashboard__modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--layer-dialog);
-}
-
-.project-dashboard__modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  padding: 24px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-/* ── Knowledge Section ──────────────────────────────────────────── */
-
-.knowledge-section__badge {
-  font-size: var(--k-text-sm);
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.knowledge-section__scan-result {
-  margin-top: 8px;
-  font-size: var(--text-base);
-  color: var(--success-text, #22c55e);
-}
-
-.knowledge-section__empty {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.knowledge-section__dropzone {
-  border: 2px dashed var(--border-primary);
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard);
-  margin-bottom: 8px;
-}
-
-.knowledge-section__dropzone:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-secondary);
-}
-
-.knowledge-section__dropzone--active {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
-  color: var(--accent-primary);
-}
-
-.knowledge-section__doc-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.knowledge-section__doc {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 5px;
-  font-size: var(--text-base);
-}
-
-.knowledge-section__doc-name {
-  flex: 1;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.knowledge-section__doc-remove {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--text-xl);
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.knowledge-section__doc-remove:hover {
-  color: var(--error-text);
-}
-
-.knowledge-section__status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  padding-top: 4px;
-}
-
-.knowledge-section__clear-btn {
-  background: none;
-  border: none;
-  color: var(--error-text);
-  cursor: pointer;
-  font-size: var(--k-text-sm);
-  padding: 2px 6px;
-}
-
-.knowledge-section__clear-btn:hover {
-  text-decoration: underline;
-}
-
-.knowledge-section__migrate {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-primary);
-}
-
-.knowledge-section__migrate-copy {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-
-.knowledge-section__migrate-errors {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  font-size: var(--k-text-sm);
-  color: var(--error-text);
 }
 
 /* ── ChatDock Project Filter ────────────────────────────────────── */
@@ -7746,129 +7339,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 /* Mobile: compact chat dock header and tab bar */
-/* ── Provider Overview ── */
-.provider-overview {
-  padding: 2rem 2.5rem;
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.provider-overview__header {
-  margin-bottom: 1.5rem;
-}
-
-.provider-overview__title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem;
-  letter-spacing: -0.02em;
-}
-
-.provider-overview__desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.provider-overview__card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 0.875rem 1rem;
-}
-
-.provider-overview__card-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  padding: 0.3rem 0.4rem;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background var(--motion-fast) var(--ease-standard);
-}
-
-.provider-overview__card-item:hover {
-  background: var(--bg-tertiary);
-}
-
-.provider-overview__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-muted);
-}
-
-.provider-overview__dot--active {
-  background: var(--success-text, #22c55e);
-}
-
-/* Quick Setup (shown when no providers exist) */
-.provider-overview__quickstart {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border-primary);
-}
-
-.provider-overview__quickstart-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 0.25rem;
-}
-
-.provider-overview__quickstart-desc {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0 0 0.75rem;
-}
-
-.provider-overview__quickstart-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.provider-overview__group-label {
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin: 1rem 0 0.5rem;
-}
-
-.provider-overview__group-label:first-of-type {
-  margin-top: 0;
-}
-
-.provider-picker-modal {
-  max-width: 460px;
-  width: 90vw;
-}
-
-.provider-picker-modal .modal-body {
-  max-height: min(65vh, 560px);
-  overflow-y: auto;
-}
-
-.provider-picker-modal__desc {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-
-.provider-picker-modal__search {
-  margin-bottom: 0.75rem;
-}
-
 /*
  * Shared filter-field styling for every "type to narrow this list" surface
  * (the split-pane list header, both Add Provider pickers). It lives in this
@@ -7901,41 +7371,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .list-filter-input::placeholder {
   color: var(--text-muted);
-}
-
-.provider-overview__quickstart-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  width: 100%;
-  transition: border-color var(--motion-fast) var(--ease-standard);
-}
-
-.provider-overview__quickstart-btn:hover {
-  border-color: var(--accent-primary);
-}
-
-.provider-overview__quickstart-icon {
-  font-size: 1.25rem;
-}
-
-.provider-overview__quickstart-name {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.provider-overview__quickstart-meta {
-  font-size: var(--k-text-sm);
-  color: var(--text-muted);
-  margin-top: 1px;
 }
 
 .provider-detail__progress {
@@ -9244,52 +8679,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-inline: var(--safe-left, 0px) var(--safe-right, 0px);
   }
 
-  /* A full-screen mobile chat owns the viewport. ChatDockMobileHeader already
-     carries the drawer, identity, activity and an overflow with the app-level
-     actions, so the app toolbar above it is duplicated chrome.
-
-     Reducing the shared geometry token rather than zeroing it keeps the
-     maximized dock clearing the notch: index.css's
-     `.app__main > .chat-dock.is-maximized` mobile rule positions itself with
-     `--app-toolbar-total-height`, and readToolbarHeight() agrees with this
-     value for the snap math. */
-  .app__main--mobile-dock-fullscreen {
-    --app-toolbar-total-height: var(--safe-top);
-  }
-
-  .app__main--mobile-dock-fullscreen > .app-toolbar {
-    display: none;
-  }
-
-  /* If fullscreen ownership ever leaks onto a workspace layout again, keep its
-     tab strip below Android's status bar while the route-level guard recovers. */
-  .app__main--mobile-dock-fullscreen .workspace-tabs__header {
-    padding-top: var(--safe-top);
-  }
-
-  /* station#541: the `.page-frame__header` safe-area rule that used to live
-     here moved to `page-frame.css` — same selector, same
-     semantics, zero mobile-css-ratchet cost there (page-frame.css is a
-     PRIMITIVE_ALLOWLIST entry: it renders every page header, so it already
-     owns this header's one mobile treatment). See page-frame.css's own
-     responsive breakpoints. */
-
-  /* No top safe-area padding on the full-screen dock's own header. The dock
-     already starts below the status bar: its `top` adds
-     `--app-toolbar-total-height`, which this mode reduces to `--safe-top`
-     (the maximized rule, and the short-window rule, which adds `--safe-top`
-     itself). Padding the header by the inset as well counted it twice and
-     left a status-bar-tall empty band above the project and chat title on
-     every edge-to-edge phone. tests/mobile-chat-composer.spec.ts measures
-     the header's height against the collapsed bar's with a real inset. */
-
-  /* Deliberately NOT animated, reverting an attempt of mine to animate the
-     snap into Full. A maximized dock's height tracks the visual viewport, so
-     any transition here shows up twice as a defect: the composer lags visibly
-     behind the software keyboard (the reason the original rule existed), and
-     the dock is still animating on load, which leaves controls inside it never
-     settling. Half/Collapsed still animate via the base `.chat-dock` rule —
-     that is where a settle is actually visible. */
+  /* The shell toolbar, including its safe-area inset, stays above every dock snap. */
+  /* Full-screen geometry follows viewport resizes immediately. An explicit
+     snap animates its translation in useMobileDockHeaderMotion. */
 
   /* Now that the bar is the primary way to resize the dock, the grip has to
      read as a handle rather than decoration. */
@@ -9402,6 +8794,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > .chat-input__meta:not(
       :has(
         .chat-input__next-turn-notice,
+        .chat-input__composer-notice,
         .chat-status-pill,
         .chat-scroll-to-bottom
       )
@@ -9499,8 +8892,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     calc(var(--k-space-1) + var(--k-space-3) / 2) 0;
 }
 
-/* Visually-hidden native radio input (same clip technique as Checkbox.css's
-   `.cb__input`) — the label carries the visible row styling; the input
+/* Visually-hidden native radio input (1px clip) — the label carries the
+   visible row styling; the input
    supplies real radio semantics/keyboard behavior. */
 .composer-mode-sheet__option-input {
   position: absolute;

@@ -43,6 +43,50 @@ function item(
   };
 }
 
+describe('ready local delegation completion', () => {
+  it('shares an unread result across both shelves and returns a read result to open work', () => {
+    const now = 24 * 60 * 60 * 1000;
+    const result = item({
+      id: 'task:unseen-delegation',
+      kind: 'orchestration',
+      kindLabel: 'Session',
+      lifecycleLabel: 'Completed',
+      unread: true,
+    });
+    const running = item({ id: 'active-child', lifecycleLabel: 'Running' });
+    const draft = item({ id: 'unsent-draft', lifecycleLabel: 'Draft' });
+    const otherCompletion = item({
+      id: 'normal-completion',
+      lifecycleLabel: 'Completed',
+      unread: true,
+    });
+    const workFacts = new Map([
+      [result.id, { resumableDelegationResult: true as const }],
+    ]);
+    const partition = (entries: HomeWorkItem[]) =>
+      partitionHomeWorkItems({
+        items: entries,
+        now,
+        snoozedUntil: new Map(),
+        workFacts,
+      });
+    const grouped = (entries: HomeWorkItem[], label: string) =>
+      groupMobileActivity(entries, now, {}, workFacts).find(
+        (group) => group.label === label,
+      )?.items;
+    const items = [result, running, draft, otherCompletion];
+    expect(partition(items).recentlyFinished).toEqual([result]);
+    expect(grouped(items, 'Just finished')).toEqual([result]);
+    expect(partition(items).running).toEqual([running]);
+    expect(partition(items).drafts).toEqual([draft]);
+    expect(partition(items).settled).toEqual([otherCompletion]);
+
+    const read = { ...result, unread: false };
+    expect(partition([read]).idle).toEqual([read]);
+    expect(grouped([read], 'Open')).toEqual([read]);
+  });
+});
+
 describe('external conversation classification', () => {
   it('does not promote imported history into a live lane even when its persisted lifecycle says Running', () => {
     const external = item({

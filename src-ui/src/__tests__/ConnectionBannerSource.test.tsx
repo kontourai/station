@@ -698,6 +698,25 @@ describe('ConnectionBannerSource → Station details — blocked credential', ()
     ).toBeNull();
   });
 
+  it('opens the Station list when local relay authority needs verification', async () => {
+    connectionStatus.reason = 'relay-authority-unavailable';
+    const opened = vi.fn();
+    window.addEventListener('station:open-connections-modal', opened);
+    try {
+      renderChrome();
+      const details = within(await findStationDetails());
+      expect(details.queryByRole('button', { name: 'Pair again' })).toBeNull();
+      fireEvent.click(
+        details.getByRole('button', { name: 'Open Connections' }),
+      );
+      expect(opened).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: { mode: 'list' } }),
+      );
+    } finally {
+      window.removeEventListener('station:open-connections-modal', opened);
+    }
+  });
+
   it('does not claim automatic retry is paused for a non-credential decision', async () => {
     connectionStatus.reason = 'unexpected-response';
     connectionStatus.failureStreak = 1;
@@ -822,6 +841,37 @@ it('announces sustained loss once, waits for SSE catch-up, and keeps blips quiet
   expect(toastStore.getSnapshot()[0].message).toBe(
     'Server connection restored.',
   );
+});
+
+it('announces a sustained sign-in limit without offering to pair again', async () => {
+  activeConnection = {
+    id: 'studio',
+    name: 'Studio',
+    url: 'https://station.example.test',
+  };
+  connectionStatus.status = 'connected';
+  const client = new QueryClient();
+  const tree = () => (
+    <QueryClientProvider client={client}>
+      <ConnectionBannerSource />
+      <StationDetailsHost />
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  connectionStatus.status = 'error';
+  connectionStatus.reason = 'authentication-rate-limited';
+  connectionStatus.failureStreak = 3;
+  view.rerender(tree());
+  act(openStationDetails);
+
+  expect(toastStore.getSnapshot()[0]?.message).toMatch(
+    /Studio is temporarily limiting sign-in checks/,
+  );
+  expect(
+    within(await findStationDetails()).queryByRole('button', {
+      name: 'Pair again',
+    }),
+  ).toBeNull();
 });
 
 it('does not announce recovery on initial connection or carry an outage across Station selections', () => {

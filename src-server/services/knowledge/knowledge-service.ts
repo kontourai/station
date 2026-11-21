@@ -39,6 +39,8 @@ import { searchKnowledgeDocuments } from './knowledge-search.js';
 import { DEFAULT_KNOWLEDGE_NAMESPACE } from './knowledge-storage.js';
 
 const DEFAULT_NS = DEFAULT_KNOWLEDGE_NAMESPACE;
+/** The built-in `rules` namespace (`project-rules.md`), superseded by the Project brief. */
+const BUILTIN_RULES_NAMESPACE = 'rules';
 
 // ── Service ────────────────────────────────────────────────────────
 
@@ -49,6 +51,17 @@ export class KnowledgeService {
     private dataDir: string,
     private storageAdapter?: IStorageAdapter,
   ) {}
+
+  /**
+   * #5062: whether a Project's brief now carries its legacy rules (the
+   * `project-coordination` preview is on and the rules were copied). Set by
+   * runtime composition; absent means the rules inject as before.
+   */
+  private briefCarriesRules?: (projectSlug: string) => boolean;
+
+  setBriefCarriesRules(predicate: (projectSlug: string) => boolean): void {
+    this.briefCarriesRules = predicate;
+  }
 
   // ── Storage resolution ──
 
@@ -297,8 +310,18 @@ export class KnowledgeService {
    * Returns formatted string for system prompt prepending, or null if empty.
    */
   async getInjectContext(projectSlug: string): Promise<string | null> {
+    // #5062: once a Project's rules were copied into its brief, the brief
+    // carries them on every engine, so the `rules` namespace stops injecting.
+    let rulesInBrief = false;
+    try {
+      rulesInBrief = this.briefCarriesRules?.(projectSlug) === true;
+    } catch {
+      rulesInBrief = false;
+    }
     const namespaces = this.listNamespaces(projectSlug).filter(
-      (n) => n.behavior === 'inject',
+      (n) =>
+        n.behavior === 'inject' &&
+        !(rulesInBrief && n.id === BUILTIN_RULES_NAMESPACE),
     );
     if (namespaces.length === 0) return null;
 

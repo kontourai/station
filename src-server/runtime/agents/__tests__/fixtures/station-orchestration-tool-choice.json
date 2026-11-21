@@ -16,12 +16,12 @@
     "mustNotName": []
   },
   {
-    "id": "delegate-without-targets-tool",
+    "id": "delegate-from-header-token",
     "kind": "bad",
     "shape": "codex-custody",
-    "scenario": "A Codex session must pick an Agent. list_delegation_targets is bound-only, so the text must fall back to list_agents.",
-    "expectNamed": ["delegate_task", "list_agents"],
-    "mustNotName": ["list_delegation_targets"]
+    "scenario": "A Codex session uses its local target catalog to choose an Agent and model.",
+    "expectNamed": ["delegate_task", "list_delegation_targets"],
+    "mustNotName": ["list_delegation_environments"]
   },
   {
     "id": "simulator-run",
@@ -75,12 +75,16 @@
     "id": "selection-without-delegate",
     "kind": "guard",
     "shape": "no-delegate",
-    "scenario": "The Agent's tool selection removed delegate_task. No orchestration advice may remain.",
-    "expectNamed": ["wait_session"],
+    "scenario": "The Agent's tool selection removed delegate_task. Delegation advice is absent, while engine setup and its Agent lookup remain available.",
+    "expectNamed": [
+      "wait_session",
+      "list_engine_setup",
+      "open_engine_setup",
+      "list_agents"
+    ],
     "mustNotName": [
       "delegate_task",
       "list_delegation_targets",
-      "list_agents",
       "continue_task",
       "interrupt_task"
     ]
@@ -104,8 +108,12 @@
     "kind": "guard",
     "shape": "acp-custody",
     "scenario": "An ACP session messages another Session in the Project.",
-    "expectNamed": ["send_to_session", "wait_session"],
-    "mustNotName": ["list_delegation_targets", "device_open"]
+    "expectNamed": [
+      "send_to_session",
+      "wait_session",
+      "list_delegation_targets"
+    ],
+    "mustNotName": ["list_delegation_environments", "device_open"]
   },
   {
     "id": "ordinary-coding",

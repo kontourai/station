@@ -1,0 +1,15 @@
+{
+  "revision": "3c85c63d0b0be1511765677c22e561abc50f0c10",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Shared re-exports named notification types from the contract (types.ts), not the new helpers; the documented types and delivered-state caveat are unchanged.","inputs":["docs/reference/shared.md","packages/contracts/src/notification.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock deep-link opening cover and notification-open notices change no concept this page defines.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"sw.js tap now hands the link to the open tab before navigating and ChatDock shows an opening state; the push-permission and reload guidance here is unchanged.","inputs":["docs/user/getting-started.md","src-ui/public/sw.js","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/native-recovery.md","note":"main.tsx holds a cold notification link before render; recovery cover, relaunch and deep-link activation behavior described here is unchanged.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock deep-link opening cover does not affect Board editing, saving or reload notices.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
