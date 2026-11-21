@@ -803,6 +803,16 @@ export function RegionChromeBar({
   useEffect(() => {
     const bar = barRef.current;
     if (!bar || mobileChat) return;
+    // Pane menus stop bubbling at their portal trigger. Reveal the chat in
+    // capture so mouse and keyboard activation still reach that control.
+    const revealForChatAction = (event: MouseEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('.chat-dock__pane-toolbar button')
+      ) {
+        applyDockSnap('half');
+      }
+    };
     const onClick = (event: MouseEvent) => {
       if (
         event.target instanceof Element &&
@@ -811,9 +821,14 @@ export function RegionChromeBar({
         return;
       applyDockSnap(isDockOpen ? 'collapsed' : 'half');
     };
+    if (!isDockOpen && selectedSurfaceId === 'chat')
+      bar.addEventListener('click', revealForChatAction, true);
     bar.addEventListener('click', onClick);
-    return () => bar.removeEventListener('click', onClick);
-  }, [applyDockSnap, isDockOpen, mobileChat]);
+    return () => {
+      bar.removeEventListener('click', revealForChatAction, true);
+      bar.removeEventListener('click', onClick);
+    };
+  }, [applyDockSnap, isDockOpen, mobileChat, selectedSurfaceId]);
 
   if (mobileChat) return null;
 

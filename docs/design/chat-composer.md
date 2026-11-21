@@ -1551,8 +1551,7 @@ context in the conversation's session details.
 The mobile **Inbox** is embedded in Chat. Use the leading arrow to return to
 Inbox, or open it from Chat actions. **New chat** floats at the lower right of
 the Inbox list. A tap opens the start composer. The Home and Inbox rows lead
-with the conversation title. The next line groups engine marks and project
-artwork with their names. A pencil identifies an unsent draft on this device.
+with the conversation title. The next line shows the project mark and name first, followed by the agent or engine identity. A pencil identifies an unsent draft on this device.
 The right edge aligns the status with one time beneath it. A live clock uses
 the start of the observed activity, a scheduled check shows its due time, and
 other rows show recency. Opening Inbox does not reset these times. On Home,
@@ -1669,15 +1668,13 @@ picker, which shows all work (2026-11-16); the phone keeps its "Show all"
 notice. Search also finds dismissed work; there is no Dismissed shelf in
 the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
-Station restores their normal status handling. Task family summaries use an
-explicit Open task control; chat rows open chats. Browse all conversations
+Station restores their normal status handling. A task row opens its Overview. Its work-chat disclosure expands the linked conversations. Browse all conversations
 sits at the end of the list and retains paginated history, rename and delete.
 The inbox has no overflow menu: a failed read offers Retry, disabled while the
-re-read runs. A card row reads its title and time first. On a hover row the
-second and last line is the agent's mark, the status and the project (the
-project gives way first); the mark's tooltip and the hover card name the
-agent, and a row with no mark keeps the agent in words. A touch row keeps
-the agent named in words beside its mark (#4266). Dismissal offers a
+re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
+column. Status and one time align on the right. Hover or keyboard focus exposes
+the desktop row actions. A touch row keeps the agent named beside its mark.
+Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 

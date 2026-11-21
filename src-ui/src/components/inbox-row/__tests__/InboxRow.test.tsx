@@ -540,7 +540,7 @@ describe('the chip line exists only when a chip does', () => {
     expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
-      screen.getByRole('button', { name: /, unsent draft$/ }),
+      screen.getByRole('button', { name: /\bunsent draft$/ }),
     ).toBeTruthy();
     act(() => chatDraftsStore.clear('chat-with-draft'));
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
@@ -589,27 +589,27 @@ describe('the chip line exists only when a chip does', () => {
 });
 
 describe('the picker project line draws one project mark (#4266)', () => {
-  it('a project without an icon shows the folder alone, never folder plus colour dot', () => {
+  it('a project without an icon shows one initials mark beside its name', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
       chrome: 'touch',
       projectAccent: '#ff8800',
     });
-    const line = container.querySelector('.inbox-row__project-context')!;
-    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    const line = container.querySelector('.inbox-row__project-line')!;
+    expect(line.querySelectorAll('.project-icon--initials')).toHaveLength(1);
     expect(line.querySelector('[data-project-icon]')).toBeNull();
     expect(line.querySelector('.inbox-row__project')?.textContent).toBeTruthy();
   });
 
-  it('a project with its own icon shows that icon instead of the folder', () => {
+  it('a project with its own icon shows that icon instead of initials', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
       chrome: 'touch',
       projectAccent: '#ff8800',
       projectIcon: '🚀',
     });
-    const line = container.querySelector('.inbox-row__project-context')!;
-    expect(line.querySelector('svg')).toBeNull();
+    const line = container.querySelector('.inbox-row__project-line')!;
+    expect(line.querySelector('.project-icon--initials')).toBeNull();
     expect(line.querySelector('.project-icon--icon')?.textContent).toBe('🚀');
   });
 
@@ -621,7 +621,7 @@ describe('the picker project line draws one project mark (#4266)', () => {
         { ...base, item: { ...base.item, chatSessionId: 'picker-draft' } },
         { actionsInDetails: true, chrome: 'touch' },
       );
-      const line = container.querySelector('.inbox-row__project-context')!;
+      const line = container.querySelector('.inbox-row__project-line')!;
       expect(
         line.querySelector('[data-testid="inbox-row-draft-marker"]'),
       ).not.toBeNull();
@@ -636,7 +636,7 @@ describe('the picker project line draws one project mark (#4266)', () => {
       actionsInDetails: true,
       chrome: 'touch',
     });
-    const text = container.querySelector('.inbox-row__meta-text');
+    const text = container.querySelector('.inbox-row__agent');
     expect(text?.className).not.toContain('sr-only');
     expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
       rowFor().item.agentLabel,
@@ -1433,8 +1433,9 @@ describe("the project's colour is a swatch, never the name's colour", () => {
       .getAllByTestId('inbox-row')
       .map(
         (row) =>
-          row.querySelector<HTMLElement>('.inbox-row__project-accent')?.style
-            .backgroundColor ?? null,
+          row
+            .querySelector<HTMLElement>('.inbox-row__project-line')
+            ?.style.getPropertyValue('--inbox-project-accent') || null,
       );
     expect(colours).toEqual([
       'var(--event-agent-start)',
@@ -1474,7 +1475,7 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     });
     const context = screen
       .getByTestId('inbox-row')
-      .querySelector('.inbox-row__project-context');
+      .querySelector('.inbox-row__project-line');
     expect(
       context?.querySelector('.inbox-row__project-accent .brand-icon__glyph')
         ?.textContent,
@@ -1511,7 +1512,9 @@ describe("the project's icon takes the swatch's place when it has one", () => {
       );
     expect(marks[0]?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
     expect(marks[1]?.querySelector('img')).toBeNull();
-    expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
+    expect(
+      marks[1]?.parentElement?.style.getPropertyValue('--inbox-project-accent'),
+    ).toBe('var(--event-reasoning)');
   });
 });
 

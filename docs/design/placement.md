@@ -2066,7 +2066,9 @@ routing occurs only after the reader's focus guard accepts the destination.
 
 The Inbox and reader stay mounted while switching between them, preserving
 list position, the search, and unsent composer text. Collapse and reopen retain
-the selected view. A new conversation URL reveals its reader. A covered reader
+the selected view. A collapsed chat retains its title and actions. Activating
+a chat command in the collapsed header reveals the dock. A new conversation
+URL reveals its reader. A covered reader
 does not count as viewed and cannot take composer focus. A hidden New chat
 draft releases its Back-history entry until it is shown again.
 

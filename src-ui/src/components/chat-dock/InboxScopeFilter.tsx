@@ -6,7 +6,7 @@ import {
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { useProjects } from '../../contexts/ProjectsContext';
+import { useProjectNames } from '../../hooks/useProjectNames';
 import {
   readSnoozes,
   snoozesVersion,
@@ -29,7 +29,7 @@ export function useInboxScope(
     snoozesVersion,
     snoozesVersion,
   );
-  const { projects } = useProjects();
+  const projectNames = useProjectNames();
   const { inboxScope } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   // #4405 (A36): the project page on screen, for the default scope.
@@ -51,7 +51,7 @@ export function useInboxScope(
                   !facts?.get(item.id)?.station &&
                   item.projectSlug === routeProject,
               )?.projectLabel ??
-              projects.find((project) => project.slug === routeProject)?.name ??
+              projectNames.get(routeProject) ??
               'Current project'
             }`
           : 'All work',
@@ -90,7 +90,7 @@ export function useInboxScope(
       const station = stationById.get(item.id)!;
       const label = item.projectSlug
         ? ((station === 'station:local'
-            ? projects.find((p) => p.slug === item.projectSlug)?.name
+            ? projectNames.get(item.projectSlug)
             : undefined) ??
           item.projectLabel ??
           item.projectSlug)
@@ -126,6 +126,7 @@ export function useInboxScope(
     return {
       items: filtered,
       projectChoices,
+      projectNames,
       stationCount: new Set(stationById.values()).size,
       options,
       value: inboxScope,
@@ -139,7 +140,7 @@ export function useInboxScope(
     };
   }, [
     items,
-    projects,
+    projectNames,
     visible,
     now,
     facts,

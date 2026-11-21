@@ -203,8 +203,11 @@ export function ChatDockMobileHeader({
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
-  const collapsedExtent =
-    dockToggle?.state === 'collapsed' ? extentToggle : null;
+  const collapsed = dockToggle?.state === 'collapsed';
+  const collapsedInbox =
+    collapsed && (inboxActive || !(hasConversation || childTrail));
+  const resumeChat = collapsed && !collapsedInbox;
+  const Identity = resumeChat && !childTrail ? 'button' : 'div';
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
   // or have unread replies — the sheet's Chats row is where they are — so it
@@ -242,7 +245,7 @@ export function ChatDockMobileHeader({
         ) : !inboxActive &&
           hasConversation &&
           !childTrail &&
-          dockToggle?.state !== 'collapsed' ? (
+          (!collapsed || extentToggle) ? (
           <Button
             ref={inboxTriggerRef}
             variant="ghost"
@@ -254,7 +257,7 @@ export function ChatDockMobileHeader({
           >
             <ArrowLeftGlyph />
           </Button>
-        ) : dockToggle && !collapsedExtent && !childTrail ? (
+        ) : dockToggle && !(collapsed && extentToggle) && !childTrail ? (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
@@ -273,13 +276,26 @@ export function ChatDockMobileHeader({
         ) : null}
       </div>
 
-      <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
+      <Identity
+        className="chat-dock__mobile-identity"
+        data-dock-drag-passthrough=""
+        {...(Identity === 'button'
+          ? {
+              type: 'button' as const,
+              onClick: dockToggle?.onExpand,
+              'aria-label': `Open chat: ${sessionTitle}`,
+            }
+          : {})}
+        onClickCapture={
+          resumeChat && childTrail ? dockToggle?.onExpand : undefined
+        }
+      >
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
             title={inboxActive ? undefined : sessionTitle}
           >
-            {dockToggle?.state === 'collapsed' ? (
+            {collapsedInbox ? (
               <button
                 type="button"
                 className="chat-dock__open-inbox-label"
@@ -299,7 +315,7 @@ export function ChatDockMobileHeader({
             )}
           </span>
           {!inboxActive && agentIdentity && ' '}
-          {dockToggle?.state !== 'collapsed' &&
+          {!collapsedInbox &&
             !inboxActive &&
             (agentIdentity || stationName) && (
               <span className="chat-dock__mobile-eyebrow">
@@ -316,9 +332,9 @@ export function ChatDockMobileHeader({
               </span>
             )}
         </span>
-      </div>
+      </Identity>
       <div className="chat-dock__mobile-actions">
-        {inboxActive && !collapsedExtent && (
+        {inboxActive && !collapsed && (
           <div
             className="chat-dock__mobile-inbox-tools"
             ref={inboxToolsHostRef}
@@ -343,7 +359,7 @@ export function ChatDockMobileHeader({
             {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
           </button>
         )}
-        {dockToggle?.state === 'collapsed' && (
+        {collapsedInbox && (
           <button
             type="button"
             className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"
@@ -356,7 +372,7 @@ export function ChatDockMobileHeader({
           </button>
         )}
         {!inboxActive &&
-          dockToggle?.state !== 'collapsed' &&
+          !collapsedInbox &&
           (hasConversation || childTrail || showConnection ? (
             <button
               ref={chatActionsTriggerRef}
@@ -374,7 +390,10 @@ export function ChatDockMobileHeader({
                   : undefined
               }
               data-no-dock-drag=""
-              onClick={() => setIsOverflowOpen((open) => !open)}
+              onClick={() => {
+                if (collapsed) dockToggle.onExpand();
+                setIsOverflowOpen((open) => !open);
+              }}
             >
               <span aria-hidden="true">⋯</span>
               {activitySummary && (

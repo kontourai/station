@@ -1,0 +1,33 @@
+{
+  "revision": "76b507e8332dab0031f9ad41651ea5670156c0dc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The existing status ladder and shared elapsed clock still own their facts. The Inbox now consumes one accessible elapsed-time component in both card presentations.","inputs":["docs/architecture/module-map.md","src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Updated the desktop card reading order and task activation. Compared the rendered task and conversation controls at 300 CSS pixels and reviewed desktop hover and keyboard paths alongside the touch row.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Inspected hover geometry, stable title wrapping and the existing reduced-motion checks. The shared layout changes alignment while the existing row and dock motion owners retain their timing.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"The region and child-reader owners keep navigation and ancestry. Captured desktop chat toolbar commands now reveal their own region on collapse.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Documented the retained chat header, command reveal and distinct collapsed Inbox entry. Chromium exercised the phone title, chat actions and full-screen path and desktop keyboard menu and settings.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/workspace-panes/RegionChromeBar.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The mobile-chat-composer entry still covers the same product surface. Its two changed journeys now also exercise retained title, reopening and command delivery on phone and desktop.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the two-line title, project and one-time column across phone and desktop, separate task disclosure, and collapsed Inbox versus conversation headers. Updated the guide with the tested behavior.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The status component consumes existing observed session facts. Its layout and accessible clock change the work row presentation only.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the changed ChatDock props into the mobile header and desktop region bar. Header reveal and row navigation are UI state actions using existing routes and DTOs.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The collapsed header and scope label lookup consume existing navigation, Project and device preferences. The config reference retains its existing keys and defaults.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the shared status component against the existing status input, timing facts and project attribution. The public contract shapes and producers are unaffected.","inputs":["docs/reference/contracts.md","src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Chat and task selection retain their destinations and child disclosures. This presentation update preserves the documented relationships between chats, projects and tasks.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated the collapsed conversation, Inbox creation entry, and desktop task-row instructions. The focused browser tests exercised opening titles, actions and the visible results.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"The chat dock still opens the task through its canonical task owner. The presentation does not change board membership or board navigation.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
