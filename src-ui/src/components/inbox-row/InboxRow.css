@@ -2,7 +2,7 @@
  * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
  * lanes use the same row.
  *
- * Fixed line budget: the headline (title and time), then on a hover row one
+ * Legacy Home card layout: the headline (title and time), then on a hover row one
  * state line (the agent's mark, status, project) and on a touch row the status
  * and meta lines, and a chip line that exists only when a chip does. Every line is a single non-wrapping line, so a row's height is decided
  * by which lines it has and never by their text. What the row is about comes
@@ -136,25 +136,6 @@
 }
 .inbox-row__context::before {
   content: "· ";
-}
-
-/* Meta line: agent mark, agent and project. */
-.inbox-row__meta {
-  display: flex;
-  min-width: 0;
-  height: var(--inbox-row-line);
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-tertiary);
-  font-size: var(--inbox-row-text-size);
-}
-
-.inbox-row__meta-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The project's mark before its name (decorative; the name is the identity):
@@ -435,6 +416,12 @@
 
 /* The time yields its slot rather than being covered: hidden, never removed,
  * so the meta line keeps its width. */
+.inbox-row--hover.inbox-row--has-actions:is(
+    :hover,
+    :has(:focus-visible),
+    :has([aria-expanded="true"])
+  )
+  .inbox-row__status-column,
 .inbox-row--hover.inbox-row--has-actions:hover .inbox-row__time,
 .inbox-row--hover.inbox-row--has-actions:has(:focus-visible) .inbox-row__time,
 .inbox-row--hover.inbox-row--has-actions:has([aria-expanded="true"])
@@ -444,7 +431,7 @@
   .inbox-row__slim-word,
 .inbox-row--hover.inbox-row--has-actions:has([aria-expanded="true"])
   .inbox-row__slim-word {
-  visibility: hidden;
+  opacity: 0;
 }
 
 .inbox-row__action {
@@ -851,41 +838,8 @@
   border-color: color-mix(in srgb, var(--k-action) 60%, var(--k-line));
   box-shadow: inset 3px 0 0 var(--k-action);
 }
-.inbox-row__meta,
 .inbox-row__time {
   color: var(--k-text-muted);
-}
-
-.inbox-row--task {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--k-space-1) var(--k-space-2);
-  padding: var(--k-space-2) var(--k-space-3);
-}
-.inbox-row--task .inbox-row__title,
-.inbox-row--task .inbox-row__status {
-  grid-column: 1;
-}
-.inbox-row__task-label {
-  grid-column: 1;
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-}
-.inbox-row__task-actions {
-  grid-column: 2;
-  grid-row: 1 / 4;
-  min-height: 44px;
-  font-size: var(--k-text-sm);
-}
-
-.inbox-row__task-actions {
-  display: flex;
-  align-items: center;
-}
-.inbox-row__task-actions > button {
-  min-height: 44px;
-  font-size: var(--k-text-sm);
 }
 
 /* Station provenance has the same mark for peer and SSH work. */
@@ -896,8 +850,10 @@
   background: color-mix(in srgb, var(--k-action) 10%, transparent);
   color: var(--k-text);
 }
-.inbox-row--touch .inbox-row__open:has(.inbox-row__touch-clock),
-.mobile-inbox .inbox-row--touch .inbox-row__open:has(.inbox-row__touch-clock) {
+.inbox-row .inbox-row__open:has(.inbox-row__status-column),
+.mobile-inbox
+  .inbox-row--touch
+  .inbox-row__open:has(.inbox-row__status-column) {
   display: grid;
   width: 100%;
   grid-template-columns: minmax(0, 1fr) fit-content(37.5%);
@@ -905,15 +861,26 @@
   align-items: start;
   gap: var(--k-space-1) var(--k-space-2);
   padding: var(--k-space-3);
-  min-height: var(--touch-target-min);
+  min-height: var(--touch-target-min, 44px);
 }
-.inbox-row .inbox-row__open:has(.inbox-row__touch-clock) > .inbox-row__title {
+.inbox-row .inbox-row__open:has(.inbox-row__status-column) > .inbox-row__title {
   grid-row: 1;
   grid-column: 1;
   min-width: 0;
   display: grid;
 }
-.inbox-row__touch-project {
+.inbox-row__open:has(.inbox-row__status-column)
+  > .inbox-row__title[data-title]
+  > .inbox-row__title-text,
+.inbox-row__open:has(.inbox-row__status-column)
+  > .inbox-row__title[data-title]::after {
+  display: -webkit-box;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.inbox-row__project-line {
   grid-column: 1;
   grid-row: 2;
   display: flex;
@@ -923,17 +890,17 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.inbox-row__touch-project .inbox-row__project,
-.inbox-row__touch-station {
+.inbox-row__project-line .inbox-row__project,
+.inbox-row__station {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
-.inbox-row__touch-project .inbox-row__project-accent {
+.inbox-row__project-line .inbox-row__project-accent {
   flex: none;
 }
-.inbox-row__touch-clock {
+.inbox-row__status-column {
   grid-column: 2;
   grid-row: 1 / span 2;
   min-width: 0;
@@ -947,7 +914,7 @@
   color: var(--k-text-muted);
 }
 .inbox-row
-  .inbox-row__touch-clock
+  .inbox-row__status-column
   :is(.inbox-row__time, .inbox-row__elapsed, .inbox-row__status) {
   position: static;
   grid-row: auto;
@@ -959,16 +926,16 @@
   font-size: var(--k-text-sm);
   gap: var(--k-space-1);
 }
-.inbox-row .inbox-row__touch-clock .inbox-row__status {
+.inbox-row .inbox-row__status-column .inbox-row__status {
   max-width: 100%;
   height: auto;
   white-space: normal;
   text-align: end;
 }
-.inbox-row__touch-clock .inbox-row__word {
+.inbox-row__status-column .inbox-row__word {
   flex: 0 1 auto;
 }
-.inbox-row__touch-reason {
+.inbox-row__reason {
   grid-column: 1 / -1;
   font-size: var(--k-text-sm);
   color: var(--k-text-muted);
@@ -999,10 +966,13 @@
 .inbox-row__selection-mark svg {
   width: var(--k-space-4);
 }
-.inbox-row__touch-project .identity-marks {
+.inbox-row__project-line .project-icon--initials {
+  box-shadow: inset 0 -2px var(--inbox-project-accent, transparent);
+}
+.inbox-row__project-line .identity-marks {
   flex: none;
 }
-.inbox-row__touch-project .inbox-row__agent {
+.inbox-row__project-line .inbox-row__agent {
   position: static;
   width: auto;
   height: auto;
@@ -1010,4 +980,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   clip-path: none;
+}
+
+.inbox-row__open:has(.inbox-row__status-column) > .inbox-row__chips {
+  grid-column: 1 / -1;
+}
+.mobile-inbox .inbox-row--touch:has(> .inbox-row__actions) {
+  display: flex;
 }

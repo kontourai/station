@@ -3270,6 +3270,52 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await expect(page.locator('.app-toolbar')).toBeVisible();
   await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
+
+  const dock = page.locator('#chat-dock');
+  const title = await identity.textContent();
+  const resize = dock.getByRole('separator', { name: /resize/i });
+  await resize.press('ArrowDown');
+  await resize.press('ArrowDown');
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await expect(identity).toHaveText(title!);
+  await header
+    .getByRole('button', { name: 'Chat actions', exact: true })
+    .click();
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(page.getByRole('menu', { name: 'Chat actions' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
+  await resize.press('ArrowDown');
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await header.getByRole('button', { name: /^Open chat:/ }).click();
+  await expect(
+    dock.locator('textarea[placeholder*="Type a message"]'),
+  ).toBeVisible();
+});
+
+test('desktop chat settings opens the collapsed conversation dock', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const dock = page.locator('#chat-dock');
+  await dock.getByRole('button', { name: 'Hide Chat', exact: true }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await dock.getByRole('button', { name: /^More dock actions/ }).press('Enter');
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(
+    page.getByRole('menu', { name: 'More dock actions' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await dock.getByRole('button', { name: 'Hide Chat', exact: true }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await dock
+    .getByRole('button', { name: 'Chat settings', exact: true })
+    .click();
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(
+    page.getByRole('dialog', { name: /chat settings/i }),
+  ).toBeVisible();
 });
 
 for (const width of [361, 375, 390, 431, 481]) {

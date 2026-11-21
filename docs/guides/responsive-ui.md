@@ -273,8 +273,10 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-lg` (18px). Desktop density remains owned by each surface; the
 person's Comfortable or Compact choice sets only the base text tokens and
 never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
-The embedded mobile Inbox uses two-line titles, project artwork and engine
-marks, short status labels, and an elapsed, scheduled or recency time. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
+Desktop and mobile Inbox cards share a two-line title allowance, project and engine
+marks, a status label and one elapsed, scheduled or recency time. A task opens
+from its row. Its work-chat disclosure stays separate. Desktop row actions
+appear on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position. While reading a
 chat, **Inbox** in Chat actions opens the same list. **Browse all conversations**
@@ -325,7 +327,7 @@ Stations are under **More ways to connect**. Native capability and coarse-pointe
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
-The collapsed mobile dock’s **New chat** uses an icon-only chat-bubble-plus control in
+The collapsed mobile Inbox bar’s **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled
 states. The relay UX screenshot harness omits the real dock and uses stubbed
@@ -549,7 +551,9 @@ A chat on a phone is full screen, as in a messaging app: opening one from
 Home, the Inbox, the drawer or a started draft maximizes the dock. The half
 height is a deliberate peek. The app toolbar keeps the drawer and Station switcher
 above the dock at every height. The trailing extent button switches between
-full and half height. The collapsed bar opens Inbox or starts a new chat.
+full and half height. Collapsing a chat keeps its title and actions in the bar.
+Tap the title to resume or open Chat actions to reveal the dock and its menu.
+A collapsed Inbox still offers Inbox and New chat.
 In Inbox, the down arrow collapses the dock. In chat, Back returns to Inbox
 or, when reading a subagent, to its parent.
 

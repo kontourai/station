@@ -121,7 +121,11 @@ const ITEMS: HomeWorkItem[] = [
     environmentLabel: 'a-remote-machine-name-long-enough-to-truncate-in-a-rail',
   }),
   item({ id: 'running', lifecycleLabel: 'Running' }),
-  item({ id: 'idle', environmentLabel: 'home-media' }),
+  item({
+    id: 'idle',
+    environmentLabel: 'home-media',
+    receivedAgentMessage: true,
+  }),
   item({
     id: 'failed',
     lifecycleLabel: 'Failed',
@@ -290,22 +294,32 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
               toolbar.x + toolbar.width,
             );
             const row = pg.locator('.inbox-row--card').first();
-            await row.hover();
-            // The actions take over the time slot, on the headline.
-            const slotLine = (await row
-              .locator('.inbox-row__headline')
+            const clock = (await row
+              .locator('.inbox-row__status-column')
               .boundingBox())!;
+            const title = (await row
+              .locator('.inbox-row__title')
+              .boundingBox())!;
+            expect(title.x + title.width).toBeLessThanOrEqual(clock.x);
+            await row.hover();
             for (const action of await row
               .locator('.inbox-row__actions button')
               .all()) {
               const box = (await action.boundingBox())!;
-              expect(
-                Math.abs(
-                  box.y + box.height / 2 - (slotLine.y + slotLine.height / 2),
-                ),
-              ).toBeLessThanOrEqual(0.5);
+              const hittable = await action.evaluate((el) => {
+                const r = el.getBoundingClientRect();
+                return el.contains(
+                  document.elementFromPoint(
+                    r.x + r.width / 2,
+                    r.y + r.height / 2,
+                  ),
+                );
+              });
+              expect(hittable).toBe(true);
+              expect(box.y + box.height).toBeGreaterThan(clock.y);
             }
           }
+          await pg.mouse.move(width - 1, 1);
           await pg.screenshot({
             path: resolve(artifacts, `inbox-${width}-${theme}.png`),
             animations: 'disabled',
@@ -568,6 +582,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       await settle(pg);
       const rows = pg.locator('[data-testid="inbox-row"]');
       expect(await rows.count()).toBe(ITEMS.length);
+      const running = pg.locator('[data-row-key="running"]');
+      expect(await running.locator('.inbox-row__elapsed').count()).toBe(1);
+      expect(await running.locator('.inbox-row__time').count()).toBe(0);
       const measure = (index: number) =>
         rows.nth(index).evaluate((row) => {
           const box = (selector: string) => {
@@ -579,7 +596,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             height: row.getBoundingClientRect().height,
             top: row.getBoundingClientRect().top,
             title: box('.inbox-row__title'),
-            meta: box('.inbox-row__meta-text'),
+            meta: box('.inbox-row__project-line'),
             status: box('[data-testid="inbox-row-status"]'),
             actionsOpacity: actions ? getComputedStyle(actions).opacity : null,
           };
@@ -626,9 +643,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     ];
     for (const { label, plain, painted, viewport } of cases) {
       // The fixture must contain what it claims to compare.
-      if (label === 'panel')
-        expect(plain).not.toContain('inbox-row__project-accent');
-      else expect(plain).toContain('project-icon--initials');
+      expect(plain).toContain('project-icon--initials');
       expect(painted).toContain('inbox-row__project-accent');
       const pg = await browser.newPage({ viewport });
       try {
@@ -643,24 +658,16 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        if (label === 'panel') {
-          const swatch = await pg
-            .locator('.inbox-row__project-accent')
-            .first()
-            .boundingBox();
-          expect(swatch?.width, 'panel swatch drawn').toBeGreaterThan(0);
-        } else {
-          const line = pg.locator('.inbox-row__touch-project').first();
-          const mark = await line
-            .locator('.inbox-row__project-accent')
-            .boundingBox();
-          const name = await line.locator('.inbox-row__project').boundingBox();
-          expect(mark!.width).toBe(16);
-          expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
-          expect(
-            Math.abs(mark!.y + mark!.height / 2 - name!.y - name!.height / 2),
-          ).toBeLessThan(2);
-        }
+        const line = pg.locator('.inbox-row__project-line').first();
+        const mark = await line
+          .locator('.inbox-row__project-accent')
+          .boundingBox();
+        const name = await line.locator('.inbox-row__project').boundingBox();
+        expect(mark!.width).toBe(16);
+        expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
+        expect(
+          Math.abs(mark!.y + mark!.height / 2 - name!.y - name!.height / 2),
+        ).toBeLessThan(2);
         expect(plainHeights.length, label).toBe(ITEMS.length);
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -713,14 +720,10 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           .locator('.inbox-row__project-accent.project-icon--icon')
           .first()
           .boundingBox();
-        expect(icon?.width, `${label} icon width`).toBe(
-          label === 'sheet' ? 16 : 12,
-        );
-        expect(icon?.height, `${label} icon height`).toBe(
-          label === 'sheet' ? 16 : 12,
-        );
+        expect(icon?.width, `${label} icon width`).toBe(16);
+        expect(icon?.height, `${label} icon height`).toBe(16);
         if (label === 'sheet') {
-          const line = pg.locator('.inbox-row__touch-project').first();
+          const line = pg.locator('.inbox-row__project-line').first();
           expect(await line.locator('.project-icon--icon').count()).toBe(1);
           const name = await line.locator('.inbox-row__project').boundingBox();
           expect(icon!.x + icon!.width).toBeLessThanOrEqual(name!.x);
@@ -1008,7 +1011,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           const rect = (await open.boundingBox())!;
           const title = (await row.locator('.inbox-row__title').boundingBox())!;
           const clock = (await row
-            .locator('.inbox-row__touch-clock')
+            .locator('.inbox-row__status-column')
             .boundingBox())!;
           expect(rect.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
           expect(rect.x + rect.width).toBeLessThanOrEqual(width);

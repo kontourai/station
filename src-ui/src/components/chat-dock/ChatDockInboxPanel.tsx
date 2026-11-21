@@ -232,9 +232,11 @@ function ChatDockInboxPanelImpl({
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
             projectAccentBySlug={projectAccentBySlug}
+            projectNames={scope.projectNames}
             projectIconBySlug={projectIconBySlug}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
+            actionsInDetails={coarsePointer}
             collapsible={{
               sections,
               onToggle: toggleSection,

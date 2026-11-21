@@ -4,7 +4,9 @@ import {
 } from '@kontourai/station-contracts/device-settings';
 import type { GitReadLocation } from '@kontourai/station-sdk';
 import {
+  type CSSProperties,
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -36,28 +38,27 @@ import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
-import { workStatusText } from '../../views/home/work-status';
+import { type WorkStatus, workStatusText } from '../../views/home/work-status';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
-import { ElapsedDuration } from '../ElapsedDuration';
 import {
   CheckGlyph,
   CloseGlyph,
   DiscardGlyph,
   EditGlyph,
-  FolderGlyph,
   MoreGlyph,
   RefreshGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
-import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import { IdentityMarks } from '../inbox-row/IdentityMarks';
 import {
   CompactStatusExplanation,
   InboxRowChips,
+  InboxRowDuration,
   InboxRowStatusGlyph,
   InboxRowStatusLine,
 } from '../inbox-row/InboxRowStatus';
@@ -439,7 +440,9 @@ interface InboxRowProps {
   isOpenChat: boolean;
   now: number;
   onActivate: (item: HomeWorkItem) => void;
+  /** Title and project on the left, with status and one time on the right. */
   compact?: boolean;
+  actionsOnHold?: boolean;
   onSelectRow?: (item: HomeWorkItem) => void;
   onHoldRow?: (item: HomeWorkItem) => void;
   selectedIds?: ReadonlySet<string> | null;
@@ -584,6 +587,99 @@ function InboxRowTitle({ title }: { title: string }) {
   );
 }
 
+function InboxRowSummary({
+  item,
+  now,
+  status,
+  statusId,
+  contextLabel,
+  projectAccent,
+  projectIcon,
+  stationLabel,
+  hasUnsentDraft,
+  children,
+}: Pick<InboxRowProps, 'item' | 'now' | 'projectAccent' | 'projectIcon'> & {
+  status: WorkStatus;
+  statusId: string;
+  contextLabel: string;
+  stationLabel?: string;
+  hasUnsentDraft?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <>
+      <InboxRowTitle title={item.title} />{' '}
+      <span
+        id={`${statusId}-project`}
+        className="inbox-row__project-line"
+        style={
+          projectAccent
+            ? ({ '--inbox-project-accent': projectAccent } as CSSProperties)
+            : undefined
+        }
+      >
+        {children}{' '}
+        {(item.projectSlug || item.projectLabel !== 'No project') && (
+          <ProjectAccentSwatch
+            size={16}
+            accent={projectAccent}
+            icon={projectIcon}
+            name={contextLabel}
+            fallback="initials"
+          />
+        )}
+        <span className="inbox-row__project">{contextLabel}</span>
+        {stationLabel && (
+          <span className="inbox-row__station">
+            {' · '}
+            <span className="sr-only">Station:</span> {stationLabel}
+          </span>
+        )}
+        {hasUnsentDraft && <DraftMarker />}
+      </span>{' '}
+      <span className="inbox-row__status-column">
+        <span
+          className="inbox-row__status"
+          id={statusId}
+          data-tone={status.tone}
+          data-testid="inbox-row-status"
+        >
+          <InboxRowStatusGlyph rung={status.rung} />
+          <span className="inbox-row__word">
+            {item.kind === 'task'
+              ? status.word.replace(/^Task · /, '')
+              : status.word}
+          </span>
+        </span>{' '}
+        {status.since !== undefined ? (
+          <InboxRowDuration
+            since={status.since}
+            now={now}
+            durationId={`${statusId}-duration`}
+            standalone
+          />
+        ) : status.rung === 'scheduled' && item.nextWakeUpAt ? (
+          <span>Check at {clockTime(Date.parse(item.nextWakeUpAt), now)}</span>
+        ) : item.updatedAt > 0 ? (
+          <span className="inbox-row__time">
+            {relativeTime(
+              status.rung === 'done'
+                ? (item.terminalAt ?? item.updatedAt)
+                : item.updatedAt,
+              now,
+              'explicit',
+            )}
+          </span>
+        ) : null}
+      </span>
+      <CompactStatusExplanation
+        status={status}
+        reasonId={`${statusId}-reason`}
+      />
+    </>
+  );
+}
+
 export function InboxRow({
   item,
   inlineApproval,
@@ -614,6 +710,7 @@ export function InboxRow({
   projectName,
   size = 'card',
   chrome = 'hover',
+  actionsOnHold = compact && chrome === 'touch',
   actionsInDetails = false,
   isWoken = false,
   hoverCard = true,
@@ -877,7 +974,7 @@ export function InboxRow({
       .join(' ') || undefined;
   const spokenContext = [
     size === 'slim' && contextLabel,
-    (size === 'slim' || (!actionsInDetails && identity.marks.length > 0)) &&
+    (size === 'slim' || (chrome === 'hover' && identity.marks.length > 0)) &&
       agentText,
     item.controlMode === 'read-only-attached' && 'third-party session',
     unread ? 'unread' : readUnknown ? 'read status unknown' : '',
@@ -893,7 +990,7 @@ export function InboxRow({
         'inbox-row',
         `inbox-row--${size}`,
         `inbox-row--${chrome}`,
-        hasActions && !compact ? 'inbox-row--has-actions' : '',
+        hasActions && !actionsOnHold ? 'inbox-row--has-actions' : '',
         isCurrent ? 'is-current' : '',
         canSwipe ? 'inbox-row--swipe' : '',
         swipe.open ? 'inbox-row--swiped' : '',
@@ -933,7 +1030,7 @@ export function InboxRow({
       }}
       onKeyDown={(event) => {
         if (
-          compact &&
+          actionsOnHold &&
           event.target === detailsTriggerRef.current &&
           (event.key === 'ContextMenu' ||
             (event.shiftKey && event.key === 'F10'))
@@ -1004,7 +1101,7 @@ export function InboxRow({
         className="chat-dock-inbox__item inbox-row__open"
         // The visible row supplies its name in reading order. Only the
         // off-screen reason and coarse duration belong in its description.
-        ref={compact ? detailsTriggerRef : undefined}
+        ref={actionsOnHold ? detailsTriggerRef : undefined}
         aria-describedby={describedBy}
         aria-pressed={selectedIds ? selectedIds.has(item.id) : undefined}
         aria-current={isCurrent ? 'true' : undefined}
@@ -1029,66 +1126,30 @@ export function InboxRow({
             {selectedIds.has(item.id) ? <CheckGlyph /> : null}
           </span>
         )}
-        {compact && size !== 'slim' ? (
+        {(compact || actionsInDetails) && size !== 'slim' ? (
           <>
-            <InboxRowTitle title={item.title} />{' '}
-            <span className="inbox-row__touch-project">
+            <InboxRowSummary
+              item={item}
+              now={now}
+              status={status}
+              statusId={statusId}
+              contextLabel={contextLabel}
+              projectAccent={projectAccent}
+              projectIcon={projectIcon}
+              stationLabel={stationLabel}
+              hasUnsentDraft={hasUnsentDraft}
+            >
               <IdentityMarks
                 identity={identity}
                 size={16}
                 fallbackTitle={agentText}
               />
               {agentText &&
+                (chrome !== 'hover' || identity.marks.length === 0) &&
                 (agentText !== contextLabel || identity.marks.length === 0) && (
                   <span className="inbox-row__agent">{agentText}</span>
-                )}{' '}
-              <ProjectAccentSwatch
-                size={16}
-                accent={projectAccent}
-                icon={projectIcon}
-                name={contextLabel}
-                fallback="initials"
-              />
-              <span className="inbox-row__project">{contextLabel}</span>
-              {stationLabel && (
-                <span className="inbox-row__touch-station">
-                  {' '}
-                  · {stationLabel}
-                </span>
-              )}
-              {hasUnsentDraft && <DraftMarker />}
-            </span>{' '}
-            <span className="inbox-row__touch-clock">
-              <span
-                className="inbox-row__status"
-                id={statusId}
-                data-tone={status.tone}
-                data-testid="inbox-row-status"
-              >
-                <InboxRowStatusGlyph rung={status.rung} />
-                <span className="inbox-row__word">{status.word}</span>
-              </span>{' '}
-              {status.since !== undefined ? (
-                <span className="inbox-row__elapsed" id={durationId}>
-                  for <ElapsedDuration since={status.since} />
-                </span>
-              ) : status.rung === 'scheduled' && item.nextWakeUpAt ? (
-                <span>
-                  Check at {clockTime(Date.parse(item.nextWakeUpAt), now)}
-                </span>
-              ) : hasTime ? (
-                <span className="inbox-row__time">
-                  {relativeTime(
-                    status.rung === 'done'
-                      ? (item.terminalAt ?? item.updatedAt)
-                      : item.updatedAt,
-                    now,
-                    'explicit',
-                  )}
-                </span>
-              ) : null}
-            </span>
-            <CompactStatusExplanation status={status} reasonId={reasonId} />
+                )}
+            </InboxRowSummary>
             <InboxRowChips
               chips={chips.filter((chip) => chip.kind !== 'remote')}
             />
@@ -1152,80 +1213,36 @@ export function InboxRow({
                 </span>
               )}
             </span>{' '}
-            {actionsInDetails ? (
-              <>
-                <InboxRowStatusLine
-                  id={statusId}
-                  reasonId={reasonId}
-                  durationId={durationId}
-                  status={status}
-                  now={now}
-                />{' '}
-                <span className="inbox-row__meta">
-                  {/* Decorative, deliberately: the agent is stated in words
-                      beside it. The decorative mark adds no announcement or tab stop. */}
-                  <IdentityMarks identity={identity} size={20} />
-                  <span className="inbox-row__meta-text">
+            <span className="inbox-row__state">
+              <IdentityMarks
+                identity={identity}
+                size={16}
+                fallbackTitle={agentText}
+              />
+              <InboxRowStatusLine
+                id={statusId}
+                reasonId={reasonId}
+                durationId={durationId}
+                status={status}
+                now={now}
+              />{' '}
+              <span className="inbox-row__context">
+                {identity.marks.length === 0 && (
+                  <>
                     <span className="inbox-row__agent">{agentText}</span>
-                  </span>
-                </span>
-              </>
-            ) : (
-              // Two lines on a hover row: what (above), then state and where.
-              // The agent is its mark here, named in the mark's tooltip and the
-              // hover card; a row with no mark keeps the agent in words, so
-              // no row is left unattributed.
-              <span className="inbox-row__state">
-                <IdentityMarks
-                  identity={identity}
-                  size={16}
-                  fallbackTitle={agentText}
-                />
-                <InboxRowStatusLine
-                  id={statusId}
-                  reasonId={reasonId}
-                  durationId={durationId}
-                  status={status}
-                  now={now}
-                />{' '}
-                <span className="inbox-row__context">
-                  {identity.marks.length === 0 && (
-                    <>
-                      <span className="inbox-row__agent">{agentText}</span>
-                      {' · '}
-                    </>
-                  )}
-                  <ProjectAccentSwatch
-                    accent={projectAccent}
-                    icon={projectIcon}
-                    fallback={remoteProject ? 'initials' : 'dot'}
-                    name={contextLabel}
-                  />
-                  <span className="inbox-row__project">{contextLabel}</span>
-                  {hasUnsentDraft && <DraftMarker />}
-                </span>
-              </span>
-            )}{' '}
-            {actionsInDetails && (
-              <span className="inbox-row__project-context">
-                {/* One project mark: its own icon when it has one, else the
-                    folder. The colour dot beside the folder read as a stray
-                    separator ("[folder] • name"). */}
-                {displayableProjectIcon(projectIcon) || remoteProject ? (
-                  <ProjectAccentSwatch
-                    size={24}
-                    accent={projectAccent}
-                    icon={projectIcon}
-                    name={contextLabel}
-                    fallback={remoteProject ? 'initials' : 'dot'}
-                  />
-                ) : (
-                  <FolderGlyph />
+                    {' · '}
+                  </>
                 )}
+                <ProjectAccentSwatch
+                  accent={projectAccent}
+                  icon={projectIcon}
+                  fallback={remoteProject ? 'initials' : 'dot'}
+                  name={contextLabel}
+                />
                 <span className="inbox-row__project">{contextLabel}</span>
                 {hasUnsentDraft && <DraftMarker />}
               </span>
-            )}{' '}
+            </span>{' '}
             <InboxRowChips chips={chips} />
           </>
         )}
@@ -1233,7 +1250,7 @@ export function InboxRow({
           <span className="sr-only">{` ${spokenContext}`}</span>
         )}
       </button>
-      {hasActions && !compact && (
+      {hasActions && !actionsOnHold && (
         <div className="chat-dock-inbox__row-actions inbox-row__actions">
           {/* No separate "open" control: the row itself opens, and a second
               one would be a redundant tab stop on every row. */}
@@ -1327,6 +1344,10 @@ export function InboxRow({
 
 function InboxTaskRow({
   item,
+  projectName,
+  projectAccent,
+  projectIcon,
+  chrome = 'hover',
   now,
   facts,
   onActivate,
@@ -1337,6 +1358,10 @@ function InboxTaskRow({
   isDismissed,
 }: Pick<
   InboxRowProps,
+  | 'projectName'
+  | 'projectAccent'
+  | 'projectIcon'
+  | 'chrome'
   | 'item'
   | 'now'
   | 'facts'
@@ -1369,55 +1394,67 @@ function InboxTaskRow({
   });
   return (
     <div
-      className="chat-dock-inbox__row inbox-row inbox-row--task"
+      className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${actions.length ? ' inbox-row--has-actions' : ''}`}
       data-row-key={item.id}
     >
-      <span className="inbox-row__task-label">Task · {item.projectLabel}</span>
-      <InboxRowTitle title={item.title} />
-      <InboxRowStatusLine id={id} status={status} now={now} />
-      <div className="inbox-row__task-actions">
-        <Button
-          variant="ghost"
-          className="chat-dock-inbox__item inbox-row__task-open"
-          aria-label={`Open task ${item.title}`}
-          onClick={() => onActivate(item)}
+      <button
+        type="button"
+        className="chat-dock-inbox__item inbox-row__open"
+        aria-label={`Open task ${item.title}`}
+        aria-describedby={`${id}-project ${id}`}
+        onClick={() => onActivate(item)}
+      >
+        <InboxRowSummary
+          item={item}
+          now={now}
+          status={status}
+          statusId={id}
+          contextLabel={projectName ?? item.projectLabel}
+          projectAccent={projectAccent}
+          projectIcon={projectIcon}
+          stationLabel={facts?.station?.label ?? item.environmentLabel}
         >
-          Open task
-        </Button>
-        <ActionOverflowMenu
-          label={`Actions for task ${item.title}`}
-          actions={actions.flatMap((action) => {
-            if (action.kind === 'snooze') {
-              const choices = action.isSnoozed
-                ? [{ label: action.label, wakeAt: null }]
-                : action.choices.map((choice) => ({
-                    label: `${action.label} ${choice.label}`,
-                    wakeAt: choice.wakeAt,
-                  }));
-              return choices.map((choice) => ({
-                key: choice.label,
-                label: choice.label,
-                onSelect: (trigger: HTMLElement) => {
-                  if (trigger instanceof HTMLButtonElement)
-                    action.choose(choice.wakeAt, trigger);
-                },
-              }));
-            }
-            return action.kind === 'command'
-              ? [
-                  {
-                    key: action.id,
-                    label: action.label,
-                    onSelect: (trigger: HTMLElement) => {
-                      if (trigger instanceof HTMLButtonElement)
-                        action.select(trigger);
-                    },
+          Task ·
+        </InboxRowSummary>
+      </button>
+      {actions.length > 0 && (
+        <div className="inbox-row__actions">
+          <ActionOverflowMenu
+            triggerClassName="chat-dock-inbox__row-action inbox-row__action"
+            label={`Actions for task ${item.title}`}
+            actions={actions.flatMap((action) => {
+              if (action.kind === 'snooze') {
+                const choices = action.isSnoozed
+                  ? [{ label: action.label, wakeAt: null }]
+                  : action.choices.map((choice) => ({
+                      label: `${action.label} ${choice.label}`,
+                      wakeAt: choice.wakeAt,
+                    }));
+                return choices.map((choice) => ({
+                  key: choice.label,
+                  label: choice.label,
+                  onSelect: (trigger: HTMLElement) => {
+                    if (trigger instanceof HTMLButtonElement)
+                      action.choose(choice.wakeAt, trigger);
                   },
-                ]
-              : [];
-          })}
-        />
-      </div>
+                }));
+              }
+              return action.kind === 'command'
+                ? [
+                    {
+                      key: action.id,
+                      label: action.label,
+                      onSelect: (trigger: HTMLElement) => {
+                        if (trigger instanceof HTMLButtonElement)
+                          action.select(trigger);
+                      },
+                    },
+                  ]
+                : [];
+            })}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1446,7 +1483,7 @@ export interface InboxGroupListProps {
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
   onActivate: (item: HomeWorkItem) => void;
-  compact?: boolean;
+  actionsOnHold?: boolean;
   onSelectRow?: (item: HomeWorkItem) => void;
   onHoldRow?: (item: HomeWorkItem) => void;
   selectedIds?: ReadonlySet<string> | null;
@@ -1471,9 +1508,9 @@ export interface InboxGroupListProps {
    * `projectAccent` through `rowProjectMarks`. Referentially stable, like
    * the other shared props.
    */
+  projectNames?: ReadonlyMap<string, string>;
   projectAccentBySlug?: ReadonlyMap<string, string>;
   /** Project icons by slug (`useProjectIcons`), resolved like the accents. */
-  projectNames?: ReadonlyMap<string, string>;
   projectIconBySlug?: ReadonlyMap<string, string>;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
@@ -1500,7 +1537,7 @@ export function InboxGroupList({
   collapsible,
   showGroupCounts = false,
   onActivate,
-  compact = false,
+  actionsOnHold = false,
   onSelectRow,
   onHoldRow,
   selectedIds,
@@ -1514,8 +1551,8 @@ export function InboxGroupList({
   onDraftDiscarded,
   agents,
   gitLocationByThreadId,
-  projectAccentBySlug,
   projectNames,
+  projectAccentBySlug,
   projectIconBySlug,
   chrome,
   actionsInDetails,
@@ -1603,11 +1640,25 @@ export function InboxGroupList({
       facts,
       resolutionState.supported,
     );
+    const project =
+      facts?.hostDetails === false ||
+      facts?.station ||
+      item.environmentId ||
+      item.delegationEnvironmentKind === 'peer'
+        ? {}
+        : {
+            ...rowProjectMarks(item, projectAccentBySlug, projectIconBySlug),
+            projectName: item.projectSlug
+              ? projectNames?.get(item.projectSlug)
+              : undefined,
+          };
     return item.kind === 'task' ? (
       <InboxTaskRow
+        {...project}
+        chrome={chrome}
         item={item}
         now={now}
-        facts={workFacts?.get(item.id)}
+        facts={facts}
         onActivate={onActivate}
         onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
         isSnoozed={group.id === 'snoozed'}
@@ -1618,10 +1669,9 @@ export function InboxGroupList({
     ) : (
       <InboxRow
         key={item.id}
-        projectName={
-          item.projectSlug ? projectNames?.get(item.projectSlug) : undefined
-        }
-        compact={compact}
+        {...project}
+        compact
+        actionsOnHold={actionsOnHold}
         onSelectRow={onSelectRow}
         onHoldRow={onHoldRow}
         selectedIds={selectedIds}
@@ -1675,18 +1725,15 @@ export function InboxGroupList({
         agents={agents}
         chrome={chrome}
         actionsInDetails={actionsInDetails}
-        facts={workFacts?.get(item.id)}
+        facts={facts}
         detailsOpen={detailsFor === item.id}
         onDetailsOpenChange={(open) => setDetailsFor(open ? item.id : null)}
-        size={!actionsInDetails && SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
+        size={!actionsOnHold && SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
         gitLocation={
           gitLocationByThreadId?.get(
             item.orchestrationThreadId ?? item.chatSessionId ?? '',
           ) ?? undefined
         }
-        {...(workFacts?.get(item.id)?.hostDetails === false
-          ? {}
-          : rowProjectMarks(item, projectAccentBySlug, projectIconBySlug))}
       />
     );
   };

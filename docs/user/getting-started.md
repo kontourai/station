@@ -721,7 +721,7 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed Inbox bar),
 **⌘T**, and the floating button in the phone Inbox open the same composer.
 **Explore agents** remains available for deliberate customization.
 
@@ -815,8 +815,8 @@ chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
 directly from the collapsed bar. The menu drawer lists places and Projects.
 The chat bar's Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
-unsent message stay in place when switching back to a conversation. Collapse
-and reopen restore the last view. Use the floating **New chat** button in Inbox, the compose icon in the collapsed bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
+unsent message stay in place when switching back to a conversation. Collapsing a conversation keeps its title in the bar. Tap the title to resume it.
+Use the floating **New chat** button in Inbox, the compose icon on the collapsed Inbox bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind

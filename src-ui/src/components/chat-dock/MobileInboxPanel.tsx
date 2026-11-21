@@ -8,7 +8,6 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
-import { useProjectNames } from '../../hooks/useProjectNames';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { workStatus } from '../../views/home/work-status';
@@ -102,7 +101,6 @@ export function MobileInboxPanel({
   updating?: boolean;
   refresh?: ListRefresh;
 }) {
-  const projectNames = useProjectNames();
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const showLoadError = loadError || refresh?.recovering;
@@ -451,7 +449,7 @@ export function MobileInboxPanel({
             key={controller.stateKey}
             swipeActions={swipeActions}
             groups={groups}
-            compact
+            actionsOnHold
             onSelectRow={choose}
             onHoldRow={(item) =>
               setSelected((previous) => new Set(previous).add(item.id))
@@ -467,7 +465,7 @@ export function MobileInboxPanel({
             workFacts={workFacts}
             gitLocationByThreadId={gitLocationByThreadId}
             projectAccentBySlug={projectAccentBySlug}
-            projectNames={projectNames}
+            projectNames={scope.projectNames}
             projectIconBySlug={projectIconBySlug}
             showGroupCounts
             collapsible={{

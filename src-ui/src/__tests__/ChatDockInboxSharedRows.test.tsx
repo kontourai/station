@@ -145,7 +145,7 @@ function renderSheetHost(
   );
 }
 
-function expectSharedRowAnatomy(root: ParentNode, recency = '1m') {
+function expectSharedRowAnatomy(root: ParentNode, recency = '1m ago') {
   // One shared row implementation: the class family is the contract.
   expect(root.querySelector('.chat-dock-inbox__row')).not.toBeNull();
   expect(root.querySelector('.inbox-row__agent')?.textContent).toBe(
@@ -882,7 +882,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
     const dialog = screen.getByRole('region', { name: 'Inbox' });
-    expectSharedRowAnatomy(dialog, '1m ago');
+    expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
         name: /^Shared row title.*Shared project/,
@@ -1119,19 +1119,20 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       AGENTS,
     );
     expect(avatarOf(container)).toBeNull();
-    expect(container.querySelector('.brand-icon')).toBeNull();
+    expect(container.querySelector('.identity-marks .brand-icon')).toBeNull();
   });
 
   it('an unresolved row keeps its whole meta line, in words', () => {
-    const { container } = renderPanelHost(
+    renderPanelHost(
       sessionItem({ agentSlug: 'agent-that-is-gone' }),
       vi.fn(),
       AGENTS,
     );
     // No mark to stand for it, so the agent stays in words before the project.
-    expect(container.querySelector('.inbox-row__context')?.textContent).toBe(
-      'Codex · Shared project',
-    );
+    const row = screen.getByRole('button', {
+      name: /^Shared row title.*Codex.*Shared project/,
+    });
+    expect(within(row).getByText('Codex')).toBeTruthy();
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
@@ -1416,7 +1417,7 @@ it.each([0, 1, 2])(
     expect(
       within(lane).getAllByRole('button', { name: 'Open task One outcome' }),
     ).toHaveLength(1);
-    expect(within(lane).getByText('Task · In progress')).toBeTruthy();
+    expect(within(lane).getByText('In progress')).toBeTruthy();
     if (count)
       expect(
         within(lane).getByRole('button', {

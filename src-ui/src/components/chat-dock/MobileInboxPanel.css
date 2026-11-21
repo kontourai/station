@@ -72,14 +72,6 @@
 .mobile-inbox .inbox-row--touch {
   display: block;
 }
-.mobile-inbox .inbox-row__title[data-title] > .inbox-row__title-text,
-.mobile-inbox .inbox-row__title[data-title]::after {
-  display: -webkit-box;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
 .mobile-inbox .chat-dock-inbox__group-label,
 .mobile-inbox .chat-dock-inbox__section-toggle {
   min-height: 44px;

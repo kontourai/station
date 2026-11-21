@@ -4457,10 +4457,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           : dockMoreActions
                     }
                     // #3309: the tab strip's controls fold into the header — one
-                    // chrome bar, every reclaimed pixel is transcript space. Only
-                    // while the pane is open; the collapsed bar stays minimal.
+                    // chrome bar. A selected conversation keeps its controls on collapse.
                     workspaceControls={
-                      isPaneOpen || isCollapsedDragPreview
+                      workspaceShown ||
+                      activeChat ||
+                      importedSessionId ||
+                      showNewChatModal
                         ? {
                             // Whether to OFFER the panel is the same question as
                             // whether it mounts, so it reads the same predicate

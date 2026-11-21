@@ -676,6 +676,24 @@ test('opens Chat inventory from the actions sheet, not a third bar control', asy
 });
 
 describe('full-screen and peek control (#4391)', () => {
+  test('a collapsed conversation keeps its title and opens before showing Chat actions', async () => {
+    const onExpand = vi.fn();
+    const onToggleInbox = vi.fn();
+    renderHeader({
+      hasConversation: true,
+      inboxActive: false,
+      onToggleInbox,
+      dockToggle: { state: 'collapsed', onExpand, onCollapse: vi.fn() },
+      extentToggle: { maximized: false, onToggle: vi.fn() },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Open chat: New chat' }),
+    ).toBeTruthy();
+    await openActions();
+    expect(onExpand).toHaveBeenCalledOnce();
+    expect(onToggleInbox).not.toHaveBeenCalled();
+  });
+
   test('a collapsed bar opens full screen with one size control', () => {
     const onToggle = vi.fn();
     renderHeader({
