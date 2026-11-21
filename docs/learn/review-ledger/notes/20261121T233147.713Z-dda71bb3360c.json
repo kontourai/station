@@ -1,0 +1,7 @@
+{
+  "revision": "7dd945ab02faeb88d4c37edaf50bcfc31887f999",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"The test adds the predecessor-engine-live code to the refused-send cases and asserts the composer is restored and the notice says so; commands.md does not describe that path and remains accurate.","inputs":["src-ui/src/__tests__/useActiveChatSessionMessaging.test.ts"]}
+  ]
+}
