@@ -1978,6 +1978,7 @@ function ChatMessageListComponent({
         data-chat-message-key={row.id}
         data-chat-turn-id={row.message.turnId}
         data-chat-role={row.message.role}
+        data-history-entry={row.message.historyEntry}
         data-role={row.message.role}
         data-transcript-message-id={messageId}
         data-testid={

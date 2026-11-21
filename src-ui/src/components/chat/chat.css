@@ -476,6 +476,10 @@
   will-change: transform, opacity;
 }
 
+#chat-dock .chat-message-anchor[data-history-entry] > .message-row {
+  animation-name: none;
+}
+
 /* Drop the entry hint once the animation has settled so will-change does not
    keep a compositor layer alive for every message in a long conversation. */
 .message-row:not(:last-child) {

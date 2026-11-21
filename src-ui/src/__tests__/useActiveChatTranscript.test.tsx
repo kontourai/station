@@ -102,6 +102,95 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('loaded pages are history, while arrivals in the open chat keep entry motion', async () => {
+    const apiBase = 'http://entry-motion.test';
+    const first = event('e3', 'turn.started', {
+      turnId: 'existing',
+      prompt: 'Existing question',
+    });
+    const completed = event('e4', 'turn.completed', {
+      turnId: 'existing',
+      outputText: 'Existing answer',
+    });
+    const incoming = event('e5', 'turn.started', {
+      turnId: 'arriving',
+      prompt: 'New question',
+    });
+    const answer = event('e6', 'turn.completed', {
+      turnId: 'arriving',
+      outputText: 'New answer',
+    });
+    const publish = (frame: ReturnType<typeof event>) =>
+      recordSequencedLiveEvent(
+        apiBase,
+        frame.event as Parameters<typeof recordSequencedLiveEvent>[1],
+        frame.sequence,
+      );
+    publish(first);
+    publish(completed);
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: true,
+      nextCursor: 'older',
+      events: [first, completed],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript(apiBase, baseSession),
+    );
+    const isHistory = (text: string) =>
+      result.current.messages.find((message) => message.content === text)
+        ?.historyEntry === true;
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(isHistory('Existing question')).toBe(true);
+    expect(isHistory('Existing answer')).toBe(true);
+
+    act(() => {
+      publish(incoming);
+      publish(answer);
+    });
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      'Existing question',
+      'Existing answer',
+      'New question',
+      'New answer',
+    ]);
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+
+    const earlier = [
+      event('e1', 'turn.started', {
+        turnId: 'older',
+        prompt: 'Earlier question',
+      }),
+      event('e2', 'turn.completed', {
+        turnId: 'older',
+        outputText: 'Earlier answer',
+      }),
+    ];
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: false,
+      events: earlier,
+    });
+    await act(async () => result.current.loadOlder());
+    expect(isHistory('Earlier question')).toBe(true);
+    expect(isHistory('Earlier answer')).toBe(true);
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [first, completed, incoming, answer],
+    });
+    await act(async () => result.current.reload());
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+  });
+
   test('an open that moves the chat forward is not undone by its settled transcript', async () => {
     const id = 'adoption-conversation';
     activeChatsStore.initChat(id, {
@@ -1582,6 +1671,7 @@ describe('useActiveChatTranscript', () => {
       expect(
         view.result.current.messages.map((message) => message.content),
       ).toContain('first answer question');
+      expect(view.result.current.messages[0]?.historyEntry).toBe(true);
       // The revalidating read is the normal one, for the same conversation.
       await waitFor(() =>
         expect(
@@ -1593,6 +1683,7 @@ describe('useActiveChatTranscript', () => {
       expect(
         view.result.current.messages.map((message) => message.content),
       ).toContain('revalidated question');
+      expect(view.result.current.messages[0]?.historyEntry).toBe(true);
       expect(view.result.current.settled).toBe(true);
     });
 

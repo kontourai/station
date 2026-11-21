@@ -464,6 +464,58 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     readLiveFloor,
     readLiveFloor,
   );
+  const viewKey = JSON.stringify([
+    apiBase,
+    target?.station?.runtimeKey ?? target?.requestScope?.authorityKey,
+    session.conversationId ?? session.id,
+  ]);
+  // Frames buffered before this view opened belong to its history even if
+  // the live store can still supply them while the server page loads.
+  const initialSequence = Math.max(
+    liveFloor,
+    liveEvents.at(-1)?.sequence ?? 0,
+    session.conversationActivity?.asOfSequence ?? 0,
+  );
+  const [entryView, setEntryView] = useState(() => ({
+    key: viewKey,
+    sequence: initialSequence,
+  }));
+  if (entryView.key !== viewKey) {
+    setEntryView({ key: viewKey, sequence: initialSequence });
+  }
+  const previousArrivals = useRef<readonly OrchestrationSequencedEvent[]>([]);
+  const arrivals = useMemo(() => {
+    const threadIds = new Set([
+      session.id,
+      session.currentSessionId,
+      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+    ]);
+    const next = replay
+      ? []
+      : liveEvents.filter(
+          ({ sequence, event }) =>
+            sequence > entryView.sequence &&
+            threadIds.has(event.threadId) &&
+            (event.method === 'turn.started' ||
+              (TURN_TERMINAL_METHODS.includes(event.method) &&
+                !isDeferredRetriableTurnError(event))),
+        );
+    const prior = previousArrivals.current;
+    if (
+      next.length === prior.length &&
+      next.every((event, index) => event === prior[index])
+    )
+      return prior;
+    previousArrivals.current = next;
+    return next;
+  }, [
+    entryView.sequence,
+    liveEvents,
+    replay,
+    session.id,
+    session.currentSessionId,
+    window.sessionLineage,
+  ]);
   const behindSnapshot =
     !replay &&
     windowWatermark < liveFloor &&
@@ -716,6 +768,18 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const agentPresentationBySessionId = new Map(
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
+    const newInputs = new Set<string>();
+    const newTurns = new Set<string>();
+    const newTerminals = new Set<string>();
+    for (const { event } of arrivals) {
+      const key = JSON.stringify([event.threadId, event.turnId]);
+      if (event.method === 'turn.started') {
+        if (event.eventId) newInputs.add(event.eventId);
+        if (event.turnId && event.inputKind !== 'steer') newTurns.add(key);
+      } else if (event.turnId) {
+        newTerminals.add(key);
+      }
+    }
     const projectedRows = projectRuntimeEventsToMessages(
       stitchedEvents
         .map((item) => item.event)
@@ -758,20 +822,34 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             message.metadata?.turnId === session.openTurnId
           ),
       )
-      .map<ChatMessage>((message) => ({
-        ...conversationMessageToChatMessage(message),
-        agentSlug: message.metadata?.sessionId
-          ? agentBySessionId.get(message.metadata.sessionId)
-          : undefined,
-        agentDisplayName: message.metadata?.sessionId
-          ? agentPresentationBySessionId.get(message.metadata.sessionId)
-              ?.agentDisplayName
-          : undefined,
-        agentIcon: message.metadata?.sessionId
-          ? agentPresentationBySessionId.get(message.metadata.sessionId)
-              ?.agentIcon
-          : undefined,
-      }));
+      .map<ChatMessage>((message) => {
+        const row = conversationMessageToChatMessage(message);
+        const key = JSON.stringify([row.sessionId, row.turnId]);
+        const isArrival =
+          row.role === 'user'
+            ? row.sourceEventId !== undefined &&
+              newInputs.has(row.sourceEventId)
+            : newTurns.has(key) ||
+              (row.turnEnded !== undefined && newTerminals.has(key)) ||
+              (openTurnProjected &&
+                row.turnEnded === undefined &&
+                row.sessionId === projectedOpenThread &&
+                row.turnId === projectedOpenTurn?.turnId);
+        const agent = row.sessionId
+          ? agentPresentationBySessionId.get(row.sessionId)
+          : undefined;
+        return {
+          ...row,
+          ...(!replay && row.role !== 'system' && !isArrival
+            ? { historyEntry: true }
+            : {}),
+          agentSlug: row.sessionId
+            ? agentBySessionId.get(row.sessionId)
+            : undefined,
+          agentDisplayName: agent?.agentDisplayName,
+          agentIcon: agent?.agentIcon,
+        };
+      });
     // A turn Station's restart cut off says so once, on its own row.
     const projected = withoutRepeatedRestartNotice(projectedRows);
     // #2309: the server's record when it sent one; the legacy fold otherwise.
@@ -1073,6 +1151,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.sendAwaitingTurnStart,
     session.stopSettledTurnId,
     changedFilesByTurn,
+    arrivals,
+    replay,
+    projectedOpenThread,
+    projectedOpenTurn?.turnId,
     window.events,
     serverWindow.memoryContinuation,
     stitchedEvents,
