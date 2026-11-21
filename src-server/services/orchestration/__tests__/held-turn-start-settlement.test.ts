@@ -285,7 +285,11 @@ describe('a turn start held over an engine exit', () => {
     // listing binds the thread to it, but it never saw the held start's
     // engine (which still runs) and answers "ended".
     const replacement = new EngineFake();
-    await replacement.startSession({ threadId: THREAD, provider: 'claude' });
+    const listed = await replacement.startSession({
+      threadId: THREAD,
+      provider: 'claude',
+    });
+    replacement.listSessions = async () => [listed];
     replacement.engineEnded = () => true;
     replaced.replace(replacement);
     open.unshift(async () => replacement.events.close());
