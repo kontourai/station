@@ -34,6 +34,11 @@
   margin: 0;
   padding: var(--k-space-2) var(--chat-message-gutter, var(--k-space-3));
 }
+.child-instructions--composer summary {
+  min-block-size: var(--touch-target-min, 0px);
+  align-content: center;
+  cursor: pointer;
+}
 .child-instructions__identity {
   font-size: var(--k-text-sm);
   color: var(--k-text-muted);
