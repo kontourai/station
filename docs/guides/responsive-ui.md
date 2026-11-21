@@ -340,7 +340,7 @@ keep their own motion. The global reduced-motion reset still applies. Source
 rules describe the treatment; browser checks at narrow widths, both themes,
 long content and short heights establish whether controls remain reachable.
 
-The status pill's entry, body morph and details entrance use backwards fill in
+Expanded activity opens in a popup anchored above the composer so the transcript cannot clip child links or Cancel. The anchored popup appears at its measured position. The status pill’s entry, body morph and in-place details entrance use backwards fill in
 [their stylesheet](../../src-ui/src/components/status/live-status.css). Their
 final frame matches the resting opacity and transform, so completed effects
 release instead of retaining an animated stacking context. Exit and celebration
