@@ -146,6 +146,6 @@
     "agent-skills-ts-sdk": "^2.5.0",
     "esbuild": "^0.28.2",
     "jose": "6.2.17",
-    "koffi": "3.3.7"
+    "koffi": "3.3.8"
   }
 }
