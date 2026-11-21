@@ -116,7 +116,7 @@ beforeEach(() => {
   adapter = new ClaudeAdapter({ engineExitStreamGraceMs: 20 } as never);
   const registry: IProviderAdapterRegistry = {
     register() {},
-    get: (p) => (p === 'claude' ? (adapter as never) : undefined),
+    get: (p: string) => (p === 'claude' ? (adapter as never) : undefined),
     list: () => [adapter as never],
   } as never;
   warn.mockReset();
