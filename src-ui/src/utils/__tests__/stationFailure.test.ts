@@ -244,9 +244,13 @@ describe('Station authority failure translation', () => {
     ['turn_start_held', /If the agent has stopped, send again/],
     [
       'turn_start_held_until_restart',
-      /until that turn reports its end or Station restarts/,
+      /To send now, restart Station \(quit and reopen the app/,
     ],
     ['turn_start_busy', /Send again once it has finished/],
+    [
+      'conversation_predecessor_engine_live',
+      /Send again in a moment\. If this keeps happening, restart Station/,
+    ],
   ])('%s says what clears it, never "try again in a moment"', (code, hint) => {
     const held = describeStationFailure(
       new ChatHttpError(
@@ -258,7 +262,7 @@ describe('Station authority failure translation', () => {
     );
     expect(held).toMatchObject({ delivery: 'refused', retryable: false });
     expect(held.hint).toMatch(hint);
-    expect(`${held.body} ${held.hint}`).not.toMatch(/moment|chat:session/);
+    expect(`${held.body} ${held.hint}`).not.toMatch(/try again in a moment|chat:session/i);
     if (code !== 'turn_start_held')
       expect(held.hint).not.toMatch(/send again: Station then records/);
   });

@@ -342,6 +342,40 @@ describe('a Claude engine that dies, through the real service and adapter', () =
     }
   });
 
+  test('the engine dies inside the turn start: that message is recorded as interrupted, with its banner', async () => {
+    const { q, child } = await start();
+    await settle();
+    q.setModel.mockImplementation(async () => {
+      child.exit(null, 'SIGTERM');
+      child.closeStderr();
+      throw new Error('Claude Code process terminated by signal SIGTERM');
+    });
+    const first = await send(T, { modelId: 'claude-other-model' });
+    expect(first).toMatchObject({
+      ok: false,
+      code: 'foreground_message_indeterminate',
+    });
+    // No further message is sent: the exit alone must not leave it silent.
+    await vi.waitFor(() => expect(methods()).toContain('session.exited'), {
+      timeout: 5000,
+    });
+    const events = store.listEvents(T);
+    const banner = events.find((e) => e.id.startsWith('turn-interrupted:'));
+    expect(banner?.payload).toMatchObject({
+      method: 'session.state-changed',
+      interruptedTurnBoundary: { priorState: 'indeterminate' },
+    });
+    // Recorded before the Session's end, which then has nothing to retire.
+    expect(events.indexOf(banner!)).toBeLessThan(
+      events.findIndex((e) => (e.payload as any).method === 'session.exited'),
+    );
+    expect(count('session.exited')).toBe(1);
+    const { cont, sent } = await continueConversation('are you there');
+    expect(cont.sessionId).not.toBe(T);
+    expect(sent).toMatchObject({ ok: true });
+    expect(alive()).toHaveLength(1);
+  });
+
   for (const during of ['a tool call', 'streaming'] as const) {
     test(`the engine dies during ${during}: one failure, one exit, then one new engine`, async () => {
       const { q, child } = await start();

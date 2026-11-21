@@ -324,7 +324,7 @@ describe('a turn start held over an engine exit', () => {
     });
     const message = refused.kind === 'failed' ? refused.message : '';
     expect(message).toMatch(
-      /stays held until that turn reports its end or Station restarts/,
+      /stays held until that turn reports its end\. To send now, restart Station/,
     );
     expect(message).not.toMatch(/next message/);
     expect(h.banner()).toBeUndefined();

@@ -2359,6 +2359,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     'turn_start_held',
     'turn_start_held_until_restart',
     'turn_start_busy',
+    'conversation_predecessor_engine_live',
   ])(
     'a %s refusal neither marks the chat failed nor offers Retry',
     async (code) => {
@@ -2393,9 +2394,14 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
       const chat = activeChatsStore.getSnapshot()[sessionId];
       expect(chat?.status).not.toBe('error');
+      // The refused text is restored, and the notice says so.
+      expect(chat?.input).toBe('hello');
       const notice = chat?.ephemeralMessages?.at(-1);
       expect(notice?.content).toMatch(
-        /Your earlier message may still be running|Another start is still in progress/,
+        /Your earlier message may still be running|Another start is still in progress|The previous agent is still stopping/,
+      );
+      expect(notice?.content).toContain(
+        'Your message is back in the composer.',
       );
       expect(notice?.action).toBeUndefined();
     },

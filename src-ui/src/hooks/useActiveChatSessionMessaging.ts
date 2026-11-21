@@ -1,5 +1,6 @@
 import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
 import {
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
   type InterruptTurnResult,
   type OrchestrationSessionSummary,
   TURN_START_BUSY_CODE,
@@ -1951,7 +1952,8 @@ export function useSendMessage(
           !foregroundIndeterminate &&
           (err.code === TURN_START_HELD_CODE ||
             err.code === TURN_START_HELD_UNTIL_RESTART_CODE ||
-            err.code === TURN_START_BUSY_CODE);
+            err.code === TURN_START_BUSY_CODE ||
+            err.code === CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE);
         const dispatchClaim = options?.dispatch;
         if (dispatchClaim) {
           // Once the foreground call has begun, neither an abort, a network
@@ -2046,8 +2048,9 @@ export function useSendMessage(
           }${
             // Said only when the rollback put the draft back: a user who
             // typed during the send keeps what they typed instead.
-            err.code === SESSION_START_INDETERMINATE_CODE &&
-            'input' in rollbackComposer
+            (
+              err.code === SESSION_START_INDETERMINATE_CODE || turnStartBlocked
+            ) && 'input' in rollbackComposer
               ? ' Your message is back in the composer.'
               : ''
           }`,

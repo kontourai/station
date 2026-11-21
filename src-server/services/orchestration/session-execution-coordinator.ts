@@ -61,7 +61,7 @@ export class SessionTurnStartHeldError extends Error {
       `Session already has a turn start in progress: ${threadId}. An earlier message on this Session may have reached its engine and Station cannot tell, so it will not start another turn beside it; nothing was sent. ${
         engineObservable
           ? 'If that turn is running, wait for it to finish. Once Station has seen the engine process end, the next message records that turn as interrupted and goes ahead.'
-          : 'This engine does not report its process ending, so the start stays held until that turn reports its end or Station restarts, which records it as interrupted.'
+          : 'This engine does not report its process ending, so the start stays held until that turn reports its end. To send now, restart Station (quit and reopen the app, or restart the Station service): the restart records that turn as interrupted.'
       }`,
     );
     this.code = engineObservable

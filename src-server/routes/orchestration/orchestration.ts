@@ -293,9 +293,11 @@ import { taskRoomAttachmentsSchema } from './task-room-attachment-http.js';
 // The guidance after the first sentence says what a person can do. It
 // promises nothing engine-specific: what clears the held start depends on
 // the engine, and the refusal a later send gets says which applies
-// (`turn_start_held` or `turn_start_held_until_restart`).
+// (`turn_start_held` or `turn_start_held_until_restart`). Nor does it claim
+// the next send is refused: when the engine died during the start, its exit
+// retires the claim and the conversation simply continues.
 const INDETERMINATE_GUIDANCE =
-  'Do not retry automatically: check the conversation for that turn. Until Station can tell whether it started, later messages to this Session are refused, and that refusal says what will clear it.';
+  'Do not retry automatically: check the conversation for that turn. If Station still cannot tell whether it started when you send again, that message is refused and the refusal says what will clear it.';
 const FOREGROUND_MESSAGE_INDETERMINATE_ERROR = `Foreground Agent message may have started. ${INDETERMINATE_GUIDANCE}`;
 const FOREGROUND_CONTINUATION_INDETERMINATE_ERROR = `Foreground Agent continuation may have started. ${INDETERMINATE_GUIDANCE}`;
 
