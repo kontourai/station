@@ -1,0 +1,15 @@
+{
+  "revision": "f8f942bae93085d7b5c85b9552329bc63a50f38d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared Inbox row against the composer, responsive and getting-started guides. An explicit separator keeps recency and the agent name distinct for assistive technology. The visual card, timing source, action order and routes still match the guides.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the shared Inbox row against the composer, responsive and getting-started guides. An explicit separator keeps recency and the agent name distinct for assistive technology. The visual card, timing source, action order and routes still match the guides.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared Inbox row against the composer, responsive and getting-started guides. An explicit separator keeps recency and the agent name distinct for assistive technology. The visual card, timing source, action order and routes still match the guides.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The Beta fixture still uses the sidebar project palette as the reference for Home and Inbox. The dock carries that accent on the initials tile edge. The Chromium geometry test verifies its rendered colour in both Inbox hosts; sidebar navigation and ownership are unchanged.","inputs":["src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Verified the accessible name of the merged open-chat row contains the chat project, observed approval status, recency and agent in reading order. The fixture continues to verify that the active approval comes from the linked session and the project comes from the chat.","inputs":["src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"]}
+  ]
+}
