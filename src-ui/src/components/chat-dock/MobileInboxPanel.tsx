@@ -1,6 +1,6 @@
 import {
+  applyReturnFocus,
   captureReturnFocus,
-  restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -255,21 +255,29 @@ export function MobileInboxPanel({
     // Restore from the committed close, including a replacement header trigger.
     if (!open) {
       if (returnFocusRef.current.length === 0) return;
-      const chain = triggerRef.current
-        ? [...captureReturnFocus(triggerRef.current), ...returnFocusRef.current]
-        : returnFocusRef.current;
+      const previous = returnFocusRef.current;
       returnFocusRef.current = [];
-      const frame = restoreReturnFocus(chain, panelRef.current);
+      const panel = panelRef.current;
+      const frame = requestAnimationFrame(() => {
+        const trigger = triggerRef.current;
+        applyReturnFocus(
+          trigger ? [...captureReturnFocus(trigger), ...previous] : previous,
+          panel,
+        );
+      });
       return () => cancelAnimationFrame(frame);
     }
     // Capture before moving focus into the panel, while the trigger and every
     // ancestor are still attached.
-    returnFocusRef.current = captureReturnFocus(triggerRef.current);
-    if (document.activeElement === triggerRef.current)
-      (
-        toolsHost?.querySelector<HTMLElement>('button') ?? panelRef.current
-      )?.focus();
-  }, [open, triggerRef, toolsHost]);
+    returnFocusRef.current = captureReturnFocus(
+      triggerRef.current ?? panelRef.current,
+    );
+    if (
+      document.activeElement === triggerRef.current ||
+      document.activeElement === document.body
+    )
+      panelRef.current?.focus({ preventScroll: true });
+  }, [open, triggerRef]);
 
   useLayoutEffect(() => {
     if (searchOpen) searchRef.current?.focus();

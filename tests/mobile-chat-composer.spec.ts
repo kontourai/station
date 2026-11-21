@@ -5251,8 +5251,7 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
     exact: true,
   });
   const menu = page.getByRole('menu', { name: 'Chat actions' });
-  await chatActions.click();
-  await menu.getByRole('menuitem', { name: 'Inbox', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
   const sheet = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
@@ -5278,20 +5277,24 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
 });
 
 for (const width of [320, 431]) {
-  test(`chat layout audit centers its title and keeps slash commands usable at ${width}px`, async ({
+  test(`chat layout audit reserves the space between navigation and actions for its title and keeps slash commands usable at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockChatShell(page);
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
-    const outer = (await header.boundingBox())!;
+    const back = (await header
+      .getByRole('button', { name: 'Inbox', exact: true })
+      .boundingBox())!;
+    const actions = (await header
+      .locator('.chat-dock__mobile-actions')
+      .boundingBox())!;
     const identity = (await header
       .locator('.chat-dock__mobile-identity')
       .boundingBox())!;
-    expect(
-      Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
-    ).toBeLessThanOrEqual(1);
+    expect(identity.x).toBeGreaterThanOrEqual(back.x + back.width);
+    expect(identity.x + identity.width).toBeLessThanOrEqual(actions.x + 1);
     const title = (await header
       .locator('.chat-dock__mobile-title-text')
       .boundingBox())!;
