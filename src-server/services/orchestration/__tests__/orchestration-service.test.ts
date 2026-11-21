@@ -13300,7 +13300,7 @@ describe('OrchestrationService', () => {
         input: 'Be terse.\nHello',
         // Transcript-facing text stays the typed text alone.
         displayInput: 'Hello',
-        // Relay-only passthrough is preserved for the station-agent relay.
+        // Raw ambient context accompanies the composed text.
         ambientContext: 'Be terse.',
       }),
     );
@@ -17394,7 +17394,7 @@ describe('OrchestrationService', () => {
     });
 
     // The adapter receives the composed model input, typed display text,
-    // relay-only ambient context, and the server-owned launch plan.
+    // raw ambient context, and the server-owned launch plan.
     expect(claude.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-ambient',

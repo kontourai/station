@@ -1656,12 +1656,11 @@ export interface ProviderSendTurnInput {
    */
   displayInput?: string;
   /**
-   * Relay-only passthrough of the raw ambient context. `input` already
-   * carries the composed text, so adapters that talk to a model directly
-   * MUST ignore this. Only adapters that re-enter a server pipeline with
-   * its own composition choke point (station-agent → /chat) forward
-   * `displayInput` + this field instead of the pre-composed `input`, so the
-   * downstream pipeline persists typed text and composes exactly once.
+   * Raw ambient context already composed into `input`. Claude can use it
+   * with `displayInput` to preserve the text block boundary when the blocks
+   * reproduce `input` exactly. The station-agent relay forwards the separate
+   * fields so the downstream chat route composes them once and persists typed
+   * text.
    */
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];
