@@ -216,6 +216,8 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useGitStatusQuery: () => ({ data: undefined, isLoading: false }),
+  useSessionInventoryQuery: () => ({ data: undefined, isLoading: false }),
   // #4695: a live Session row reads its agent-reported plan; none here.
   useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   // #4519: the connected Station has no managed policy.
@@ -1792,7 +1794,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     expect(snooze.closest('.inbox-row__actions')).not.toBeNull();
   });
 
-  test('a coarse pointer keeps the 44px touch chrome with Details and one action', () => {
+  test('a coarse pointer opens Details and snooze choices from the row', async () => {
     fixtures.continueDecoy = true;
     const media = window.matchMedia as unknown as ReturnType<typeof vi.fn>;
     media.mockImplementation((query: string) => ({
@@ -1810,19 +1812,17 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       const recent = screen.getByRole('region', { name: 'Recent work' });
       const [row] = within(recent).getAllByTestId('inbox-row');
       expect(row.className).toContain('inbox-row--touch');
+      const open = within(row).getByRole('button', {
+        name: new RegExp('^' + ITEM_TITLE),
+      });
+      expect(within(row).getAllByRole('button')).toHaveLength(1);
+      fireEvent.contextMenu(open);
+      const details = await screen.findByRole('dialog', {
+        name: `Details for ${ITEM_TITLE}`,
+      });
       expect(
-        within(recent).getByRole('button', {
-          name: `Details for ${ITEM_TITLE}`,
-        }),
+        within(details).getByRole('button', { name: '1 hour' }),
       ).toBeTruthy();
-      expect(
-        within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
-      ).toBeTruthy();
-      expect(
-        within(row)
-          .queryAllByRole('button')
-          .filter((button) => button.closest('.inbox-row__actions')),
-      ).toHaveLength(2);
     } finally {
       media.mockImplementation(() => ({
         matches: false,

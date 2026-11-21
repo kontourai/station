@@ -213,7 +213,7 @@
   color: var(--k-text-muted);
 }
 .mobile-inbox-selection__meta small {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .mobile-inbox-selection__meta:has(small:not(:empty)) {
   padding-top: var(--k-space-2);
@@ -273,6 +273,6 @@
 .mobile-inbox-filters-overlay[data-inset-sheet] .mobile-inbox-filters {
   width: 100%;
   max-height: 100%;
-  border-radius: var(--k-radius-lg);
+  border-radius: var(--k-radius-lg, var(--k-space-3));
   background: var(--k-panel-raised);
 }

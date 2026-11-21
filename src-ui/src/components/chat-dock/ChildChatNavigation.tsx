@@ -354,10 +354,7 @@ function LiveChildReader({
   }, [running, sessions.isSuccess, observed]);
   const revision = JSON.stringify(item ?? parent?.childWork?.asChild ?? null);
   const engine = parseEngineId(entry.engineId ?? parent?.provider);
-  const identity = [
-    engine && engineDisplayLabel(engine),
-    item?.model?.id ?? 'Model not reported',
-  ]
+  const identity = [engine && engineDisplayLabel(engine), item?.model?.id]
     .filter(Boolean)
     .join(' · ');
   return entry.childId ? (
@@ -405,7 +402,9 @@ function LiveChildReader({
           }}
         />
       ) : (
-        <div className="child-chat-pane__record">{identity} · View only</div>
+        <div className="child-chat-pane__record">
+          {identity && `${identity} · `}View only
+        </div>
       )}
     </>
   ) : (

@@ -325,7 +325,7 @@ Stations are under **More ways to connect**. Native capability and coarse-pointe
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
-The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
+The collapsed mobile dock’s **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled
 states. The relay UX screenshot harness omits the real dock and uses stubbed

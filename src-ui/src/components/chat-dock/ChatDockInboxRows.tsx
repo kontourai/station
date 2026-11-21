@@ -21,11 +21,7 @@ import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useSwipeActions } from '../../hooks/useSwipeActions';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
-import {
-  clockTime,
-  relativeTime,
-  relativeTimeAgo,
-} from '../../utils/relativeTime';
+import { clockTime, relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
   isCurrentInboxItem,
@@ -1035,7 +1031,7 @@ export function InboxRow({
         )}
         {compact && size !== 'slim' ? (
           <>
-            <InboxRowTitle title={item.title} />
+            <InboxRowTitle title={item.title} />{' '}
             <span className="inbox-row__touch-project">
               <IdentityMarks
                 identity={identity}
@@ -1045,7 +1041,7 @@ export function InboxRow({
               {agentText &&
                 (agentText !== contextLabel || identity.marks.length === 0) && (
                   <span className="inbox-row__agent">{agentText}</span>
-                )}
+                )}{' '}
               <ProjectAccentSwatch
                 size={16}
                 accent={projectAccent}
@@ -1061,7 +1057,7 @@ export function InboxRow({
                 </span>
               )}
               {hasUnsentDraft && <DraftMarker />}
-            </span>
+            </span>{' '}
             <span className="inbox-row__touch-clock">
               <span
                 className="inbox-row__status"
@@ -1071,7 +1067,7 @@ export function InboxRow({
               >
                 <InboxRowStatusGlyph rung={status.rung} />
                 <span className="inbox-row__word">{status.word}</span>
-              </span>
+              </span>{' '}
               {status.since !== undefined ? (
                 <span className="inbox-row__elapsed" id={durationId}>
                   for <ElapsedDuration since={status.since} />
@@ -1082,11 +1078,12 @@ export function InboxRow({
                 </span>
               ) : hasTime ? (
                 <span className="inbox-row__time">
-                  {relativeTimeAgo(
+                  {relativeTime(
                     status.rung === 'done'
                       ? (item.terminalAt ?? item.updatedAt)
                       : item.updatedAt,
                     now,
+                    'explicit',
                   )}
                 </span>
               ) : null}

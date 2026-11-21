@@ -900,7 +900,7 @@
 .mobile-inbox .inbox-row--touch .inbox-row__open:has(.inbox-row__touch-clock) {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) fit-content(37.5%);
   align-content: center;
   align-items: start;
   gap: var(--k-space-1) var(--k-space-2);
@@ -921,7 +921,7 @@
   gap: var(--k-space-1);
   overflow: hidden;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .inbox-row__touch-project .inbox-row__project,
 .inbox-row__touch-station {
@@ -936,11 +936,13 @@
 .inbox-row__touch-clock {
   grid-column: 2;
   grid-row: 1 / span 2;
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: end;
   align-content: start;
   gap: var(--k-space-1);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--k-text-muted);
 }
@@ -954,8 +956,17 @@
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   gap: var(--k-space-1);
+}
+.inbox-row .inbox-row__touch-clock .inbox-row__status {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: end;
+}
+.inbox-row__touch-clock .inbox-row__word {
+  flex: 0 1 auto;
 }
 .inbox-row__touch-reason {
   grid-column: 1 / -1;

@@ -56,10 +56,7 @@ export function ChatActivityChildren({
             : item.transcript?.kind === 'claude-subagent'
               ? 'claude'
               : undefined;
-        const identity = [
-          engine && engineDisplayLabel(engine),
-          item.model?.id ?? 'Model not reported',
-        ]
+        const identity = [engine && engineDisplayLabel(engine), item.model?.id]
           .filter(Boolean)
           .join(' · ');
         const since = parseEpochMs(item.startedAt);
@@ -74,7 +71,7 @@ export function ChatActivityChildren({
             <ChildMark item={item} size={24} />
             <span className="chat-activity-children__identity">
               <strong>{item.title || 'Subagent'}</strong>
-              <small>{identity}</small>
+              {identity && <small>{identity}</small>}
             </span>
             <span className="chat-activity-children__duration">
               Working
