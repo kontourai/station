@@ -1,5 +1,108 @@
 [
   {
+    "timestampUtc": "2026-11-21T08:20:06Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261121.1",
+    "sha": "a80f89fb67b5abcff11b933236365e6f473718fc",
+    "artifactBuiltAt": "2026-11-21T07:31:22.107Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44880067053",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44880067053)"
+    ],
+    "changelog": {
+      "previousSha": "a820710bf89c8535cbb1d4c2e8f573d77b19a6db",
+      "groups": {
+        "feat": [
+          "[#5364](https://github.com/kontourai/station/pull/5364) feat(chat): unify the mobile dock and support images in child chats",
+          "[#4937](https://github.com/kontourai/station/pull/4937) feat(server): GitHub Copilot through the Copilot SDK, behind a Feature Preview"
+        ],
+        "fix": [
+          "[#5365](https://github.com/kontourai/station/pull/5365) fix: bind create claim digest before caller lookup",
+          "[#5363](https://github.com/kontourai/station/pull/5363) fix(ci): select engine durability parity before merge",
+          "[#4644](https://github.com/kontourai/station/pull/4644) fix(engines): wait and cancel person-initiated starts across recovery"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5361](https://github.com/kontourai/station/pull/5361) perf(server): skip archive discovery outside launcher context",
+          "[#5360](https://github.com/kontourai/station/pull/5360) perf(chat): make repeated desktop Inbox opens ready to type sooner"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-21T08:20:06Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261121.1",
+    "sha": "a80f89fb67b5abcff11b933236365e6f473718fc",
+    "artifactBuiltAt": "2026-11-21T07:30:59.263Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44880067053",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44880067053)"
+    ],
+    "changelog": {
+      "previousSha": "a820710bf89c8535cbb1d4c2e8f573d77b19a6db",
+      "groups": {
+        "feat": [
+          "[#5364](https://github.com/kontourai/station/pull/5364) feat(chat): unify the mobile dock and support images in child chats",
+          "[#4937](https://github.com/kontourai/station/pull/4937) feat(server): GitHub Copilot through the Copilot SDK, behind a Feature Preview"
+        ],
+        "fix": [
+          "[#5365](https://github.com/kontourai/station/pull/5365) fix: bind create claim digest before caller lookup",
+          "[#5363](https://github.com/kontourai/station/pull/5363) fix(ci): select engine durability parity before merge",
+          "[#4644](https://github.com/kontourai/station/pull/4644) fix(engines): wait and cancel person-initiated starts across recovery"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5361](https://github.com/kontourai/station/pull/5361) perf(server): skip archive discovery outside launcher context",
+          "[#5360](https://github.com/kontourai/station/pull/5360) perf(chat): make repeated desktop Inbox opens ready to type sooner"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-11-21T07:32:12Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261121.44880067053",
+    "sha": "a80f89fb67b5abcff11b933236365e6f473718fc",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44880067053",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261121.44880067053 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a4b1d2a620967f2b8caa69e7e57ed14511cbb797",
+      "groups": {
+        "feat": [
+          "[#5364](https://github.com/kontourai/station/pull/5364) feat(chat): unify the mobile dock and support images in child chats"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-11-21T07:06:41Z",
     "channel": "nightly-npm",
     "version": "0.12.0-nightly.20261121.44878018803",
