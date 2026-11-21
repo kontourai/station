@@ -1,0 +1,11 @@
+{
+  "revision": "a71cf171ae028a0685c62fb4145563c710f7676f",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the Save to Project Gallery path against the workspace-first form. It now asserts the Blank workspace default before continuing the existing creation and setup scene.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the Save to Project Gallery path against the workspace-first form. It now asserts the Blank workspace default before continuing the existing creation and setup scene.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the Save to Project Gallery path against the workspace-first form. It now asserts the Blank workspace default before continuing the existing creation and setup scene.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

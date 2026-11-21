@@ -15,7 +15,9 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  *   such a route queued on the conversation inbox. An adapter-supplied
  *   value is dropped before it is stored.
  * - and, as defence in depth, no `clientOrigin.sender` (an agent, a
- *   delegated result, a coordinator, an engine) and no `promptSource` (an
+ *   delegated result, a coordinator, an engine). An explicit null sender
+ *   is also refused, matching the stored SQL predicate. There must also be
+ *   no `promptSource` (an
  *   MCP server's prompt expansion).
  *
  * Do NOT decide this from `dispatchOrigin: 'interactive'` or a Session's
@@ -41,7 +43,7 @@ export function isPersonAuthoredTurn(
     event.method === 'turn.started' &&
     event.authoredBy === 'person' &&
     event.promptSource === undefined &&
-    (event.clientOrigin?.sender ?? undefined) === undefined
+    event.clientOrigin?.sender === undefined
   );
 }
 

@@ -26,6 +26,7 @@ export const EXPECTED_LABEL_NAMES = Object.freeze([
   'enhancement',
   'epic',
   'flaky',
+  'full-checks',
   'github_actions',
   'good first issue',
   'help wanted',

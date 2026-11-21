@@ -1,0 +1,7 @@
+{
+  "revision": "6147f36af920da2e878e4d410605bb393e55b47d",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the links to Connections and the operator scope. Repository source tiles leave Station and credential ownership unchanged.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

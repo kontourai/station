@@ -4,7 +4,8 @@
  * existing minute tick (no timer of its own), on its own single flight so a
  * slow read never holds the scheduler's automation chain.
  *
- * Which pull requests: claimed, a switch that sends is on, not closed, and
+ * Which pull requests: claimed, a switch that sends or review of each new
+ * head is on (`pullRequestFeedbackActive`), not closed, and
  * the owning conversation's agent has not stopped. At most
  * `MAX_PER_TICK` per tick, oldest due first, inside a deadline; a read the
  * deadline cut is still marked read, so one slow pull request cannot sort
@@ -30,8 +31,8 @@ import type {
   PullRequestFeedbackObservationResult,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import {
+  pullRequestFeedbackActive,
   pullRequestFeedbackKey,
-  pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import { errorMessage } from '../../utils/error-message.js';
@@ -65,8 +66,26 @@ export interface PullRequestFeedbackPollerPorts {
   /** When the owning conversation's newest turn started or ended. */
   lastTurnAt(conversationId: string): number | undefined;
   delivery(): PullRequestFeedbackDelivery | undefined;
+  /**
+   * Station's review of each new head, considered after delivery decided
+   * (a message it queued keeps the agent busy, so no review starts under
+   * it). Never throws.
+   */
+  headReview?():
+    | { consider(conversationId: string): Promise<void> }
+    | undefined;
+  /** The head review preview: while off, `reviewEachHead` alone reads nothing. */
+  headReviewEnabled?(): boolean;
   /** As the delivery's: a claim no longer linked is released, not read. */
   linked?(conversationId: string): readonly PullRequestLinkIdentity[];
+  /**
+   * Project defaults' Task-branch discovery, first on each tick, inside the
+   * same deadline and backoff: `rate-limited` backs every read off.
+   */
+  discover?(input: {
+    now: number;
+    signal: AbortSignal;
+  }): Promise<'ok' | 'rate-limited'>;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -124,10 +143,14 @@ export class PullRequestFeedbackPoller {
     await this.settled();
   }
 
+  private headReviewOn(): boolean {
+    return this.ports.headReviewEnabled?.() ?? false;
+  }
+
   /** Whether a claim is read at all; the lifecycle read is last (it costs most). */
   private polled(claim: PullRequestFeedbackClaim): boolean {
     return (
-      pullRequestFeedbackSends(claim.settings) &&
+      pullRequestFeedbackActive(claim.settings, this.headReviewOn()) &&
       this.ports.session(claim.conversationId).state !== 'stopped'
     );
   }
@@ -182,9 +205,19 @@ export class PullRequestFeedbackPoller {
       this.ports.deadlineMs ?? TICK_DEADLINE_MS,
     );
     const signal = AbortSignal.any([input.signal, deadline]);
+    // Before the reads: a pull request claimed now is read this tick.
+    if (
+      (await this.ports.discover?.({ now: input.now, signal })) ===
+      'rate-limited'
+    ) {
+      this.backoffUntil = input.now + BACKOFF_MS;
+      return { outcome: 'backing-off', read: 0 };
+    }
     const due = store
       .allClaims()
-      .filter((claim) => pullRequestFeedbackSends(claim.settings))
+      .filter((claim) =>
+        pullRequestFeedbackActive(claim.settings, this.headReviewOn()),
+      )
       .map((claim) => ({ claim, at: store.nextDueAt(claim.prKey) }))
       .filter(({ at }) => at <= input.now)
       .sort((a, b) => a.at - b.at)
@@ -208,8 +241,10 @@ export class PullRequestFeedbackPoller {
         break;
       }
     }
-    for (const conversationId of touched)
+    for (const conversationId of touched) {
       await this.ports.delivery()?.deliver(conversationId);
+      await this.ports.headReview?.()?.consider(conversationId);
+    }
     return {
       outcome: signal.aborted
         ? 'stopped'
@@ -254,6 +289,7 @@ export class PullRequestFeedbackPoller {
         );
       }
       await this.ports.delivery()?.deliver(conversationId);
+      await this.ports.headReview?.()?.consider(conversationId);
     } catch (error) {
       this.ports.logger.warn('Pull request feedback refresh failed', {
         conversationId,
@@ -356,12 +392,20 @@ export class PullRequestFeedbackPoller {
         .filter((check) => !check.completed)
         .map((check) => [check.name, priorSince[check.name] ?? observedAt]),
     );
+    // When this head was first seen, so a head review waits for a second
+    // read (or a finished turn) before it starts: a push often follows
+    // another within the same turn.
+    const headFirstSeenAt =
+      prior?.observation.headSha === observation.headSha
+        ? (prior.headFirstSeenAt ?? prior.observedAt)
+        : observedAt;
     store.writeObservation(claim.prKey, {
       observation,
       observedAt,
       unchangedSince,
       ...(Object.keys(incompleteSince).length ? { incompleteSince } : {}),
       digest,
+      headFirstSeenAt,
     });
     markDue(now + interval);
     return 'observed';

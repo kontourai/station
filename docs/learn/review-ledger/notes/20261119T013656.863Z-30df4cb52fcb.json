@@ -1,0 +1,25 @@
+{
+  "revision": "178af718f1bc25353c1a21510173dca351476e40",
+
+  "notes": [
+    {"path":"README.md","note":"Checked the CLI reference link and retained Session continuity description against the named transcript and offline runtime list/read changes.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the session-client delta against the historical managed-chat convergence decision. The new classification applies to Session list and read only.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed CLI command dispatch and the reference against the existing distribution and Session command boundaries. Named runtime reads use the persisted binding and leave engine launch eligibility in its existing owner.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md","packages/cli/src/commands/core.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the CLI reference delta against the troubleshooting entry point. Offline Session history uses the persisted binding independently of CLI triage command launch.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the linked API reference delta. Named Conversation message and export admission is separate from the terminal socket, process and replay contracts described here.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the linked API and CLI deltas against the authenticated read and refused request examples. Agent-addressed histories check recorded Agent identity and the named external history reads need the persisted binding.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/reference/api.md","note":"Traced named message and export admission from the Agent route through current root resolution and exact Session metadata to the authorized history projection. Checked owner reads and same-owner wrong-Agent refusal in isolated SQLite-backed Station.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Traced Session command dispatch and client classification. Isolated Station verified the managed root listing, offline external root and child listings, owner read and export and same-owner wrong-Agent refusal. Superseded wait retains exit status 6 while permitting stdout and Node shutdown to complete.","inputs":["docs/reference/cli.md","packages/cli/src/commands/core.ts","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Conversation route delta against saved and offline history. Agent-addressed message and export admission changes preserve the existing saved conversation and offline reading copy workflow.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Checked command dispatch, runtime target classification and the linked Session reference. External stored Session list and read work while the engine is unavailable and the chat and interrupt execution gates retain their current behavior.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/commands/core.ts","packages/cli/src/commands/session-client.ts"]}
+  ]
+}

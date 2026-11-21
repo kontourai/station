@@ -1,0 +1,11 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#5062/#5068: ProjectConfig goal, instructions, instructionsMigratedAt, coordinatorEffort and Task model/effort fields; ProjectEffort helpers. Searched every document citing this input for claims about first-turn composition, ambient context, Project rules, ProjectConfig fields, usage grouping and filters, Station Control tools and pairing scopes; updated api.md, config.md, contracts.md, architecture.md, module-map.md, chat-composer.md and settings-architecture.md where a claim changed. Other citations describe unrelated behavior and still hold.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#5062/#5068: ProjectConfig goal, instructions, instructionsMigratedAt, coordinatorEffort and Task model/effort fields; ProjectEffort helpers. Searched every document citing this input for claims about first-turn composition, ambient context, Project rules, ProjectConfig fields, usage grouping and filters, Station Control tools and pairing scopes; updated api.md, config.md, contracts.md, architecture.md, module-map.md, chat-composer.md and settings-architecture.md where a claim changed. Other citations describe unrelated behavior and still hold.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#5062/#5068: ProjectConfig goal, instructions, instructionsMigratedAt, coordinatorEffort and Task model/effort fields; ProjectEffort helpers. Searched every document citing this input for claims about first-turn composition, ambient context, Project rules, ProjectConfig fields, usage grouping and filters, Station Control tools and pairing scopes; updated api.md, config.md, contracts.md, architecture.md, module-map.md, chat-composer.md and settings-architecture.md where a claim changed. Other citations describe unrelated behavior and still hold.","inputs":["packages/contracts/src/project.ts"]}
+  ]
+}

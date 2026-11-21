@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -12,20 +13,25 @@ const loadSheet = () =>
 interface AcpSessionModeChipProps {
   modes: AdvertisedAcpMode[];
   currentModeId?: string;
+  requestedModeId?: string;
   onChange: (modeId: string) => void;
 }
 
 export function AcpSessionModeChip({
   modes,
   currentModeId,
+  requestedModeId,
   onChange,
 }: AcpSessionModeChipProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   if (modes.length === 0) return null;
-  const selected = modes.find((mode) => mode.id === currentModeId) ?? modes[0];
-  if (!selected) return null;
-  const selectedLabel = selected.name;
+  const reported = modes.find((mode) => mode.id === currentModeId);
+  const requested = modes.find((mode) => mode.id === requestedModeId);
+  const pending = requested && requested.id !== reported?.id;
+  const selectedLabel = pending
+    ? `${requested.name} · next send`
+    : (reported?.name ?? 'Unconfirmed');
 
   return (
     <>
@@ -39,6 +45,7 @@ export function AcpSessionModeChip({
         aria-label={`Session mode: ${selectedLabel}. Mode ${selectedLabel}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Mode"
+        icon={<SettingsGlyph />}
         value={selectedLabel}
         valueClassName="chat-input__approval-chip-label"
       />
@@ -48,7 +55,8 @@ export function AcpSessionModeChip({
           componentProps={{
             triggerRef,
             modes,
-            currentModeId: selected.id,
+            currentModeId: requested?.id ?? reported?.id,
+            pendingName: pending ? requested.name : undefined,
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,
           }}

@@ -15,6 +15,8 @@ import { describeReadFailure, ErrorState, SkeletonList } from '../state';
 import './RequestInspectionDialog.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
+import { GuardianApprovalReason } from './GuardianApprovalReason';
+
 type CapturedAuthority = NonNullable<
   ReturnType<typeof useHostRequestAuthorityScope>
 >;
@@ -328,6 +330,7 @@ export function RequestInspectionDialog({
         ) : response.isError ? null : result?.state === 'open' ? (
           <>
             <h3>{result.title}</h3>
+            <GuardianApprovalReason reason={result.guardianReason} />
             {result.body ? (
               <p className="request-inspection-detail">{result.body}</p>
             ) : null}

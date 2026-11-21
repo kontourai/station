@@ -1,0 +1,9 @@
+{
+  "revision": "8643a35bc5a1e415b91756c865f5c29fd86882c0",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked Codex wire fixtures with a real predecessor completion before successor sends. The approval knobs, read-only floor, orphaned-turn handling and stale interrupt checks remain covered.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked Codex wire fixtures with a real predecessor completion before successor sends. The approval knobs, read-only floor, orphaned-turn handling and stale interrupt checks remain covered.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]}
+  ]
+}

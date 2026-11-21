@@ -72,6 +72,7 @@ export type AttentionRequestInspection =
       requestType: 'approval' | 'permission';
       provider: string;
       title: string;
+      guardianReason?: string;
       body?: string;
       openedAt: string;
       answerability: RequestAnswerability;
@@ -149,6 +150,7 @@ export type AttentionRequestType = RequestOpenedEvent['requestType'];
  */
 export interface ApprovalAttentionItem extends AttentionItemBase {
   kind: 'approval';
+  guardianReason?: string;
   requestReference?: AttentionRequestReference;
   source: { notificationId: string; notificationSource: string };
   actions: NotificationAction[];
@@ -596,7 +598,8 @@ export interface PullRequestFeedbackAttentionItem extends AttentionItemBase {
     /** The push notification for this pause, while it is active. */
     notificationId?: string;
   };
-  reason: 'round-limit' | 'repeated-failure' | 'agent-stopped';
+  /** `fix-budget` (#5066): a watching Task's pull request used every fix attempt. */
+  reason: 'round-limit' | 'repeated-failure' | 'fix-budget' | 'agent-stopped';
   /** round-limit: rounds on one head, or messages in 24 hours. */
   cap?: 'head' | 'day';
   headSha?: string;

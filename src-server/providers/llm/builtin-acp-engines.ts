@@ -53,6 +53,13 @@ const KIRO_CLI_AUTH: BuiltinEngine['auth'] = {
   // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
   // output (a login kind that code does not print) stays unknown.
   statusCommand: ['kiro-cli', 'whoami'],
+  terminalLogin: {
+    id: 'station:device-login',
+    name: 'Sign in from this device',
+    args: ['login', '--use-device-flow'],
+    helpArgs: ['login', '--help'],
+    requiredHelpText: '--use-device-flow',
+  },
   statusRule: {
     signedOutText: ['Not logged in'],
     signedInText: ['Logged in with'],
@@ -68,7 +75,8 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     description: "Kiro's coding agent, run from its kiro-cli command.",
     command: 'kiro-cli',
     // The id predates the KAS entries below; a saved `kiro` connection keeps
-    // its own arguments, and v2 is also kiro-cli's default engine.
+    // its own arguments. Pin v2 here so changes to the CLI default do not
+    // switch engines for new connections using this entry.
     args: ['acp', '--agent-engine', 'v2'],
     icon: 'brand:kiro',
     tags: ['acp', 'kiro'],
@@ -294,7 +302,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     description: "xAI's Grok Build coding agent CLI.",
     command: 'grok',
     args: ['agent', 'stdio'],
-    icon: 'GK',
+    icon: 'brand:grok-build',
     tags: ['acp', 'grok'],
     homepageUrl: 'https://docs.x.ai/build/cli/headless-scripting',
     install: {
@@ -317,6 +325,13 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       // 1.0.77, live: "You are logged in with grok.com." / "You are not
       // authenticated."). Other output stays unknown.
       statusCommand: ['grok', 'models'],
+      terminalLogin: {
+        id: 'station:device-login',
+        name: 'Sign in with a device code',
+        args: ['login', '--device-auth'],
+        helpArgs: ['login', '--help'],
+        requiredHelpText: '--device-auth',
+      },
       statusRule: {
         signedOutText: ['You are not authenticated'],
         signedInText: ['You are logged in with'],
@@ -366,7 +381,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     // Station's own tools need. Station runs one process per session anyway.
     command: 'agy',
     args: ['acp', '--process-per-session'],
-    icon: 'AG',
+    icon: 'brand:antigravity',
     tags: ['acp', 'antigravity', 'google'],
     homepageUrl: 'https://antigravity.google/docs/cli/acp',
     install: {

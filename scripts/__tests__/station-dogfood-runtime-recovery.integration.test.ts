@@ -233,6 +233,7 @@ describe('production reconcile backend-only recovery', () => {
     fixtureOwner.capturePublishedBoot(previousStatePath);
     let runningRelease = previous;
     let buildCalls = 0;
+    let installCalls = 0;
     const command = (
       executable: string,
       args: string[],
@@ -248,7 +249,21 @@ describe('production reconcile backend-only recovery', () => {
           return result(0, 'git@github.com:kontourai/station.git\n');
         if (args.includes('fetch')) return result();
         if (args.includes('worktree') && args.includes('add')) {
-          materializeRelease(args.at(-2) as string, instance, desiredSha);
+          const checkout = args.at(-2) as string;
+          materializeRelease(checkout, instance, desiredSha);
+          writeFileSync(
+            join(checkout, 'package.json'),
+            JSON.stringify({
+              packageManager: 'pnpm@11.25.0',
+              scripts: {
+                'dependencies:ci': 'node scripts/dependency-lifecycle.mjs ci',
+              },
+            }),
+          );
+          writeFileSync(
+            join(checkout, 'pnpm-lock.yaml'),
+            "lockfileVersion: '9.0'\n",
+          );
           return result();
         }
         if (args.includes('worktree') && args.includes('remove')) {
@@ -281,7 +296,12 @@ describe('production reconcile backend-only recovery', () => {
           ]),
         );
       }
-      if (executable === 'npm') return result();
+      if (executable === 'npm') {
+        expect(args).toEqual(['run', 'dependencies:ci']);
+        expect(options.cwd).toBe(desired);
+        installCalls += 1;
+        return result();
+      }
       if (executable === './station' && args[0] === 'build') {
         buildCalls += 1;
         return result();
@@ -337,6 +357,7 @@ describe('production reconcile backend-only recovery', () => {
       runningSha: previousSha,
     });
     expect(buildCalls).toBe(1);
+    expect(installCalls).toBe(1);
     expect((await probeDogfoodHealth(previousStatePath)).identity.sha).toBe(
       previousSha,
     );
@@ -349,6 +370,7 @@ describe('production reconcile backend-only recovery', () => {
       },
     );
     expect(buildCalls).toBe(1);
+    expect(installCalls).toBe(1);
     await eventually(
       () => probeDogfoodHealth(desiredStatePath),
       (health) => health.healthy && health.identity.sha === desiredSha,

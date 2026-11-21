@@ -1,0 +1,39 @@
+{
+  "revision": "641a268559fae94f0810a35bb4e8cfa63a1ca173",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed scoped reset intent recovery against the dialog, SDK status owner and durable reservation/cancel routes. The pending write holds only the exact request key, policy and recovery metadata. Competing attempts use independent keys. Legacy hints require a matching live status before the dialog exposes recovery actions. Conversation-open fresh-context continuation still belongs to the serving Station.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed affected composer, responsive pane, paired Station, configuration and user-facing navigation claims. This delta passes existing verified authority to the reset recovery owner and uses the existing dialog/status surface. Normal composer, pane placement, board links, connection controls and paired route capability remain as documented.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The existing context-boundary status query accepts a lexical HTTP request scope, opts in to its authority query key and forwards cancellation. The dock and its dialog retain their shared query entry. Other SDK readers, placement rules and existing Chat routes keep their documented behavior.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"The existing context-boundary status query accepts a lexical HTTP request scope, opts in to its authority query key and forwards cancellation. The dock and its dialog retain their shared query entry. Other SDK readers, placement rules and existing Chat routes keep their documented behavior.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The existing context-boundary status query accepts a lexical HTTP request scope, opts in to its authority query key and forwards cancellation. The dock and its dialog retain their shared query entry. Other SDK readers, placement rules and existing Chat routes keep their documented behavior.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The existing context-boundary status query accepts a lexical HTTP request scope, opts in to its authority query key and forwards cancellation. The dock and its dialog retain their shared query entry. Other SDK readers, placement rules and existing Chat routes keep their documented behavior.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/glossary.md","note":"The new reset recovery paragraph describes scoped client intent and exact status/cancel confirmation. It adds no protocol vocabulary or new granting authority. Existing glossary, integration guidance and package contract instructions remain applicable.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The new reset recovery paragraph describes scoped client intent and exact status/cancel confirmation. It adds no protocol vocabulary or new granting authority. Existing glossary, integration guidance and package contract instructions remain applicable.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The new reset recovery paragraph describes scoped client intent and exact status/cancel confirmation. It adds no protocol vocabulary or new granting authority. Existing glossary, integration guidance and package contract instructions remain applicable.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

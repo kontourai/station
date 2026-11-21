@@ -1,0 +1,11 @@
+{
+  "revision": "6b43c14da08bd8b9b2c915a00cbc33cabebe2bee",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked the Home start and catalog examples affected by this test source. The cases now assert first-conversation guidance with a refused or incomplete remote inventory, preserve the local work row, and reject an all-clear when remote work is unknown. Plugin admission, installed layouts and catalog contracts are unaffected.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Rechecked the Home start and catalog examples affected by this test source. The cases now assert first-conversation guidance with a refused or incomplete remote inventory, preserve the local work row, and reject an all-clear when remote work is unknown. Plugin admission, installed layouts and catalog contracts are unaffected.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Rechecked the Home start and catalog examples affected by this test source. The cases now assert first-conversation guidance with a refused or incomplete remote inventory, preserve the local work row, and reject an all-clear when remote work is unknown. Plugin admission, installed layouts and catalog contracts are unaffected.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

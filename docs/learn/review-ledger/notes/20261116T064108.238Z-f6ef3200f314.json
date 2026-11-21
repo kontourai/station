@@ -1,0 +1,17 @@
+{
+  "revision": "1097c1750295e637eb412d77b2aed8c8eef12755",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The shared coarse block also floors the still-running caution's Continue anyway and Not now at 44px; the handoff picker and Continue in Station rules that citing pages describe are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The shared coarse block also floors the still-running caution's Continue anyway and Not now at 44px; the handoff picker and Continue in Station rules that citing pages describe are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"The shared coarse block also floors the still-running caution's Continue anyway and Not now at 44px; the handoff picker and Continue in Station rules that citing pages describe are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"The shared coarse block also floors the still-running caution's Continue anyway and Not now at 44px; the handoff picker and Continue in Station rules that citing pages describe are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The shared coarse block also floors the still-running caution's Continue anyway and Not now at 44px; the handoff picker and Continue in Station rules that citing pages describe are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"The shared coarse block also floors the still-running caution's Continue anyway and Not now at 44px; the handoff picker and Continue in Station rules that citing pages describe are unchanged.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

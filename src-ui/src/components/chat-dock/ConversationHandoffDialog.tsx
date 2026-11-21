@@ -39,8 +39,18 @@ import {
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
 import type { PreparedOutgoingText } from '../../hooks/useChatInput';
-import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
+import {
+  type DraftQuote,
+  draftQuoteKeys,
+  parseDraftQuote,
+} from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import {
+  type ContinuedOnStation,
+  ConversationStationChoice,
+  ConversationStationHandoff,
+  readPendingStationHandoff,
+} from './ConversationStationHandoff';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;
@@ -98,8 +108,19 @@ interface ConversationHandoffDialogProps {
   /** The composer's quotes, which are part of its draft. */
   draftQuotes?: readonly DraftQuote[];
   onAccepted: (result: AcceptedConversationHandoff) => void;
+  /**
+   * Offer paired Stations as well: the chat's history moves to a new chat
+   * there, which the dock opens and sends the first turn to.
+   */
+  onContinuedOnStation?: (result: ContinuedOnStation) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
+  onStage?: (
+    agent: AgentData,
+    executionAgent?: AgentData,
+    modelId?: string,
+    resetEngine?: boolean,
+  ) => void;
   onClose: () => void;
 }
 
@@ -225,9 +246,6 @@ export function handoffStatusFeedback(
 }
 
 const NO_QUOTES: readonly DraftQuote[] = [];
-function quoteKeys(quotes: readonly DraftQuote[]): string {
-  return JSON.stringify(quotes);
-}
 
 /**
  * Station's reason for a refused handoff, in words the person can act on
@@ -271,13 +289,34 @@ export function ConversationHandoffDialog({
   draftQuotes = NO_QUOTES,
   busyTurnId,
   onAccepted,
+  onContinuedOnStation,
   onDispatchStarted,
   onDefiniteFailure,
+  onStage,
   onClose,
 }: ConversationHandoffDialogProps) {
   const restoredIntent = useRef(
     readPendingIntent(apiBase, conversationId),
   ).current;
+  const restoredStation = useRef(
+    onContinuedOnStation
+      ? readPendingStationHandoff(apiBase, conversationId)
+      : null,
+  ).current;
+  const [where, setWhere] = useState(
+    restoredStation?.environmentId ?? 'current',
+  );
+  const stationOffered = Boolean(
+    onContinuedOnStation && !executionPreset && !restoredIntent,
+  );
+  const currentAgent = agents.find((agent) => agent.slug === currentAgentId);
+  // With another Station chosen the chat moves there, it does not switch Agent.
+  const dialogTitle =
+    stationOffered && where !== 'current'
+      ? 'Continue elsewhere'
+      : executionPreset
+        ? 'Switch engine'
+        : 'Switch agent';
   const selectedContext = projectSlug ?? GLOBAL_CONTEXT;
   const selection = useNewChatSelectionModel({
     agents,
@@ -294,12 +333,13 @@ export function ConversationHandoffDialog({
       }).filter((agent) =>
         executionPreset
           ? agent.slug === currentAgentId
-          : agent.slug !== currentAgentId,
+          : Boolean(onStage) || agent.slug !== currentAgentId,
       ),
     [
       agents,
       currentAgentId,
       executionPreset,
+      onStage,
       projectSlug,
       selection.agentConnections,
       selection.selectedProjectConfig?.agents,
@@ -361,7 +401,7 @@ export function ConversationHandoffDialog({
     retained &&
       composerHasDraft &&
       (initialMessage.trim() !== (retained.draft ?? retained.message).trim() ||
-        quoteKeys(draftQuotes) !== quoteKeys(retained.quotes ?? [])),
+        draftQuoteKeys(draftQuotes) !== draftQuoteKeys(retained.quotes ?? [])),
   );
   const message = retained?.message ?? (composerDraft || catchUpMessage);
   const sentQuotes = useRef<readonly DraftQuote[]>(
@@ -410,8 +450,8 @@ export function ConversationHandoffDialog({
   );
   const effectiveBlockedReason = ownTurnBusy ? undefined : blockedReason;
   const preconditionReason =
-    effectiveBlockedReason ??
-    (attachments.length > 0 && !retained
+    (onStage && !retained ? undefined : effectiveBlockedReason) ??
+    (!onStage && attachments.length > 0 && !retained
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
         ? 'This request’s agent, engine or model isn’t available here. Restore that setup to retry.'
@@ -454,6 +494,18 @@ export function ConversationHandoffDialog({
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
+    if (onStage && !retainedIntent.current) {
+      if (target && executionTarget && retryEligible) {
+        onStage(
+          target,
+          executionAgentId ? executionTarget : undefined,
+          executionPreset?.modelId,
+          Boolean(executionPreset && !executionAgentId),
+        );
+        onClose();
+      }
+      return;
+    }
     if (effectiveBlockedReason) {
       setState('error');
       setFeedback(effectiveBlockedReason);
@@ -708,13 +760,13 @@ export function ConversationHandoffDialog({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel={executionPreset ? 'Switch engine' : 'Switch agent'}
+      ariaLabel={dialogTitle}
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
-        <h3>{executionPreset ? 'Switch engine' : 'Switch agent'}</h3>
+        <h3>{dialogTitle}</h3>
         <ResponsiveDialogCloseButton
           label={
             executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
@@ -724,7 +776,49 @@ export function ConversationHandoffDialog({
         />
       </div>
 
-      {executionPreset ? (
+      {stationOffered && (
+        <ConversationStationChoice
+          apiBase={apiBase}
+          value={where}
+          disabled={mutationLocked}
+          onChange={setWhere}
+        />
+      )}
+
+      {stationOffered && where !== 'current' && onContinuedOnStation ? (
+        currentAgent ? (
+          <ConversationStationHandoff
+            key={where}
+            apiBase={apiBase}
+            conversationId={conversationId}
+            agent={currentAgent}
+            environmentId={where}
+            sourceProject={projects.find(
+              (project) => project.slug === projectSlug,
+            )}
+            message={message}
+            draft={composerHasDraft}
+            composerText={initialMessage}
+            composerQuotes={draftQuotes}
+            prepareDraft={retained ? undefined : prepareDraft}
+            catchUpMessage={catchUpMessage}
+            blockedReason={
+              blockedReason ??
+              (attachments.length > 0
+                ? 'Send or remove attachments before continuing on another Station.'
+                : undefined)
+            }
+            restored={restoredStation}
+            onContinued={onContinuedOnStation}
+          />
+        ) : (
+          <Empty
+            variant="compact"
+            label="Agent unavailable"
+            description="This chat's Agent isn't on this Station anymore."
+          />
+        )
+      ) : executionPreset ? (
         <p className="conversation-handoff-dialog__summary">
           Keep the {targetName} agent and run this chat on{' '}
           {engineLabel ?? 'its default engine'}.
@@ -773,9 +867,9 @@ export function ConversationHandoffDialog({
         </div>
       )}
 
-      {targetId && (
+      {where === 'current' && targetId && (
         <div className="conversation-handoff-dialog__confirmation">
-          {targetModels.length > 0 && (
+          {(!onStage || retained) && targetModels.length > 0 && (
             <div className="conversation-handoff-dialog__model">
               <span className="editor-label" id={modelFieldId}>
                 Model
@@ -827,13 +921,15 @@ export function ConversationHandoffDialog({
           )}
           <div className="conversation-handoff-dialog__note">
             <span>
-              {displacesDraft
-                ? 'Retries the earlier request. Your new draft stays in the composer.'
-                : retained
-                  ? 'Retries the earlier request.'
-                  : composerHasDraft
-                    ? 'Your draft is sent as the first message.'
-                    : 'Starts with a short catch-up turn.'}
+              {onStage && !retained
+                ? 'Send starts a fresh Session with recent conversation text.'
+                : displacesDraft
+                  ? 'Retries the earlier request. Your new draft stays in the composer.'
+                  : retained
+                    ? 'Retries the earlier request.'
+                    : composerHasDraft
+                      ? 'Your draft is sent as the first message.'
+                      : 'Starts with a short catch-up turn.'}
             </span>
             <DisclosureToggle
               expanded={disclosureOpen}
@@ -848,14 +944,22 @@ export function ConversationHandoffDialog({
               id={disclosureId}
               className="conversation-handoff-dialog__disclosure"
             >
-              <dt>First message</dt>
-              <dd>
-                {retained || !composerHasDraft
-                  ? message
-                  : 'Your draft from the composer'}
-              </dd>
+              {(!onStage || retained) && (
+                <>
+                  <dt>First message</dt>
+                  <dd>
+                    {retained || !composerHasDraft
+                      ? message
+                      : 'Your draft from the composer'}
+                  </dd>
+                </>
+              )}
               <dt>Keeps</dt>
-              <dd>{HANDOFF_KEEPS_SUMMARY}</dd>
+              <dd>
+                {onStage && !retained
+                  ? 'Recent authorized text, the workspace, and the selected Agent and model.'
+                  : HANDOFF_KEEPS_SUMMARY}
+              </dd>
               <dt>Starts fresh</dt>
               <dd>{HANDOFF_STARTS_FRESH_SUMMARY}</dd>
             </dl>
@@ -886,15 +990,19 @@ export function ConversationHandoffDialog({
               aria-describedby={preconditionReason ? preconditionId : undefined}
               onClick={() => void runHandoff()}
             >
-              {state === 'pending'
-                ? executionPreset
-                  ? 'Switching…'
-                  : 'Continuing…'
-                : state === 'indeterminate'
-                  ? 'Retry safely'
-                  : executionPreset
-                    ? `Switch to ${engineLabel ?? 'default engine'}`
-                    : `Continue with ${targetName}`}
+              {onStage && !retained
+                ? targetId === currentAgentId && !executionPreset
+                  ? 'Keep current Agent'
+                  : `Use ${targetName} on Send`
+                : state === 'pending'
+                  ? executionPreset
+                    ? 'Switching…'
+                    : 'Continuing…'
+                  : state === 'indeterminate'
+                    ? 'Retry safely'
+                    : executionPreset
+                      ? `Switch to ${engineLabel ?? 'default engine'}`
+                      : `Continue with ${targetName}`}
             </Button>
           </ResponsiveSurfaceActions>
         </div>

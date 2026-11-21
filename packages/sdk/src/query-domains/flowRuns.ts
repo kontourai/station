@@ -1,3 +1,7 @@
+import type {
+  FlowGateDiagnosticDetails,
+  FlowGateReevaluationDetails,
+} from '@kontourai/station-contracts/runtime-events';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { type QueryConfig, useApiQuery } from '../query-core';
@@ -109,6 +113,7 @@ export interface FlowConsoleGateVM {
   status: string;
   summary: string;
   is_open: boolean;
+  display_diagnostics?: FlowGateDiagnosticDetails;
   expectations: FlowConsoleExpectationVM[];
   evidence: FlowConsoleEvidenceVM[];
   missing: string[];
@@ -351,7 +356,7 @@ export interface EvaluateFlowGateInput {
 
 export async function evaluateFlowGate(
   input: EvaluateFlowGateInput,
-): Promise<unknown> {
+): Promise<{ reopened?: FlowGateReevaluationDetails }> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/projects/${encodeURIComponent(input.projectSlug)}/flow/runs/${encodeURIComponent(input.runId)}/evaluate`,

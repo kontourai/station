@@ -1,0 +1,15 @@
+{
+  "revision": "c5db19e90a7849a862e70b9fa9cfa461eacb919e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Task attachment POST response. A capacity refusal still returns HTTP 409 with the same public message. The route now supplies the fixed wording directly. Task history, access checks and stored bytes follow the previously reviewed paths.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the Task attachment POST response. A capacity refusal still returns HTTP 409 with the same public message. The route now supplies the fixed wording directly. Task history, access checks and stored bytes follow the previously reviewed paths.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/station-topology.md","note":"Reviewed the Task attachment POST response. A capacity refusal still returns HTTP 409 with the same public message. The route now supplies the fixed wording directly. Task history, access checks and stored bytes follow the previously reviewed paths.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the Task attachment POST response. A capacity refusal still returns HTTP 409 with the same public message. The route now supplies the fixed wording directly. Task history, access checks and stored bytes follow the previously reviewed paths.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the Task attachment POST response. A capacity refusal still returns HTTP 409 with the same public message. The route now supplies the fixed wording directly. Task history, access checks and stored bytes follow the previously reviewed paths.","inputs":["src-server/routes/orchestration/project-task-rooms.ts"]}
+  ]
+}

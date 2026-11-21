@@ -1,0 +1,11 @@
+{
+  "revision": "bcd80b7e5f6efb4046585e19232ef3f70a823986",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the Gallery scene dispatch and motion assertions. The member channel screens use the existing capture pipeline and theme override without changing animation, reduced-motion, or settle policies.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked named Gallery selection, source-map completeness and fixture cleanup. The member Project scenes register two 390 px themes, use the audited gallery runner and clean up their Project and browser routes. A focused Gallery run captured both with no new UI findings.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the Gallery declaration for usage-sharing choices and outbox/feedback. The added member Project scene is separate and does not change those fixtures, captures, coverage or product telemetry.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

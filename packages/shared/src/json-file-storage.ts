@@ -5,6 +5,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  renameSync,
 } from 'node:fs';
 import {
   mkdir as mkdirAsync,
@@ -188,8 +189,12 @@ export async function publishJsonFileWithOwnedLock(
     } finally {
       await descriptor.close();
     }
-    options?.assertCurrent?.();
-    await renameAsync(temporaryPath, path);
+    if (options?.assertCurrent) {
+      options.assertCurrent();
+      renameSync(temporaryPath, path);
+    } else {
+      await renameAsync(temporaryPath, path);
+    }
     committed = true;
     // The rename is the commit point. POSIX directory fsync makes its entry
     // durable across a crash; Windows has no equivalent and the shared helper
@@ -247,7 +252,7 @@ export async function mutateJsonFile<T>(
   path: string,
   fallback: T,
   update: (current: T) => T,
-  options?: Pick<JsonFileWriteOptions, 'maxBytes' | 'label'>,
+  options?: Pick<JsonFileWriteOptions, 'maxBytes' | 'label' | 'assertCurrent'>,
 ): Promise<T> {
   await mkdirAsync(dirname(path), { recursive: true, mode: 0o700 });
   const release = await acquireFileMutationLockAsync(`${path}.mutation`);

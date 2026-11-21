@@ -5,11 +5,8 @@ import {
   trackRecentAgent,
 } from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { Dialog } from '../Dialog';
 import { AgentGlyph, PlayGlyph } from '../icons/Glyph';
-import {
-  ResponsiveDialogCloseButton,
-  ResponsiveDialogSurface,
-} from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import { buildNewTerminalItems } from './utils';
 
@@ -68,20 +65,21 @@ export function NewTerminalModal({
   };
 
   return (
-    <ResponsiveDialogSurface
-      layer="dialog"
-      ariaLabel="New terminal"
-      overlayClassName="coding-layout__new-terminal-overlay"
-      panelClassName="coding-layout__new-terminal-modal"
+    <Dialog
+      title="New terminal"
+      closeLabel="Close new terminal"
+      size="sm"
       initialFocusRef={inputRef}
       initialFocusPolicy="desktop"
       onClose={onClose}
     >
-      <div className="coding-layout__new-terminal-header">
+      <div className="filter-toolbar">
         <input
           ref={inputRef}
-          className="coding-layout__new-terminal-filter"
-          placeholder="Select terminal type..."
+          className="control control--input"
+          type="search"
+          aria-label="Filter terminal types"
+          placeholder="Filter terminal types"
           value={filter}
           onChange={(event) => {
             setFilter(event.target.value);
@@ -89,12 +87,8 @@ export function NewTerminalModal({
           }}
           onKeyDown={onKey}
         />
-        <ResponsiveDialogCloseButton
-          label="Close new terminal"
-          onClick={onClose}
-        />
       </div>
-      <div className="coding-layout__new-terminal-list">
+      <div>
         {items.map((item, index) => {
           const prevItem = items[index - 1];
           const showRecentHeader =
@@ -148,6 +142,6 @@ export function NewTerminalModal({
         })}
         {items.length === 0 && <Empty variant="compact" label="No matches" />}
       </div>
-    </ResponsiveDialogSurface>
+    </Dialog>
   );
 }

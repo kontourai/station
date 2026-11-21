@@ -1,0 +1,7 @@
+{
+  "revision": "9a287e04e4f1456b0209812af93227727484b720",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against the STATION_PR_HEAVY_CHECKS change (auto_merge_enabled trigger, pr-admission heavy output, marker steps, digest re-pins): this page's claims about ci.yml or the actionlint gate are unaffected.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

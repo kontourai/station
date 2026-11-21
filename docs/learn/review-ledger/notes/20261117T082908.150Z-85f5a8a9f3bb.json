@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added Project brief, Project memory and Project chats entries; checked them against project-session-context.ts, the memory store and ProjectModelsSection, and against the existing Task brief, private memory and Coordinator Session entries.","inputs":["docs/glossary.md"]}
+  ]
+}

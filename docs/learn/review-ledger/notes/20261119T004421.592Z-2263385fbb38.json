@@ -1,0 +1,75 @@
+{
+  "revision": "2e4920cd67965278bc95b1a97f4bf164bde46948",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Verified the named-gate evaluate response and console projection through real Flow 6 runs and Hono routes. The reopen field is tied to the checked prior completed head. Completion without a fresh outcome has an explicit not-evaluated observation.","inputs":["docs/reference/api.md","packages/contracts/src/runtime-events.ts","src-ui/src/contexts/active-chats-state.ts","src-server/services/flow/flow-gate-diagnostics.ts","src-server/routes/evidence/flow-runs.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The new Flow section describes the existing project routes and additive outcome projection. Other API ownership, routing and integration claims retain their prior meaning.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The new Flow section describes the existing project routes and additive outcome projection. Other API ownership, routing and integration claims retain their prior meaning.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/cli.md","note":"The Operate fold preserves the latest missing-evaluation observation and interprets the exact historical empty-pass fallback conservatively. Binding, recorded gate verdict and pull behavior retain their existing projections.","inputs":["packages/cli/src/commands/operate/derive.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The CLI tail displays a no-evaluation observation separately from actual gate verdicts. Existing Board, approve and operate actions retain their established output paths.","inputs":["packages/cli/src/commands/operate/render.ts"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"The Flow event adds an explicit no-evaluation variant and optional bounded diagnostics. Existing event families and previously stored receipt fields remain readable, including historical absence of diagnostics.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The Flow event adds an explicit no-evaluation variant and optional bounded diagnostics. Existing event families and previously stored receipt fields remain readable, including historical absence of diagnostics.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The Flow event adds an explicit no-evaluation variant and optional bounded diagnostics. Existing event families and previously stored receipt fields remain readable, including historical absence of diagnostics.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The Flow event adds an explicit no-evaluation variant and optional bounded diagnostics. Existing event families and previously stored receipt fields remain readable, including historical absence of diagnostics.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The named-gate evaluation can bind the prior completed run head and returns a conflict on a stale head. Survey review, other gate operations and route authority stay on their existing paths.","inputs":["src-server/routes/evidence/flow-runs.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The named-gate evaluation can bind the prior completed run head and returns a conflict on a stale head. Survey review, other gate operations and route authority stay on their existing paths.","inputs":["src-server/routes/evidence/flow-runs.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The named-gate evaluation can bind the prior completed run head and returns a conflict on a stale head. Survey review, other gate operations and route authority stay on their existing paths.","inputs":["src-server/routes/evidence/flow-runs.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The named-gate evaluation can bind the prior completed run head and returns a conflict on a stale head. Survey review, other gate operations and route authority stay on their existing paths.","inputs":["src-server/routes/evidence/flow-runs.ts"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Actual Flow receipts verify recorded passing gate, a subsequent check without a fresh verdict, unavailable reachability and an explicit completed-run reopen whose diagnostics appear in the run console.","inputs":["src-server/services/flow/__tests__/flow-run-service.test.ts"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Flow remains the decision and state owner. Station uses its checked evaluation for an explicitly named gate on a completed run, reports actual committed reopening, and projects bounded diagnostics only for a persisted gate outcome.","inputs":["src-server/services/flow/flow-run-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Flow remains the decision and state owner. Station uses its checked evaluation for an explicitly named gate on a completed run, reports actual committed reopening, and projects bounded diagnostics only for a persisted gate outcome.","inputs":["src-server/services/flow/flow-run-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Flow remains the decision and state owner. Station uses its checked evaluation for an explicitly named gate on a completed run, reports actual committed reopening, and projects bounded diagnostics only for a persisted gate outcome.","inputs":["src-server/services/flow/flow-run-service.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Flow remains the decision and state owner. Station uses its checked evaluation for an explicitly named gate on a completed run, reports actual committed reopening, and projects bounded diagnostics only for a persisted gate outcome.","inputs":["src-server/services/flow/flow-run-service.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Flow remains the decision and state owner. Station uses its checked evaluation for an explicitly named gate on a completed run, reports actual committed reopening, and projects bounded diagnostics only for a persisted gate outcome.","inputs":["src-server/services/flow/flow-run-service.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Flow remains the decision and state owner. Station uses its checked evaluation for an explicitly named gate on a completed run, reports actual committed reopening, and projects bounded diagnostics only for a persisted gate outcome.","inputs":["src-server/services/flow/flow-run-service.ts"]},
+
+    {"path":"CONTEXT-MAP.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"CONTEXT.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"README.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The lifecycle admit/hold boundary still permits real pass, completed Flow run or no bound Flow. A completed run without fresh evaluation emits no gate pass. The no-Flow, ungated, block, route-back, pass and exception paths were exercised through real orchestration.","inputs":["src-server/services/orchestration/flow-policy-sidecar.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The existing Re-evaluate action displays the reopened observation from its response and the returned missing expectations and diagnostics. It does not infer a cause for a historical run or change unrelated attention actions.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"The existing Re-evaluate action displays the reopened observation from its response and the returned missing expectations and diagnostics. It does not infer a cause for a historical run or change unrelated attention actions.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The existing gate verdict part carries optional diagnostic display data and the new observation kind. Older session data and other content-part types retain their existing shape.","inputs":["src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The existing gate verdict part carries optional diagnostic display data and the new observation kind. Older session data and other content-part types retain their existing shape.","inputs":["src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"The existing gate verdict part carries optional diagnostic display data and the new observation kind. Older session data and other content-part types retain their existing shape.","inputs":["src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The existing gate verdict part carries optional diagnostic display data and the new observation kind. Older session data and other content-part types retain their existing shape.","inputs":["src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The existing gate verdict part carries optional diagnostic display data and the new observation kind. Older session data and other content-part types retain their existing shape.","inputs":["src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

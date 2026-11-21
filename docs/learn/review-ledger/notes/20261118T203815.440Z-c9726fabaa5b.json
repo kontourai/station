@@ -1,0 +1,7 @@
+{
+  "revision": "27a7a9e856e11e1d2d8497e3fba387c1059dfcdb",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Verified GitHub, GitLab and Git URL tiles in the shared acquisition picker. The focused cases cover each hosted provider filling its returned clone URL and ref. The same picker renders in Sources against a Station with two verified repository acquisitions.","inputs":["docs/guides/connections.md","src-ui/src/components/modals/RepositoryProviderPicker.tsx"]}
+  ]
+}

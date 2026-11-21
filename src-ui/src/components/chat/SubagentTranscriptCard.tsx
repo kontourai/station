@@ -224,7 +224,15 @@ export function SubagentTranscriptCard({
               progress={item.progress}
             />
           ) : !expanded && preview ? (
-            <span className="subagent-card__preview">{preview}</span>
+            <span className="subagent-card__preview">
+              {isAgent &&
+                !running &&
+                item.result?.source &&
+                item.result.source !== 'tool-return' && (
+                  <span>{childWorkSummaryLabel(item.result.source)}: </span>
+                )}
+              {preview}
+            </span>
           ) : !expanded && isAgent && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
               No summary reported

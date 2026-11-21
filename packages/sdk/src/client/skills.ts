@@ -255,6 +255,24 @@ export async function updateLocalSkill(
   return result;
 }
 
+/** Remove a skill through the registry endpoint, retaining typed refusal details. */
+export async function uninstallRegistrySkill(
+  apiBase: string,
+  id: string,
+  opts?: ClientRequestOptions,
+): Promise<SkillsEnvelope<unknown>> {
+  const response = await mutateJson(
+    `${apiBase}/api/registry/skills/${encodeURIComponent(id)}`,
+    'DELETE',
+    opts,
+  );
+  const result = await readSkillsEnvelope<unknown>(response);
+  if (!result.success || !response.ok) {
+    throw envelopeError(response, result, 'Uninstall failed');
+  }
+  return result;
+}
+
 function skillPath(nameOrLegacyId: string, action?: 'run' | 'outcome'): string {
   const encoded = encodeURIComponent(nameOrLegacyId);
   return action ? `/api/skills/${encoded}/${action}` : `/api/skills/${encoded}`;

@@ -34,6 +34,7 @@ const composer = vi.hoisted(() => ({
 }));
 const viewSession = vi.hoisted(() => ({ current: null as unknown }));
 const handleModelReset = vi.hoisted(() => vi.fn());
+const hostAuthority = vi.hoisted(() => ({ available: true }));
 
 vi.mock('../components/chat/ChatInputArea', () => ({
   ChatInputArea: (props: ComposerProps) => {
@@ -94,7 +95,14 @@ vi.mock('../contexts/useShowSurface', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () =>
+    hostAuthority.available
+      ? {
+          apiBase: 'http://test.local',
+          authorityKey: 'host-authority',
+          isCurrent: () => true,
+        }
+      : undefined,
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -259,6 +267,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
     useEngineConnectionsQuery: () => ({ data: [] }),
+    useFeaturePreviewsQuery: () => ({ data: [] }),
     useConversationInventoryQuery: () => ({ data: [] }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
@@ -338,6 +347,7 @@ async function renderPane(active: ChatSession) {
 }
 
 beforeEach(() => {
+  hostAuthority.available = true;
   handleModelReset.mockClear();
   window.localStorage.clear();
   window.history.replaceState({}, '', '/?dock=open');
@@ -389,6 +399,16 @@ describe('ChatWorkspacePane engine-override reset gate', () => {
     expect(props?.modelResetOffered).toBe(true);
     props?.onModelReset();
     // An engine override resets through the engine change, never model-only.
+    expect(handleModelReset).not.toHaveBeenCalled();
+  });
+
+  test('a writable conversation with unresolved host authority cannot reset its engine', async () => {
+    hostAuthority.available = false;
+    const { props } = await renderPane(
+      session(resolved({ canContinue: true })),
+    );
+    expect(props?.modelResetOffered).toBe(false);
+    props?.onModelReset();
     expect(handleModelReset).not.toHaveBeenCalled();
   });
 

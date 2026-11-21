@@ -38,6 +38,7 @@ import { withDeliveryCheck } from '../../utils/messageDeliveryState';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import {
@@ -378,7 +379,11 @@ export function handleTurnStartedEvent(
             currentChat?.requestedProviderOptions,
             effectiveModelOptions,
           )
-            ? { requestedProviderOptions: undefined }
+            ? {
+                requestedProviderOptions: pendingNonModelOptions(
+                  currentChat?.requestedProviderOptions,
+                ),
+              }
             : {}),
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }
@@ -717,10 +722,15 @@ export function handleRuntimeErrorEvent(
   const priorMessages = [
     ...pruneStaleFailureMarkers(chat?.messages || [], failedTurnId),
   ];
+  const isSameTurnMarker = (message: (typeof priorMessages)[number]) =>
+    failedTurnId !== undefined &&
+    message.turnId === failedTurnId &&
+    isChatErrorMarker(message);
   // Keep content that was already visible when the turn failed. The error
   // card owns the explanation; it must not replace the partial answer/tools.
   if (
     !repeatsCurrentTurn &&
+    !priorMessages.some(isSameTurnMarker) &&
     (streamingMessage.content?.trim() ||
       streamingMessage.contentParts?.some(
         (part) =>
@@ -756,7 +766,7 @@ export function handleRuntimeErrorEvent(
           },
         ]
       : [
-          ...priorMessages,
+          ...priorMessages.filter((message) => !isSameTurnMarker(message)),
           {
             role: 'user' as const,
             content: markerPrefix,

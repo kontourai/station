@@ -1,0 +1,7 @@
+{
+  "revision": "968abfa1967f31a0a96c2a705ab906003be078d6",
+
+  "notes": [
+    {"path":"docs/reference/contributor-commands.md","note":"Verified generated setup guidance links to the canonical GitHub development guide for public readers.","inputs":["justfile"]}
+  ]
+}

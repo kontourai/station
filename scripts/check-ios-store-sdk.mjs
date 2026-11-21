@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 import { invokedDirectly } from './lib/module-entry.mjs';
-// Apple requires the iOS 26 SDK for App Store uploads since April 28, 2026.
+
+// Adopt the iOS 27 SDK ahead of Apple’s April 2027 upload requirement.
 // https://developer.apple.com/news/upcoming-requirements/
+const MIN_IOS_STORE_SDK_MAJOR = 27;
+
 export function assertIosStoreSdk(version) {
   if (
     typeof version !== 'string' ||
     !/^\d+\.\d+(?:\.\d+)?$/.test(version) ||
-    Number(version.split('.')[0]) < 26
+    Number(version.split('.')[0]) < MIN_IOS_STORE_SDK_MAJOR
   ) {
     throw new Error(
-      `App Store uploads require iOS SDK 26 or later; observed ${JSON.stringify(version)}`,
+      `App Store uploads require iOS SDK ${MIN_IOS_STORE_SDK_MAJOR} or later; observed ${JSON.stringify(version)}`,
     );
   }
 }

@@ -982,7 +982,9 @@ export function collectAudits(
     return collectPnpmAudits(scopes, {
       root: REPO_ROOT,
       run: (root) =>
-        withAuditRetries('pnpm workspace', () => runPnpmAudit(root)),
+        withAuditRetries('pnpm workspace', (attempt) =>
+          runPnpmAudit(root, { attempt }),
+        ),
     });
   const requests = scopes.flatMap(({ scope, cwd }) => [
     { scope, cwd, reachability: 'full', productionOnly: false },

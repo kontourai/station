@@ -1,0 +1,7 @@
+{
+  "revision": "caafb009ba34b69dc7ed7e3b45b3eddb4dba7856",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Project jobs paragraph now states runs act as the local operator, createdBy gates management, no ownerNeeded on ownerless Project jobs (#5126); checked against scheduler-ledger.ts listViews, project-lifecycle-composition.ts actor and routes/operations/scheduler.ts refuseStoredTarget.","inputs":["docs/architecture/module-map.md","packages/contracts/src/scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

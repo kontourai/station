@@ -1,0 +1,21 @@
+{
+  "revision": "9be2bf4a8937e19dea343550e414c5e536602819",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Compared the published summary with the real watchdog fold. Its optional Session and Turn identities describe an existing observation; the answerability qualifier and its producer remain independent.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the changed summary declaration to the watchdog and Home's active-turn gate. The declaration documents already-emitted IDs and leaves composer availability and observation handling in their existing owners.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the progress fields consumed by the work row and the active-turn gate. Admitting the two optional identities to the type matches the existing payload while pane placement and routing use their established owners.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the watchdog source and shared status rendering against the glossary's No progress wording. The optional identities name the observed execution and do not change when the quiet marker is shown.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The referenced contracts guide now declares two optional progress identity fields already emitted on Session summaries. Older clients and servers can still use the same progress shape.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked delegatedTurnSupervision against the public summary declaration. It still requires a matching observed turn to attach supervision, so absence or a stale declaration supplies no inferred budget.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the tracker, exact Session summary fold and delegation supervision reader. The emitted thread and turn identifiers are optional in the published type so historical observations still parse; the watchdog and routing behavior are unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The compatibility declaration lives on the existing orchestration subpath. The real fold fixture consumes the public type and the supervision checks retain their exact turn binding.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

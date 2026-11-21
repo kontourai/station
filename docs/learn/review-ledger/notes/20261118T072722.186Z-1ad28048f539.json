@@ -1,0 +1,27 @@
+{
+  "revision": "127d145ffc1b0a26c0733f615cba65aefea3a3ef",
+
+  "notes": [
+    {"path":"README.md","note":"Checked the public SDK and plugin guide links against the Enterprise example change. The example continues to use the public SDK. Aligning its one document namespace changes no general plugin capability or installation requirement.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Checked the revised Knowledge guide and its updated diagram against the two storage paths. Enterprise still uses the older Project document API and its configured providers. Legacy records and the canonical-store/derived-index decision retain their boundaries.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Rechecked the historical split against the previous manifest and SDK path. Current apply adds enterprise-notes verbatim, preserves an existing notes registration and leaves document files and vectors in their original partitions. The browser test covers this through the installed example.","inputs":["docs/architecture/abstraction-review.md","examples/enterprise-layout/src/data/notes-hooks.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the extended bucket registration and the new evidence row against the spec. Its own clean Station exercises real preview, install, Project occurrence, Dashboard and Notes rendering, saved-document search with deterministic HTTP embeddings and dependency cleanup. This adds one evidence owner without changing the tier or implying live enterprise provider coverage.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs","tests/enterprise-pane-lifecycle.spec.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the installed-example and declared-permission evidence guidance against Enterprise preview and apply. The revised plugin guide still uses public extension contracts, operator consent, Project ownership and real installation evidence.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Traced the Enterprise manifest through Project apply, the Notes and vault callers, and unscoped document search candidate selection. The added example and diagram arrow refer to the registered RAG partitions of the older document API. Knowledge Kit roots and their index keep their own selection path.","inputs":["docs/guides/knowledge.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Traced the manifest ID through Project layout apply and the older SDK routes. The new Enterprise example shows shared namespace identity; existing Project namespace settings survive additive apply. Plugin package admission and permission rules are unchanged.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked the campaign's extension and Knowledge reference rows against the updated coverage matrix and extended manifest entry. The new spec provides bounded example evidence and does not change campaign or integrated-journey acceptance.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Checked the selected seven browser-smoke entries in the manifest. Enterprise is assigned to extended coverage and adds no fast-checks browser-smoke entry or fixture exception.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the plugin-guide route against the existing Project knowledge and installed-plugin explanations. The Enterprise namespace example changes no getting-started controls, permission requirements or supported data sources.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"Traced preview consent, lifecycle install and uninstall custody, Project apply, and Notes SDK reads, writes and vault path. The existing enterprise-notes partition is registered in place. An earlier notes registration persists; the documented optional copy uses normal API writes with new IDs and no automatic deletion. Browser evidence uses deterministic embeddings and real Station storage/search; live enterprise MCP and Agent execution remain outside this proof.","inputs":["examples/enterprise-layout/README.md","examples/enterprise-layout/plugin.json","examples/enterprise-layout/src/data/notes-hooks.ts","examples/enterprise-layout/src/Notes.tsx","tests/enterprise-pane-lifecycle.spec.ts"]}
+  ]
+}

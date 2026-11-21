@@ -6,6 +6,7 @@ import type {
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
 import type { CodexThreadSandbox } from './codex-approval-mode.js';
 import type { CodexUsageLimitState } from './codex-usage-limit.js';
+import type { EngineWorkloadNotices } from './engine-workload-notices.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -123,6 +124,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
   preparedResumeBindingKey?: string;
   externalThreadId: string;
   codexThreadId: string;
+  reportedApprovalReviewer?: import('@kontourai/station-contracts/provider').EngineApprovalReviewer;
   process: CodexProcessLike;
   session: ProviderSession;
   rpcRequestCounter: number;
@@ -221,6 +223,12 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    */
   stopped: boolean;
   /**
+   * #5113: workload notices Codex has not been told yet. The transport
+   * steers them into a running turn; otherwise they go with the next
+   * `turn/start` input.
+   */
+  workloadNotices?: EngineWorkloadNotices;
+  /**
    * Set while a notification is waiting on I/O (an image read from the host);
    * the transport delivers this session's later notifications after it.
    */
@@ -250,6 +258,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * #2458: this session's Codex subagents as child work
    * (`codex-adapter-child-work.ts`). Created on first use.
    */
+  childModelAcceptsImages?: (modelId: string | undefined) => boolean;
   childWork?: CodexChildWorkState;
   /**
    * The absolute `CODEX_HOME` this session's app-server was spawned under,

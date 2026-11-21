@@ -1,0 +1,7 @@
+{
+  "revision": "1ed18d81a03956a253bedc3388876dc19f314900",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Reviewed the multi-turn report and stub types and the test fixture inputs against the existing optional workload, failure report and baseline behavior. Runtime report shape and process-signal eligibility are preserved. The scripts typecheck passes after correcting the declarations.","inputs":["docs/reference/station-weight.md","scripts/__tests__/station-weight.test.ts","scripts/bench/station-weight-request.mjs","scripts/bench/station-weight-stub.mjs","scripts/bench/station-weight.mjs"]}
+  ]
+}

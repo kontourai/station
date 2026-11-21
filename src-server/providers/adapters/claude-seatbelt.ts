@@ -42,6 +42,7 @@ import type {
 import { normalizeEgressHost } from '../../security/confinement/egress-broker.js';
 import {
   canonicalPath,
+  createSeatbeltSessionDir,
   discoverSeatbeltGitLayout,
   type SeatbeltBounds,
   type SeatbeltEvidence,
@@ -355,15 +356,20 @@ export async function prepareConfinedClaudeLaunch(input: {
   mechanism?: ClaudeSpawnWrapMechanism;
 }): Promise<ConfinedClaudeLaunch> {
   mkdirSync(input.configDir, { recursive: true, mode: 0o700 });
-  const tempRoot = seatbeltTempRoot(input.stationHome);
-  mkdirSync(tempRoot, { recursive: true, mode: 0o700 });
-  const tmpDir = canonicalPath(
-    mkdtempSync(join(tempRoot, seatbeltSessionDirPrefix())),
-  );
+  const bubblewrap = input.mechanism === 'bubblewrap';
+  let tmpDir: string;
+  if (bubblewrap) {
+    const tempRoot = seatbeltTempRoot(input.stationHome);
+    mkdirSync(tempRoot, { recursive: true, mode: 0o700 });
+    tmpDir = canonicalPath(
+      mkdtempSync(join(tempRoot, seatbeltSessionDirPrefix())),
+    );
+  } else {
+    tmpDir = createSeatbeltSessionDir(input.stationHome);
+  }
   const configDir = canonicalPath(input.configDir);
   const home = canonicalPath(input.home ?? homedir());
   const git = await discoverSeatbeltGitLayout(input.workspace);
-  const bubblewrap = input.mechanism === 'bubblewrap';
   const { hidden, readable } = (
     bubblewrap ? bubblewrapHiddenPaths : seatbeltHiddenPaths
   )({

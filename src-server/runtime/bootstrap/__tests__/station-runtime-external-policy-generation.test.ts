@@ -34,7 +34,6 @@ import { OrchestrationService } from '../../../services/orchestration/orchestrat
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import type { StagedPreToolPolicyEvaluator } from '../../agents/pre-tool-policy.js';
 import { PreToolPolicyGenerations } from '../../agents/pre-tool-policy-generation.js';
-import { scheduleRuntimeDailyReload } from '../runtime-background-tasks.js';
 import { StationRuntime } from '../station-runtime.js';
 
 const makeTempDir = trackTempDirs();
@@ -932,44 +931,27 @@ describe('external engine pre-tool policy generation', () => {
     expect(await w.call('conversation')).toEqual({ behavior: 'defer' });
   });
 
-  // 2026-11-17, the owner's Station: the daily reload at local midnight,
-  // with nothing changed, refused every tool call of a Claude session whose
-  // engine had been running for an hour, across several turns, until the
-  // service was restarted. Driven through the timer itself.
+  // The owner's Station: a reload with nothing changed (2026-11-17 the daily
+  // midnight reload, since removed; 2026-11-21 an ordinary `Agents reloaded`)
+  // refused every tool call of a running session, across several turns,
+  // until the service was restarted.
   test.each(ENGINES)(
-    '%s: the midnight reload with nothing changed leaves a running engine and its tools alone',
+    '%s: a reloadAgents() with nothing changed leaves a running engine and its tools alone',
     async (engine) => {
       const w = world(engine);
-      const midnight: Array<() => void> = [];
-      const reloads: Array<Promise<void>> = [];
-      scheduleRuntimeDailyReload({
-        timers: [],
-        reloadAgents: () => {
-          const reload = w.runtime.reloadAgents();
-          reloads.push(reload);
-          return reload;
-        },
-        setTimeoutImpl: ((callback: () => void) => {
-          midnight.push(callback);
-          return 0 as never;
-        }) as never,
-      });
-      const fireMidnight = async () => {
-        midnight.shift()!();
-        await reloads.at(-1);
-      };
+      const reload = () => w.runtime.reloadAgents();
       await w.start('conversation');
       await w.turn('conversation', 'Run the tests.');
       expect(await w.call('conversation')).toEqual(allowed);
       // Inside the turn: the reload lands between two tool calls.
-      await fireMidnight();
+      await reload();
       expect(w.runtime.reloadConfigurationFromDisk).toHaveBeenCalledOnce();
       expect(await w.call('conversation')).toEqual(allowed);
       // A later turn on the same engine.
       await w.turn('conversation', 'And again.');
       expect(await w.call('conversation')).toEqual(allowed);
-      // The next night.
-      await fireMidnight();
+      // Another reload between turns.
+      await reload();
       await w.turn('conversation', 'Once more.');
       expect(await w.call('conversation')).toEqual(allowed);
       expect(w.starts).toHaveLength(1);

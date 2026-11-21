@@ -34,6 +34,18 @@ export const NATIVE_ENGINE_CANDIDATES = [
   { id: 'muse', cli: 'muse' },
 ] as const;
 
+/**
+ * A native engine behind a Feature Preview. It is adopted only through
+ * `previewCandidates`, and only while `allowed()` (the preview's selector,
+ * read again on every attempt) says so; a caller that passes none adopts
+ * none.
+ */
+export interface PreviewNativeEngineCandidate {
+  id: string;
+  cli: string;
+  allowed: () => boolean;
+}
+
 /** Gallery-only request to keep native host CLIs out of screenshot fixtures. */
 export const SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV =
   'STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION';
@@ -111,6 +123,8 @@ interface NativeEngineAdoptionDeps {
   delaysMs?: readonly number[];
   /** Injectable only so containment is unit-testable without process globals. */
   env?: NodeJS.ProcessEnv;
+  /** Engines behind a Feature Preview, after the built-in candidates. */
+  previewCandidates?: readonly PreviewNativeEngineCandidate[];
 }
 
 /**
@@ -145,6 +159,10 @@ interface NativeEngineAdoptionDeps {
  *
  * 'suppressed' is the screenshot containment: no probe was made, by policy.
  * It used to report 'absent' for a host nothing looked at.
+ *
+ * 'disabled' is a preview candidate whose `allowed()` said no (its Feature
+ * Preview is off): no probe was made, and it stays eligible for a later
+ * attempt in the same window.
  */
 interface NativeEngineAdoptionSummary {
   outcomes: Record<
@@ -154,6 +172,7 @@ interface NativeEngineAdoptionSummary {
     | 'error'
     | 'interrupted'
     | 'suppressed'
+    | 'disabled'
   >;
 }
 
@@ -166,6 +185,9 @@ export async function adoptDetectedNativeEngines(
 ): Promise<NativeEngineAdoptionSummary> {
   const detect = deps.detect ?? detectCliOnPath;
   const delays = deps.delaysMs ?? ADOPTION_ATTEMPT_DELAYS_MS;
+  const candidates: ReadonlyArray<
+    (typeof NATIVE_ENGINE_CANDIDATES)[number] | PreviewNativeEngineCandidate
+  > = [...NATIVE_ENGINE_CANDIDATES, ...(deps.previewCandidates ?? [])];
   const outcomes: NativeEngineAdoptionSummary['outcomes'] = {};
   // Station itself is an engine too. Persist its ordinary editable definition
   // at the same seam as detected engines, rather than projecting a special
@@ -175,14 +197,18 @@ export async function adoptDetectedNativeEngines(
   // This is also where an older home is healed: the same call drops a
   // previously seeded `agentConnectionId: 'station'` on load.
   try {
-    await loadOrCreateAgentRegistry(deps.configLoader);
+    await loadOrCreateAgentRegistry(deps.configLoader, {}, deps.signal);
   } catch (error) {
-    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
-      outcomes[candidate.id] = 'error';
-      deps.logger.warn('Native engine adoption failed', {
-        engine: candidate.id,
-        error: errorMessage(error),
-      });
+    for (const candidate of candidates) {
+      if (deps.signal?.aborted && error === deps.signal.reason) {
+        outcomes[candidate.id] = 'interrupted';
+      } else {
+        outcomes[candidate.id] = 'error';
+        deps.logger.warn('Native engine adoption failed', {
+          engine: candidate.id,
+          error: errorMessage(error),
+        });
+      }
     }
     return { outcomes };
   }
@@ -194,23 +220,27 @@ export async function adoptDetectedNativeEngines(
   // (`withoutReservedStationBinding`), so dispatch works this boot either
   // way; what the operator needs is to know the file did not change.
   try {
-    const station = await materializeStationAgent(deps.configLoader);
+    const station = await materializeStationAgent(
+      deps.configLoader,
+      deps.signal,
+    );
     if (station.healed) {
       deps.logger.info(
         "Removed the unresolvable 'station' engine binding from the Station Agent",
       );
     }
   } catch (error) {
-    deps.logger.warn(
-      "The Station Agent's stale 'station' engine binding could not be rewritten; it is ignored at read time, but the on-disk record stays stale until this home is writable",
-      { error: errorMessage(error) },
-    );
+    if (!(deps.signal?.aborted && error === deps.signal.reason))
+      deps.logger.warn(
+        "The Station Agent's stale 'station' engine binding could not be rewritten; it is ignored at read time, but the on-disk record stays stale until this home is writable",
+        { error: errorMessage(error) },
+      );
   }
   // #875: a screenshot runtime must not persist whatever native CLIs happen
   // to exist on its capture host. Keep the ordinary Station Agent setup above
   // intact, but close the adoption window before any host probe can run.
   if (nativeEngineAdoptionSuppressed(deps.env ?? process.env)) {
-    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+    for (const candidate of candidates) {
       // 'suppressed', not 'absent' (station#1815): `detect` is
       // called zero times here, so an absence would be a claim about a host
       // nothing looked at.
@@ -218,7 +248,7 @@ export async function adoptDetectedNativeEngines(
     }
     return { outcomes };
   }
-  const unresolved = new Set(NATIVE_ENGINE_CANDIDATES.map((c) => c.id));
+  const unresolved = new Set(candidates.map((c) => c.id));
 
   for (const delayMs of delays) {
     if (unresolved.size === 0) break;
@@ -239,7 +269,7 @@ export async function adoptDetectedNativeEngines(
       });
       if (deps.signal?.aborted) break;
     }
-    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+    for (const candidate of candidates) {
       if (!unresolved.has(candidate.id)) continue;
       // Covers the one window neither the abort inside a probe nor the check
       // after one reaches: an abort landing during the PREVIOUS candidate's
@@ -260,6 +290,10 @@ export async function adoptDetectedNativeEngines(
       // either nothing or as load-bearing, and both readings outran the
       // measurement.
       if (deps.signal?.aborted) break;
+      if ('allowed' in candidate && !candidate.allowed()) {
+        outcomes[candidate.id] = 'disabled';
+        continue;
+      }
       try {
         const found = await detect(candidate.cli, {
           signal: deps.signal,
@@ -297,6 +331,7 @@ export async function adoptDetectedNativeEngines(
         const outcome = await adoptNativeEngineConnection(
           deps.configLoader,
           candidate.id,
+          deps.signal,
         );
         outcomes[candidate.id] = outcome;
         unresolved.delete(candidate.id);
@@ -310,6 +345,7 @@ export async function adoptDetectedNativeEngines(
             deps.configLoader,
             candidate.id,
             engineDisplayLabel(candidate.id) ?? candidate.id,
+            deps.signal,
           );
         }
         if (outcome === 'connection-collision') {
@@ -325,6 +361,11 @@ export async function adoptDetectedNativeEngines(
           );
         }
       } catch (error) {
+        if (deps.signal?.aborted && error === deps.signal.reason) {
+          outcomes[candidate.id] ??= 'interrupted';
+          unresolved.delete(candidate.id);
+          break;
+        }
         // Registry contention or an unreadable home: settle as 'error' for
         // this run rather than looping — the next server start retries.
         outcomes[candidate.id] = 'error';
@@ -345,7 +386,7 @@ export async function adoptDetectedNativeEngines(
   // a host fact nothing looked at, in the same field where 'absent' means an
   // uncancelled probe said no.
   const interrupted = deps.signal?.aborted === true;
-  for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+  for (const candidate of candidates) {
     if (!unresolved.has(candidate.id)) continue;
     outcomes[candidate.id] ??= interrupted ? 'interrupted' : 'absent';
   }

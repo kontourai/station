@@ -1,0 +1,7 @@
+{
+  "revision": "3471e5dc2bd195c04eba12d87e2db7e6518ddb0c",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the typed archive comparison and the connected-server card. A current report of an unrecorded manifest withholds the check action and its method hint. An unverified manifest or a failed read keeps the re-check path. The route, SDK fields and restart correlation remain as documented.","inputs":["src-ui/src/views/settings/CoreUpdateCheck.tsx"]}
+  ]
+}

@@ -18,7 +18,10 @@ import receiptSchema from '../../schemas/verification-receipt.schema.json' with 
   type: 'json',
 };
 import { withoutAnsi } from './ansi-escape.mjs';
-import { CI_FAST_STEP_MARKER_PATTERN } from './ci-fast-step-marker.mjs';
+import {
+  CI_FAST_PRELAUNCH_CAUSE_PATTERN,
+  CI_FAST_STEP_MARKER_PATTERN,
+} from './ci-fast-step-marker.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
@@ -573,14 +576,11 @@ export function normalizeDeclaredCause(
 }
 
 function semanticCandidate(summary, semantic, value) {
-  return semantic.key === 'slowItems'
-    ? { ...summary, slowItems: [value] }
-    : { ...summary, [semantic.key]: value };
+  return { ...summary, [semantic.key]: semantic.list ? [value] : value };
 }
 
 function assignSemantic(summary, semantic, value) {
-  if (semantic.key === 'slowItems') summary.slowItems = [value];
-  else summary[semantic.key] = value;
+  summary[semantic.key] = semantic.list ? [value] : value;
 }
 
 function reserveSemantic(summary, semantic, maxBytes) {
@@ -664,12 +664,13 @@ function lastStepBoundary(lines) {
  * would swallow an ordinary lower-case word. Blank lines are already filtered out of
  * `lines`, so the marker is the next entry when one exists. Shapes that carry
  * severity inline (`file:l:c error TS…`, `file:l:c warning`) are read directly.
- * Anything unrecognised is deliberately `unknown` rather than assumed benign:
- * only a diagnostic PROVEN to be a warning is ever deprioritised.
+ * Unrecognised severity leaves the existing failure-shape matching in charge.
+ * Recognised warnings and information belong to diagnostic context.
  */
 function diagnosticSeverity(lines, index) {
   const line = lines[index];
   if (/^.+:\d+:\d+\s+warning\b/i.test(line)) return 'warning';
+  if (/^.+:\d+:\d+\s+info\b/i.test(line)) return 'info';
   if (/^.+:\d+:\d+\s+error\b/i.test(line)) return 'error';
   if (/^.+\(\d+,\d+\):\s+error\s+TS\d+:/i.test(line)) return 'error';
   if (
@@ -679,49 +680,30 @@ function diagnosticSeverity(lines, index) {
     if (!marker) return 'unknown';
     if (/^\s*[×✖]\s/u.test(marker)) return 'error';
     if (/^\s*[!⚠]\s/u.test(marker)) return 'warning';
+    if (/^\s*i\s/u.test(marker)) return 'info';
     return 'unknown';
   }
   return 'unknown';
 }
 
-/**
- * Returns the most actionable diagnostic, not merely the first one. An error
- * anywhere in scope outranks a warning that happens to appear above it —
- * station#1871, where a `suppressions/unused` warning on line 41 was reported
- * as the cause of a failure a genuine error further down had produced. Falls
- * back to first-match so a capture containing only warnings still reports one.
- *
- * `allowWarningFallback: false` withdraws exactly that fallback, and nothing
- * else. A PASSING run has no cause -- yet a repo whose lint gate tolerates
- * warnings emits warning-shaped diagnostics on every green run, so the
- * fallback that rescues a failed warnings-only capture also stamped a
- * `firstCausalExcerpt` onto passes (station#1459: a green hosted run reported
- * `scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions`
- * as its cause). The caller withdraws it only for a run that passed, so the
- * failed-run behaviour every other test pins is byte-identical.
- */
+function isNonCausalDiagnostic(lines, index) {
+  const severity = diagnosticSeverity(lines, index);
+  return severity === 'warning' || severity === 'info';
+}
+
 function findCausalDiagnostic(
   lines,
-  {
-    preferLast = false,
-    allowWarningFallback = true,
-    allowFailShaped = true,
-  } = {},
+  { preferLast = false, allowFailShaped = true } = {},
 ) {
-  // `preferLast` is for STDERR, which carries no step markers. The chain
-  // short-circuits, so the failing step's output is the tail; scanning from
-  // the end is what keeps an earlier PASSING step's diagnostic-shaped noise
-  // from being reported as the cause. Stdout is scoped by an npm header
-  // instead and keeps first-match, which is the more actionable choice
-  // within a single step (station#1871).
   const order = preferLast ? [...lines.keys()].reverse() : [...lines.keys()];
-  let fallback;
-  for (const i of order) {
-    if (!isCausalDiagnostic(lines[i], { allowFailShaped })) continue;
-    if (fallback === undefined) fallback = lines[i];
-    if (diagnosticSeverity(lines, i) !== 'warning') return lines[i];
+  for (const index of order) {
+    if (
+      isCausalDiagnostic(lines[index], { allowFailShaped }) &&
+      !isNonCausalDiagnostic(lines, index)
+    )
+      return lines[index];
   }
-  return allowWarningFallback ? fallback : undefined;
+  return undefined;
 }
 
 const FAIL_LINE = /^\s*(?:❯\s*)?FAIL\s+\S+/;
@@ -797,10 +779,7 @@ function isFailLine(line) {
  * Every line in `lines` that names a failing check (a vitest `FAIL <file>`
  * line, or -- station#4249 -- the same-shaped `FAIL <lane>` marker the
  * completion-mode typecheck/docs aggregate runners print per failing
- * sub-lane), in document order, deduplicated by exact text. The plural
- * counterpart of `failLineIn`'s single `.find`: it exists so a run that
- * genuinely observed N distinct failing checks can report N excerpts instead
- * of only the first one found.
+ * sub-lane), in document order, deduplicated by exact text.
  */
 function allFailLines(lines) {
   const seen = new Set();
@@ -854,82 +833,28 @@ export function failedTestFilesFromCapture(text) {
   return files;
 }
 
-/**
- * The plural counterpart of `findCausalDiagnostic`: every diagnostic sharing
- * the SAME winning tier `findCausalDiagnostic` would have picked from
- * (non-warning severity outranks warning, exactly as the singular function
- * ranks them), in document order, with the singular winner moved to index 0
- * so a caller building `causalExcerpts` from this list gets the same head
- * element `firstCausalExcerpt` would report. Delegates the winner selection
- * itself to `findCausalDiagnostic` rather than reimplementing it, so the two
- * can never disagree about which excerpt is "first".
- */
 function findAllCausalDiagnostics(
   lines,
-  {
-    preferLast = false,
-    allowWarningFallback = true,
-    allowFailShaped = true,
-  } = {},
+  { preferLast = false, allowFailShaped = true } = {},
 ) {
-  const winner = findCausalDiagnostic(lines, {
-    preferLast,
-    allowWarningFallback,
-    allowFailShaped,
-  });
-  // Withdrawing the warning fallback above is enough for this function too:
-  // with no winner there is no tier, and when a winner exists under
-  // `allowWarningFallback: false` it is non-warning by construction, so
-  // `hasNonWarning` is true and the tier below excludes warnings anyway.
+  const winner = findCausalDiagnostic(lines, { preferLast, allowFailShaped });
   if (winner === undefined) return [];
-  const hasNonWarning = lines.some(
-    (line, index) =>
-      isCausalDiagnostic(line, { allowFailShaped }) &&
-      diagnosticSeverity(lines, index) !== 'warning',
-  );
-  const tier = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!isCausalDiagnostic(lines[index], { allowFailShaped })) continue;
-    const severity = diagnosticSeverity(lines, index);
-    const inTier = hasNonWarning
-      ? severity !== 'warning'
-      : severity === 'warning';
-    if (inTier) tier.push(lines[index]);
-  }
-  const seen = new Set();
-  const ordered = [];
-  for (const line of [winner, ...tier]) {
-    if (seen.has(line)) continue;
-    seen.add(line);
-    ordered.push(line);
-  }
-  return ordered;
+  return [
+    ...new Set([
+      winner,
+      ...lines.filter(
+        (line, index) =>
+          isCausalDiagnostic(line, { allowFailShaped }) &&
+          !isNonCausalDiagnostic(lines, index),
+      ),
+    ]),
+  ];
 }
 
 /**
- * The plural counterpart of `firstCausalExcerpt`'s own resolution chain in
- * `summarizeVerificationOutput`: mirrors the SAME priority order (attributable
- * scoped-stdout evidence before unattributable stderr evidence, a FAIL line
- * before a generic diagnostic) and, at whichever tier wins, returns every
- * excerpt that tier observed rather than only the first. Because each branch
- * here calls the exact singular helper the caller also calls, branch
- * selection can never diverge from the SCANNED half of `firstCausalExcerpt`'s
- * chain -- the two are derived from the same evidence.
- *
- * That is now the whole of the claim (station#1827 review item 6). It used to
- * conclude that `causalExcerpts[0]` and `firstCausalExcerpt` therefore
- * describe the same excerpt, and invited a caller to build `causalExcerpts`
- * straight from this list. Both stopped being safe when a runner-declared
- * stop cause was allowed to outrank the scan: on an `infrastructure_error`
- * that carried one, `firstCausalExcerpt` is a value NO tier here returns.
- * The head agreement is preserved by the assembly site, which seeds the list
- * with `summary.firstCausalExcerpt` and then appends from this one. A caller
- * that takes this list's own head instead would silently drop the cause.
- *
- * Deliberately returns only what this one execution's captured output
- * actually contains. It cannot see -- and does not guess at -- a check that
- * never ran because an earlier tier short-circuited; that check is absent
- * from this list, not falsely reported as passing or failing.
+ * Select the winning failure tier once. The summary uses the first
+ * entry unless the runner declared its own stop cause, then keeps the
+ * remaining observed failures within its byte budget.
  */
 function allCausalExcerpts({
   scopedStdout,
@@ -937,13 +862,10 @@ function allCausalExcerpts({
   failureSection,
   terminal,
   lines,
-  allowWarningFallback = true,
   reportsCause = true,
 }) {
-  // Both FAIL tiers are gated by `reportsCause` for the same reason the
-  // warning fallback is: a run this function's inputs all say passed has no
-  // cause to report, and a coloured FAIL line is the ordinary CI shape, so a
-  // passing test that prints one would otherwise become a cause.
+  // Passing runs can contain a FAIL line printed by a passing fixture.
+  // Consult the measured verdict before treating that shape as a failure.
   const scopedFailLines = reportsCause ? allFailLines(scopedStdout) : [];
   if (scopedFailLines.length) return scopedFailLines;
   // Mirrors the singular chain's station#1471 ordering: a runner's own FAIL
@@ -953,23 +875,40 @@ function allCausalExcerpts({
   if (failureSection >= 0) {
     const scoped = findAllCausalDiagnostics(
       scopedStdout.slice(failureSection + 1),
-      { allowWarningFallback, allowFailShaped: reportsCause },
+      { allowFailShaped: reportsCause },
     );
     if (scoped.length) return scoped;
   }
   const unscoped = findAllCausalDiagnostics(scopedStdout, {
-    allowWarningFallback,
     allowFailShaped: reportsCause,
   });
   if (unscoped.length) return unscoped;
   const stderrDiagnostics = findAllCausalDiagnostics(stderrLines, {
     preferLast: true,
-    allowWarningFallback,
     allowFailShaped: reportsCause,
   });
   if (stderrDiagnostics.length) return stderrDiagnostics;
-  if (lines.length === 1 && /parser/i.test(terminal.status)) return [lines[0]];
+  if (
+    lines.length === 1 &&
+    /parser/i.test(terminal.status) &&
+    !isNonCausalDiagnostic(lines, 0)
+  )
+    return [lines[0]];
   return [];
+}
+
+// Keep stream boundaries so a severity marker cannot qualify a line from
+// another stream. Prefer final-step context before reaching earlier output.
+function diagnosticContext(scopedStdout, stderrLines, stdoutLines) {
+  const lowerSeverity = (lines) =>
+    lines.filter((_, index) => isNonCausalDiagnostic(lines, index));
+  return [
+    ...new Set([
+      ...lowerSeverity(scopedStdout),
+      ...lowerSeverity(stderrLines).reverse(),
+      ...lowerSeverity(stdoutLines),
+    ]),
+  ];
 }
 
 /**
@@ -1130,38 +1069,11 @@ export function summarizeVerificationOutput({
   const failureSection = scopedStdout.findLastIndex((line) =>
     /(?:Failed Tests|Test Failures|Failures\s+\d+)/i.test(line),
   );
-  // A vitest FAIL line names the failing FILE — always the most actionable
-  // excerpt when present. Ambient stderr (app logs) previously matched the
-  // generic diagnostic pattern first and masked the real failure
-  // (station#2591).
-  const failLineIn = (candidates) => candidates.find(isFailLine);
-  // Hoisted above the causal scan (it also gates `failingStep` further down,
-  // where it was originally computed) because a PASSING run must not report a
-  // cause at all. It is one conjunct of `observedClean` below; `failingStep`
-  // reads it alone. The two fields can therefore disagree, by design, in
-  // exactly the under-approximated cases: a run that `completed` with exit 0
-  // but failed cleanup or counts names no failing step yet still reports its
-  // causal excerpt.
   const exitedNonZero =
     typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
-  // station#1459: the fallback that rescues a FAILED warnings-only capture is
-  // withdrawn on a pass, and only there. Station's lint gate tolerates
-  // warnings, so a green hosted run emits warning-shaped diagnostics every
-  // time; the fallback turned one of them into `firstCausalExcerpt` on runs
-  // that had no cause to report. An ERROR-tier diagnostic is still reported
-  // if one is somehow present on a pass -- that is a genuine contradiction
-  // worth surfacing, not noise to suppress.
-  //
-  // What follows is NOT the receipt's verdict and must not be read as one.
-  // `classifyTerminal` (verification-receipt.mjs) additionally requires stable
-  // provenance and the full counts identity (`executed > 0`, `passed ===
-  // executed`), neither of which this function is given. It is deliberately a
-  // conservative UNDER-approximation of that pass predicate: every input it
-  // can see must be clean before the fallback is withdrawn, so anything it
-  // cannot see can only leave the fallback in place. A run this thinks is
-  // clean but the receipt fails therefore still reports its warning; a run
-  // with a failed count, a failed cleanup, or a surviving owned child keeps
-  // its cause even though the status says `completed`.
+  // A passing capture can include printed failure fixtures or lint warnings.
+  // Counts and cleanup can still contradict a completed status. That is
+  // sufficient to preserve context, while the receipt owns the final verdict.
   const cleanupStatus =
     typeof cleanup.status === 'string' ? cleanup.status : null;
   const observedClean =
@@ -1171,9 +1083,7 @@ export function summarizeVerificationOutput({
     counts.infrastructureErrors === 0 &&
     (cleanupStatus === 'passed' || cleanupStatus === 'not_required') &&
     (cleanup.survivingOwnedChildren ?? 0) === 0;
-  const allowWarningFallback = !observedClean;
-  // The SAME observation as `allowWarningFallback`, named for the other job it
-  // does. station#1471 review: the FAIL tiers below bypassed the pass check
+  // station#1471 review: the FAIL tiers below bypassed the pass check
   // entirely, and a coloured FAIL line is the ordinary CI shape — so once FAIL
   // matching stopped being defeated by colour, a GREEN run containing a
   // passing test that PRINTS a FAIL-shaped line would have reported a cause
@@ -1243,41 +1153,19 @@ export function summarizeVerificationOutput({
     infrastructureCause.length > 0
       ? infrastructureCause
       : null;
-  const firstCausalExcerpt =
-    ownerFinalCause ??
-    (reportsCause ? failLineIn(scopedStdout) : undefined) ??
-    (reportsCause ? stderrFailLine(stderrLines) : undefined) ??
-    (failureSection >= 0
-      ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1), {
-          allowWarningFallback,
-          allowFailShaped: reportsCause,
-        })
-      : null) ??
-    findCausalDiagnostic(scopedStdout, {
-      allowWarningFallback,
-      allowFailShaped: reportsCause,
-    }) ??
-    findCausalDiagnostic(stderrLines, {
-      preferLast: true,
-      allowWarningFallback,
-      allowFailShaped: reportsCause,
-    }) ??
-    (lines.length === 1 && /parser/i.test(terminal.status) ? lines[0] : null);
-  // station#4249: the plural companion, derived from the SAME branch that won
-  // above (see `allCausalExcerpts`'s doc comment for why the two can never
-  // disagree about their head element). Computed unconditionally -- it is
-  // cheap pure text scanning -- but only ever rendered into the summary when
-  // `firstCausalExcerpt` itself made the byte budget (below), so its presence
-  // never outruns the field it extends.
   const causalExcerptsObserved = allCausalExcerpts({
     scopedStdout,
     stderrLines,
     failureSection,
     terminal,
     lines,
-    allowWarningFallback,
     reportsCause,
   });
+  const firstCausalExcerpt = ownerFinalCause ?? causalExcerptsObserved[0];
+  const diagnosticExcerptsObserved =
+    reportsCause && causalExcerptsObserved.length === 0
+      ? diagnosticContext(scopedStdout, stderrLines, stdoutLines)
+      : [];
   // Emitted ONLY when the excerpt came from stderr, which is the case a reader
   // needs warning about: stderr carries no step markers, so that excerpt was
   // chosen by severity and position rather than attributed to the failing
@@ -1324,6 +1212,7 @@ export function summarizeVerificationOutput({
   const failingStep =
     attributableStep &&
     !stopped &&
+    !CI_FAST_PRELAUNCH_CAUSE_PATTERN.test(ownerFinalCause ?? '') &&
     (terminal.status !== 'completed' || exitedNonZero)
       ? attributableStep
       : null;
@@ -1388,7 +1277,12 @@ export function summarizeVerificationOutput({
   const semanticClasses = [
     { key: 'firstCausalExcerpt', value: firstCausalExcerpt },
     { key: 'finalTally', value: finalTally },
-    { key: 'slowItems', value: slowItems[0] ?? null },
+    { key: 'slowItems', value: slowItems[0] ?? null, list: true },
+    {
+      key: 'diagnosticExcerpts',
+      value: diagnosticExcerptsObserved[0],
+      list: true,
+    },
   ].filter(({ value }) => value);
   // First reserve one complete code point for every available class in
   // priority order. A huge cause must never consume the final tally and slow
@@ -1405,6 +1299,10 @@ export function summarizeVerificationOutput({
   // whenever the cap permits it and gives the remaining bytes back to cause.
   if (tally) promoteSemantic(summary, tally, maxBytes);
   if (firstSlow) promoteSemantic(summary, firstSlow, maxBytes);
+  const diagnostic = semanticClasses.find(
+    ({ key }) => key === 'diagnosticExcerpts',
+  );
+  if (diagnostic) promoteSemantic(summary, diagnostic, maxBytes);
   if (cause) promoteSemantic(summary, cause, maxBytes);
   for (const slowItem of slowItems.slice(1)) {
     const candidate = {
@@ -1479,6 +1377,13 @@ export function summarizeVerificationOutput({
         excerpts = candidate;
       }
       summary.causalExcerpts = excerpts;
+    }
+  }
+  if (summary.diagnosticExcerpts) {
+    for (const excerpt of diagnosticExcerptsObserved.slice(1)) {
+      const diagnosticExcerpts = [...summary.diagnosticExcerpts, excerpt];
+      if (!fitsSummary({ ...summary, diagnosticExcerpts }, maxBytes)) break;
+      summary.diagnosticExcerpts = diagnosticExcerpts;
     }
   }
   return summary;

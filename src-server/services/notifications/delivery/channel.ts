@@ -95,10 +95,17 @@ export function deliveryEnvelopeFor(notification: Notification): {
   if (envelope) return { envelope, legacy: false };
   const outcome = classifyNotificationCategory(notification.category);
   const unreadable = hasEnvelope(notification);
+  // #5072: a server producer without an envelope (the approval inbox) names
+  // the session's local Project in its metadata.
+  const projectId = notification.metadata?.projectId;
   return {
     envelope: {
       v: 1,
-      source: { kind: 'system', subsystem: notification.source },
+      source: {
+        kind: 'system',
+        subsystem: notification.source,
+        ...(typeof projectId === 'string' && projectId ? { projectId } : {}),
+      },
       audience: { kind: 'owner' },
       urgency: (outcome && OUTCOME_URGENCY[outcome]) ?? 'info',
       interrupt: unreadable ? 'silent' : 'default',

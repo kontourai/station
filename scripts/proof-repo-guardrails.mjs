@@ -5,6 +5,7 @@ import { evaluateRepoStandards, loadRepoStandards } from '@kontourai/veritas';
 import { collectCiWorkflowGovernanceFindings } from './ci-workflow-governance.mjs';
 import { gitLsFiles } from './lib/ratchet-utils.mjs';
 import {
+  collectCalledModuleImports,
   collectPaneHostCompositionFindings,
   createRequiredSourceReader,
 } from './repo-guardrail-source.mjs';
@@ -1404,35 +1405,37 @@ for (const requiredHelper of [
 const pushNotifications = readRequiredSource(
   '../src-ui/src/hooks/usePushNotifications.ts',
 );
-if (
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
-  pushNotifications.includes('fetch(`${apiBase}/api/system/vapid-public-key`)')
-) {
-  errors.push('usePushNotifications must use the shared VAPID key helper.');
-}
-if (
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
-  pushNotifications.includes('fetch(`${apiBase}/api/system/push-subscribe`')
-) {
-  errors.push(
-    'usePushNotifications must use the shared push subscribe helper.',
-  );
-}
-if (
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source-expectation string deliberately contains an interpolation
-  pushNotifications.includes('fetch(`${apiBase}/api/system/push-unsubscribe`')
-) {
-  errors.push(
-    'usePushNotifications must use the shared push unsubscribe helper.',
-  );
-}
-for (const requiredHelper of [
-  'fetchVapidPublicKey',
-  'subscribePushNotifications',
-  'unsubscribePushNotifications',
+const browserPushRegistration = readRequiredSource(
+  '../src-ui/src/hooks/web-push-browser-registration.ts',
+);
+for (const [label, source, owner, helpers] of [
+  [
+    'usePushNotifications',
+    pushNotifications,
+    './web-push-browser-registration',
+    [
+      'confirmBrowserPushRegistration',
+      'enableBrowserPushSubscription',
+      'removeBrowserPushSubscription',
+    ],
+  ],
+  [
+    'Web Push browser registration',
+    browserPushRegistration,
+    '@kontourai/station-sdk',
+    [
+      'fetchWebPushRegistration',
+      'subscribePushNotifications',
+      'unsubscribePushNotifications',
+    ],
+  ],
 ]) {
-  if (!pushNotifications.includes(requiredHelper)) {
-    errors.push(`usePushNotifications must use ${requiredHelper}.`);
+  if (hasRawFetchCall(source))
+    errors.push(`${label} must not issue raw fetch() calls.`);
+  const called = collectCalledModuleImports(source, owner);
+  for (const helper of helpers) {
+    if (!called.has(helper))
+      errors.push(`${label} must call ${helper} from ${owner}.`);
   }
 }
 
@@ -1717,7 +1720,7 @@ for (const requiredHook of [
 const pluginManagementView = readRequiredSource(
   '../src-ui/src/views/PluginManagementView.tsx',
 );
-if (pluginManagementView.includes('fetch(')) {
+if (hasRawFetchCall(pluginManagementView)) {
   errors.push('PluginManagementView must not issue raw fetch() calls.');
 }
 for (const requiredHook of [

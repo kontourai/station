@@ -76,6 +76,12 @@ export const QUALIFICATION_RULE: AutomationRule = {
     },
     maxAttempts: 1,
   },
-  action: { kind: 'notify', priority: 'high' },
+  action: {
+    kind: 'dispatch-task',
+    projectId: 'station',
+    agentId: 'repairer',
+    instructions: 'Diagnose the failing qualification run.',
+    budget: { maxTurns: 4, maxTokens: 200_000, maxWallRuntimeMs: 1_800_000 },
+  },
   rateLimit: { maxStartsPerHour: 2 },
 };

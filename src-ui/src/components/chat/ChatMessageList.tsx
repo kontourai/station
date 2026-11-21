@@ -52,6 +52,7 @@ import {
   animateScrollToBottom,
   type ScrollToBottomAnimation,
 } from './animateScrollToBottom';
+import { ApprovalsHeldContext } from './approvalsHeld';
 import { ChatBackgroundStrip } from './BackgroundTaskActivity';
 import {
   BrowserTurnActivityProvider,
@@ -214,6 +215,12 @@ interface ChatMessageListProps {
   approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
   /** Whether `approvalEvents`' window has finished its first read (#2344). */
   approvalEventsSettled?: boolean;
+  /**
+   * The rows are this client's recent copy, still being re-read: a request
+   * on them may already be answered elsewhere, so none is offered to answer
+   * until the read lands.
+   */
+  approvalsHeld?: boolean;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -332,6 +339,7 @@ function ChatMessageListComponent({
   onQuote,
   approvalEvents,
   approvalEventsSettled,
+  approvalsHeld = false,
 }: ChatMessageListProps & {
   sendMessage: ReturnType<typeof useSendMessage>;
   apiBase: string;
@@ -402,6 +410,7 @@ function ChatMessageListComponent({
     () =>
       approvalEvents &&
       approvalEvents.length > 0 &&
+      !approvalsHeld &&
       !activeSession.replay &&
       !target?.record?.readOnly
         ? unansweredApprovalRequests(
@@ -426,6 +435,7 @@ function ChatMessageListComponent({
       activeSession.openTurnId,
       suppressStreamingRow,
       approvalEvents,
+      approvalsHeld,
       target?.record?.readOnly,
     ],
   );
@@ -435,7 +445,7 @@ function ChatMessageListComponent({
   );
   const sheetRequests = useMemo(
     () =>
-      activeSession.replay || target?.record?.readOnly
+      activeSession.replay || target?.record?.readOnly || approvalsHeld
         ? []
         : unansweredApprovalRequests(
             [],
@@ -445,7 +455,12 @@ function ChatMessageListComponent({
           ).filter(
             (request) => !request.inputRequest && !request.inputRequestUrl,
           ),
-    [activeSession.replay, approvalEvents, target?.record?.readOnly],
+    [
+      activeSession.replay,
+      approvalEvents,
+      approvalsHeld,
+      target?.record?.readOnly,
+    ],
   );
   // A reconnect replays what this view missed one event at a time; the sheet
   // holds its list until the replay ends (`ApprovalSheetProvider`).
@@ -1918,7 +1933,7 @@ function ChatMessageListComponent({
       resendSource={rowPresentation.get(rowId)?.resend}
       onResendFromMessage={onResendFromMessage}
       onToolApproval={
-        activeSession.replay || target?.record?.readOnly
+        activeSession.replay || target?.record?.readOnly || approvalsHeld
           ? undefined
           : handleToolApproval
       }
@@ -1963,6 +1978,7 @@ function ChatMessageListComponent({
         data-chat-message-key={row.id}
         data-chat-turn-id={row.message.turnId}
         data-chat-role={row.message.role}
+        data-history-entry={row.message.historyEntry}
         data-role={row.message.role}
         data-transcript-message-id={messageId}
         data-testid={
@@ -2027,9 +2043,10 @@ function ChatMessageListComponent({
         fontSize={fontSize}
         show={showReasoning}
         hasAnswerText={hasAnswerText}
+        autoExpand={!isMobile}
       />
     ),
-    [fontSize, showReasoning],
+    [fontSize, isMobile, showReasoning],
   );
 
   const renderToolCall = useCallback(
@@ -2037,9 +2054,17 @@ function ChatMessageListComponent({
       <ToolCallDisplay
         key={i}
         toolCall={part}
+        sessionId={
+          activeSession.replay
+            ? undefined
+            : (activeSession.currentSessionId ?? activeSession.id)
+        }
         showDetails={showToolDetails}
         onApprove={
-          !activeSession.replay && part.needsApproval && part.approvalId
+          !activeSession.replay &&
+          !approvalsHeld &&
+          part.needsApproval &&
+          part.approvalId
             ? (action) =>
                 handleToolApproval(
                   activeSession.id,
@@ -2058,8 +2083,10 @@ function ChatMessageListComponent({
       showToolDetails,
       handleToolApproval,
       activeSession.id,
+      activeSession.currentSessionId,
       activeSession.agentSlug,
       activeSession.replay,
+      approvalsHeld,
     ],
   );
 
@@ -2107,302 +2134,312 @@ function ChatMessageListComponent({
   };
 
   return (
-    <ApprovalSheetProvider
-      apiBase={apiBase}
-      requests={sheetRequests}
-      catchingUp={sheetCatchingUp}
-      onCheck={async (request) => {
-        if (
-          !request.approvalThreadId ||
-          !request.approvalId ||
-          !request.approvalEventId
-        )
-          throw new Error('This request has no current inspection reference.');
-        const { inspectApprovalAnswer } = await import(
-          '../../hooks/orchestration/answerRequest'
-        );
-        const outcome = await inspectApprovalAnswer(apiBase, {
-          threadId: request.approvalThreadId,
-          requestId: request.approvalId,
-          requestEventId: request.approvalEventId,
-          requestScope: target?.requestScope,
-        });
-        const current = activeChatsStore.getSnapshot()[activeSession.id];
-        if (outcome === 'pending' && current) {
-          activeChatsStore.updateChat(activeSession.id, {
-            answeredApprovals: current.answeredApprovals?.filter(
-              (id) => id !== request.approvalId,
-            ),
+    <ApprovalsHeldContext.Provider value={approvalsHeld}>
+      <ApprovalSheetProvider
+        apiBase={apiBase}
+        requests={sheetRequests}
+        catchingUp={sheetCatchingUp}
+        onCheck={async (request) => {
+          if (
+            !request.approvalThreadId ||
+            !request.approvalId ||
+            !request.approvalEventId
+          )
+            throw new Error(
+              'This request has no current inspection reference.',
+            );
+          const { inspectApprovalAnswer } = await import(
+            '../../hooks/orchestration/answerRequest'
+          );
+          const outcome = await inspectApprovalAnswer(apiBase, {
+            threadId: request.approvalThreadId,
+            requestId: request.approvalId,
+            requestEventId: request.approvalEventId,
+            requestScope: target?.requestScope,
           });
+          const current = activeChatsStore.getSnapshot()[activeSession.id];
+          if (outcome === 'pending' && current) {
+            activeChatsStore.updateChat(activeSession.id, {
+              answeredApprovals: current.answeredApprovals?.filter(
+                (id) => id !== request.approvalId,
+              ),
+            });
+          }
+          if (outcome === 'already-settled') catchUpSettledRequest(request);
+          return outcome;
+        }}
+        onSettledElsewhere={catchUpSettledRequest}
+        onApprove={(request, action) =>
+          handleToolApproval(
+            activeSession.id,
+            activeSession.agentSlug,
+            request.approvalId ?? '',
+            request.toolName || request.name || '',
+            action,
+            request.approvalThreadId,
+            request.approvalEventId,
+          )
         }
-        if (outcome === 'already-settled') catchUpSettledRequest(request);
-        return outcome;
-      }}
-      onSettledElsewhere={catchUpSettledRequest}
-      onApprove={(request, action) =>
-        handleToolApproval(
-          activeSession.id,
-          activeSession.agentSlug,
-          request.approvalId ?? '',
-          request.toolName || request.name || '',
-          action,
-          request.approvalThreadId,
-          request.approvalEventId,
-        )
-      }
-    >
-      <UIBlockActionsContext.Provider value={uiBlockActions}>
-        <TranscriptToolRecordSource.Provider value={apiBase}>
-          <BrowserTurnActivityProvider
-            transcriptChildren={transcriptChildren}
-            messages={messages}
-            chatId={activeSession.id}
-            threadId={activeSession.currentSessionId ?? activeSession.id}
-            liveTurnId={
-              activeSession.conversationActivity?.openTurn?.turnId ??
-              activeSession.openTurnId
-            }
-            live={turnLive}
-            includeStream={isStreaming}
-          >
-            {onQuote && !activeSession.replay && (
-              <QuoteSelectionToolbar
-                container={messagesContainerRef}
-                messages={messages}
-                onQuote={onQuote}
-              />
-            )}
-            {/* Summaries are this Station's own derived records; a chat another
-              Station owns has none here, and its tunnel offers no summary read. */}
-            {!target?.record && chatBelongsToStation(activeSession) && (
-              <SessionSummaryCard
-                activeSession={activeSession}
-                hasSettingsEntryPoint={hasSettingsEntryPoint}
-              />
-            )}
-            <div
-              className="chat-messages"
-              data-surface="transcript"
-              data-touch-turn-controls={
-                (turnNavigation && touchTurnControls) || undefined
+      >
+        <UIBlockActionsContext.Provider value={uiBlockActions}>
+          <TranscriptToolRecordSource.Provider value={apiBase}>
+            <BrowserTurnActivityProvider
+              transcriptChildren={transcriptChildren}
+              messages={messages}
+              chatId={activeSession.id}
+              threadId={activeSession.currentSessionId ?? activeSession.id}
+              liveTurnId={
+                activeSession.conversationActivity?.openTurn?.turnId ??
+                activeSession.openTurnId
               }
-              data-answer-width={chatAnswerWidth}
-              ref={
-                externalScrollContainerRef ? undefined : messagesContainerRef
-              }
-              role="log"
-              tabIndex={-1}
-              aria-label="Conversation transcript"
-              data-chat-session-id={activeSession.id}
-              aria-live="polite"
-              style={{ fontSize: `${fontSize}px` }}
-              onScroll={externalScrollContainerRef ? undefined : handleScroll}
-              onWheel={externalScrollContainerRef ? undefined : onReaderInput}
-              onTouchStart={
-                externalScrollContainerRef ? undefined : onReaderInput
-              }
-              onPointerDown={
-                externalScrollContainerRef ? undefined : onReaderInput
-              }
-              onKeyDown={externalScrollContainerRef ? undefined : onReaderInput}
+              live={turnLive}
+              includeStream={isStreaming}
             >
-              {hasOlderMessages && (
-                <div className="session-history-controls">
-                  <button
-                    type="button"
-                    className="button button--secondary session-history-controls__more"
-                    disabled={historyLoading}
-                    onClick={() => void loadOlder()}
-                  >
-                    {historyLoading
-                      ? 'Loading earlier messages…'
-                      : 'Earlier messages'}
-                  </button>
-                </div>
-              )}
-              {historyNotice}
-              {transcriptRows.length === 0 && !isStreaming ? (
-                emptyState !== undefined ? (
-                  emptyState
-                ) : (
-                  <ChatEmptyState
-                    agentSlug={activeSession.agentSlug}
-                    agentName={activeSession.agentName}
-                  />
-                )
-              ) : (
-                <>
-                  {transcriptRows.length > 0 &&
-                    (transcriptRows.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
-                      <TranscriptVirtualizer
-                        rows={transcriptRows}
-                        scrollElement={messagesContainerRef}
-                        onProgrammaticScroll={noteProgrammaticScroll}
-                        renderRow={renderTranscriptRow}
-                        followTail={!isUserScrolledUp && !requestedMessageRowId}
-                        followTick={`${tailContentLength}:${tailPartsLength}`}
-                        anchorVersion={scrollAnchorVersion}
-                        revealRowId={
-                          requestedMessageRowId ??
-                          approvalRevealRowId ??
-                          turnRevealRowId ??
-                          currentReaderRestoreRequest?.anchor?.key
-                        }
-                        restoreAnchor={currentReaderRestoreRequest?.anchor}
-                        restoreAnchorVersion={
-                          currentReaderRestoreRequest?.version
-                        }
-                        // Read at mount only: a reader already in the transcript
-                        // when it crosses into virtualization keeps their row.
-                        initialAnchor={
-                          isUserScrolledUp ? visibleAnchorRef.current : null
-                        }
-                      />
-                    ) : (
-                      transcriptRows.map((row) => (
-                        <React.Fragment key={row.id}>
-                          {renderTranscriptRow(row)}
-                        </React.Fragment>
-                      ))
-                    ))}
-                  {isStreaming && (
-                    <div
-                      className="chat-message-anchor"
-                      data-chat-message-key={`${activeSession.id}:streaming`}
-                    >
-                      <TranscriptTurnContext.Provider
-                        value={streamingTurnContext}
-                      >
-                        <ActiveStreamingMessage
-                          sessionId={activeSession.id}
-                          agentIcon={agentIcon}
-                          agentIconStyle={EMPTY_STYLE}
-                          fontSize={fontSize}
-                          showReasoning={showReasoning}
-                          renderReasoning={renderReasoning}
-                          renderToolCall={renderToolCall}
-                          activityHint={activeSession.activityHint}
-                          elapsedMs={activeSession.replay?.elapsedMs}
-                          conversationActivity={
-                            activeSession.conversationActivity
-                          }
-                          turnStartedAt={activeSession.openTurnStartedAt}
-                          suppressActivity={suppressActivity}
-                          hideProgressSilence={progressSilenceShownElsewhere}
-                          statusLabel={
-                            waitingApprovalCount > 0
-                              ? requestAttentionKind(activeSession) === 'answer'
-                                ? attentionWord('answer')
-                                : 'Waiting for approval'
-                              : activeSession.orchestrationStatus ===
-                                    'awaiting-approval' &&
-                                  chatWaitsOnUser(activeSession)
-                                ? attentionWord('waiting')
-                                : undefined
-                          }
-                          attributionAgent={streamingAttributionAgent}
-                          owner={owner}
-                          onContentChange={pinToLatest}
-                        />
-                      </TranscriptTurnContext.Provider>
-                    </div>
-                  )}
-                  <LiveBrowserTurnActivities />
-                  {/* Backgrounded provider tasks outlive the assistant turn: the
-                session is honestly idle, but work continues. Keep a live
-                affordance so the chat never looks done while it isn't. */}
-                  {!turnLive && (
-                    <ChatBackgroundStrip
-                      chatThreadId={activeSession.id}
-                      source={apiBase}
-                      shownTaskIds={shownTaskIds}
-                      localTasks={localBackgroundTasks}
-                      serverCount={serverBackgroundCount}
-                      liveStatusUnavailable={liveStatusUnavailable}
-                      onOpen={onOpenBackgroundTasks}
-                    />
-                  )}
-                </>
-              )}
-              {transcriptRows.length > 0 && !isStreaming
-                ? transcriptFooter
-                : null}
-              {/* Mounted while empty too: its live region must exist before the
-            first request arrives (#2344). */}
-              {!activeSession.replay && (
-                <PendingApprovalStrip
-                  requests={pendingApprovalRequests}
-                  settled={approvalEventsSettled !== false}
-                  onApprove={(request, action) =>
-                    handleToolApproval(
-                      activeSession.id,
-                      activeSession.agentSlug,
-                      request.approvalId ?? '',
-                      request.toolName || request.name || '',
-                      action,
-                      request.approvalThreadId,
-                      request.approvalEventId,
-                    )
-                  }
+              {onQuote && !activeSession.replay && (
+                <QuoteSelectionToolbar
+                  container={messagesContainerRef}
+                  messages={messages}
+                  onQuote={onQuote}
                 />
               )}
-            </div>
-            {turnBrowserOpen && (
-              <LazyBoundary
-                load={loadTurnBrowser}
-                pending={null}
-                componentProps={{
-                  conversationId: activeSession.conversationId,
-                  landmarks: turnLandmarks,
-                  onJumpLoaded: jumpToTurn,
-                  onLoadTurn: onLoadTurn ? loadTurnAndReveal : undefined,
-                  onClose: () => setTurnBrowserOpen(false),
-                }}
-              />
-            )}
-            {turnNavigation && (
-              <TurnRail
-                // A chat switch starts the rail over: a hover or a dismissed
-                // preview names a turn index in the chat it was made in.
-                key={activeSession.id}
-                landmarks={turnLandmarks}
-                rowCount={transcriptRows.length}
-                scrollElement={messagesContainerRef}
-                railRef={turnRailRef}
-                activeTurn={turnViewport.activeTurn}
-                onJump={jumpToTurn}
-                olderHistory={Boolean(hasOlderMessages)}
-                onBrowse={openTurnBrowser}
-                previousTurn={previousTurn}
-                nextTurn={nextTurn}
-                onStep={stepToTurn}
-                touchControls={touchTurnControls}
-                touchStepsShown={isUserScrolledUp}
-                conversationId={activeSession.conversationId!}
-                activeStartVisible={turnViewport.activeStartVisible}
-                onAnnounceStep={announceIndexedTurnStep}
-                onLoadTurn={loadTurnAndReveal}
-              />
-            )}
-            {/* Mounted with the navigation, before anything is said: a region
-          created together with its text is often not read. */}
-            {turnNavigation && (
-              <span
-                className="sr-only"
-                role="status"
-                data-testid="transcript-turn-announcement"
+              {/* Summaries are this Station's own derived records; a chat another
+              Station owns has none here, and its tunnel offers no summary read. */}
+              {!target?.record && chatBelongsToStation(activeSession) && (
+                <SessionSummaryCard
+                  activeSession={activeSession}
+                  hasSettingsEntryPoint={hasSettingsEntryPoint}
+                />
+              )}
+              <div
+                className="chat-messages"
+                data-surface="transcript"
+                data-touch-turn-controls={
+                  (turnNavigation && touchTurnControls) || undefined
+                }
+                data-answer-width={chatAnswerWidth}
+                ref={
+                  externalScrollContainerRef ? undefined : messagesContainerRef
+                }
+                role="log"
+                tabIndex={-1}
+                aria-label="Conversation transcript"
+                data-chat-session-id={activeSession.id}
+                aria-live="polite"
+                style={{ fontSize: `${fontSize}px` }}
+                onScroll={externalScrollContainerRef ? undefined : handleScroll}
+                onWheel={externalScrollContainerRef ? undefined : onReaderInput}
+                onTouchStart={
+                  externalScrollContainerRef ? undefined : onReaderInput
+                }
+                onPointerDown={
+                  externalScrollContainerRef ? undefined : onReaderInput
+                }
+                onKeyDown={
+                  externalScrollContainerRef ? undefined : onReaderInput
+                }
               >
-                {turnAnnouncement}
-              </span>
-            )}
-            {scrollControls &&
-              (scrollControlsTarget
-                ? createPortal(scrollControls, scrollControlsTarget)
-                : scrollControls)}
-          </BrowserTurnActivityProvider>
-        </TranscriptToolRecordSource.Provider>
-      </UIBlockActionsContext.Provider>
-    </ApprovalSheetProvider>
+                {hasOlderMessages && (
+                  <div className="session-history-controls">
+                    <button
+                      type="button"
+                      className="button button--secondary session-history-controls__more"
+                      disabled={historyLoading}
+                      onClick={() => void loadOlder()}
+                    >
+                      {historyLoading
+                        ? 'Loading earlier messages…'
+                        : 'Earlier messages'}
+                    </button>
+                  </div>
+                )}
+                {historyNotice}
+                {transcriptRows.length === 0 && !isStreaming ? (
+                  emptyState !== undefined ? (
+                    emptyState
+                  ) : (
+                    <ChatEmptyState
+                      agentSlug={activeSession.agentSlug}
+                      agentName={activeSession.agentName}
+                    />
+                  )
+                ) : (
+                  <>
+                    {transcriptRows.length > 0 &&
+                      (transcriptRows.length >
+                      VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
+                        <TranscriptVirtualizer
+                          rows={transcriptRows}
+                          scrollElement={messagesContainerRef}
+                          onProgrammaticScroll={noteProgrammaticScroll}
+                          renderRow={renderTranscriptRow}
+                          followTail={
+                            !isUserScrolledUp && !requestedMessageRowId
+                          }
+                          followTick={`${tailContentLength}:${tailPartsLength}`}
+                          anchorVersion={scrollAnchorVersion}
+                          revealRowId={
+                            requestedMessageRowId ??
+                            approvalRevealRowId ??
+                            turnRevealRowId ??
+                            currentReaderRestoreRequest?.anchor?.key
+                          }
+                          restoreAnchor={currentReaderRestoreRequest?.anchor}
+                          restoreAnchorVersion={
+                            currentReaderRestoreRequest?.version
+                          }
+                          // Read at mount only: a reader already in the transcript
+                          // when it crosses into virtualization keeps their row.
+                          initialAnchor={
+                            isUserScrolledUp ? visibleAnchorRef.current : null
+                          }
+                        />
+                      ) : (
+                        transcriptRows.map((row) => (
+                          <React.Fragment key={row.id}>
+                            {renderTranscriptRow(row)}
+                          </React.Fragment>
+                        ))
+                      ))}
+                    {isStreaming && (
+                      <div
+                        className="chat-message-anchor"
+                        data-chat-message-key={`${activeSession.id}:streaming`}
+                      >
+                        <TranscriptTurnContext.Provider
+                          value={streamingTurnContext}
+                        >
+                          <ActiveStreamingMessage
+                            sessionId={activeSession.id}
+                            agentIcon={agentIcon}
+                            agentIconStyle={EMPTY_STYLE}
+                            fontSize={fontSize}
+                            showReasoning={showReasoning}
+                            renderReasoning={renderReasoning}
+                            renderToolCall={renderToolCall}
+                            activityHint={activeSession.activityHint}
+                            elapsedMs={activeSession.replay?.elapsedMs}
+                            conversationActivity={
+                              activeSession.conversationActivity
+                            }
+                            turnStartedAt={activeSession.openTurnStartedAt}
+                            suppressActivity={suppressActivity}
+                            hideProgressSilence={progressSilenceShownElsewhere}
+                            statusLabel={
+                              waitingApprovalCount > 0
+                                ? requestAttentionKind(activeSession) ===
+                                  'answer'
+                                  ? attentionWord('answer')
+                                  : 'Waiting for approval'
+                                : activeSession.orchestrationStatus ===
+                                      'awaiting-approval' &&
+                                    chatWaitsOnUser(activeSession)
+                                  ? attentionWord('waiting')
+                                  : undefined
+                            }
+                            attributionAgent={streamingAttributionAgent}
+                            owner={owner}
+                            onContentChange={pinToLatest}
+                          />
+                        </TranscriptTurnContext.Provider>
+                      </div>
+                    )}
+                    <LiveBrowserTurnActivities />
+                    {/* Backgrounded provider tasks outlive the assistant turn: the
+                session is honestly idle, but work continues. Keep a live
+                affordance so the chat never looks done while it isn't. */}
+                    {!turnLive && (
+                      <ChatBackgroundStrip
+                        chatThreadId={activeSession.id}
+                        source={apiBase}
+                        shownTaskIds={shownTaskIds}
+                        localTasks={localBackgroundTasks}
+                        serverCount={serverBackgroundCount}
+                        liveStatusUnavailable={liveStatusUnavailable}
+                        onOpen={onOpenBackgroundTasks}
+                      />
+                    )}
+                  </>
+                )}
+                {transcriptRows.length > 0 && !isStreaming
+                  ? transcriptFooter
+                  : null}
+                {/* Mounted while empty too: its live region must exist before the
+            first request arrives (#2344). */}
+                {!activeSession.replay && (
+                  <PendingApprovalStrip
+                    requests={pendingApprovalRequests}
+                    settled={approvalEventsSettled !== false}
+                    onApprove={(request, action) =>
+                      handleToolApproval(
+                        activeSession.id,
+                        activeSession.agentSlug,
+                        request.approvalId ?? '',
+                        request.toolName || request.name || '',
+                        action,
+                        request.approvalThreadId,
+                        request.approvalEventId,
+                      )
+                    }
+                  />
+                )}
+              </div>
+              {turnBrowserOpen && (
+                <LazyBoundary
+                  load={loadTurnBrowser}
+                  pending={null}
+                  componentProps={{
+                    conversationId: activeSession.conversationId,
+                    landmarks: turnLandmarks,
+                    onJumpLoaded: jumpToTurn,
+                    onLoadTurn: onLoadTurn ? loadTurnAndReveal : undefined,
+                    onClose: () => setTurnBrowserOpen(false),
+                  }}
+                />
+              )}
+              {turnNavigation && (
+                <TurnRail
+                  // A chat switch starts the rail over: a hover or a dismissed
+                  // preview names a turn index in the chat it was made in.
+                  key={activeSession.id}
+                  landmarks={turnLandmarks}
+                  rowCount={transcriptRows.length}
+                  scrollElement={messagesContainerRef}
+                  railRef={turnRailRef}
+                  activeTurn={turnViewport.activeTurn}
+                  onJump={jumpToTurn}
+                  olderHistory={Boolean(hasOlderMessages)}
+                  onBrowse={openTurnBrowser}
+                  previousTurn={previousTurn}
+                  nextTurn={nextTurn}
+                  onStep={stepToTurn}
+                  touchControls={touchTurnControls}
+                  touchStepsShown={isUserScrolledUp}
+                  conversationId={activeSession.conversationId!}
+                  activeStartVisible={turnViewport.activeStartVisible}
+                  onAnnounceStep={announceIndexedTurnStep}
+                  onLoadTurn={loadTurnAndReveal}
+                />
+              )}
+              {/* Mounted with the navigation, before anything is said: a region
+          created together with its text is often not read. */}
+              {turnNavigation && (
+                <span
+                  className="sr-only"
+                  role="status"
+                  data-testid="transcript-turn-announcement"
+                >
+                  {turnAnnouncement}
+                </span>
+              )}
+              {scrollControls &&
+                (scrollControlsTarget
+                  ? createPortal(scrollControls, scrollControlsTarget)
+                  : scrollControls)}
+            </BrowserTurnActivityProvider>
+          </TranscriptToolRecordSource.Provider>
+        </UIBlockActionsContext.Provider>
+      </ApprovalSheetProvider>
+    </ApprovalsHeldContext.Provider>
   );
 }
 

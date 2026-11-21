@@ -381,6 +381,21 @@ settle the flush attempt while its exporter remains active, so stream completion
 is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
 
+The 2.11.0 patch also loads VoltAgent's OTLP log and trace exporters and its
+JSON serializers when they are first needed: the exporters once VoltAgent's default
+observability finds a VoltOps client, the serializers on the first export of VoltAgent's
+serverless observability, which Station does not use. Before, importing the
+module loaded them. VoltAgent's tree holds several copies of the OTLP
+transformer, each costing megabytes of heap, and Station's default
+local-only observability never exports to VoltOps. The CJS and ESM regression in
+`src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts`
+records that importing VoltAgent loads none of them. The VoltOps control cases in
+`src-server/runtime/bootstrap/__tests__/voltagent-managed-telemetry.test.ts`
+still send traces and logs to a local recorder through the deferred exporters;
+no test runs the deferred serializers. An exporter package that cannot load now
+fails inside VoltAgent's existing processor setup, which drops VoltOps export
+quietly, as it already did for an exporter that could not be constructed.
+
 The process keeper audits Core 2.11.0 with the locked AI 6.0.330. Requalification
 on Node 24 and macOS verified the installed CJS/ESM entries against the official
 archive and reviewed the stream-source changes since AI 6.0.322. The newer
@@ -454,12 +469,21 @@ may leave them in the operating system's temporary directory, outside upload
 roots. CI and scheduled scans retain the bounded diagnostics even after failure.
 This instrumentation does not change scan scopes, concurrency, retries,
 deadlines, or the advisory floor. Missing diagnostic storage is reported without
-changing the audit outcome. The current root manifest selects the pnpm branch
-in [`collectAudits`](../../scripts/dependency-advisory-policy.mjs), whose
-[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) uses bounded owned-process
-capture and a 240-second deadline. It does not call the npm phase-diagnostics
-adapter. Do not expect structured npm phase files from the normal pnpm audit
-or interpret their absence as a completed phase.
+changing the audit outcome.
+
+The current root manifest selects the pnpm branch in
+[`collectAudits`](../../scripts/dependency-advisory-policy.mjs).
+[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) retains separate started
+and terminal receipts per workspace attempt in the same diagnostics directory.
+It records the wrapper's observed toolchain, launch, process, cleanup, output,
+and decode times, plus the child status or signal when observed. The terminal
+receipt lists operational failure phases, including deadline expiry.
+A decoded exit-one response can carry advisories for policy evaluation.
+Policy evaluation separately validates the decoded schema and advisory rules.
+Registry phases inside pnpm remain unknown to the wrapper. The JSON receipts
+contain bounded metadata only. Owned-process
+capture, the 240-second attempt deadline and the two-attempt operational
+retry cap retain their existing values.
 
 ## Local CodeQL SARIF policy
 

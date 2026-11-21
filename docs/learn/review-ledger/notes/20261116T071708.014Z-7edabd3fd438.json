@@ -1,0 +1,53 @@
+{
+  "revision": "f1ec40cd99b6354394b37e9b37151a5d699e5085",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the paired-Station paragraph against b1508a70c9: choosing that Station turns the dialog title to Continue elsewhere (tested and fault-injected), and the reviewed screenshots from the final two-Station run show it.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Adds CONVERSATION_IMPORT_DELETED_CODE (f1ec40cd99); shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The imported title is cleaned here with cleanLabel and falls back when empty (96180e6d7c, b1508a70c9); local fork behavior unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"The imported title is cleaned here with cleanLabel and falls back when empty (96180e6d7c, b1508a70c9); local fork behavior unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The imported title is cleaned here with cleanLabel and falls back when empty (96180e6d7c, b1508a70c9); local fork behavior unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"This lane's change: the title reads Continue elsewhere while another Station is chosen and the Station section receives the composer's raw draft and quotes; the rest arrives from feat/handoff-ux and is that lane's to review.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"This lane's change: the title reads Continue elsewhere while another Station is chosen and the Station section receives the composer's raw draft and quotes; the rest arrives from feat/handoff-ux and is that lane's to review.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"The import route passes the raw title to the fork context, which cleans it, and uses the deleted-import contract constant.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The import route passes the raw title to the fork context, which cleans it, and uses the deleted-import contract constant.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"This lane adds failure kinds for its five handoff codes (f1ec40cd99), pinned in the provider-failure test and checked by the repository inventory scan; the predecessor-busy mapping is feat/handoff-ux's.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"This lane adds failure kinds for its five handoff codes (f1ec40cd99), pinned in the provider-failure test and checked by the repository inventory scan; the predecessor-busy mapping is feat/handoff-ux's.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Pins this lane's five handoff codes beside the existing table.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"These rules arrive by merge from origin/main (#5003, #5015, #5023) and feat/handoff-ux bf1009f71d: added 44px coarse touch floors and an empty phone draft's Send/Steer group taking no room. Checked the six citing pages: they promise the 44px floor, which still holds, and none describes the concealed group's space or Run setup width, so their claims remain accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"These rules arrive by merge from origin/main (#5003, #5015, #5023) and feat/handoff-ux bf1009f71d: added 44px coarse touch floors and an empty phone draft's Send/Steer group taking no room. Checked the six citing pages: they promise the 44px floor, which still holds, and none describes the concealed group's space or Run setup width, so their claims remain accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"These rules arrive by merge from origin/main (#5003, #5015, #5023) and feat/handoff-ux bf1009f71d: added 44px coarse touch floors and an empty phone draft's Send/Steer group taking no room. Checked the six citing pages: they promise the 44px floor, which still holds, and none describes the concealed group's space or Run setup width, so their claims remain accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"These rules arrive by merge from origin/main (#5003, #5015, #5023) and feat/handoff-ux bf1009f71d: added 44px coarse touch floors and an empty phone draft's Send/Steer group taking no room. Checked the six citing pages: they promise the 44px floor, which still holds, and none describes the concealed group's space or Run setup width, so their claims remain accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"These rules arrive by merge from origin/main (#5003, #5015, #5023) and feat/handoff-ux bf1009f71d: added 44px coarse touch floors and an empty phone draft's Send/Steer group taking no room. Checked the six citing pages: they promise the 44px floor, which still holds, and none describes the concealed group's space or Run setup width, so their claims remain accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"These rules arrive by merge from origin/main (#5003, #5015, #5023) and feat/handoff-ux bf1009f71d: added 44px coarse touch floors and an empty phone draft's Send/Steer group taking no room. Checked the six citing pages: they promise the 44px floor, which still holds, and none describes the concealed group's space or Run setup width, so their claims remain accurate.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

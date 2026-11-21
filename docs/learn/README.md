@@ -44,7 +44,10 @@ Open `http://127.0.0.1:41781`. Choose a concept in the expandable navigation,
 open an interface beneath it, or search the full Markdown library. Documents
 are rendered from their checked-in text; links between documents stay in the
 reader. References to tracked source files open local text snapshots, and each
-document offers its original Markdown. This works before a branch is published.
+document offers its original Markdown. The reader omits a valid leading YAML
+metadata block from the rendered page, library title, and outline. The original
+Markdown and search index still include the metadata. This works before a
+branch is published.
 GitHub links are a secondary route to the recorded revision and require that
 revision to exist on the remote. Rebuild to refresh the local snapshots.
 Source URLs include the hash of their exact captured bytes. Normal rebuilds

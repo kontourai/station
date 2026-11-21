@@ -7,7 +7,6 @@ import {
   DEFAULT_CHILD_BLOCKED_TOOLS,
   isDelegatedToolAllowed,
 } from '../delegation.js';
-import { verifyDelegationContextAttestation } from '../delegation-attestation.js';
 
 describe('delegation helpers', () => {
   test('creates child delegation context with inherited root metadata', () => {
@@ -20,7 +19,7 @@ describe('delegation helpers', () => {
         delegation: {
           maxDepth: 3,
           allowedTools: ['github_*'],
-          blockedTools: ['station-control_update_*'],
+          blockedTools: ['shell_*'],
         },
       },
       current: {
@@ -42,10 +41,7 @@ describe('delegation helpers', () => {
       rootAgentSlug: 'root',
       rootConversationId: 'conv-root',
       allowedTools: ['github_*'],
-      blockedTools: [
-        ...DEFAULT_CHILD_BLOCKED_TOOLS,
-        'station-control_update_*',
-      ],
+      blockedTools: [...DEFAULT_CHILD_BLOCKED_TOOLS, 'shell_*'],
       denyApprovals: true,
     });
   });
@@ -148,7 +144,7 @@ describe('delegation helpers', () => {
     ).toBe(true);
   });
 
-  test('wraps station-control send_message with hidden child metadata', async () => {
+  test('#2377 slice D: send_message carries the user and no runtime-stamped context; the route derives it from the verified caller', async () => {
     const execute = async (args: Record<string, unknown>) => args;
     const [wrapped] = wrapDelegationAwareTools(
       [
@@ -178,23 +174,14 @@ describe('delegation helpers', () => {
       },
     );
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       agent: 'writer',
       message: 'Draft this',
       _userId: 'user-1',
-      _delegation: {
-        mode: 'isolated-child',
-        depth: 1,
-        parentAgentSlug: 'planner',
-        parentConversationId: 'conv-parent',
-        rootAgentSlug: 'planner',
-        rootConversationId: 'conv-parent',
-        maxDepth: 2,
-      },
     });
   });
 
-  test('#2601: send_message carries an attestation the route verifies; a model-written one never survives', async () => {
+  test('#2601: a model-written delegation context or attestation never survives the wrapper', async () => {
     const execute = async (args: Record<string, unknown>) => args;
     const [wrapped] = wrapDelegationAwareTools(
       [
@@ -225,16 +212,10 @@ describe('delegation helpers', () => {
       },
       { conversationId: 'conv-parent', userId: 'user-1' },
     )) as Record<string, any>;
-    expect(stamped._delegation.rootConversationId).toBe('conv-parent');
-    expect(
-      verifyDelegationContextAttestation(
-        stamped._delegation,
-        stamped._delegationAttestation,
-      ),
-    ).toBe(true);
+    expect(stamped).not.toHaveProperty('_delegation');
+    expect(stamped).not.toHaveProperty('_delegationAttestation');
 
-    // Outside a conversation the runtime derives nothing, and vouches for
-    // nothing: the model's context arrives unattested, so the route drops it.
+    // Outside a conversation too.
     const unstamped = (await wrapped.execute?.(
       {
         agent: 'writer',
@@ -244,10 +225,11 @@ describe('delegation helpers', () => {
       },
       { userId: 'user-1' },
     )) as Record<string, any>;
-    expect(unstamped._delegationAttestation).toBeUndefined();
+    expect(unstamped).not.toHaveProperty('_delegation');
+    expect(unstamped).not.toHaveProperty('_delegationAttestation');
   });
 
-  test('wraps delegate_task as a child while blocking recursive delegation', async () => {
+  test('delegate_task names its parent task from the conversation, never the model', async () => {
     const execute = async (args: Record<string, unknown>) => args;
     const [wrapped] = wrapDelegationAwareTools(
       [
@@ -278,17 +260,13 @@ describe('delegation helpers', () => {
       { conversationId: 'conv-parent', userId: 'user-1' },
     );
 
-    expect(result).toMatchObject({
+    // The child context (depth, blocked tools) is the route's derivation
+    // from the verified caller (`request-delegation.ts`).
+    expect(result).toEqual({
       connection: 'codex',
       prompt: 'Implement this',
       parentTaskId: 'conv-parent',
       _userId: 'user-1',
-      _delegation: {
-        mode: 'isolated-child',
-        depth: 1,
-        parentAgentSlug: 'planner',
-        blockedTools: expect.arrayContaining(['station-control_delegate_task']),
-      },
     });
   });
 

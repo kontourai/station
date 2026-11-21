@@ -622,6 +622,15 @@ describe('PairedDevicesPanel', () => {
             ).toBe('1');
             if (++statusReads === 1)
               return new Response(JSON.stringify({ status: 'pending' }));
+            if (outcome === 'session_ended')
+              return Response.json(
+                {
+                  error: { code: 'operator_session_required' },
+                  signInUrl:
+                    'https://station.example.ts.net:8443/operator/sign-in',
+                },
+                { status: 403 },
+              );
             applied = outcome === 'approved';
             return new Response(
               JSON.stringify({
@@ -677,7 +686,7 @@ describe('PairedDevicesPanel', () => {
             : outcome === 'target_changed'
               ? 'This changed since you asked. Nothing was applied; open a new request.'
               : outcome === 'session_ended'
-                ? 'Your operator session ended; sign in again. Nothing was applied.'
+                ? 'Your operator session ended. Sign in again, then check device access.'
                 : 'The review expired. Nothing was applied.',
         );
       if (outcome === 'target_changed')

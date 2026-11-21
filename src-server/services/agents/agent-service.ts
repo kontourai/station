@@ -78,7 +78,7 @@ export interface EnrichedAgent {
   model?: string;
   region?: string;
   guardrails?: AgentSpec['guardrails'];
-  maxSteps?: number;
+  maxSteps?: AgentSpec['maxSteps'];
   icon?: string;
   commands?: AgentSpec['commands'];
   toolsConfig?: AgentSpec['tools'];

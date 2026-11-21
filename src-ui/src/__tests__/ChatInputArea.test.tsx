@@ -50,7 +50,9 @@ vi.mock('../components/ModelSelector', () => ({
 }));
 
 vi.mock('../components/chat/SlashCommandSelector', () => ({
-  SlashCommandSelector: () => null,
+  // A marker, so a test can tell whether the selector (which runs a command
+  // on select) was offered at all.
+  SlashCommandSelector: () => <div data-testid="slash-command-selector" />,
 }));
 
 vi.mock('@kontourai/station-sdk/coding-file-mentions-query', () => ({
@@ -144,7 +146,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
-  test('keeps Send and Stop available during a turn, steering natively by default', () => {
+  test('queues with Send on a native steering engine and keeps Stop available', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -154,11 +156,11 @@ describe('ChatInputArea', () => {
       onSend,
     });
     expect(screen.getByRole('textbox').getAttribute('placeholder')).toBe(
-      'Steer this turn…',
+      'Queue a follow-up…',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onSend).toHaveBeenCalledOnce();
-    expect(onQueueFollowUp).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
@@ -170,7 +172,7 @@ describe('ChatInputArea', () => {
     expect(composer?.contains(screen.getByRole('textbox'))).toBe(true);
   });
 
-  test('an explicit Queue choice wins over the native steer default', () => {
+  test('switching back to Queue clears an explicit Steer choice', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -180,6 +182,8 @@ describe('ChatInputArea', () => {
       onSend,
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Steer' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Queue for next turn' }),
     );
@@ -285,6 +289,49 @@ describe('ChatInputArea', () => {
     renderChatInputArea({ disabled: true, loadingConversation: true });
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
     expect(textarea.placeholder).toBe('Loading chat…');
+  });
+
+  test('a conversation still opening keeps its draft editable but unsendable', () => {
+    const onInputChange = vi.fn();
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      disabled: true,
+      loadingConversation: true,
+      allowDraftWhileDisabled: true,
+      onInputChange,
+      onSend,
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.placeholder).toBe(
+      'Start typing. You can send once this chat opens…',
+    );
+    fireEvent.change(textarea, { target: { value: 'typed while opening' } });
+    expect(onInputChange).toHaveBeenCalledWith('typed while opening');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  // A command runs on select, so a composer that only drafts must not offer
+  // the selector: Enter there would dispatch before the open read answers.
+  test('a draft-only composer opens no slash-command selector', async () => {
+    // The live composer first, so the lazy chunk is loaded and the absence
+    // below cannot be a selector that simply has not resolved yet.
+    renderChatInputArea({ commandQuery: 'comp' });
+    expect(await screen.findByTestId('slash-command-selector')).toBeTruthy();
+    cleanup();
+    renderChatInputArea({
+      disabled: true,
+      loadingConversation: true,
+      allowDraftWhileDisabled: true,
+      commandQuery: 'comp',
+    });
+    await act(async () => {});
+    expect(screen.queryByTestId('slash-command-selector')).toBeNull();
   });
 
   test('a composer whose sending the server refused invites no typing', () => {
@@ -1180,7 +1227,7 @@ describe('ChatInputArea', () => {
     expect(
       screen.getByText('Existing models, if shown, may be out of date.'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: /Claude Sonnet/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Claude Sonnet/ }));
     expect(onModelSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'claude-sonnet' }),
     );
@@ -1250,7 +1297,7 @@ describe('ChatInputArea', () => {
     ).toBe('Big Pickle');
     expect(
       modelButton.querySelector('.chat-input__chip-caption')?.textContent,
-    ).toBe('Engine & model');
+    ).toBe('Model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -1616,7 +1663,7 @@ describe('ChatInputArea', () => {
 
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
-    if (!screen.queryByRole('dialog', { name: 'Run setup' }))
+    if (!screen.queryByRole('dialog', { name: 'Agent & model' }))
       fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
@@ -2490,20 +2537,20 @@ test('on a phone, choosing another engine closes Run setup; another model of the
       onModelSelect,
     });
     fireEvent.click(screen.getByTestId('run-setup-trigger'));
-    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
     fireEvent.click(
       await screen.findByRole(
-        'option',
-        { name: /Claude Opus/ },
+        'button',
+        { name: /^Claude Opus/ },
         { timeout: 5_000 },
       ),
     );
-    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: /GPT Six/ }));
+    expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^GPT Six/ }));
     expect(onModelSelect).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: 'gpt-6' }),
     );
-    expect(screen.queryByRole('dialog', { name: 'Run setup' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Agent & model' })).toBeNull();
   } finally {
     vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
       ...mobile(query),

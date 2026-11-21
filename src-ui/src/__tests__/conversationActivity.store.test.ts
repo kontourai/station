@@ -521,16 +521,14 @@ describe('#2324 delta review M-2: a bare abort for a queued send', () => {
   });
 });
 
-describe('#2309 review F5: chatSessionIsLive honours a settled Stop', () => {
-  test('the stopped turn does not keep the session live for the send path', async () => {
-    const client = await loadClient();
-    const { chatSessionIsLive } = await import('../utils/execution');
-    client.applyOrchestrationSnapshot(reloadSnapshot(openActivity(500)));
-    expect(chatSessionIsLive(chatOf(client))).toBe(true);
-    client.store.updateChat(CONVERSATION, {
-      stopSettledTurnId: TURN,
-      orchestrationStatus: 'exited',
-    });
-    expect(chatSessionIsLive(chatOf(client))).toBe(false);
+test('the settled Stop clears the active projection for the exact open turn', async () => {
+  const client = await loadClient();
+  const { isSessionExecutionActive } = await import('../utils/execution');
+  client.applyOrchestrationSnapshot(reloadSnapshot(openActivity(500)));
+  expect(isSessionExecutionActive(chatOf(client))).toBe(true);
+  client.store.updateChat(CONVERSATION, {
+    stopSettledTurnId: TURN,
+    orchestrationStatus: 'exited',
   });
+  expect(isSessionExecutionActive(chatOf(client))).toBe(false);
 });

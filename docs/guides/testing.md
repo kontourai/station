@@ -49,7 +49,9 @@ older than an hour that a killed run left behind. The cache is
 overrides it. It is never the system temp directory by default: where `/tmp` is
 tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
 The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
-directly, without that private directory.
+directly, without that private directory. The runners also hold each fallow
+child to a [memory budget](code-quality.md#memory-budget) and, off CI, one
+analysis thread.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -163,8 +165,12 @@ and inspect the current store's persisted envelope when testing migrations.
 
 Local unsharded changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
-provisional and do not satisfy the deferred obligations. Broad import expansion
-and larger selections stay deferred within the existing feedback budget.
+provisional and leave the broader obligations pending. When the deferral drops
+related discovery for a changed UI component, directly importing UI suites
+join the explicit fallback if the combined selection fits within 32. The
+summary reports when the cap omits those additions, and the selection artifact
+lists their paths. Normal related discovery and hosted planning use their
+existing budgets.
 
 
 Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
@@ -694,8 +700,12 @@ targets and executes no test, is incomplete. Hosted `fast-checks` still passes
 such a plan when its bounded mapped tests and invariants pass, but it reports
 the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
-a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
-leaves the run complete.
+a provisional note in its description. The `fast-checks` aggregate output
+triggers the `Mark fast-checks provisional` workflow step. The source policy
+publisher reads that step's name and conclusion from the jobs API. The required `Merge-queue regression` job can still admit the candidate based on
+the exact bounded integration plan and its successful receipts. Main
+qualification owns the deferred full corpus. An E2E, desktop or pre-push
+deferral is owned outside the selection and leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
 nested causes, stacks and durations separate. Excerpts prefer the observed
@@ -910,6 +920,60 @@ the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
 the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
 
+#### Heavy checks when armed
+
+The repository variable `STATION_PR_HEAVY_CHECKS` chooses when a
+same-repository pull request runs the heavy part of `PR: CI`: the
+affected-test shards, the critical browser journeys, the `UI entry bundle
+delta` report and delivery validation. Unset or `every-push`, every push runs
+them, as before the switch existed. `when-armed` runs only the cheap part on an
+unarmed push (the plan, the `ci:fast` statics, which include lint, every
+typecheck lane and the `git diff --check` whitespace gate, and `Repository
+source scans`, which nothing else runs before landing) and the heavy part once
+the pull request is armed for auto-merge. The merge queue runs the journeys
+again in its statics; delivery validation runs only on pull requests and in
+scheduled main qualification. Merge
+groups, pushes to `main`, manual dispatches and fork pull requests always run
+everything. The `PR source admission` job decides with
+[`pr-heavy-checks-decision.mjs`](../../scripts/pr-heavy-checks-decision.mjs)
+and prints its reason; anything it cannot read decides heavy.
+
+Arming (`auto_merge_enabled`, run name `PR armed`) starts a run that spends
+the heavy part on the current head, and a push to an armed pull request runs
+heavy. Re-arming a head that already reads verified runs only the cheap part.
+Under `when-armed` a head whose newest run deferred the heavy part reads
+`Source verification policy` pending ("heavy checks run once armed"), never
+success, so arming cannot enqueue it before the armed run passes; a head
+already verified enqueues at once. The source policy ignores a `PR armed` run
+until its `PR source admission` job has completed (with the switch off that
+job is skipped, so the run never counts), and once a head has a successful
+proof it ignores newer runs that recorded a deferral, so a cheap run or its
+re-run can neither pend nor fail a verified head. A newer run that may be
+heavy (in progress, failed or cancelled) still decides, as before.
+
+To get a full run before arming, add the `full-checks` label, then push or use
+**Re-run all jobs** on the newest `PR: CI` run: that re-runs `PR source
+admission`, which reads the label and the live auto-merge state. **Re-run
+failed jobs** does not re-run a successful admission job, so it repeats that
+run's earlier decision. To roll back, set the variable to `every-push` or
+delete it; a head left pending by a cheap-only run needs one push or **Re-run
+all jobs**.
+
+The saving for `PR: CI` alone is modest: on the 2026-11-09 to 11-16 runs,
+roughly 350–480 runner-minutes a day (about 3,330 a week: 11,871 heavy minutes
+before arming, less a full run for each first arm and a cheap run for each
+re-arm), about 1.6% of daily runner time. The switch is meant to be turned on
+together with the Gallery, iOS and Windows adoptions of the same decision.
+Before turning it on, with it still off: arm one pull request and confirm a
+`PR armed` run appears (GitHub delivered the event), then push to that armed
+pull request and confirm its `Decide whether the heavy checks run` step prints
+`pull_request.auto_merge populated`. Under `when-armed` an arming run's step
+prints which path it took: `head already verified: cheap`, `not verified:
+heavy` or `status unreadable: heavy`. A workflow whose own required check would skip before arming
+cannot adopt the switch by itself: a `skipped` required check passes, so the
+source policy must also hold the head until that check has run (see the
+decision script's header).
+
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
 reconciles that result for the newest applicable exact-head source run, keeping
@@ -957,8 +1021,13 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
-succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final
+use it, along with main pushes. Every canonical phase and the Android viewport
+suite must succeed, with bounded exact-source reuse. Pushes that change only
+the two deploy-ledger files are ignored. UI-only pushes qualify their own SHA,
+including the Android viewport job. Qualification completion triggers
+Main: Qualification health, whose result is watched by Main: Health.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native
@@ -1640,7 +1709,10 @@ two merge groups; after the third failure the step exits with that attempt's
 apt status and error. The Gallery renderer image
 remains pinned by digest.
 Each caller stages that helper from the immutable workflow-definition commit
-into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+into `RUNNER_TEMP`, independently of the application checkout. The download
+allows up to two retries for transient errors such as HTTP 429, with a
+40-second retry window and a 20-second limit per attempt. If the download
+still fails, the step exits before executing the helper. Older PR heads
 therefore receive base-workflow bootstrap fixes without needing the new helper
 in their tree. Full regression uses local reusable workflow references; those
 resolve at the caller's workflow commit, while `inputs.source_sha` continues to
@@ -1707,9 +1779,8 @@ spec. The job checks out the base without replace refs or hooks, refuses a
 base checkout that is not exactly the base commit and clean, and runs the
 attribution with the `node` resolved before candidate code; that keeps honest
 accidents out, nothing more. Nothing may trust the PR Gallery
-conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
-workflow's contexts, but the capture job skips there: Gallery is not a required
-context, so a candidate's capture could not stop a landing. Combined changes
+conclusion, which is one reason it is not a required check. Merge-queue candidates run the allowlist ceiling and skip both capture and its
+input classifier. GitHub still reports the Gallery job contexts for each candidate. Combined changes
 are otherwise captured after landing by `Nightly: Gallery` once a day, which
 checks capture integrity and reports pixel differences but does not run the
 product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
@@ -1855,6 +1926,26 @@ a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
 
+#### Named lazy-surface readiness
+
+The [lazy boundary](../../src-ui/src/components/LazyBoundary.tsx) keeps a
+loader's original promise separate from the tracing promise React receives.
+This lets a caller reuse its settled promise across mounts. A rejected import
+can be retried through the boundary, which creates a fresh lazy attempt.
+
+The live first-run journey observes **Chat actions** and **Inbox** by their
+stable `data-lazy-surface` IDs on visible failure rows. An unrelated failure
+can appear, clear, or coexist without changing that observation. The displayed
+message names the affected surface, and the shared row offers Retry and Reload.
+Custom History chrome uses the same row.
+
+A boundary failure identifies the UI that failed. Gallery uses its existing
+request evidence to determine whether an app asset failed to load. The
+[Chromium remount and Retry fixture](../../src-ui/src/__tests__/LazyBoundary.browser.test.tsx)
+and the
+[readiness adapter fixture](../../src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx)
+cover those contracts with controlled loaders and saved failure markup.
+
 #### Gallery app error states and the after-photo control record
 
 When a lazily loaded part of the product fails, it shows an error surface and
@@ -1879,19 +1970,20 @@ screen's own assertion.
 
 Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
 `LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
-notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), and the
+notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), the
 route boundary's chunk failure (an `.error-state` titled with the catalog's
-`route.chunk.title` or `route.chunk.offlineTitle`). A surface means a lazily
-loaded part failed, not that a download failed: `LazyBoundary` shows its row for
-any error its child throws, a render error included. NOT detected, because none
+`route.chunk.title` or `route.chunk.offlineTitle`), and a route still suspended
+after its loading window (`.route-pending-recovery`). A surface can appear
+while a script request is still pending or after a render error. The Gallery
+records failed requests independently. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
-their own `unavailable` slot (several render nothing). The route boundary's
+their own `unavailable` slot that omits the shared row (several render nothing). The route boundary's
 other error states, its authority failure (`route.authority.title`) and its
 render failure (`route.generic.title`), are not detected either. The route
-surface is matched by its en-US titles only, so a capture in another locale
-does not detect it. No screen shows a detected surface on purpose, checked by
+chunk failure is matched by its en-US titles. The stalled route is matched
+by class in every locale. No screen shows a detected surface on purpose, checked by
 grep; no full capture has been run since route-chunk detection was added. A
 screen that starts to must be exempted by name in
 `APP_ERROR_SURFACE_EXEMPT_SCREENS`.
@@ -2334,6 +2426,13 @@ whole test run.
 - A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
   for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
   every minute.
+- That message leaves the inherited stdout or stderr non-blocking, and the
+  flag survives execve. Before a slot holder execs the slotted program on
+  macOS or Linux, `scripts/lib/slot-holder-exec.mjs` (also used by
+  `scripts/run-biome.mjs`) restores blocking stdio. Otherwise a native program
+  such as Biome fails with `Resource temporarily unavailable` (EAGAIN) as soon
+  as the process reading its output falls behind
+  ([#5119](https://github.com/kontourai/station/issues/5119)).
 - Waiters are admitted in arrival order. Each waiter writes a ticket under the
   pool's `queue/` directory, and only the earliest N live tickets may claim a
   slot. A ticket whose waiter died is removed by the next reader.
@@ -2421,7 +2520,7 @@ liveness bounds ×4`.
 | Vitest `testTimeout` and `hookTimeout` | 30 s | `vitest.config.ts` |
 | Product-law per-observation default | 30 s | `productLawObservationTimeoutMs` |
 | Product-law total runtime ceiling | 150 s | `productLawRuntimeBudgetMs` |
-| Fallow watchdog per command | 120 s | `runFallowAnalysis` |
+| Fallow watchdog per command | 240 s | `runFallowAnalysis` |
 | Transfer capture child default | 60 s | `transferCaptureLivenessTimeoutMs` |
 | Transfer capture in-process barriers | half the capture bound (30 s), so they scale with it | `scripts/lib/transfer-capture-barrier.ts` |
 
@@ -2511,7 +2610,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Veritas readiness executes full-repository lint once through its required `style-standard` check. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -2683,8 +2782,12 @@ full-corpus call on the merge queue's critical path.
 validates the plan, exact candidate SHA and base, including its explicit
 coverage deferrals. The required aggregate accepts only successful diff,
 plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
-Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
-it does not start an expensive fallback corpus. The required
+Missing, invalid, foreign, cancelled or unavailable evidence blocks integration.
+If an owned related-discovery child reaches its timeout and settles cleanly,
+the hosted plan runs the mapped exact suites plus bounded direct UI component
+importers. The plan names the timeout and retains the `ci-fast` deferral.
+Those shard results are diagnostic and the aggregate and queue decision block
+admission. A refused launch or failed cleanup still stops planning. The required
 `Source verification policy` status for the queue head is published from
 inside the merge-group run once `fast-checks` settles; the post-run lifecycle
 reconcile recomputes the same verdict from the same jobs and stays the
@@ -3010,6 +3113,28 @@ ports, temporary home, instance build roots, and `test-results/<instance>`
 directory. `STATION_E2E_CAPACITY` is bounded and is for measured,
 deliberately-provisioned hosts—not an edit-loop speed knob.
 
+The first-run Chromium journey records `first-run-surface-timing` samples
+in the suite log. The sample distinguishes the visible surface wait from
+same-origin JavaScript resource timing. A negative resource start offset
+means the browser started that resource before the timed interaction. A
+zero transfer size does not establish a network fetch. A missing resource
+entry is recorded separately from a slow surface.
+
+Each receipt records the checkout revision and whether tracked files differ.
+Only an observed timing entry contributes to a resource conclusion. An
+unavailable observation names the stage and failure class. Keep the existing
+20-second allowances until a slow-host sample establishes the tail.
+
+A clean run at `cbfd9227ce19297fb1ba090e2463c579ff5e154d` with one-minute host
+load 7.1–7.9 observed both setup launchers at 168–169 ms, the unconfigured
+composer at 4 ms, the Connections Models action at 338 ms, the Station Agent
+row at 1.08 s, and Chat actions at 812 ms. Inbox opened in 40–51 ms. The
+browser returned resource durations of 5.0 ms for the Connections frame,
+4.2 ms for the provider view, and 3.6 ms for the Chat actions sheet. Each
+had a zero transfer size. The Agent picker row's recorded script request
+preceded the timed picker interaction, and the Inbox recorded no new
+same-origin script entries during those opens.
+
 `tests/mobile-chat-composer.spec.ts` owns the mobile task-switcher journey:
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
@@ -3122,13 +3247,12 @@ Focused automation:
 
 The connected-agent macro runs the same provider/service/route coverage
 through the existing focused runner, with one worker, no file parallelism,
-and the original 10-second test bound. The high-cardinality EventStore case is
-the first of seven test files and owns a fresh process-exclusive test-file lifecycle.
-EventStore is explicitly process-exclusive
-in the resource manifest; calling raw Vitest would bypass that constraint and
-run its high-cardinality SQLite fixture alongside other suites. This routing
-change neither removes a suite nor increases its timer. The fixed macro accepts
-no CLI overrides; other focused runs retain their existing defaults.
+and a 10-second limit per test. The high-cardinality EventStore projection runs
+to completion in its own Vitest invocation before the other six files start.
+Both phases report in-flight diagnostics. An ordinary test failure in either
+phase makes the command exit nonzero after both phases run. EventStore is
+process-exclusive in the resource manifest, so use the focused runner to retain
+that constraint. The macro accepts no CLI overrides.
 
 ```bash
 npm run test:connected-agents
@@ -3427,7 +3551,10 @@ The `seatbelt-kernel` profile pins the kernel legs of
 - **Where they do not:** every pull-request, merge-queue and corpus lane.
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. A regression in these legs therefore shows after merge, on the
-  `main` push that introduced it, not on its pull request.
+  `main` push that introduced it, not on its pull request. Registration/profile
+  alignment is checked separately before landing when either kernel test file
+  changes; that audit collects test identities without running the bodies and
+  is not kernel execution evidence.
 - **Restricted network (#4769):** the nested `with a restricted network
   (#4769)` legs run real `sandbox-exec` children under the broker-only
   profile with an in-process egress broker and local listeners only; no

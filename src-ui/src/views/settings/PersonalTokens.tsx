@@ -74,7 +74,7 @@ export function sameScope(left: string, right: string): boolean {
 
 /** The guidance for a refused People change made without the operator credential. */
 export const OPERATOR_CREDENTIAL_REQUIRED_MESSAGE =
-  'Only the Station operator can change groups and tokens. This connection can only view them.';
+  'Use the Station host CLI to change groups and tokens.';
 
 /** A refused token action, said as what to do next. */
 function tokenActionMessage(error: unknown): string {

@@ -1,0 +1,7 @@
+{
+  "revision": "2b3be9bbfe4633559517d13f1e30c82f93b97a9a",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Verified that the shipped Copilot SDK adapter and editor matrix declare the same complete durability profile. The conformance inventory now covers it using the real adapter, and the adapter suite exercises native steering through the scripted SDK conversation. No runtime preview or capability claims changed.","inputs":["docs/reference/contracts.md","src-server/providers/__tests__/engine-durability-profile.test.ts"]}
+  ]
+}

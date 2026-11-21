@@ -20,6 +20,7 @@ import {
   NOTIFICATION_URGENCIES,
   type NotificationSource,
   type NotificationUrgency,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 } from '@kontourai/station-contracts/notification';
 import {
   AGENT_NOTIFICATION_LEVELS,
@@ -87,17 +88,45 @@ function agentNotificationLevel(
 }
 
 /**
- * Only agent sources can be muted: system and provider notifications
- * (approvals, pairing requests, job failures) are not the person's to mute
- * here, and muting them would hide a decision Station is waiting on.
+ * The system records that report a Project's own work (#5072): a turn that
+ * finished, stopped or failed, and a request for input or approval. A
+ * Project's level governs them when they name the Project.
+ */
+const PROJECT_WORK_NOTIFICATION_SUBSYSTEMS: ReadonlySet<string> = new Set([
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
+  'approval-inbox',
+]);
+
+/**
+ * Agent sources follow the agent, Project and global levels. Of the system
+ * records, only a Project's own work (above) can be muted, and only by that
+ * Project's level, which the person set on purpose: the global level is for
+ * what agents choose to send. Every other system and provider notification
+ * (pairing requests, job failures) is not the person's to mute here. A muted
+ * record still reaches the inbox; only the interruption is skipped.
  */
 export function isNotificationSourceMuted(
   preferences: NotificationPreferencesV1,
   source: NotificationSource,
   urgency?: NotificationUrgency,
 ): boolean {
+  if (source.kind === 'system') {
+    if (
+      source.projectId === undefined ||
+      !PROJECT_WORK_NOTIFICATION_SUBSYSTEMS.has(source.subsystem) ||
+      !Object.hasOwn(preferences.perProject, source.projectId)
+    )
+      return false;
+    return levelMutes(preferences.perProject[source.projectId]!, urgency);
+  }
   if (source.kind !== 'agent') return false;
-  const level = agentNotificationLevel(preferences, source);
+  return levelMutes(agentNotificationLevel(preferences, source), urgency);
+}
+
+function levelMutes(
+  level: AgentNotificationLevel,
+  urgency: NotificationUrgency | undefined,
+): boolean {
   if (level === 'off') return true;
   // Failures pass too: like a request for input, a failure is something
   // the person acts on. `info` and `done` wait in the inbox.

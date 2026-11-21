@@ -1,0 +1,7 @@
+{
+  "revision": "177312b9af4afc5e08f75c1427b25e30ecea320d",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Test-only: the tool-family case now stops its Sessions inside the case with try/finally; the cold-start claims the citing page relies on are unchanged.","inputs":["src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3d23bb0a4225317fb25de6ef36da0e34b37591a6",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the exact added sentence in the generated Plugins topic. It describes stored registry verification shown in the installed view. The person still approves installation through the existing preview, and the copy audit continues to require an explicit review of every matching statement.","inputs":["src-server/tools/__tests__/station-docs-mcp-server.test.ts"]}
+  ]
+}

@@ -42,8 +42,11 @@ export { StationResponseTooLargeError } from './bounded-response.js';
 export { ChatHttpError } from './chatHttpError';
 export { setClientOriginResolver } from './client-origin.js';
 export * from './cloud-move';
+export * from './conversationStationHandoff';
 export * from './conversations';
 export * from './custom-appearance';
+export * from './custom-appearance-library';
+export * from './custom-appearance-mutations';
 export * from './delegations';
 export * from './execution';
 export * from './fleet-routing';
@@ -108,6 +111,8 @@ export {
   mountPluginTelemetryPane,
 } from './plugin-telemetry';
 export * from './plugins';
+export * from './project-library';
+export * from './project-memory';
 export * from './project-task-rooms';
 export * from './projects';
 export * from './relay-enrollment';

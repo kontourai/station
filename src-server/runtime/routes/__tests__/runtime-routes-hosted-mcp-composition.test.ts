@@ -79,6 +79,7 @@ const runtimeSupport = vi.hoisted(() => {
     notificationService: {
       list: vi.fn<() => Array<Record<string, unknown>>>(() => []),
     },
+    webPushService: { getPublicKey: vi.fn(() => 'fixture-vapid-public-key') },
     service,
   };
 });
@@ -89,7 +90,7 @@ vi.mock('../runtime-route-support.js', () => {
       schedulerService: runtimeSupport.service,
       notificationService: runtimeSupport.notificationService,
       attentionProjection: runtimeSupport.service,
-      webPushService: runtimeSupport.service,
+      webPushService: runtimeSupport.webPushService,
       // The real support composition disables Web Push from the immutable
       // hosted registry. Model that resolved availability here so this route
       // composition test exercises the public-route wiring too.
@@ -102,16 +103,17 @@ vi.mock('../runtime-route-support.js', () => {
 // Runtime HTTP credential policy is covered by its own boundary suite. This
 // composition test needs the real hosted ingress middleware but not a second
 // credential harness between ingress and the route callback under test.
-vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
-  configureRuntimeHttp: () => undefined,
-  configureRuntimeRouteClassificationGate: () => undefined,
-  // Real: it holds no credential policy, and composition installs it itself.
-  installStationEnvelopeMarker: (
-    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>()
-  ).installStationEnvelopeMarker,
-  LOOPBACK_DEVICE_SESSION_COOKIE: 'station-device',
-  SECURE_DEVICE_SESSION_COOKIE: '__Host-station-device',
-}));
+vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>();
+  return {
+    configureRuntimeHttp: () => undefined,
+    configureRuntimeRouteClassificationGate: () => undefined,
+    installStationEnvelopeMarker: actual.installStationEnvelopeMarker,
+    parseDeviceSessionCookie: actual.parseDeviceSessionCookie,
+    LOOPBACK_DEVICE_SESSION_COOKIE: actual.LOOPBACK_DEVICE_SESSION_COOKIE,
+  };
+});
 
 const registryFileEnv = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
 
@@ -1293,6 +1295,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     approvalRegistry.cancelAll();
     await expect(bravoPending).resolves.toBe(false);
 
+    runtimeSupport.webPushService.getPublicKey.mockClear();
     for (const path of [
       '/api/system/vapid-public-key',
       '/api/system/push-subscribe',
@@ -1308,6 +1311,7 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
       );
       expect(response.status).toBe(404);
     }
+    expect(runtimeSupport.webPushService.getPublicKey).not.toHaveBeenCalled();
   });
 
   test('retains personal Web Push availability when no hosted registry is configured', async () => {
@@ -1317,9 +1321,13 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     const app = new Hono();
     await configureRuntimeRoutes(runtimeContext(app, homeDir));
 
-    expect((await app.request('/api/system/vapid-public-key')).status).toBe(
-      200,
-    );
+    const response = await app.request('/api/system/vapid-public-key');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    await expect(response.json()).resolves.toEqual({
+      publicKey: 'fixture-vapid-public-key',
+      registration: { status: 'pairing-required' },
+    });
   });
 
   test('filters hosted bare SSE notification content, ids, and counts through request authority', async () => {

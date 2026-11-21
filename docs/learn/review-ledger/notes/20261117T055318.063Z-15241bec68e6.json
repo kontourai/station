@@ -1,0 +1,7 @@
+{
+  "revision": "07e9eb866ded5c54277ce1eb0a4294e69847762c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the measured saving (roughly 350-480 runner-minutes a day, about 1.6% of daily runner time), the joint rollout with Gallery, iOS and Windows, the switch-off rollout checks and the arming path lines; checked against pr-heavy-checks-decision.mjs and ci.yml.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

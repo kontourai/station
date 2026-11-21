@@ -6,6 +6,7 @@ import {
   classifyConnectionFailure,
   decideConnectionRecovery,
 } from '../../services/connections/connection-recovery-policy.js';
+import * as metrics from '../../telemetry/metrics.js';
 import {
   CodexAdapterTransport,
   createCodexSessionRecord,
@@ -1423,9 +1424,9 @@ describe('Codex workload exit evidence', () => {
   );
 
   test('a command OOM kill is reported as a warning and transcript marker while Codex keeps running', async () => {
-    let listener: ((kill: workload.ChildWorkloadOomKill) => void) | undefined;
+    let listener: ((notice: workload.ChildWorkloadNotice) => void) | undefined;
     const watch = vi
-      .spyOn(workload, 'watchChildWorkloadOomKills')
+      .spyOn(workload, 'watchChildWorkloadNotices')
       .mockImplementation((_child, next) => {
         listener = next;
         return () => {
@@ -1452,9 +1453,12 @@ describe('Codex workload exit evidence', () => {
       const iterator = transport.streamEvents()[Symbol.asyncIterator]();
       expect(listener).toBeDefined();
       listener?.({
-        oomKills: 1,
-        newKills: 1,
-        memoryMaxBytes: 4915 * 1024 * 1024,
+        kind: 'oom-kill',
+        kill: {
+          oomKills: 1,
+          newKills: 1,
+          memoryMaxBytes: 4915 * 1024 * 1024,
+        },
       });
       expect(await nextEvent(iterator, 'warning')).toMatchObject({
         method: 'runtime.warning',
@@ -1475,6 +1479,160 @@ describe('Codex workload exit evidence', () => {
     } finally {
       watch.mockRestore();
     }
+  });
+
+  describe('workload notices (#5113)', () => {
+    const GIB = 1024 * 1024 * 1024;
+    const PRESSURE: workload.ChildWorkloadNotice = {
+      kind: 'pressure-enter',
+      workingSetBytes: Math.round(6.4 * GIB),
+      memoryMaxBytes: 7 * GIB,
+      thresholdPercent: 85,
+      largestProcesses: [
+        { pid: 2001, name: 'fallow', rssBytes: Math.round(5.1 * GIB) },
+      ],
+    };
+    const PRESSURE_TEXT =
+      "Station workload notice: This session's memory is at 91% of its 7.0 GiB limit; largest: fallow 5.1 GiB. Stop or serialize memory-heavy commands before the kernel kills one.";
+
+    function codexWithNotices(threadId: string) {
+      const listeners: Array<(notice: workload.ChildWorkloadNotice) => void> =
+        [];
+      const watch = vi
+        .spyOn(workload, 'watchChildWorkloadNotices')
+        .mockImplementation((_child, next) => {
+          listeners.push(next);
+          return () => {
+            listeners.splice(listeners.indexOf(next), 1);
+          };
+        });
+      const add = vi.spyOn(metrics.engineWorkloadNotices, 'add');
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-11-16T10:00:00Z'),
+        async () => {},
+      );
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: threadId,
+        process: processHandle,
+        provider: 'codex',
+        threadId,
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-11-16T10:00:00Z',
+      });
+      record.codexThreadId = `codex-${threadId}`;
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+      const steers = () =>
+        processHandle.stdin.lines
+          .map((line) => JSON.parse(line))
+          .filter((message) => message.method === 'turn/steer');
+      const answer = (id: string, body: Record<string, unknown>) =>
+        processHandle.stdout.write(
+          `${JSON.stringify({ jsonrpc: '2.0', id, ...body })}\n`,
+        );
+      const notify = (notice: workload.ChildWorkloadNotice) => {
+        for (const listener of [...listeners]) listener(notice);
+      };
+      const restore = () => {
+        watch.mockRestore();
+        add.mockRestore();
+      };
+      return {
+        transport,
+        processHandle,
+        record,
+        iterator,
+        steers,
+        answer,
+        notify,
+        listeners,
+        add,
+        restore,
+      };
+    }
+
+    test('a pressure-enter is steered into the running Codex turn once and shown in the transcript', async () => {
+      const codex = codexWithNotices('codex-pressure');
+      try {
+        codex.record.activeTurnId = 'turn-3';
+        codex.notify(PRESSURE);
+        expect(await nextEvent(codex.iterator, 'warning')).toMatchObject({
+          method: 'runtime.warning',
+          code: 'workload-memory-pressure',
+          turnId: 'turn-3',
+          message: PRESSURE_TEXT.slice('Station workload notice: '.length),
+        });
+        expect(codex.steers()).toEqual([
+          expect.objectContaining({
+            params: {
+              threadId: 'codex-codex-pressure',
+              input: [{ type: 'text', text: PRESSURE_TEXT, text_elements: [] }],
+              expectedTurnId: 'turn-3',
+            },
+          }),
+        ]);
+        codex.answer(codex.steers()[0].id, { result: { turnId: 'turn-3' } });
+        await vi.waitFor(() =>
+          expect(codex.add).toHaveBeenCalledWith(1, {
+            provider_family: 'codex',
+            kind: 'pressure-enter',
+            outcome: 'delivered-mid-turn',
+          }),
+        );
+        // Nothing pending: the next turn/start carries no notice either.
+        expect(codex.record.workloadNotices?.take()).toBeUndefined();
+        expect(codex.steers()).toHaveLength(1);
+        expect(codex.add).toHaveBeenCalledTimes(1);
+      } finally {
+        codex.restore();
+      }
+    });
+
+    test('a notice with no turn running, or a refused steer, waits for the next turn', async () => {
+      const codex = codexWithNotices('codex-between-turns');
+      try {
+        codex.notify(PRESSURE);
+        await nextEvent(codex.iterator, 'warning');
+        expect(codex.steers()).toEqual([]);
+        expect(codex.record.workloadNotices?.take()?.text).toBe(PRESSURE_TEXT);
+
+        codex.record.activeTurnId = 'turn-4';
+        codex.notify(PRESSURE);
+        await nextEvent(codex.iterator, 'warning');
+        codex.answer(codex.steers()[0].id, {
+          error: { code: -32600, message: 'no active turn' },
+        });
+        await vi.waitFor(() =>
+          expect(codex.record.workloadNotices?.take()?.text).toBe(
+            PRESSURE_TEXT,
+          ),
+        );
+      } finally {
+        codex.restore();
+      }
+    });
+
+    test('the subscription ends with the Codex process, and a pending notice is discarded', async () => {
+      const codex = codexWithNotices('codex-ended');
+      try {
+        codex.notify(PRESSURE);
+        await nextEvent(codex.iterator, 'warning');
+        expect(codex.listeners).toHaveLength(1);
+        codex.processHandle.emit('exit', 0, null);
+        expect(codex.listeners).toEqual([]);
+        expect(codex.add).toHaveBeenCalledWith(1, {
+          provider_family: 'codex',
+          kind: 'pressure-enter',
+          outcome: 'discarded',
+        });
+        expect(codex.record.workloadNotices?.take()).toBeUndefined();
+        expect(codex.steers()).toEqual([]);
+      } finally {
+        codex.restore();
+      }
+    });
   });
 
   test('an intentional stop while exit observation is delayed publishes no stale failure', async () => {

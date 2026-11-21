@@ -1,0 +1,7 @@
+{
+  "revision": "eb2d9644169b035e6b71192e7438459afb2187d9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Confirmed the engine capability edge identifies the existing main/release full qualification deferral and adds the adapter parity suite to bounded selection. The merge-queue decision suite reproduced the missing reason marker and passed with the marker restored.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

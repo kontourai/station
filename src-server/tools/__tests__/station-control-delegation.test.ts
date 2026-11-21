@@ -1752,6 +1752,25 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
     );
     expect(bodyOf(call!)).toMatchObject({ delegation });
+
+    fetchMock.mockClear();
+    const restricted = { ...delegation, toolAllowlistConstraints: [[]] };
+    const { delegateTask } = await import('../station-control-delegation.js');
+    await expect(
+      delegateTask({
+        target: savedTarget(),
+        prompt: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('preserves detail-less remote foreground indeterminacy and ambiguous responses', async () => {
@@ -2723,6 +2742,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: a foreground send names no respawn intent; the service derives
+    // it from who caused the turn.
+    expect(
+      (sendTurn?.[2] as { resourceAdmissionIntent?: string } | undefined)
+        ?.resourceAdmissionIntent,
+    ).toBeUndefined();
   });
 
   test('derives queued/background admission from the fixed background route seam', async () => {
@@ -2756,6 +2781,10 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (sendTurn?.[2] as { dispatchOrigin?: string } | undefined)
         ?.dispatchOrigin,
     ).toBeUndefined();
+    // #4568: the send's own respawn of a cold Session stays background too.
+    expect(sendTurn?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'queued_background',
+    });
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {

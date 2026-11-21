@@ -962,53 +962,64 @@ describe('#2452 muse serve: turn terminals', () => {
     expect(of(h.events, 'turn.completed')).toEqual([]);
   });
 
-  test('a host that exits mid-turn fails the turn visibly, and the next send re-hosts and resumes the session', async () => {
-    const h = harness();
-    await stationTurnOpen(h);
-    h.hosts[0].stderr.write('boom\n');
-    h.hosts[0].exit(3);
-    await settle();
-    expect(of(h.events, 'runtime.error')).toEqual([
-      expect.objectContaining({
-        turnId: STATION_TURN,
-        code: MUSE_SERVE_HOST_EXITED_CODE,
-      }),
-    ]);
-    const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'again' });
-    for (let attempt = 0; attempt < 100 && !h.hosts[1]; attempt += 1) {
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    const host = h.hosts[1];
-    const answer = async (method: string, result: unknown) => {
-      const request = await host.nextRequest(method, new Set());
-      host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
-      return request;
-    };
-    const init = loadMuseServeCapture('workflow-child-approve')[2].msg;
-    await answer('initialize', (init as { result: unknown }).result);
-    const resume = await answer('session/resume', {
-      session: {
+  test.each(['/workspace/probe/repo', '/workspace/elsewhere'])(
+    'the next send after a host exit checks the resumed workspace %s',
+    async (workspaceRoot) => {
+      const h = harness();
+      await stationTurnOpen(h);
+      h.hosts[0].stderr.write('boom\n');
+      h.hosts[0].exit(3);
+      await settle();
+      expect(of(h.events, 'runtime.error')).toEqual([
+        expect.objectContaining({
+          turnId: STATION_TURN,
+          code: MUSE_SERVE_HOST_EXITED_CODE,
+        }),
+      ]);
+      const sending = h.adapter.sendTurn({ threadId: THREAD, input: 'again' });
+      for (let attempt = 0; attempt < 100 && !h.hosts[1]; attempt += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      const host = h.hosts[1];
+      const answer = async (method: string, result: unknown) => {
+        const request = await host.nextRequest(method, new Set());
+        host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+        return request;
+      };
+      const init = loadMuseServeCapture('workflow-child-approve')[2].msg;
+      await answer('initialize', (init as { result: unknown }).result);
+      const resume = await answer('session/resume', {
+        session: {
+          sessionId: '00000000-0000-7000-8000-000000000002',
+          approvalMode: { mode: 'promptUnmatched' },
+          workspaceRoot,
+        },
+        viewCursor: '',
+        history: {},
+        pendingRequests: [],
+      });
+      expect(resume.params).toMatchObject({
         sessionId: '00000000-0000-7000-8000-000000000002',
-        approvalMode: { mode: 'promptUnmatched' },
-      },
-      viewCursor: '',
-      history: {},
-      pendingRequests: [],
-    });
-    expect(resume.params).toMatchObject({
-      sessionId: '00000000-0000-7000-8000-000000000002',
-    });
-    await answer('approval/listPending', { approvals: [], userInputs: [] });
-    const start = await answer('turn/start', {
-      status: 'accepted',
-      disposition: 'started',
-      turnId: 'turn-after-rehost',
-    });
-    expect(start.params?.input).toEqual([{ type: 'text', text: 'again' }]);
-    await expect(sending).resolves.toMatchObject({
-      turnId: 'turn-after-rehost',
-    });
-  });
+      });
+      if (workspaceRoot === '/workspace/elsewhere') {
+        await expect(sending).rejects.toThrow(/different workspace/);
+        expect(host.sent.some((frame) => frame.method === 'turn/start')).toBe(
+          false,
+        );
+        return;
+      }
+      await answer('approval/listPending', { approvals: [], userInputs: [] });
+      const start = await answer('turn/start', {
+        status: 'accepted',
+        disposition: 'started',
+        turnId: 'turn-after-rehost',
+      });
+      expect(start.params?.input).toEqual([{ type: 'text', text: 'again' }]);
+      await expect(sending).resolves.toMatchObject({
+        turnId: 'turn-after-rehost',
+      });
+    },
+  );
 });
 
 describe('#2452 muse serve: a posture change of sandbox re-hosts the session', () => {
@@ -5015,6 +5026,28 @@ describe('Muse parity: a serve session resumes after a Station restart', () => {
       ENGINE_SESSION_BINDING_DEAD_CODE,
     ]);
     expect(await h.adapter.hasSession(THREAD)).toBe(false);
+  });
+
+  test('cold resume refuses a different Muse workspace without fallback or a new turn', async () => {
+    const h = harness();
+    const starting = resumeSession(h);
+    const host = await firstHost(h, () => starting);
+    const consumed = new Set<SentFrame>();
+    const initialize = await host.nextRequest('initialize', consumed);
+    consumed.add(initialize);
+    reply(host, initialize, liveInitializeResult());
+    reply(host, await host.nextRequest('session/resume', consumed), {
+      session: {
+        sessionId: RESUMED_SESSION,
+        workspaceRoot: '/workspace/elsewhere',
+      },
+    });
+    await expect(starting).rejects.toThrow(/different workspace/);
+    expect(h.execSpawns).toEqual([]);
+    expect(await h.adapter.hasSession(THREAD)).toBe(false);
+    expect(host.sent.some((frame) => frame.method === 'turn/start')).toBe(
+      false,
+    );
   });
 
   test('a host that cannot be used refuses the resume as retryable, with no exec fallback and no binding-dead claim', async () => {

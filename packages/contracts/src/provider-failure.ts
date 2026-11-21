@@ -23,6 +23,13 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   SESSION_CONFIGURATION_REPLACED_CODE,
 } from './orchestration.js';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
+  PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+} from './peer-chat.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
 import { PROJECT_HELD_REFUSAL_CODE } from './project-lifecycle.js';
@@ -31,6 +38,7 @@ import {
   PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
 } from './project-room.js';
+import { PROJECT_MEMORY_FULL_CODE } from './project-session-context.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -67,6 +75,8 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_REATTACH_CONFLICT_CODE,
   WORKLOAD_COMMAND_OOM_KILLED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CODE,
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
@@ -77,6 +87,8 @@ export const CODEX_DECISION_UNACKNOWLEDGED_CODE =
 export const CODEX_DECISION_REPLY_REFUSED_CODE = 'engine-decision-not-sent';
 export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
 export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
+export const ACP_RESUME_CONFIGURATION_CHANGED_CODE =
+  'acp_resume_configuration_changed';
 export const MCP_SIGN_IN_REQUIRED_CODE = 'mcp_sign_in_required';
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
@@ -90,9 +102,22 @@ export const CONFINED_NETWORK_DENIED_CODE = 'confined_network_denied';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
+/** #4568: a person's Stop cancelled their engine start before any provider start. */
+export const RESOURCE_ENGINE_START_CANCELLED_CODE =
+  'resource_engine_start_cancelled';
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
+/**
+ * A start or turn refused because the Feature Preview that gates the engine
+ * is off (docs/guides/feature-previews.md). Same code as the HTTP refusal.
+ */
+export const FEATURE_PREVIEW_DISABLED_CODE = 'feature_preview_disabled';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
+/**
+ * The attached source reads `active` (`AttachedSourceActivity`) and the
+ * request did not say `continueWhileSourceActive`. Nothing was created.
+ */
+export const ADOPTION_SOURCE_ACTIVE_CODE = 'continuation_source_active';
 
 export const ENGINE_STARTUP_FAILURE_GUIDANCE = {
   sandbox_unavailable:
@@ -172,24 +197,38 @@ export const PROVIDER_FAILURE_KINDS = {
   stage_invalid_upload: 'input_unsupported',
   stage_capacity: 'busy',
   [PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE]: 'quota_exhausted',
+  'acp-transport-closed': 'unavailable',
   sandbox_unavailable: 'permission_denied',
   provider_model_unavailable: 'model_unavailable',
   [CODEX_DECISION_UNACKNOWLEDGED_CODE]: 'warning',
   [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
   [TRANSCRIPT_LINE_SKIPPED_CODE]: 'warning',
   [SESSION_RECOVERY_FAILED_CODE]: 'unavailable',
+  [ACP_RESUME_CONFIGURATION_CHANGED_CODE]: 'conflict',
   [SESSION_START_INDETERMINATE_CODE]: 'indeterminate',
   [CONFINED_FULL_ACCESS_UNAVAILABLE_CODE]: 'permission_denied',
   [CONFINED_NETWORK_DENIED_CODE]: 'permission_denied',
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
+  [RESOURCE_ENGINE_START_CANCELLED_CODE]: 'cancelled',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
   // A replaced Session still runs work from before the change; sending again
   // once it ends restarts the Session.
   [SESSION_CONFIGURATION_REPLACED_CODE]: 'busy',
+  // Continuing a conversation on a paired Station: the paired Station refused
+  // the import outright (not retryable as sent), refused this Station's
+  // credential, or takes imports only from a Station paired as a Station.
+  [PEER_CONVERSATION_HANDOFF_REFUSAL_CODE]: 'conflict',
+  [PEER_CONVERSATION_HANDOFF_ACCESS_CODE]: 'permission_denied',
+  [PEER_CONVERSATION_HANDOFF_PAIRING_CODE]: 'permission_denied',
+  [PAIRED_STATION_REQUIRED_CODE]: 'permission_denied',
+  // The import this key saved was deleted before it started.
+  [CONVERSATION_IMPORT_DELETED_CODE]: 'session_gone',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  [FEATURE_PREVIEW_DISABLED_CODE]: 'unavailable',
+  [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',
@@ -245,6 +284,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [ENGINE_MEMORY_EXHAUSTED_CODE]: 'engine_crashed',
   // A command inside the engine's scope was killed; the engine kept running.
   [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
+  // The engine's own scope neared its memory limit, or left that state.
+  [WORKLOAD_MEMORY_PRESSURE_CODE]: 'warning',
+  [WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
   [ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
@@ -284,6 +326,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
+  // #5065: a Project's memory holds its maximum notes. Not retryable: like
+  // `project_held`, it is a state refusal that lasts until the state changes
+  // (a person or agent forgets a note), not a transient capacity limit.
+  [PROJECT_MEMORY_FULL_CODE]: 'conflict',
   // #4520: an engine the managed policy does not allow, or a launch that
   // cannot honor a locked pin.
   [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',

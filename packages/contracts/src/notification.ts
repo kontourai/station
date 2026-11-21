@@ -112,7 +112,17 @@ export type NotificationSource =
       conversationId?: string;
       assurance: NotificationAgentAssurance;
     }
-  | { kind: 'system'; subsystem: string }
+  | {
+      kind: 'system';
+      subsystem: string;
+      /**
+       * The local Project (`ProjectConfig.id`) of the session the record is
+       * about, recorded when that session started (#5072). The Project's
+       * notification level and its foreground suppression apply only when
+       * it is present. Absent: not about a Project's work.
+       */
+      projectId?: string;
+    }
   | { kind: 'provider'; providerId: string }
   /**
    * Read-side only: a v1 source whose `kind` this build does not know (a

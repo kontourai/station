@@ -14,7 +14,11 @@
  * station matrix.
  */
 
-import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type AgentConnectionView,
+  EXECUTION_MODE,
+} from '@kontourai/station-contracts/tool';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -76,12 +80,15 @@ const SESSION_ID = 'engine-model-gate-session';
 // verbatim shape: canonical engineId present, type is the '<id>-runtime'
 // convention that names no engine on its own.
 const opencodeConnection = {
-  id: 'opencode',
+  id: engineConnectionId('opencode'),
   engineId: 'opencode',
   kind: 'agent',
   type: 'opencode-runtime',
   name: 'OpenCode',
   enabled: true,
+  capabilities: ['acp'],
+  prerequisites: [],
+  setup: { state: 'ready', detected: true, configured: true },
   config: {},
   status: 'ready',
   runtimeCatalog: {
@@ -95,7 +102,7 @@ const opencodeConnection = {
     ],
     builtInModels: [],
   },
-};
+} satisfies AgentConnectionView & { engineId: string };
 
 // The new-chat provider-managed E2E lane's model-connection shape: a
 // user-chosen id and kind 'model' — nothing here names an engine.
@@ -124,11 +131,11 @@ const opencodeAgent = {
   },
 } as unknown as AgentData;
 
-const bigPickle: SelectableModel = {
+const bigPickle = {
   id: 'opencode/big-pickle',
   name: 'Big Pickle',
   originalId: 'opencode/big-pickle',
-};
+} satisfies SelectableModel;
 
 function renderChatInput(options: {
   runtimeConnection?: typeof opencodeConnection | null;
@@ -166,6 +173,25 @@ describe('useChatInput engine capability model gate', () => {
     activeChatsStore.removeChat(SESSION_ID);
     localStorage.clear();
     vi.clearAllMocks();
+  });
+
+  test('stages the ACP mode without changing the confirmed session mode', () => {
+    mockAgent = opencodeAgent;
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Mode',
+    });
+    activeChatsStore.updateChat(SESSION_ID, { currentModeId: 'build' });
+    const { result } = renderChatInput({
+      runtimeConnection: opencodeConnection,
+    });
+
+    act(() => result.current.handleAcpSessionModeChange('plan'));
+    expect(activeChatsStore.getSnapshot()[SESSION_ID]).toMatchObject({
+      currentModeId: 'build',
+      requestedProviderOptions: { mode: 'plan' },
+    });
   });
 
   test('changes and clears a speed tier without retaining the legacy Fast override', () => {
@@ -237,6 +263,42 @@ describe('useChatInput engine capability model gate', () => {
     expect(result.current.modelSelectionReason).toBeUndefined();
     expect(result.current.canModelSelect).toBe(true);
   });
+
+  test.each([
+    { provider: 'acp', connectionEngine: 'acp', available: false },
+    { provider: 'opencode', connectionEngine: 'opencode', available: true },
+    { provider: 'acp', connectionEngine: 'opencode', available: false },
+  ])(
+    'an existing $provider conversation on $connectionEngine follows its retained model override capability',
+    ({ provider, connectionEngine, available }) => {
+      mockAgent = opencodeAgent;
+      activeChatsStore.initChat(SESSION_ID, {
+        agentSlug: 'opencode',
+        agentName: 'OpenCode',
+        title: 'Model switch',
+      });
+      activeChatsStore.updateChat(SESSION_ID, {
+        executionMode: EXECUTION_MODE.EXTERNAL,
+        provider,
+        agentConnectionId: 'opencode',
+      });
+      const runtimeConnection = {
+        ...opencodeConnection,
+        engineId: connectionEngine,
+      };
+      const bindingStatus = resolveBindingStatus({
+        agent: opencodeAgent,
+        chatState: activeChatsStore.getSnapshot()[SESSION_ID],
+        runtimeConnection,
+        globalModels: [bigPickle],
+      });
+      const { result } = renderChatInput({
+        runtimeConnection,
+        bindingStatus,
+      });
+      expect(result.current.canModelSelect).toBe(available);
+    },
+  );
 
   test('a chat with no connection and an engine-less provider stays honestly gated', () => {
     mockAgent = opencodeAgent;

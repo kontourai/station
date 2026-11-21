@@ -1,0 +1,47 @@
+{
+  "revision": "2e975b6450590bb539559c04d0de78821e50560e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the supported More dock actions and Open chat picker in the actual side dock, including focus return and the saved preference through reload. A narrow touch row presents the typed Draft refusal below the original action targets. The existing Undo, shared command and authoritative inventory behavior retain their documented meanings.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Traced the public picker, device placement and external focus routes. Removed the uncalled sidebar collection registration and its device-placement side effect. The live session picker, row activation, chat composition, conversation focus, mobile Inbox and real placement-controls keep their existing owners. The recorded conversation opened and revalidated through the real side dock in Chromium.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The deleted compact rail rules had no mounted caller after the old Project sidebar list retired. The desktop Inbox retained its existing rows and focus behavior.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxPanel.css"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the touch row's refusal state in Chromium at 320px. The alert gets a line below its title and action controls, remains contained, and preserves the pressed button's focus. The normal and Undo states use the existing row geometry. No motion rule changed.","inputs":["src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Removed the orphan collection forwarding method. Current local Session, Conversation and remote focus registrations still use their prior authority and routes. The live search picker remains in ChatDockModalStack.","inputs":["src-ui/src/contexts/open-chats-store.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The existing authoritative picker journey now checks a real right dock before entering the list, mouse and keyboard access, Escape focus return, the chosen transcript and the saved placement after reload. Its original authoritative-resolution and reload checks remain covered.","inputs":["tests/default-agent-workflow.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The mounted touch Inbox verifies Snooze focus transfer, Undo before dispatch, and a narrow direct refusal after the actual SDK command attempt. The Chromium fixture models the Station refusal and does not supply physical-device evidence.","inputs":["src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The mounted Home surface opens Details, removes the row from the rendered lanes, restores it without reopening Details, and moves focus to adjacent work after Snooze. This trace uses a coarse-pointer test fixture with no live Station.","inputs":["src-ui/src/views/home/__tests__/HomeSurface.test.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Removed a retired collection mock from the existing focus fixtures. The Home and navigation tests still assert their prior supported pathways and no new lifecycle claim is made.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Removed a retired collection mock from the existing focus fixtures. The Home and navigation tests still assert their prior supported pathways and no new lifecycle claim is made.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Removed a retired collection mock from the existing focus fixtures. The Home and navigation tests still assert their prior supported pathways and no new lifecycle claim is made.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The old sidebar collection spy no longer represents a product caller. The Project sidebar still exercises its current Project navigation and focus behavior.","inputs":["src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"The legacy open-collection field was an unused part of the test double. Board entry, ordering, and return-focus assertions retain their original scope.","inputs":["src-ui/src/__tests__/ProjectSidebarBoards.test.tsx"]}
+  ]
+}

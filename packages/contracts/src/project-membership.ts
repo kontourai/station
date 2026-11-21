@@ -18,6 +18,7 @@ export type ProjectMemberAction = (typeof PROJECT_MEMBER_ACTIONS)[number];
 /** Permission presets. Execution still requires an independent receiver/compute grant. */
 export const PROJECT_MEMBER_ROLES = {
   viewer: ['view'],
+  commenter: ['view', 'discuss'],
   contributor: ['view', 'discuss', 'edit', 'execute'],
   admin: [
     'view',
@@ -31,6 +32,12 @@ export const PROJECT_MEMBER_ROLES = {
   owner: [...PROJECT_MEMBER_ACTIONS],
 } as const satisfies Record<string, readonly ProjectMemberAction[]>;
 export type ProjectMemberRole = keyof typeof PROJECT_MEMBER_ROLES;
+export const GRANTABLE_PROJECT_ROLES = [
+  'viewer',
+  'commenter',
+  'contributor',
+  'admin',
+] as const satisfies readonly ProjectMemberRole[];
 
 /** Exact local incarnation and portable Project identity at its authoritative Station. */
 export interface ProjectMembershipScope {

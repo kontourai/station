@@ -1,0 +1,7 @@
+{
+  "revision": "518b5b57b4dd33615fa0a1cc13f02b5062ec1041",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed the production OpenCode ACP preflight and native serve callers of the shared project scan. Missing optional config paths are allowed. Other filesystem inspection failures and invalid entry types require refusal. Two inert project fixtures reproduced the former clean verdict and now pass. No physical adapter or real engine execution is claimed.","inputs":["docs/guides/acp.md","src-server/services/acp/opencode-project-config.ts"]}
+  ]
+}

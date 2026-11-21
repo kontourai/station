@@ -236,7 +236,11 @@ function progress() {
 }
 
 /** `task_updated` completed, then `task_notification` with the result. */
-function settles(summary: string, item = runningChild) {
+function settles(
+  summary: string,
+  item = runningChild,
+  source?: NonNullable<ChildWorkItem['result']>['source'],
+) {
   const identity = {
     parent: item.parent,
     title: item.title,
@@ -263,6 +267,7 @@ function settles(summary: string, item = runningChild) {
       status: 'completed',
       result: {
         summary,
+        ...(source ? { source } : {}),
         handle: {
           kind: 'transcript-file',
           path: `/tmp/claude/tasks/${item.childId}.output`,
@@ -1245,6 +1250,8 @@ describe('subagent transcript cards', () => {
       ...windowEvents.current,
       ...settles(
         '**Verdict: merge as-is.** I found no blockers.\n\nEvery required check passed.',
+        runningChild,
+        'provider-summary',
       ),
     ];
     view.rerender();
@@ -1254,11 +1261,14 @@ describe('subagent transcript cards', () => {
     expect(within(card).queryByText('Running')).toBeNull();
     // The first settle's reported end (17m 04s after the reported start).
     expect(within(card).getByText('17m 4s')).toBeTruthy();
+    expect(within(card).getByText('Provider summary:')).toBeTruthy();
     expect(
       within(card).getByText('Verdict: merge as-is. I found no blockers.'),
     ).toBeTruthy();
 
     fireEvent.click(within(card).getByRole('button', { expanded: false }));
+    expect(within(card).queryByText('Provider summary:')).toBeNull();
+    expect(within(card).getByText('Provider summary')).toBeTruthy();
     expect(
       await within(card).findByText('Every required check passed.'),
     ).toBeTruthy();

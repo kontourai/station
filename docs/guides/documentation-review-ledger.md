@@ -52,8 +52,11 @@ not establish a new semantic review. Do not advance it just to hide gaps.
 The scoped PR check reads only the change's own range and never replays the
 coverage baseline. Main-history reader state uses one first-parent
 `git log --name-status` stream and one batched read of relevant notes, record
-changes and JSON values. Git process count is constant as commits increase;
-bytes read and replay work grow with the range. Replay uses HEAD's source lists
+changes and JSON values. Catch-up reads the historical dependency projections
+once per invocation and uses them for both removed citations and impact leads.
+Generated release output also batches its Git object
+reads and resolves each Changeset note's adding commit with Git's rename-aware
+history search, up to three searches at a time. Replay uses HEAD's source lists
 for old commits: removed citations stop tracking older changes, and newly
 added citations can expose older changes that now need review.
 
@@ -398,8 +401,8 @@ unit must be exactly `changeset version` on its starting tree:
   `.changeset/*.md` it reads, except the ones naming a private or ignored
   package, which stay untouched), adds or edits nothing else under
   `.changeset/`, and does not edit the contract's owners
-  (`release-versioning-review.mjs`, `scripts/changeset-changelog.mjs`,
-  `.changeset/config.json`). Every note must parse and name only workspace
+  (`release-versioning-review.mjs`, `changeset-note-commits.mjs`,
+  `scripts/changeset-changelog.mjs`, `.changeset/config.json`). Every note must parse and name only workspace
   packages. Only the dependency-update rules of
   `updateInternalDependencies: "patch"` with
   `onlyUpdatePeerDependentsWhenOutOfRange` and

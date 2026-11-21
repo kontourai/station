@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 
 /**
  * Touch swipe-to-dismiss for a toast card. Same gesture rules as the Inbox
- * row swipe (`useInboxSwipe`): touch or pen only, a 12px slop, and a
+ * row swipe (`useSwipeActions`): touch or pen only, a 12px slop, and a
  * horizontal lock before the card moves, so a vertical scroll or a tap is
  * never taken. Either direction dismisses once the drag passes the threshold
  * or flings fast enough; a shorter drag springs back. A click that ends a

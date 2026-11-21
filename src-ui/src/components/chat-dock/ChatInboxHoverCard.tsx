@@ -91,6 +91,8 @@ export function ChatInboxHoverCard({
   projectIcon,
   anchor,
   onClose,
+  onPointerEnter,
+  onPointerLeave,
   id,
 }: {
   item: HomeWorkItem;
@@ -114,6 +116,8 @@ export function ChatInboxHoverCard({
   /** The row element the card anchors beside (measured once on mount). */
   anchor: HTMLElement;
   onClose: () => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
   /**
    * The row-instance-scoped id the row button references through
    * `aria-describedby` while the card is open — a focus-opened tooltip a
@@ -166,11 +170,12 @@ export function ChatInboxHoverCard({
     return () => observer.disconnect();
   }, [anchor]);
 
-  // The card is fixed-positioned: any scroll (the inbox's own scroll included)
-  // detaches it from its anchor, and a tooltip that has lost its anchor is a
-  // lie about the row under it. Close instead of following.
+  // Scrolling inside the card keeps its anchor in place. Scrolling the
+  // Inbox or page can detach the fixed tooltip from its row.
   useEffect(() => {
-    const onScroll = () => onClose();
+    const onScroll = (event: Event) => {
+      if (event.target !== cardRef.current) onClose();
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.stopPropagation();
@@ -193,7 +198,10 @@ export function ChatInboxHoverCard({
       className="chat-dock-inbox-hover-card"
       style={position}
       role="tooltip"
+      tabIndex={-1}
       data-testid="inbox-row-hover-card"
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
     >
       <ChatInboxCardBody
         item={item}

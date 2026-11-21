@@ -4,19 +4,33 @@
  * (`opencode-serve-replay.ts`).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import {
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { installManagedEngineLimits } from '../../security/managed-engine-limits.js';
 import {
   evaluateOpenCodeRules,
   type OpenCodeNativeRule,
 } from '../../services/acp/opencode-approval-native.js';
+import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import { resolveTurnCompletionOutcome } from '../../services/orchestration/turn-completion-notifications.js';
 import {
   ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
@@ -144,6 +158,7 @@ async function setup(
       return inner as unknown as ProviderAdapterShape;
     },
     nativeEnabled: () => true,
+    managedWorkspaceHomeDir: makeTempDir('opencode-replay-state-'),
     pool: leaser,
     versionProbe: {
       probe: async () => ({ major: 2, minor: 3, patch: 0, text: '2.3.0' }),
@@ -306,12 +321,27 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         (event) =>
           event.method === 'token-usage.updated' && event.turnId === turnId,
       ),
-    ).toMatchObject({ promptTokens: 102, completionTokens: 20 });
+    ).toMatchObject({
+      promptTokens: 102,
+      completionTokens: 20,
+      servedModelObservation: {
+        source: 'opencode-step-started',
+        providerId: 'mock',
+        modelId: 'mock-1',
+        assistantMessageId: 'msg_1d71adc1f001pAM06JQG2JhsQi',
+      },
+    });
     expect(h.replay.misses).toEqual([]);
   });
 
   test('tool calls complete with their output and the edit carries its patch', async () => {
-    const h = await setup({ scenario: 'tools' });
+    const h = await setup({
+      scenario: 'tools',
+      omit: (record) =>
+        record.event?.type === 'session.step.started' &&
+        record.event.data?.assistantMessageID ===
+          'msg_1d71ae47d001ZdfbHR6imr6fWE',
+    });
     await h.start();
     const first = await h.adapter.sendTurn({
       threadId: 'thread-1',
@@ -323,6 +353,17 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       input: 'DO_EDIT now',
     });
     await h.waitFor(completedFor(second.turnId));
+    const continuationUsage = h.events.filter(
+      (event) =>
+        event.method === 'token-usage.updated' &&
+        event.turnId === second.turnId,
+    );
+    expect(continuationUsage).toHaveLength(2);
+    expect(continuationUsage[0]).not.toHaveProperty('servedModelObservation');
+    expect(continuationUsage[1]).toHaveProperty(
+      'servedModelObservation.assistantMessageId',
+      'msg_1d71ae4f800160PtNAChRchfdq',
+    );
     const tools = h.events.filter((event) => event.method === 'tool.completed');
     expect(tools.map((event) => [event.toolName, event.status])).toEqual([
       ['write', 'success'],
@@ -494,49 +535,180 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     await h.waitFor(completedFor(turnId));
   });
 
-  test('a steer the execution ended before reading is withdrawn and refused', async () => {
-    const delivered = (record: OpenCodeReplayRecord) =>
-      (record.kind === 'http' &&
-        (JSON.stringify(record.body ?? null).includes('STEER-delivered') ||
-          (record.method === 'GET' &&
-            record.path?.endsWith('/inbox') === true))) ||
-      (record.kind === 'sse' &&
-        (record.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq' ||
-          record.event?.type === 'session.inbox.cancelled'));
-    const h = await setup({
-      scenario: 'steer',
-      omit: delivered,
-      ungated: (record) => record.method === 'DELETE',
-    });
-    await h.start();
-    const { turnId } = await h.adapter.sendTurn({
-      threadId: 'thread-1',
-      input: 'DO_BASH steer',
-    });
-    const opened = await h.waitFor(
-      (event) => event.method === 'request.opened',
-    );
-    const steer = h.adapter.steerTurn('thread-1', 'STEER-withdrawn', turnId);
-    const outcome = steer.then(
-      () => 'delivered',
-      (error: unknown) => error,
-    );
-    await h.waitFor(
-      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
-    );
-    await h.adapter.respondToRequest(
-      'thread-1',
-      opened.requestId as string,
-      'accept',
-    );
-    await h.waitFor(completedFor(turnId));
-    expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
-    expect(
-      h.replay.made('DELETE', '/api/session/:id/inbox/:id').map((r) => r.path),
-    ).toEqual([
-      '/api/session/ses_e28e4fdf4ffet6a4RsosGDLmTS/inbox/msg_1d71b0245001rPumuccI4tfOcM',
-    ]);
-  });
+  test.each([false, true])(
+    'a failed steer POST and early DELETE 404 retain custody across stop and resume (managed=%s)',
+    async (managed) => {
+      const home = makeTempDir('opencode-custody-');
+      if (managed) {
+        const policy = parseManagedPolicyDocument({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: {
+            engines: {
+              allowed: ['acp'],
+              instances: {
+                acp: {
+                  locked: true,
+                  environment: { XDG_DATA_HOME: '/replay/pinned-xdg' },
+                },
+              },
+            },
+          },
+        });
+        if (!policy.ok) throw new Error(JSON.stringify(policy.problems));
+        installManagedEngineLimits({
+          document: policy.document,
+          summary: summarizeManagedPolicy(policy.document),
+        });
+      }
+      try {
+        const h = await setup(
+          {
+            scenario: 'steer',
+            omit: withdrawnSteer,
+            respond: (r) => {
+              if (
+                r.method === 'POST' &&
+                (r.body as { delivery?: string })?.delivery === 'steer'
+              )
+                return { status: 500 };
+              if (r.method === 'DELETE' && r.path.includes('/inbox/'))
+                return { status: 404 };
+              return undefined;
+            },
+          },
+          { managedWorkspaceHomeDir: home },
+        );
+        const session = await h.start();
+        const { turnId } = await h.turn('DO_BASH steer');
+        await h.waitFor((e) => e.method === 'request.opened');
+        await expect(
+          h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId),
+        ).rejects.toThrow('may still be queued');
+        await h.adapter.stopSession('thread-1');
+        const resumed = await setup(
+          { scenario: 'basic' },
+          { managedWorkspaceHomeDir: home },
+        );
+        await expect(
+          resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+        ).rejects.toThrow('unconfirmed steering input');
+        expect(
+          resumed.replay.made('POST', '/api/session/:id/prompt'),
+        ).toHaveLength(0);
+        const fallback = await setup(
+          { scenario: 'basic' },
+          { managedWorkspaceHomeDir: home, nativeEnabled: () => false },
+        );
+        const cursor = session.resumeCursor as Record<string, unknown>;
+        await expect(
+          fallback.start(undefined, {
+            resumeCursor: {
+              ...cursor,
+              bindingKey: managed
+                ? nativeResumeBindingKey(
+                    'opencode',
+                    '/replay/xdg/opencode',
+                    null,
+                  )
+                : 'forged-home',
+            },
+          }),
+        ).rejects.toThrow('another OpenCode data home');
+        await expect(
+          fallback.start(undefined, { resumeCursor: cursor }),
+        ).rejects.toThrow('unconfirmed steering input');
+        expect(fallback.inner()?.starts ?? []).toEqual([]);
+      } finally {
+        installManagedEngineLimits(null);
+      }
+    },
+  );
+
+  test.each([204, 500])(
+    'a late steer is withdrawn or blocks successor work when withdrawal fails (%s)',
+    async (deleteStatus) => {
+      let releaseWithdrawal = false;
+      const delivered = (record: OpenCodeReplayRecord) =>
+        (record.kind === 'http' &&
+          (JSON.stringify(record.body ?? null).includes('STEER-delivered') ||
+            (record.method === 'GET' &&
+              record.path?.endsWith('/inbox') === true))) ||
+        (record.kind === 'sse' &&
+          (record.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq' ||
+            record.event?.type === 'session.inbox.cancelled'));
+      const ids = [
+        ...recordedPromptIds('steer', delivered),
+        'msg_additional_successor',
+      ];
+      const h = await setup(
+        {
+          scenario: 'steer',
+          omit: delivered,
+          ungated: (record) => record.method === 'DELETE',
+          holdUntil: (record) =>
+            record.method === 'DELETE' && record.path?.includes('/inbox/')
+              ? () => releaseWithdrawal
+              : undefined,
+          respond: (request) =>
+            request.method === 'DELETE' && request.path.includes('/inbox/')
+              ? { status: deleteStatus }
+              : undefined,
+        },
+        { newMessageId: () => ids.shift()! },
+      );
+      await h.start();
+      const { turnId } = await h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'DO_BASH steer',
+      });
+      const opened = await h.waitFor(
+        (event) => event.method === 'request.opened',
+      );
+      const steer = h.adapter.steerTurn('thread-1', 'STEER-withdrawn', turnId);
+      const outcome = steer.then(
+        () => 'delivered',
+        (error: unknown) => error,
+      );
+      await h.waitFor(
+        () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+      );
+      await h.adapter.respondToRequest(
+        'thread-1',
+        opened.requestId as string,
+        'accept',
+      );
+      await h.waitFor(completedFor(turnId));
+      try {
+        await expect(h.turn('next')).rejects.toMatchObject({ kind: 'busy' });
+      } finally {
+        releaseWithdrawal = true;
+      }
+      if (deleteStatus === 204)
+        expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
+      else expect(String(await outcome)).toContain('withdrawal is unconfirmed');
+      if (deleteStatus === 500) {
+        await h.waitFor(
+          (event) =>
+            event.method === 'runtime.warning' &&
+            String(event.message).includes('withdrawn'),
+        );
+        await expect(h.turn('next')).rejects.toThrow(
+          'withdrawal is unconfirmed',
+        );
+        expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
+          2,
+        );
+      }
+      expect(
+        h.replay
+          .made('DELETE', '/api/session/:id/inbox/:id')
+          .map((r) => r.path),
+      ).toEqual([
+        '/api/session/ses_e28e4fdf4ffet6a4RsosGDLmTS/inbox/msg_1d71b0245001rPumuccI4tfOcM',
+      ]);
+    },
+  );
 
   test('an interrupt aborts the running turn', async () => {
     const h = await setup({ scenario: 'interrupt' });
@@ -697,6 +869,13 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       'OpenCode rewound to before that turn.',
     );
     expect(
+      h.events.find(
+        (event) =>
+          event.method === 'content.text-delta' &&
+          event.turnId === command.turnId,
+      ),
+    ).toMatchObject({ itemId: expect.stringMatching(/^text:/) });
+    expect(
       h.replay.made('POST', '/api/session/:id/revert/stage')[0]?.body,
     ).toEqual({ messageID: 'msg_1d71b155b001aSHsV3kqKgeSj7', files: true });
     expect(
@@ -797,7 +976,16 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
   const asStationControl = (record: OpenCodeReplayRecord) =>
     record.path === '/api/experimental/mcp/station-echo'
       ? { ...record, path: '/api/experimental/mcp/station-control' }
-      : record;
+      : record.path === '/api/mcp' && record.method === 'GET'
+        ? {
+            ...record,
+            response: {
+              data: [
+                { name: 'station-control', status: { status: 'connected' } },
+              ],
+            },
+          }
+        : record;
 
   /** Station's tool servers for a thread: the built-in station-control, by HTTP. */
   function stationTools(tokens: Record<string, string>) {
@@ -834,8 +1022,28 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
 
   test("a session's Station tool servers are added to its OpenCode server before the session, and their credentials go nowhere else", async () => {
     const tools = stationTools({ 'thread-1': 'tok-session-one' });
+    let statusReads = 0;
     const h = await setup(
-      { scenario: 'mcp-add', rewrite: asStationControl },
+      {
+        scenario: 'mcp-add',
+        rewrite: asStationControl,
+        respond: (request) => {
+          if (request.method !== 'GET' || request.path !== '/api/mcp') return;
+          return {
+            status: 200,
+            body: {
+              data: [
+                {
+                  name: 'station-control',
+                  status: {
+                    status: ++statusReads === 1 ? 'pending' : 'connected',
+                  },
+                },
+              ],
+            },
+          };
+        },
+      },
       tools.options,
     );
     await h.start();
@@ -863,6 +1071,11 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(
       writes.indexOf('PUT /api/experimental/mcp/station-control'),
     ).toBeLessThan(writes.indexOf('POST /api/session'));
+    expect(
+      writes
+        .slice(0, writes.indexOf('POST /api/session'))
+        .filter((write) => write === 'GET /api/mcp'),
+    ).toHaveLength(2);
     // Its server is keyed by the session's tool servers.
     expect(h.leaser.acquired[0]?.mcpDigest).not.toBe(openCodeMcpDigest([]));
     const { turnId } = await h.turn('DO_MCP');
@@ -1025,6 +1238,333 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(completed).toMatchObject({ finishReason: 'stop' });
   });
 
+  test('synthetic text, tool, text parts within one assistant message retain both text ordinals', async () => {
+    const h = await setup({
+      scenario: 'basic',
+      omit: (record) =>
+        record.event?.type === 'session.execution.succeeded' ||
+        record.kind === 'sse-close',
+    });
+    await h.start();
+    const { turnId } = await h.turn('hello basic');
+    await h.waitFor((e) => e.method === 'token-usage.updated');
+    const sessionID = recordedSessionId('basic');
+    const assistantMessageID = 'msg_1d71adc1f001pAM06JQG2JhsQi';
+    const data = { sessionID, assistantMessageID };
+    h.replay.push({
+      type: 'session.tool.input.started',
+      data: { ...data, id: 'call_between', name: 'read' },
+    });
+    h.replay.push({
+      type: 'session.tool.called',
+      data: {
+        ...data,
+        id: 'call_between',
+        input: { path: 'a.txt' },
+        executed: false,
+      },
+    });
+    h.replay.push({
+      type: 'session.tool.success',
+      data: { ...data, id: 'call_between', output: 'read result' },
+    });
+    h.replay.push({
+      type: 'session.text.started',
+      data: { ...data, ordinal: 1 },
+    });
+    h.replay.push({
+      type: 'session.text.delta',
+      data: { ...data, ordinal: 1, delta: ' after tool' },
+    });
+    h.replay.push({
+      type: 'session.text.ended',
+      data: { ...data, ordinal: 1, text: ' after tool' },
+    });
+    h.replay.push({ type: 'session.execution.succeeded', data: { sessionID } });
+    await h.waitFor(completedFor(turnId));
+    expect(turnText(h.events, turnId)).toBe(
+      'mock reply: hello basic after tool',
+    );
+    expect(
+      h.events.find(
+        (e) => e.method === 'tool.completed' && e.toolCallId === 'call_between',
+      ),
+    ).toMatchObject({ status: 'success', toolName: 'read' });
+    expect(
+      new Set(
+        h.events
+          .filter(
+            (e) => e.method === 'content.text-delta' && e.turnId === turnId,
+          )
+          .map((e) => e.itemId),
+      ).size,
+    ).toBe(2);
+  });
+
+  test('a reply after reasoning streams as text, beside its reasoning', async () => {
+    const h = await setup({ scenario: 'reasoning' });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_THINK now',
+    });
+    const completed = await h.waitFor(completedFor(turnId));
+    // OpenCode numbers reasoning and text parts apart: both are ordinal 0.
+    expect(finalAssistantText('reasoning')).toBe('thought reply');
+    expect(turnText(h.events, turnId)).toBe('thought reply');
+    expect(completed).toMatchObject({ outputText: 'thought reply' });
+    const reasoning = h.events.filter(
+      (event) =>
+        event.method === 'content.reasoning-delta' && event.turnId === turnId,
+    );
+    expect(reasoning.map((event) => event.delta).join('')).toBe(
+      'Thinking it over.',
+    );
+    const textItems = new Set(
+      h.events
+        .filter(
+          (event) =>
+            event.method === 'content.text-delta' && event.turnId === turnId,
+        )
+        .map((event) => event.itemId),
+    );
+    expect(textItems.size).toBe(1);
+    expect(textItems.has(reasoning[0]?.itemId)).toBe(false);
+    expect(h.replay.misses).toEqual([]);
+  });
+
+  test('after a feed drop, a reply that followed reasoning streams on to what OpenCode kept', async () => {
+    const h = await setup({ scenario: 'reasoning-reconnect' });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_THINK_SLOW stream',
+    });
+    await h.waitFor(completedFor(turnId), 10_000);
+    const kept = finalAssistantText('reasoning-reconnect');
+    expect(kept).toMatch(/^t0 t1 .*t19 $/);
+    expect(turnText(h.events, turnId)).toBe(kept);
+  });
+
+  test('a reply after reasoning that ended while the feed was down is caught up once', async () => {
+    // The reads Station makes on reconnect were recorded before the turn
+    // ended; the history read after it holds the finished reply.
+    const ended =
+      loadOpenCodeFixture('reasoning-reconnect').find(
+        (record) => record.event?.type === 'session.execution.succeeded',
+      )?.t ?? 0;
+    expect(ended).toBeGreaterThan(0);
+    const h = await setup({
+      scenario: 'reasoning-reconnect',
+      fallbacks: ['basic', 'catalog', 'mcp'],
+      // As in `reconnect`: tap B shows nothing, and the reads on reconnect
+      // find the turn finished, so its text comes from history alone.
+      omit: (record) =>
+        (record.tap === 'B' &&
+          record.kind === 'sse' &&
+          record.event?.type !== 'server.connected') ||
+        (record.kind === 'http' &&
+          record.method === 'GET' &&
+          record.t < ended &&
+          (record.path === '/api/session/active' ||
+            record.path?.includes('/message?order=asc') === true)),
+    });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_THINK_SLOW stream',
+    });
+    const completed = await h.waitFor(completedFor(turnId), 10_000);
+    expect(turnText(h.events, turnId)).toBe(
+      finalAssistantText('reasoning-reconnect'),
+    );
+    expect(completed).toMatchObject({ finishReason: 'stop' });
+  });
+
+  test.each(['unqualified', 'mock/missing'])(
+    'an unavailable requested model %s refuses before creating a session',
+    async (modelId) => {
+      const h = await setup({ scenario: 'basic' });
+      await expect(h.start(undefined, { modelId })).rejects.toThrow(
+        /provider\/model|unavailable/,
+      );
+      expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+    },
+  );
+
+  test('native and ACP resume bind to the effective custom home when XDG data home is absent', async () => {
+    const h = await setup(
+      { scenario: 'basic' },
+      { launchEnv: async () => ({ HOME: '/replay/custom-home' }) },
+    );
+    const session = await h.start();
+    expect(session.resumeCursor).toMatchObject({
+      bindingKey: nativeResumeBindingKey(
+        'opencode',
+        '/replay/custom-home/.local/share/opencode',
+        null,
+      ),
+    });
+    const fallback = await setup(
+      { scenario: 'basic' },
+      {
+        nativeEnabled: () => false,
+        launchEnv: async () => ({ HOME: '/replay/custom-home' }),
+      },
+    );
+    await expect(
+      fallback.start(undefined, { resumeCursor: session.resumeCursor }),
+    ).resolves.toBeDefined();
+  });
+
+  test('a catalog model is applied to a newly created session', async () => {
+    const h = await setup({ scenario: 'basic' });
+    await h.start(undefined, { modelId: 'mock/mock-1' });
+    expect(h.replay.made('POST', '/api/session')[0]?.body).toMatchObject({
+      model: { providerID: 'mock', id: 'mock-1' },
+    });
+  });
+
+  test.each([204, 500])(
+    'a per-turn model change must be accepted before the prompt (%s)',
+    async (status) => {
+      const h = await setup({
+        scenario: 'basic',
+        respond: (request) =>
+          request.path.endsWith('/model') && request.method === 'POST'
+            ? { status }
+            : undefined,
+      });
+      await h.start(undefined, { modelId: 'mock/mock-1' });
+      const sending = h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'hello basic',
+        modelId: 'mock/mock-1',
+      });
+      if (status === 500) {
+        await expect(sending).rejects.toThrow(
+          'did not confirm the model change',
+        );
+        await expect(h.turn('hello basic')).rejects.toThrow(
+          'Select a model again',
+        );
+        expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
+          0,
+        );
+      } else {
+        const { turnId } = await sending;
+        await h.waitFor(completedFor(turnId));
+        expect(
+          h.replay.made('POST', '/api/session/:id/model')[0]?.body,
+        ).toEqual({ model: { providerID: 'mock', id: 'mock-1' } });
+        const paths = h.replay.requests
+          .filter((r) => r.method === 'POST')
+          .map((r) => r.path);
+        expect(paths.findIndex((p) => p.endsWith('/model'))).toBeLessThan(
+          paths.findIndex((p) => p.endsWith('/prompt')),
+        );
+      }
+    },
+  );
+
+  test.each(['catalog', 'model'])(
+    'Stop wins while native %s preparation is held',
+    async (heldOperation) => {
+      let release = false;
+      const h = await setup({
+        scenario: 'basic',
+        holdUntil: (r) =>
+          (
+            heldOperation === 'catalog'
+              ? r.method === 'GET' && r.path === '/api/model'
+              : r.method === 'POST' && r.path.endsWith('/model')
+          )
+            ? () => release
+            : undefined,
+        respond: (r) =>
+          r.method === 'POST' && r.path.endsWith('/model')
+            ? { status: 204 }
+            : undefined,
+      });
+      await h.start();
+      const sending = h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'must not run',
+        modelId: 'mock/mock-1',
+      });
+      const outcome = sending.catch((e: unknown) => e);
+      await h.waitFor(
+        () =>
+          h.replay.made(
+            heldOperation === 'catalog' ? 'GET' : 'POST',
+            heldOperation === 'catalog'
+              ? '/api/model'
+              : '/api/session/:id/model',
+          ).length > 0,
+      );
+      await h.adapter.stopSession('thread-1');
+      release = true;
+      expect(String(await outcome)).toContain('has stopped');
+      expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
+    },
+  );
+
+  test('an exact delivery receipt wins over a lost steer POST response', async () => {
+    const home = makeTempDir('opencode-positive-receipt-');
+    let deliveryObserved = false;
+    const h = await setup(
+      {
+        scenario: 'steer',
+        omit: withdrawnSteer,
+        holdUntil: (r) =>
+          (r.body as { delivery?: string })?.delivery === 'steer'
+            ? (frame) =>
+                deliveryObserved &&
+                frame.event?.type === 'session.inbox.delivered' &&
+                frame.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq'
+            : undefined,
+        respond: (r) =>
+          (r.body as { delivery?: string })?.delivery === 'steer'
+            ? { status: 500 }
+            : undefined,
+      },
+      { managedWorkspaceHomeDir: home },
+    );
+    const session = await h.start();
+    const { turnId } = await h.turn('DO_BASH steer');
+    const opened = await h.waitFor((e) => e.method === 'request.opened');
+    const steering = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
+    await h.waitFor(
+      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      opened.requestId as string,
+      'accept',
+    );
+    await h.waitFor(
+      (event) => event.method === 'turn.started' && event.inputKind === 'steer',
+    );
+    deliveryObserved = true;
+    await expect(steering).resolves.toBeUndefined();
+    await h.waitFor(completedFor(turnId));
+    expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toHaveLength(
+      0,
+    );
+    await h.adapter.stopSession('thread-1');
+    const resumed = await setup(
+      {
+        scenario: 'basic',
+        fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
+        ungated: (r) => r.path === '/api/session',
+      },
+      { managedWorkspaceHomeDir: home },
+    );
+    await expect(
+      resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+    ).resolves.toBeDefined();
+  });
+
   test('/compact runs OpenCode compaction as the command turn', async () => {
     const h = await setup({ scenario: 'compact' });
     await h.start();
@@ -1061,6 +1601,70 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         { name: 'echo', state: 'ready', scope: 'engine-config' },
       ],
     });
+  });
+
+  test('governed preflight and start inspect the project before acquiring a serve lease', async () => {
+    const cwd = realpathSync(makeTempDir('opencode-governed-launch-'));
+    mkdirSync(join(cwd, '.git'));
+    const configDir = join(cwd, '.opencode');
+    writeFileSync(configDir, 'ordinary text');
+    const h = await setup(
+      { scenario: 'basic' },
+      { findProjectCode: undefined },
+      cwd,
+    );
+    const modelOptions = { approvalMode: 'ask' };
+    const input = {
+      threadId: 'thread-1',
+      provider: 'opencode' as const,
+      cwd,
+      metadata: { connectionId: 'opencode' },
+      modelOptions,
+    };
+    const refusal = {
+      code: 'acp_approval_governance_refused',
+      message: expect.stringContaining(configDir),
+    };
+
+    await expect(h.adapter.preflightStart(input)).rejects.toMatchObject(
+      refusal,
+    );
+    expect(h.leaser.acquired).toHaveLength(0);
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(0);
+
+    unlinkSync(configDir);
+    writeFileSync(join(cwd, 'opencode.json'), '{"formatter":false}');
+    await h.adapter.preflightStart(input);
+    expect(h.leaser.acquired).toHaveLength(1);
+
+    writeFileSync(configDir, 'ordinary text');
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(1);
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+
+    unlinkSync(configDir);
+    const session = await h.adapter.startSession(input);
+    expect(session.resumeCursor).toMatchObject({ transport: 'native' });
+    expect(h.leaser.acquired).toHaveLength(2);
+  });
+
+  test('cancelling a governed preflight releases its retained serve lease', async () => {
+    const h = await setup({ scenario: 'basic' });
+    const cancel = new AbortController();
+    await h.adapter.preflightStart({
+      threadId: 'thread-1',
+      provider: 'opencode',
+      cwd: '/replay/proj',
+      metadata: { connectionId: 'opencode' },
+      modelOptions: { approvalMode: 'ask' },
+      signal: cancel.signal,
+    });
+    expect(h.leaser.acquired).toHaveLength(1);
+    cancel.abort();
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
   });
 
   test('a governed start sends Station rules and pins a governed agent', async () => {
@@ -1305,17 +1909,16 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       agent: 'plan',
     });
     await h.waitFor(completedFor(plan.turnId));
-    // The start's own configured event comes first; this is the engine's.
     expect(
       await h.waitFor(
         (event) =>
-          event.method === 'session.configured' &&
-          (event.metadata as { mode?: unknown } | undefined)?.mode === 'plan',
+          event.method === 'session.engine-mode-observed' &&
+          event.modeId === 'plan',
       ),
     ).toBeDefined();
     expect(
       h.events.filter((event) => event.method === 'session.configured').at(-1),
-    ).toMatchObject({ metadata: { mode: 'plan' } });
+    ).toMatchObject({ cwd: '/replay/proj', model: 'mock/mock-1' });
   });
 
   /** Fails the first `count` requests `match` names with a 500. */
@@ -1938,50 +2541,67 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ).toEqual([steerId]);
   });
 
-  test('a steer still in flight when the session stops is withdrawn once its prompt lands', async () => {
-    const steerId = 'msg_1d71b024d001crEY1solwrshJq';
-    let released = false;
-    let withdrawn = false;
-    const h = await setup({
-      scenario: 'steer',
-      omit: withdrawnSteer,
-      holdUntil: (request) => {
-        if (JSON.stringify(request.body ?? null).includes('STEER-delivered'))
-          return () => released;
-        // The stop's interrupt answers only once the steer, its prompt landed,
-        // has taken its own item back, so the stop's sweep runs after that:
-        // it must not take the item back a second time.
-        if (request.method === 'DELETE' && request.path.includes('/inbox/'))
-          withdrawn = true;
-        if (request.method === 'POST' && request.path.endsWith('/interrupt'))
-          return () => withdrawn;
-        return undefined;
-      },
-    });
-    await h.start();
-    const { turnId } = await h.turn('DO_BASH steer');
-    await h.waitFor((event) => event.method === 'request.opened');
-    const steer = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
-    await h.waitFor(
-      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
-    );
-    // Refused as soon as its own withdrawal is done, which can be before
-    // the stop returns.
-    const refused = expect(steer).rejects.toBeInstanceOf(
-      ProviderTurnEndedError,
-    );
-    released = true;
-    await h.adapter.stopSession('thread-1');
-    await refused;
-    await h.waitFor(
-      () => h.replay.made('DELETE', '/api/session/:id/inbox/:id').length > 0,
-    );
-    expect(
-      h.replay
-        .made('DELETE', '/api/session/:id/inbox/:id')
-        .map((request) => request.path.split('/').at(-1)),
-    ).toEqual([steerId]);
-  });
+  test.each([204, 500])(
+    'a stopped in-flight steer keeps resume custody until withdrawal (%s)',
+    async (deleteStatus) => {
+      const home = makeTempDir('opencode-held-custody-');
+      let released = false;
+      const h = await setup(
+        {
+          scenario: 'steer',
+          omit: withdrawnSteer,
+          respond: (r) =>
+            r.method === 'DELETE' && r.path.includes('/inbox/')
+              ? { status: deleteStatus }
+              : undefined,
+          holdUntil: (r) =>
+            JSON.stringify(r.body ?? null).includes('STEER-delivered')
+              ? () => released
+              : undefined,
+        },
+        { managedWorkspaceHomeDir: home },
+      );
+      const session = await h.start();
+      const { turnId } = await h.turn('DO_BASH steer');
+      await h.waitFor((e) => e.method === 'request.opened');
+      const steering = h.adapter.steerTurn(
+        'thread-1',
+        'STEER-delivered',
+        turnId,
+      );
+      const outcome = steering.then(
+        () => 'delivered',
+        (error: unknown) => error,
+      );
+      await h.waitFor(
+        () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+      );
+      await h.adapter.stopSession('thread-1');
+      const resumed = await setup(
+        {
+          scenario: 'basic',
+          fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
+          ungated: (r) => r.path === '/api/session',
+        },
+        { managedWorkspaceHomeDir: home },
+      );
+      await expect(
+        resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+      ).rejects.toThrow('unconfirmed steering input');
+      released = true;
+      if (deleteStatus === 500) {
+        expect(String(await outcome)).toContain('withdrawal is unconfirmed');
+        await expect(
+          resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+        ).rejects.toThrow('unconfirmed steering input');
+      } else {
+        expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
+        await expect(
+          resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+        ).resolves.toBeDefined();
+      }
+    },
+  );
 
   test("the plan agent's deny survives Station's rules under Auto: OpenCode asks and Station rejects", async () => {
     const h = await setup({ scenario: 'plan-deny' });
@@ -2137,6 +2757,48 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const completed = await h.waitFor(completedFor(turnId), 10_000);
     expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
     expect(completed).toMatchObject({ finishReason: 'stop' });
+  });
+
+  test('a native execution displaced during a feed gap keeps its observed completion', async () => {
+    const h = await setup({ scenario: 'basic' });
+    await h.start();
+    const session = (await h.adapter.listSessions())[0]!;
+    const native = Reflect.get(h.adapter, 'native').get(
+      session.threadId,
+    ).native;
+    // Arrange the two live slots at the reconnect boundary. The production
+    // reconciliation and emitter below supply the actual terminal identity.
+    const createTurn = Reflect.get(native, 'createTurn').bind(native);
+    Reflect.set(native, 'turn', createTurn('older-execution', 'provider'));
+    Reflect.set(native, 'pendingStart', {
+      ...createTurn('delivered-prompt', 'station'),
+      messageId: 'delivered-message',
+    });
+    try {
+      Reflect.get(native, 'adoptStartedDuringGap').call(native, [
+        { id: 'delivered-message' },
+      ]);
+      const terminal = await h.waitFor(completedFor('older-execution'));
+      expect(terminal).toMatchObject({
+        provider: 'opencode',
+        finishReason: 'other',
+      });
+      expect(terminal).not.toHaveProperty('stopReason');
+      expect(
+        projectSessionLifecycle({ session, events: h.events }),
+      ).toMatchObject({ lifecycleState: 'idle' });
+      expect(resolveTurnCompletionOutcome(terminal)).toBe('done');
+      expect(
+        projectRuntimeEventsToMessages(h.events).flatMap((row) => row.parts),
+      ).not.toContainEqual(
+        expect.objectContaining({
+          text: expect.stringContaining('Result unconfirmed'),
+        }),
+      );
+      expect(native.activeTurnId).toBe('delivered-prompt');
+    } finally {
+      Reflect.set(native, 'turn', undefined);
+    }
   });
 
   test('past 50 messages, a prompt whose execution started in a feed gap is adopted', async () => {
@@ -2295,7 +2957,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const sessionId = recordedSessionId('basic');
     const h = await setup({
       scenario: 'basic',
-      fallbacks: ['mode-switch', 'catalog', 'mcp'],
+      fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
       // Resuming creates no session: the feed does not wait for one.
       ungated: (record) => record.path === '/api/session',
     });
@@ -2322,7 +2984,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const sessionId = recordedSessionId('basic');
     const h = await setup({
       scenario: 'basic',
-      fallbacks: ['mode-switch', 'catalog', 'mcp'],
+      fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
       // Resuming creates no session: the feed does not wait for one.
       ungated: (record) => record.path === '/api/session',
     });
@@ -2408,33 +3070,75 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
 
   const MOVED_TO = '{PROJ}/sub';
 
-  test("Code Mode's session move is not offered to a governed session: Station's rules deny it and OpenCode leaves it out", async () => {
+  test.each(['confined', 'project'])(
+    'Code Mode cannot move a %s session',
+    async (scope) => {
+      const h = await setup({
+        scenario: 'move-denied',
+        respond: childGovernance({ build: [] }),
+      });
+      if (scope === 'confined') await h.start({ approvalMode: 'ask' });
+      else
+        await h.start(undefined, {
+          metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+        });
+      const body = h.replay.made('POST', '/api/session')[0]?.body as {
+        permissions: OpenCodeNativeRule[];
+      };
+      expect(body.permissions.at(-1)).toEqual({
+        action: 'opencode_session_move',
+        resource: '*',
+        effect: 'deny',
+      });
+      const { turnId } = await h.turn('DO_MOVE sub-denied');
+      await h.waitFor(completedFor(turnId));
+      // The engine, under that rule (`move-denied` capture): the tool is unknown.
+      expect(
+        h.events.find(
+          (event) =>
+            event.method === 'tool.completed' && event.turnId === turnId,
+        )?.output,
+      ).toEqual(
+        expect.stringContaining("Unknown tool 'opencode.session_move'"),
+      );
+      expect(
+        h.events.some(
+          (event) => event.code === OPENCODE_SESSION_MOVED_UNGOVERNABLE,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  test('a Project session moved externally stops without rebinding its resume cursor', async () => {
+    const h = await setup({ scenario: 'move' });
+    const session = await h.start(undefined, {
+      metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+    });
+    await h.turn('DO_MOVE sub');
+    await h.waitFor(
+      (event) => event.code === 'OPENCODE_PROJECT_WORKSPACE_MOVED',
+    );
+    expect(session.resumeCursor).toMatchObject({ cwd: '/replay/proj' });
+  });
+
+  test('cold Project recovery refuses a native session whose stored checkout moved', async () => {
+    const sessionId = recordedSessionId('move');
     const h = await setup({
-      scenario: 'move-denied',
-      respond: childGovernance({ build: [] }),
+      scenario: 'move',
+      ungated: (record) => record.method === 'GET',
+      respond: (request) =>
+        request.path === `/api/session/${sessionId}/inbox`
+          ? { status: 200, body: { data: [] } }
+          : undefined,
     });
-    await h.start({ approvalMode: 'ask' });
-    const body = h.replay.made('POST', '/api/session')[0]?.body as {
-      permissions: OpenCodeNativeRule[];
-    };
-    expect(body.permissions.at(-1)).toEqual({
-      action: 'opencode_session_move',
-      resource: '*',
-      effect: 'deny',
-    });
-    const { turnId } = await h.turn('DO_MOVE sub-denied');
-    await h.waitFor(completedFor(turnId));
-    // The engine, under that rule (`move-denied` capture): the tool is unknown.
-    expect(
-      h.events.find(
-        (event) => event.method === 'tool.completed' && event.turnId === turnId,
-      )?.output,
-    ).toEqual(expect.stringContaining("Unknown tool 'opencode.session_move'"));
-    expect(
-      h.events.some(
-        (event) => event.code === OPENCODE_SESSION_MOVED_UNGOVERNABLE,
-      ),
-    ).toBe(false);
+    await expect(
+      h.start(undefined, {
+        metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+        resumeCursor: nativeCursor(sessionId, 'native'),
+      }),
+    ).rejects.toThrow('OpenCode moved this session');
+    expect(h.replay.made('PATCH', '/api/session/:id')).toHaveLength(0);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
   });
 
   test('a governed session OpenCode moves into a directory whose configuration runs code is stopped, with a warning that says why', async () => {
@@ -2948,7 +3652,11 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
   });
 
   test("an Agent's Station tool policy that requires a person puts an edit Auto would answer to the person", async () => {
-    const policy = stagedPolicy(() => ({ behavior: 'ask', required: true }));
+    const policy = stagedPolicy(() => ({
+      behavior: 'ask',
+      required: true,
+      guardianReason: 'The only-if-asked rule requires a person.',
+    }));
     const h = await setup(
       { scenario: 'governed' },
       { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
@@ -2960,7 +3668,10 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
         (event) =>
           event.method === 'request.opened' && event.turnId === edit.turnId,
       ),
-    ).toMatchObject({ payload: { toolName: 'edit' } });
+    ).toMatchObject({
+      guardianReason: 'The only-if-asked rule requires a person.',
+      payload: { toolName: 'edit' },
+    });
     expect(replies(h)).toEqual([]);
     expect(policy.calls).toHaveLength(1);
   });
@@ -5223,6 +5934,102 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
     };
   const warnings = (events: Event[]) =>
     events.filter((event) => event.method === 'runtime.warning');
+
+  test.each([
+    { delivered: false, running: true, posting: false },
+    { delivered: true, running: false, posting: false },
+    { delivered: false, running: true, posting: true },
+  ])(
+    'reconnect proves steer delivery by exact history id ($delivered, running=$running, posting=$posting)',
+    async ({ delivered, running, posting }) => {
+      const steerId = 'msg_1e28b1steerHistoryProof01';
+      const ids = [...recordedPromptIds('reconnect'), steerId];
+      let replay: OpenCodeServeReplay | undefined;
+      let releasePost = !posting;
+      const h = await setup(
+        {
+          scenario: 'reconnect',
+          omit: (record) =>
+            record.tap === 'B' &&
+            record.kind === 'sse' &&
+            record.event?.type !== 'server.connected' &&
+            record.event?.type !== 'session.execution.succeeded',
+          rewrite: (record) =>
+            record.tap === 'B' &&
+            record.event?.type === 'session.execution.succeeded'
+              ? {
+                  ...record,
+                  event: {
+                    type: 'session.model.selected',
+                    data: {
+                      sessionID: RECONNECT_ROOT,
+                      model: { providerID: 'barrier', id: 'done' },
+                    },
+                  },
+                }
+              : record,
+          historyRewrite: (history) =>
+            delivered
+              ? [
+                  ...history,
+                  {
+                    id: steerId,
+                    role: 'user',
+                    content: [{ type: 'text', text: 'STEER history proof' }],
+                  },
+                ]
+              : history,
+          holdFrame: (record) =>
+            record.kind === 'sse-close' && record.tap === 'A'
+              ? () =>
+                  (replay?.made('POST', '/api/session/:id/prompt').length ??
+                    0) >= 2
+              : undefined,
+          holdUntil: (request) =>
+            request.method === 'POST' &&
+            (request.body as { delivery?: string })?.delivery === 'steer'
+              ? () => releasePost
+              : undefined,
+          respond: (request) => {
+            if (
+              request.method === 'GET' &&
+              request.path === '/api/session/active'
+            )
+              return {
+                status: 200,
+                body: { data: running ? { [RECONNECT_ROOT]: {} } : {} },
+              };
+            if (request.method === 'GET' && request.path.endsWith('/inbox'))
+              return { status: 200, body: { data: [] } };
+            return undefined;
+          },
+        },
+        { newMessageId: () => ids.shift()! },
+      );
+      replay = h.replay;
+      await h.start();
+      const { turnId } = await h.turn('DO_SLOW stream');
+      await h.waitFor((e) => e.method === 'content.text-delta');
+      let outcome = 'pending';
+      const steering = h.adapter
+        .steerTurn('thread-1', 'STEER history proof', turnId)
+        .then(
+          () => {
+            outcome = 'delivered';
+          },
+          () => {
+            outcome = 'refused';
+          },
+        );
+      await h.waitFor(
+        (e) => e.method === 'session.configured' && e.model === 'barrier/done',
+      );
+      expect(outcome).toBe(delivered ? 'delivered' : 'pending');
+      releasePost = true;
+      await h.adapter.stopSession('thread-1');
+      await steering;
+    },
+  );
 
   test('a reconnect that cannot read which sessions run settles nothing: the live turn, a running child and a queued steer all stay as they were', async () => {
     const STEER = 'msg_1e28b1steerKeptAcrossGap01';

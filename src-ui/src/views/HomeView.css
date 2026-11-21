@@ -7,7 +7,7 @@
     var(--k-space-3),
     calc(clamp(24px, 5vw, 64px) - var(--dock-bottom-clearance, 0px))
   );
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .home-view__intro {
@@ -275,6 +275,10 @@
   }
   .home-view__start .start-composer__input {
     min-height: 44px;
+  }
+  .home-view__group-label {
+    padding-block-start: var(--k-space-4);
+    margin-block-end: var(--k-space-2);
   }
   .home-view__actions {
     grid-template-columns: 1fr;

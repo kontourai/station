@@ -1,0 +1,9 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Only the pull request agent feedback preview row gained where Project defaults live; the agent-efficiency and feature-preview guidance that cites settings.md is unaffected.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Only the pull request agent feedback preview row gained where Project defaults live; the agent-efficiency and feature-preview guidance that cites settings.md is unaffected.","inputs":["docs/user/settings.md"]}
+  ]
+}

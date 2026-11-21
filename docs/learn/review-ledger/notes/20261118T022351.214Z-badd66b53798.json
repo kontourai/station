@@ -1,0 +1,7 @@
+{
+  "revision": "b1ca7103dc43e42a169c6afde90125602220340f",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed the connected-agent runner and testing guide delta against this document's verification guidance. The connected macro requests heartbeat diagnostics and waits for the projection invocation before starting the other six suites. Focused CLI defaults, the test resource manifest, and promotion evidence routing are unchanged. Runner, reporter and worktree suites passed 43 tests. The full connected-agent suite was not exercised.","inputs":["AGENTS.md","scripts/run-focused-tests.mjs"]}
+  ]
+}

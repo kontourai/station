@@ -205,7 +205,7 @@ async function observeEngineLoginCapabilities(
     [...probe.helpArgs],
     ...(Object.keys(launcherEnv).length > 0 ? [launcherEnv] : []),
   );
-  if (!result) {
+  if (!result || result.timedOut || result.outputTruncated) {
     return {
       engine,
       evidence: [],
@@ -253,9 +253,9 @@ export type EngineLoginCapabilityObserver = (
  * An observer that asks each engine's CLI how it can be signed in, and owns
  * the cache and in-flight probes for its answers.
  *
- * Bounded (the probe inherits `runCliCommand`'s timeout), cached for
- * {@link ENGINE_LOGIN_CAPABILITY_TTL_MS}, and single-flight: concurrent
- * callers share one process rather than each spawning their own.
+ * Bounded by `runCliCommand`'s timeout and single-flight. Complete observations
+ * are cached for {@link ENGINE_LOGIN_CAPABILITY_TTL_MS}. Unavailable results
+ * can be retried immediately after installation or a transient probe failure.
  */
 export function createEngineLoginCapabilityObserver(
   deps: EngineLoginCapabilityDeps = defaultEngineLoginCapabilityDeps(),
@@ -275,7 +275,9 @@ export function createEngineLoginCapabilityObserver(
     if (existing) return existing;
     const pending = observeEngineLoginCapabilities(engine, deps)
       .then((value) => {
-        cache.set(engine, { observedAtMs: nowMs, value });
+        if (!value.unavailableReason) {
+          cache.set(engine, { observedAtMs: nowMs, value });
+        }
         return value;
       })
       .finally(() => {

@@ -15,7 +15,10 @@ import type {
 import type { ProviderFailure } from '@kontourai/station-contracts/provider-failure';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
-import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
+import {
+  ProviderSessionStartingError,
+  SessionStartRefusedError,
+} from '../../providers/adapter-shape.js';
 import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -220,6 +223,8 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /** Accepted foreground submission key, supplied by server composition only. */
+  pendingStartClientTurnId?: string;
   /**
    * A person's own interactive chat, derived by the `/chat` route
    * (`ForegroundMessageInput.personChatStart`). Never accepted from a body.
@@ -624,9 +629,7 @@ export function createSessionCommandModule(
       if (afterAdmission) return afterAdmission;
 
       if (!deps.sessionState.claimStart(input.threadId)) {
-        throw new Error(
-          `Session is already starting for thread: ${input.threadId}`,
-        );
+        throw new ProviderSessionStartingError();
       }
       let adapter: ProviderAdapterShape | undefined;
       try {

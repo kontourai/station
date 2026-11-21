@@ -1135,6 +1135,17 @@ export interface WebPushSubscription {
   };
 }
 
+/** Canonical input to the SHA-256 registration check, never a wire payload. */
+export function webPushRegistrationFingerprintInput(
+  subscription: WebPushSubscription,
+): string {
+  return JSON.stringify([
+    subscription.endpoint,
+    subscription.keys.p256dh,
+    subscription.keys.auth,
+  ]);
+}
+
 export interface DevicePairingExchangeRequest {
   offerId: string;
   proof: string;
@@ -1220,8 +1231,20 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /**
+   * #5067: the Project Library (`/api/projects/:slug/library…`): uploads and
+   * kept Task outputs in one list. Absent on hosted deployments.
+   */
+  projectLibrary?: boolean;
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
+  /**
+   * Continue a conversation on a paired Station: this Station serves
+   * `POST /api/environments/peers/:id/conversation-handoffs` (the source side)
+   * and `POST /agents/:slug/conversation-imports` (the receiver side). Both
+   * Stations must advertise it.
+   */
+  conversationStationHandoff?: boolean;
   /** Child steering and its separately paged instruction history. */
   childWorkSteering?: boolean;
   /** Consented private terminal outcome reads. */
@@ -1302,6 +1325,16 @@ export interface StationCapabilityFlags {
    * without them answers 404; a client keeps the per-room stream instead.
    */
   projectRoomLive?: boolean;
+  /**
+   * #5063: the `#general` coordinator's routes: its cards
+   * (`GET /api/projects/:slug/room/coordinator`), Start
+   * (`POST …/coordinator/proposals/:proposalId/start`), the status sweep
+   * (`POST …/coordinator/sweep`) and the Project's limits
+   * (`PUT /api/projects/:slug/room-coordinator`). A host without them answers
+   * 404; a client shows no card or sweep. The preview still decides whether
+   * they answer.
+   */
+  projectRoomCoordinator?: boolean;
   /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope

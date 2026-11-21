@@ -22,12 +22,12 @@ const facts = vi.hoisted(() => ({
   supervisesBundledServer: true,
   apiBase: 'http://127.0.0.1:4141',
   bundled: null as null | Record<string, unknown>,
-  sessions: {
+  turnsRead: {
     data: undefined as unknown,
     isError: false,
     isFetching: false,
   },
-  refetch: vi.fn(),
+  runningTurnsQuery: vi.fn(),
 }));
 vi.mock('../../../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({
@@ -41,19 +41,14 @@ vi.mock('../../../platform/useBundledServerStatus', () => ({
   useBundledServerStatus: () => facts.bundled,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useOrchestrationSessionsQuery: () => ({
-    ...facts.sessions,
-    refetch: facts.refetch,
-  }),
+  useServerUpdateRunningTurnsQuery: (
+    apiBase: string,
+    options: { enabled: boolean },
+  ) => {
+    facts.runningTurnsQuery(apiBase, options);
+    return facts.turnsRead;
+  },
 }));
-
-function session(
-  threadId: string,
-  displayTitle: string,
-  hasActiveTurn: boolean,
-) {
-  return { threadId, displayTitle, hasActiveTurn, provider: 'claude' };
-}
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -61,15 +56,17 @@ beforeEach(() => {
   facts.supervisesBundledServer = true;
   facts.apiBase = 'http://127.0.0.1:4141';
   facts.bundled = null;
-  facts.sessions = { data: [], isError: false, isFetching: false };
+  facts.turnsRead = {
+    data: { turns: [], hiddenCount: 0 },
+    isError: false,
+    isFetching: false,
+  };
 });
 
 function open(state = desktopUpdateFixture('ready')) {
   const onClose = vi.fn();
   render(<DesktopUpdateRestartDialog state={state} onClose={onClose} />);
-  const dialog = screen.getByRole('dialog', {
-    name: 'Restart Station to install 0.1.12?',
-  });
+  const dialog = screen.getByRole('dialog');
   return { dialog, onClose };
 }
 
@@ -79,53 +76,54 @@ describe('DesktopUpdateRestartDialog', () => {
       ownership: 'sidecar',
       apiBase: 'http://127.0.0.1:4141/',
     };
-    facts.sessions.data = [
-      session('t-1', 'Refactor the importer', true),
-      session('t-2', 'Idle chat', false),
-      session('t-3', 'Write release notes', true),
-    ];
+    facts.turnsRead.data = {
+      turns: [
+        { sessionId: 't-1', title: 'Refactor the importer' },
+        { sessionId: 't-3', title: 'Write release notes' },
+      ],
+      hiddenCount: 2,
+    };
     const { dialog } = open();
     const body = within(dialog);
     expect(
-      body.getByText(/built-in server runs inside this app/),
+      body.getByText(/built-in server restarts with the app/),
     ).not.toBeNull();
     expect(
-      body.getByText(
-        'These 2 agent turns are running and will be interrupted:',
-      ),
+      body.getByText('Restarting will interrupt 4 running agent turns.'),
     ).not.toBeNull();
     const items = body.getAllByRole('listitem').map((item) => item.textContent);
     expect(items).toEqual(['Refactor the importer', 'Write release notes']);
     expect(body.queryByText(/resume/i)).toBeNull();
-    expect(facts.refetch).toHaveBeenCalled();
-    expect(
-      body.getByText(/installs version 0.1.12 \(you have 0.1.11\)/),
-    ).not.toBeNull();
+    expect(body.getByText('2 running turns are private.')).not.toBeNull();
+    expect(facts.runningTurnsQuery).toHaveBeenCalledWith(facts.apiBase, {
+      enabled: true,
+    });
+    expect(body.getByText('Installed version 0.1.11')).not.toBeNull();
+    expect(body.getByText('Update version 0.1.12')).not.toBeNull();
   });
 
   test('an installed service keeps running, and no turns are listed', () => {
     facts.bundled = { ownership: 'service', apiBase: 'http://127.0.0.1:4141' };
-    facts.sessions.data = [session('t-1', 'Refactor the importer', true)];
     const { dialog } = open();
     const body = within(dialog);
     expect(
-      body.getByText(
-        /runs as a background service on this computer\. It keeps running, and so do its agents\./,
-      ),
+      body.getByText(/Station service and its agents keep running/),
     ).not.toBeNull();
     expect(body.queryByRole('listitem')).toBeNull();
     expect(body.queryByText(/interrupted/)).toBeNull();
+    expect(facts.runningTurnsQuery).toHaveBeenCalledWith(facts.apiBase, {
+      enabled: false,
+    });
   });
 
   test('a server outside the app keeps running', () => {
     // The desktop's own sidecar serves a different address than this window.
     facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:5151' };
     facts.apiBase = 'https://station.example.ts.net';
-    facts.sessions.data = [session('t-1', 'Remote work', true)];
     const { dialog } = open();
     expect(
       within(dialog).getByText(
-        /connected to a Station server that runs outside it/,
+        /connected Station server and its agents keep running/,
       ),
     ).not.toBeNull();
     expect(within(dialog).queryByRole('listitem')).toBeNull();
@@ -133,20 +131,20 @@ describe('DesktopUpdateRestartDialog', () => {
 
   test('an unreported server is unknown, not assumed safe', () => {
     facts.bundled = null;
-    facts.sessions.data = [session('t-1', 'Refactor the importer', true)];
     const { dialog } = open();
     const body = within(dialog);
     expect(
       body.getByText(/could not confirm whether its server restarts/),
     ).not.toBeNull();
-    expect(
-      body.getByText('This agent turn is running and will be interrupted:'),
-    ).not.toBeNull();
+    expect(body.queryByText('Nothing is running right now.')).toBeNull();
+    expect(facts.runningTurnsQuery).toHaveBeenCalledWith(facts.apiBase, {
+      enabled: false,
+    });
   });
 
   test('an unanswered session list is disclosed', () => {
     facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
-    facts.sessions = { data: undefined, isError: true, isFetching: false };
+    facts.turnsRead = { data: undefined, isError: true, isFetching: false };
     const { dialog } = open();
     expect(within(dialog).getByRole('alert').textContent).toMatch(
       /could not list running agent turns/,
@@ -180,7 +178,7 @@ describe('DesktopUpdateRestartDialog', () => {
 
   test('Restart now waits until the running turns are known', async () => {
     facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
-    facts.sessions = { data: undefined, isError: false, isFetching: true };
+    facts.turnsRead = { data: undefined, isError: false, isFetching: true };
     open();
     const restart = screen.getByRole('button', {
       name: 'Restart now',
@@ -226,10 +224,9 @@ describe('DesktopUpdateRestartDialog', () => {
   ])('loopback names compare equal (%s vs %s)', (sidecar, window) => {
     facts.bundled = { ownership: 'sidecar', apiBase: sidecar };
     facts.apiBase = window;
-    facts.sessions.data = [session('t-1', 'Refactor the importer', true)];
     const { dialog } = open();
     expect(
-      within(dialog).getByText(/built-in server runs inside this app/),
+      within(dialog).getByText(/built-in server restarts with the app/),
     ).not.toBeNull();
   });
 
@@ -240,7 +237,6 @@ describe('DesktopUpdateRestartDialog', () => {
   ])('a mismatch on another loopback name (%s) is unknown', (window) => {
     facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
     facts.apiBase = window;
-    facts.sessions.data = [];
     const { dialog } = open();
     expect(
       within(dialog).getByText(/could not confirm whether its server restarts/),
@@ -250,7 +246,6 @@ describe('DesktopUpdateRestartDialog', () => {
   test('another loopback server while a sidecar runs is unknown, not safe', () => {
     facts.bundled = { ownership: 'sidecar', apiBase: 'http://127.0.0.1:4141' };
     facts.apiBase = 'http://localhost:9999';
-    facts.sessions.data = [session('t-1', 'Refactor the importer', true)];
     const { dialog } = open();
     expect(
       within(dialog).getByText(/could not confirm whether its server restarts/),
@@ -262,12 +257,42 @@ describe('DesktopUpdateRestartDialog', () => {
     const { dialog } = open(desktopUpdateFixture('installFailed'));
     const body = within(dialog);
     expect(body.getByRole('alert').textContent).toBe(
-      'The update did not install, and Station did not restart.',
+      'The update could not install. Station is still running.',
     );
     expect(
       body.getByText('failed to move the new app into place'),
     ).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Retry' })).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Retry install' }),
+    ).not.toBeNull();
+  });
+
+  test('an observed full disk gives a recovery step and copies its full diagnostic', async () => {
+    const state = desktopUpdateFixture('installFailed');
+    const diagnostic =
+      'failed to unpack Station Nightly.app/Contents/Resources/library: No space left on device';
+    state.error = {
+      context: 'install',
+      reason: 'disk-full',
+      message: diagnostic,
+      version: '0.1.12',
+    };
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const previousClipboard = navigator.clipboard;
+    Object.assign(navigator, { clipboard: { writeText } });
+    try {
+      const { dialog } = open(state);
+      const body = within(dialog);
+      expect(body.getByRole('alert').textContent).toBe(
+        'Free up disk space, then retry the update.',
+      );
+      fireEvent.click(body.getByText('Technical details'));
+      fireEvent.click(body.getByRole('button', { name: 'Copy details' }));
+      expect(await body.findByText('Copied to clipboard')).toBeTruthy();
+      expect(writeText).toHaveBeenCalledWith(diagnostic);
+    } finally {
+      Object.assign(navigator, { clipboard: previousClipboard });
+    }
   });
 
   test('while installing it cannot be dismissed', () => {
@@ -277,7 +302,7 @@ describe('DesktopUpdateRestartDialog', () => {
     }) as HTMLButtonElement;
     expect(later.disabled).toBe(true);
     expect(
-      screen.queryByRole('button', { name: 'Close restart confirmation' }),
+      screen.queryByRole('button', { name: 'Close update dialog' }),
     ).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConversationContextResetDialog } from '../components/chat-dock/ConversationContextResetDialog';
@@ -7,13 +8,15 @@ import {
   type ConversationContextBoundaryEligibility,
   conversationContextBoundaryEligibility,
 } from '../components/chat-dock/conversationContextBoundaryEligibility';
-import { writeConversationContextBoundaryUiState } from '../components/chat-dock/conversationContextBoundaryUiState';
+import { rememberContextBoundaryIntent } from '../components/chat-dock/conversationContextBoundaryUiState';
 
 const reserve = vi.fn();
 const cancel = vi.fn();
 const dispatchWithReceipt = vi.fn();
 const status = vi.fn(
-  (..._args: [string, string, string, unknown]): { data?: unknown } => ({
+  (
+    ..._args: [string, string, string, unknown]
+  ): { data?: unknown; refetch?: () => Promise<unknown> } => ({
     data: undefined,
   }),
 );
@@ -43,6 +46,36 @@ const stopEligibility: ConversationContextBoundaryEligibility = {
   reason: 'Stop the agent first.',
 };
 
+const authority = {
+  namespace: 'station-resolve-author',
+  actorId: 'operator',
+  isCurrent: () => true,
+};
+const scope = { ...authority, conversationId: 'c', sessionId: 's' };
+const observedBoundary = (state: string) => ({
+  boundaryId: 'b',
+  conversationId: 'c',
+  predecessorSessionId: 's',
+  successorSessionId: 'successor',
+  actorId: authority.actorId,
+  policy: 'continue-from-history',
+  status: state,
+  priorTranscriptInjected: true,
+});
+
+function seedRememberedBoundary(state: string) {
+  rememberContextBoundaryIntent(scope, {
+    idempotencyKey: 'k',
+    policy: 'continue-from-history',
+    boundaryId: 'b',
+  });
+  const data = observedBoundary(state);
+  status.mockReturnValue({
+    data,
+    refetch: async () => ({ isError: false, data }),
+  });
+}
+
 function renderDialog(
   eligibility = reserveEligibility,
   overrides: Partial<
@@ -54,6 +87,7 @@ function renderDialog(
 ) {
   const props = {
     apiBase: 'http://station.test',
+    authority,
     conversationId: 'c',
     sessionId: 's',
     eligibility,
@@ -100,6 +134,7 @@ describe('ConversationContextResetDialog', () => {
           policy: 'empty-next-cold-start',
           expectedCurrentSessionId: 's',
         }),
+        undefined,
       ),
     );
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
@@ -147,6 +182,47 @@ describe('ConversationContextResetDialog', () => {
     );
   });
 
+  test.each([403, 409])(
+    'keeps the original key after a first-attempt HTTP %s with no confirmed reservation',
+    async (httpStatus) => {
+      reserve.mockRejectedValue(
+        new ChatHttpError(httpStatus, 'Request refused'),
+      );
+      const refetch = vi.fn().mockResolvedValue({
+        isError: true,
+        error: new ChatHttpError(
+          404,
+          'Conversation context boundary not found',
+        ),
+      });
+      status.mockReturnValue({ refetch });
+      renderDialog();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset agent context' }),
+      );
+      await screen.findByText(
+        "Station couldn't confirm the reset. Check its status before continuing.",
+      );
+      const request = reserve.mock.calls[0]?.[2];
+      expect(request.idempotencyKey).toBeTruthy();
+      expect(status).toHaveBeenCalledWith(
+        'c',
+        request.idempotencyKey,
+        'http://station.test',
+        expect.objectContaining({ enabled: true }),
+      );
+      expect(screen.queryByRole('button', { name: 'Cancel reset' })).toBeNull();
+      expect(screen.queryByText(/Ready\. On your next message/)).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Check reset status' }),
+      );
+      expect(refetch).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry reset' }));
+      await vi.waitFor(() => expect(reserve).toHaveBeenCalledTimes(2));
+      expect(reserve.mock.calls[1]?.[2]).toEqual(request);
+    },
+  );
+
   test('stops a ready Session, confirms its lifecycle, then reserves the boundary', async () => {
     dispatchWithReceipt.mockResolvedValueOnce({
       receipt: { commandId: 'stop-1', status: 'accepted' },
@@ -167,6 +243,7 @@ describe('ConversationContextResetDialog', () => {
         { type: 'stopSession', threadId: 's' },
         'http://station.test',
         100,
+        undefined,
       ),
     );
     await vi.waitFor(() =>
@@ -232,13 +309,7 @@ describe('ConversationContextResetDialog', () => {
   });
 
   test('reopened after reserving a history reset, it says the agent continues rather than the default fresh start', () => {
-    writeConversationContextBoundaryUiState('k', {
-      boundaryId: 'b',
-      conversationId: 'c',
-      policy: 'continue-from-history',
-      status: 'reserved',
-      priorTranscriptInjected: true,
-    } as never);
+    seedRememberedBoundary('reserved');
     renderDialog();
     expect(screen.getByRole('status').textContent).toBe(
       'Ready. On your next message the agent continues from chat history.',
@@ -255,13 +326,7 @@ describe('ConversationContextResetDialog', () => {
   test.each(['reserved', 'claimed', 'indeterminate', 'failed'] as const)(
     'a held %s reservation locks the reset choice to the reserved policy',
     (status) => {
-      writeConversationContextBoundaryUiState('k', {
-        boundaryId: 'b',
-        conversationId: 'c',
-        policy: 'continue-from-history',
-        status,
-        priorTranscriptInjected: true,
-      } as never);
+      seedRememberedBoundary(status);
       renderDialog();
       const history = screen.getByRole('radio', {
         name: 'Continue with chat history',
@@ -293,28 +358,29 @@ describe('ConversationContextResetDialog', () => {
             policy: 'continue-from-history',
             idempotencyKey: 'k',
           }),
+          undefined,
         );
       }
     },
   );
 
+  test('a definite no-send while retrying a confirmed failed reset releases its local choice', async () => {
+    seedRememberedBoundary('failed');
+    reserve.mockRejectedValueOnce(new Error('not sent'));
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry reset' }));
+    await screen.findByRole('button', { name: 'Reset agent context' });
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Continue with chat history',
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(false);
+  });
+
   test('the status line reports the server-observed reserved policy', () => {
-    status.mockReturnValue({
-      data: {
-        boundaryId: 'b',
-        conversationId: 'c',
-        policy: 'continue-from-history',
-        status: 'reserved',
-        priorTranscriptInjected: true,
-      },
-    });
-    writeConversationContextBoundaryUiState('k', {
-      boundaryId: 'b',
-      conversationId: 'c',
-      policy: 'continue-from-history',
-      status: 'reserved',
-      priorTranscriptInjected: true,
-    } as never);
+    seedRememberedBoundary('reserved');
     renderDialog();
     expect(screen.getByRole('status').textContent).toBe(
       'Ready. On your next message the agent continues from chat history.',

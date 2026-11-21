@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"ChatMessageList placement and layout are unchanged; approvalsHeld only withholds approval actions during revalidation.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

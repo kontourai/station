@@ -46,6 +46,27 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
 // The sheet's project picker and connection control mount inside this bar's
 // tree; `useIsMobile`/`useNavigation` are mocked so neither needs a real
 // `matchMedia` breakpoint or router.
+const actionSheetFailure = vi.hoisted(() => ({ active: false }));
+vi.mock(
+  '../components/chat-dock/ChatDockMobileOverflowSheet',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/chat-dock/ChatDockMobileOverflowSheet')
+      >();
+    return {
+      ...actual,
+      ChatDockMobileOverflowSheet: (
+        props: React.ComponentProps<typeof actual.ChatDockMobileOverflowSheet>,
+      ) => {
+        if (actionSheetFailure.active)
+          throw new Error('Action sheet fixture render failure');
+        return <actual.ChatDockMobileOverflowSheet {...props} />;
+      },
+    };
+  },
+);
+
 const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
@@ -67,6 +88,7 @@ vi.mock('../contexts/NavigationContext', async (importOriginal) => ({
 // from reaching the network.
 beforeEach(() => {
   mobileFlag.isMobile = false;
+  actionSheetFailure.active = false;
   pathnameFlag.pathname = '/';
   vi.stubGlobal(
     'matchMedia',
@@ -117,6 +139,7 @@ function renderHeader(
     hasConversation?: boolean;
     inboxActive?: boolean;
     childTrail?: string;
+    reportedStart?: string;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -135,6 +158,7 @@ function renderHeader(
         showDrawerToggle={false}
         showConnection={overrides.showConnection ?? true}
         sessionTitle="New chat"
+        reportedStart={overrides.reportedStart}
         sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
         projectScope={
           overrides.projectScope === null
@@ -167,7 +191,7 @@ function renderHeader(
           onTurnIntoTask: overrides.onTurnIntoTask,
           onOpenInventory: overrides.onOpenInventory,
           onOpenConversation: vi.fn(),
-          onToggleHistory: vi.fn(),
+          onOpenInbox: vi.fn(),
           onOpenChatSettings: vi.fn(),
           onOpenProject: overrides.onOpenProject ?? null,
           openProjectName: overrides.openProjectName ?? null,
@@ -211,13 +235,28 @@ async function openActions() {
   return screen.getByRole('dialog', { name: 'Chat actions' });
 }
 
+test.each([
+  [undefined, true],
+  ['Child conversation', false],
+] as const)(
+  'reports the working chat origin only on its own mobile title (%s)',
+  (childTrail, visible) => {
+    renderHeader({
+      agentIdentity: { name: 'Lifecycle Probe', slug: 'lifecycle-probe' },
+      reportedStart: 'CLI (reported) · ',
+      childTrail,
+    });
+    expect(Boolean(screen.queryByText(/CLI \(reported\)/))).toBe(visible);
+  },
+);
+
 describe('mobile conversation focus', () => {
   test('keeps project choice out of the unresolved header', () => {
     renderHeader({ agentIdentity: null });
     expect(
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
   test.each([
     { hasConversation: false },
@@ -231,18 +270,18 @@ describe('mobile conversation focus', () => {
         name: /Switch project|New chats:|Choose a project/,
       }),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
     expect(
       screen.getByText(state.inboxActive ? 'Inbox' : 'New chat', {
         selector: '.chat-dock__mobile-title-text',
       }),
     ).toBeTruthy();
   });
-  test('puts chat actions before identity and full screen after identity', () => {
+  test('puts extent and overflow together after the title', () => {
     renderHeader({ extentToggle: { maximized: false, onToggle: vi.fn() } });
     const actions = screen.getByRole('button', { name: 'Chat actions' });
     const extent = screen.getByRole('button', { name: 'Full screen chat' });
-    expect(actions.closest('.chat-dock__mobile-leading')).not.toBeNull();
+    expect(actions.closest('.chat-dock__mobile-actions')).not.toBeNull();
     expect(extent.closest('.chat-dock__mobile-actions')).not.toBeNull();
     fireEvent.click(extent);
   });
@@ -253,7 +292,9 @@ describe('mobile conversation focus', () => {
       onToggleInbox,
     });
     const inbox = screen.getByRole('button', { name: 'Inbox' });
-    const identity = inbox.closest('.chat-dock__mobile-identity')!;
+    const identity = inbox
+      .closest('.chat-dock__mobile-header')!
+      .querySelector('.chat-dock__mobile-identity')!;
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
     // The visible title ellipsizes on narrow widths; the full text rides
@@ -294,6 +335,28 @@ describe('mobile conversation focus', () => {
     const trigger = screen.getByRole('button', { name: 'Chat actions' });
     expect(trigger.getAttribute('aria-describedby')).toBeNull();
     expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
+  });
+
+  test('reports and retries the failure of the actual Chat actions surface', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      actionSheetFailure.active = true;
+      renderHeader();
+      fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+      const failure = await screen.findByRole('alert');
+      expect(failure.getAttribute('data-lazy-surface')).toBe('chat-actions');
+      expect(failure.textContent).toContain('Unable to load Chat actions.');
+      actionSheetFailure.active = false;
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(
+        await screen.findByRole('menu', { name: 'Chat actions' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   test('the sheet carries the panel toggles the composer menu no longer holds', async () => {
@@ -362,18 +425,11 @@ describe('mobile conversation focus', () => {
     expect(onClear).toHaveBeenCalledOnce();
   });
 
-  test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
+  test('New chat opens from the active chat overflow', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat, showConnection: false });
-    const newChat = screen.getByRole('button', { name: 'New chat' });
-    // The same quiet icon control as Chat actions beside it, not a filled
-    // primary button with a label squeezed out of view.
-    const chatActions = screen.getByRole('button', { name: 'Chat actions' });
-    expect(newChat.classList.contains('app-toolbar__icon-btn')).toBe(true);
-    expect(chatActions.classList.contains('app-toolbar__icon-btn')).toBe(true);
-    expect(newChat.classList.contains('button--primary')).toBe(false);
-    expect(newChat.textContent).toBe('');
-    fireEvent.click(newChat);
+    await openActions();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledOnce();
     await openActions();
     expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
@@ -400,7 +456,7 @@ describe('mobile conversation focus', () => {
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of ['Collapse chat', 'Inbox', 'Chat actions']) {
+    for (const name of ['Inbox', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });
@@ -620,6 +676,24 @@ test('opens Chat inventory from the actions sheet, not a third bar control', asy
 });
 
 describe('full-screen and peek control (#4391)', () => {
+  test('a collapsed conversation keeps its title and opens before showing Chat actions', async () => {
+    const onExpand = vi.fn();
+    const onToggleInbox = vi.fn();
+    renderHeader({
+      hasConversation: true,
+      inboxActive: false,
+      onToggleInbox,
+      dockToggle: { state: 'collapsed', onExpand, onCollapse: vi.fn() },
+      extentToggle: { maximized: false, onToggle: vi.fn() },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Open chat: New chat' }),
+    ).toBeTruthy();
+    await openActions();
+    expect(onExpand).toHaveBeenCalledOnce();
+    expect(onToggleInbox).not.toHaveBeenCalled();
+  });
+
   test('a collapsed bar opens full screen with one size control', () => {
     const onToggle = vi.fn();
     renderHeader({
@@ -671,28 +745,27 @@ describe('full-screen and peek control (#4391)', () => {
 });
 
 describe('first-run bar without a chat (#4404 A44)', () => {
-  test('offers New chat, not a pressed Back to chat or Chat actions', () => {
-    renderHeader({
-      hasConversation: false,
-      inboxActive: true,
-      showConnection: false,
-      agentIdentity: null,
-    });
-    expect(screen.queryByRole('button', { name: 'Back to chat' })).toBe(null);
-    expect(screen.queryByRole('button', { name: 'Chat actions' })).toBe(null);
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
-  });
-
-  test('keeps Back to chat and Chat actions once a chat exists', () => {
-    renderHeader({
-      hasConversation: true,
-      inboxActive: true,
-      agentIdentity: null,
-    });
-    expect(screen.getAllByText('Inbox', { exact: true })).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-  });
+  test.each([false, true])(
+    'gives Inbox its shared tool slot with existing chat = %s',
+    (hasConversation) => {
+      renderHeader({
+        hasConversation,
+        inboxActive: true,
+        showConnection: false,
+        agentIdentity: null,
+      });
+      expect(
+        screen.getByText('Inbox', { selector: '.chat-dock__mobile-title' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Collapse chat' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Chat actions' })).toBeNull();
+      expect(
+        document.querySelector('.chat-dock__mobile-inbox-tools'),
+      ).not.toBeNull();
+    },
+  );
 });
 
 test('Inbox title takes precedence over an open child breadcrumb', () => {

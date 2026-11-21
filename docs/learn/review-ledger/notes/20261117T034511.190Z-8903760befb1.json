@@ -1,0 +1,15 @@
+{
+  "revision": "f91b85f21e1d09b17d2ceb5f1f0d246746848cdc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only hasVisibleItems now also counts a shelf's rows past the seven-day window (group.older). The controller still owns activation currency, search, snooze/dismiss/undo and errors, and remains the shared desktop/mobile Inbox owner; citing module-map, station-connection and src-ui/AGENTS.md claims stay accurate.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only hasVisibleItems now also counts a shelf's rows past the seven-day window (group.older). The controller still owns activation currency, search, snooze/dismiss/undo and errors, and remains the shared desktop/mobile Inbox owner; citing module-map, station-connection and src-ui/AGENTS.md claims stay accurate.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Only hasVisibleItems now also counts a shelf's rows past the seven-day window (group.older). The controller still owns activation currency, search, snooze/dismiss/undo and errors, and remains the shared desktop/mobile Inbox owner; citing module-map, station-connection and src-ui/AGENTS.md claims stay accurate.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only hasVisibleItems now also counts a shelf's rows past the seven-day window (group.older). The controller still owns activation currency, search, snooze/dismiss/undo and errors, and remains the shared desktop/mobile Inbox owner; citing module-map, station-connection and src-ui/AGENTS.md claims stay accurate.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Only hasVisibleItems now also counts a shelf's rows past the seven-day window (group.older). The controller still owns activation currency, search, snooze/dismiss/undo and errors, and remains the shared desktop/mobile Inbox owner; citing module-map, station-connection and src-ui/AGENTS.md claims stay accurate.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]}
+  ]
+}

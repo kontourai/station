@@ -1204,18 +1204,20 @@ export function buildActiveChatTaskItems({
   const items = Object.entries(chats)
     .filter(([, chat]) => !onlyWork || activeChatHasWork(chat))
     .map<MergeItem>(([id, chat]) => {
-      const agentLabel = safeAgentLabel({
-        slug: chat.agentSlug,
-        name:
-          chat.agentName ||
-          agents.find((agent) => agent.slug === chat.agentSlug)?.name,
-      });
       const host = chatBelongsToStation(chat);
       const currentExecution = host
         ? sessionByThread.get(
             chat.currentSessionId ?? chat.conversationId ?? id,
           )
         : undefined;
+      const agentLabel = safeAgentLabel({
+        slug: chat.agentSlug,
+        name:
+          chat.agentName ||
+          (host
+            ? agents.find((agent) => agent.slug === chat.agentSlug)?.name
+            : undefined),
+      });
       const observedModel =
         currentExecution?.reportedModel ??
         currentExecution?.model ??
@@ -1250,11 +1252,11 @@ export function buildActiveChatTaskItems({
         // `sessionTitle`'s own fallbacks ("Station session") say less than
         // "<Agent> Chat".
         title:
-          chat.title?.trim() ||
+          (chat.title !== 'New chat' ? chat.title?.trim() : undefined) ||
           (currentExecution?.displayTitle?.trim()
             ? sessionTitle(currentExecution)
             : undefined) ||
-          (agentLabel ? `${agentLabel} Chat` : 'Task'),
+          (chat.title === 'New chat' ? 'New chat' : `${agentLabel} Chat`),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
         modelLabel: resolveModelLabel(model),

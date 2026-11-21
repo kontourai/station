@@ -1,0 +1,89 @@
+{
+  "revision": "b5743d56d4cd719d278c9c4ef4e43bb606765227",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked optional Home privacy review and setup entry against Home, the usage choice and current Settings. Checked Earlier in Station and From other apps against the distinct stored-session lanes. No upgraded or clean-device launch is inferred.","inputs":["docs/user/getting-started.md","src-ui/src/components/first-run/FirstRunHomeChapter.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Traced the Home entry point, notice visibility checks, dismissal, config persistence, author and operator acknowledgement guards, and current status refresh. Dismissal has no awaited request and choice-only writes bypass Agent activation. Existing telemetry and notice authority still apply.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config.routes.test.ts","src-server/routes/system/config.ts","src-ui/src/components/OnboardingGate.tsx","src-ui/src/components/UsageSharingPrompt.tsx","src-ui/src/components/UsageTelemetryDisclosure.tsx","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Traced manual Home setup and separate privacy review against the actual Home and onboarding gate callers. Pairing, engine setup, and the durable first-run transition retain their existing authority.","inputs":["docs/design/connections-onboarding.md","src-ui/src/__tests__/OnboardingGate.test.tsx","src-ui/src/components/OnboardingGate.tsx","src-ui/src/components/first-run/FirstRunHomeChapter.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed optional Home privacy review alongside the existing Home host, setup card and workspace binding. Transfer, Project, start-composer and role selection still use their existing entry points.","inputs":["src-ui/src/views/HomeView.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Checked the active Station display-name consumer. Saved connection identity and endpoint still own failure routing and data. The native default label uses corroborated local ownership.","inputs":["src-ui/src/App.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the active Station display-name consumer. Saved connection identity and endpoint still own failure routing and data. The native default label uses corroborated local ownership.","inputs":["src-ui/src/App.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the active Station display-name consumer. Saved connection identity and endpoint still own failure routing and data. The native default label uses corroborated local ownership.","inputs":["src-ui/src/App.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Updated the Earlier in Station heading and isolated privacy review from the Home lanes fixtures. Verified existing layout and work-action assertions through the focused suite.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Updated the Earlier in Station heading and isolated privacy review from the Home lanes fixtures. Verified existing layout and work-action assertions through the focused suite.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Updated the Earlier in Station heading and isolated privacy review from the Home lanes fixtures. Verified existing layout and work-action assertions through the focused suite.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked initial dock restoration with a saved Devices tab and no opening navigation. Other pane placement, deep links and saved size remain on the existing model and record path.","inputs":["src-ui/src/contexts/RegionModelContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked initial dock restoration with a saved Devices tab and no opening navigation. Other pane placement, deep links and saved size remain on the existing model and record path.","inputs":["src-ui/src/contexts/RegionModelContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"The new mounted-shell case observes the saved Devices occupant and size with visibility collapsed. Existing Activity restoration and explicit Chat docking coverage remain.","inputs":["src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The recovery gate no longer mounts an automatic telemetry dialog. Pairing, local service recovery, the connect launcher and the underlying shell remain on their existing paths.","inputs":["src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"The recovery gate no longer mounts an automatic telemetry dialog. Pairing, local service recovery, the connect launcher and the underlying shell remain on their existing paths.","inputs":["src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"The recovery gate no longer mounts an automatic telemetry dialog. Pairing, local service recovery, the connect launcher and the underlying shell remain on their existing paths.","inputs":["src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The recovery gate no longer mounts an automatic telemetry dialog. Pairing, local service recovery, the connect launcher and the underlying shell remain on their existing paths.","inputs":["src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The recovery gate no longer mounts an automatic telemetry dialog. Pairing, local service recovery, the connect launcher and the underlying shell remain on their existing paths.","inputs":["src-ui/src/components/OnboardingGate.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Moved the live usage-disclosure fixture to an optional Home offer and retained DNT save and revision coverage. The fixture checks the dialog stays absent after reload.","inputs":["src-ui/src/__tests__/OnboardingGate.test.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The Home caller opens setup on explicit request. Traced the privacy step's advance, deferral and persisted completion paths in the requested chapter.","inputs":["src-ui/src/components/first-run/FirstRunHomeChapter.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Home caller opens setup on explicit request. Traced the privacy step's advance, deferral and persisted completion paths in the requested chapter.","inputs":["src-ui/src/components/first-run/FirstRunHomeChapter.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Traced closing during a pending save and background notice recording. Navigation resumes immediately, while notices and consent still require the existing validated sequence.","inputs":["src-ui/src/components/UsageSharingPrompt.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The disclosure offers a Home action and opens its dialog upon request. The available choices and status still come from the same scoped read.","inputs":["src-ui/src/components/UsageTelemetryDisclosure.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Verified immediate dismissal while the actual notice endpoint is held, notice timing after config writes, and visible-gesture admission for the explicit Home dialog.","inputs":["src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Traced the usage-choice-only fast path after existing validation and managed policy checks. The same settings mutation and telemetry reconfiguration apply; mixed Agent and Station configuration changes retain normal activation.","inputs":["src-server/routes/system/config.ts"]},
+
+    {"path":"docs/decisions/telemetry-tiers.md","note":"Added a route case where saving usage Off reaches persistence while Agent configuration is unavailable. The existing mixed configuration test still requires the activation owner.","inputs":["src-server/routes/system/__tests__/config.routes.test.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Added a route case where saving usage Off reaches persistence while Agent configuration is unavailable. The existing mixed configuration test still requires the activation owner.","inputs":["src-server/routes/system/__tests__/config.routes.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The live journey now exercises the optional review before setup if a current visible notice is needed. It retains server readback and clean-install checks.","inputs":["tests/first-run-live.spec.ts"]}
+  ]
+}

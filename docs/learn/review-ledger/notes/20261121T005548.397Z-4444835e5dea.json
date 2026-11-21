@@ -1,0 +1,7 @@
+{
+  "revision": "1e8619334056c15233f0d60f23622de36bba207b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Traced capability-matrix changes through the affected-test selector, hosted plan, shard receipts and merge-queue verdict. The matrix edge now selects the existing durability parity suite on top of its bounded checks. Full consumer coverage remains deferred to qualification, and hooks, fixture authoring guidance, capability and domain boundaries, and documented UI behavior still match the implementation.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

@@ -30,7 +30,7 @@ describe('ConversationOpenResolver', () => {
       currentSessionId: () => 'released-conversation:session:child',
       readCurrent: vi.fn().mockResolvedValue({
         sessionId: 'released-conversation:session:child',
-        messages: [{ id: 'one', role: 'user', parts: [] }],
+        messageCount: 1,
         answerability: { answerable: true },
         canContinue: true,
       }),
@@ -41,7 +41,7 @@ describe('ConversationOpenResolver', () => {
     ).resolves.toMatchObject({
       status: 'resolved',
       currentSessionId: 'released-conversation:session:child',
-      transcript: { available: true, owner: 'runtime' },
+      transcript: { available: true, owner: 'runtime', messageCount: 1 },
       canContinue: true,
     });
   });
@@ -51,7 +51,7 @@ describe('ConversationOpenResolver', () => {
       currentSessionId: () => 'busy-child',
       readCurrent: vi.fn().mockResolvedValue({
         sessionId: 'busy-child',
-        messages: [],
+        messageCount: 0,
         answerability: { answerable: true },
         canContinue: false,
         continuationPending: true,
@@ -109,7 +109,7 @@ it('refuses mixed execution metadata when lineage changes during the authorized 
       current = 'new-child';
       return {
         sessionId: 'new-child',
-        messages: [],
+        messageCount: 0,
         answerability: { answerable: true },
         canContinue: true,
         execution: {
@@ -143,7 +143,7 @@ it('returns exact observed execution separately from inventory decorations', asy
     readCurrent: async () => ({
       sessionId: 'current-child',
       execution,
-      messages: [],
+      messageCount: 0,
       answerability: { answerable: true },
       canContinue: true,
     }),

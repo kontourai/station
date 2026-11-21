@@ -321,6 +321,19 @@ export interface PluginComponent {
   skippable?: boolean;
 }
 
+export interface PluginUpdateRecord {
+  name: string;
+  currentVersion: string;
+  latestVersion: string;
+  source: string;
+}
+
+export interface PluginUpdateCheck {
+  status: 'complete' | 'partial' | 'unavailable';
+  updates: PluginUpdateRecord[];
+  managedByPolicy?: Array<{ name: string; message: string }>;
+}
+
 export interface PluginPreview {
   valid: boolean;
   error?: string;

@@ -1,0 +1,9 @@
+{
+  "revision": "3ed6db4f9730c7381c301e0140e08cb9e28a7406",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the destination and SDK shortcut claims. The registered command palette uses the same destination and shortcut owners. Its combobox now advertises a listbox only while results render and continues pointing to the selected option on populated searches.","inputs":["src-ui/src/components/CommandPalette.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the destination and SDK shortcut claims. The registered command palette uses the same destination and shortcut owners. Its combobox now advertises a listbox only while results render and continues pointing to the selected option on populated searches.","inputs":["src-ui/src/components/CommandPalette.tsx"]}
+  ]
+}

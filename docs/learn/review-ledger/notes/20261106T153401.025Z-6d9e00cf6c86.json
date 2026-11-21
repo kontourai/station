@@ -1,0 +1,7 @@
+{
+  "revision": "fd490c7eb5e94222b0425de8e8855ddea94391f3",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed bounded automation setup and supervision claims against the runtime delta: settling an action no longer drops the personal hand-over boundary; a failed hand-over/Ask write now refuses before send. Existing setup, credential, review and publication guidance remains accurate. The runtime suite exercises both persistence failures and settled/restarted sessions; no live provider/container claim.","inputs":["docs/guides/agent-efficiency.md","src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}

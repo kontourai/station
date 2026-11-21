@@ -14,10 +14,13 @@ import type {
 } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import type { SemanticTone } from '@kontourai/ui/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
+import { Button } from '../../components/Button';
 import { CheckGlyph } from '../../components/icons/Glyph';
+import { copyToClipboard } from '../../lib/clipboard';
 import { formatBytes } from '../../utils/formatBytes';
 import { formatDateTime } from '../../utils/relativeTime';
+import './coreUpdatePresentation.css';
 
 /**
  * When the last check ran, as a wall-clock time: React Query's stamp of the
@@ -316,16 +319,36 @@ export function TechnicalDetails({
   message?: string | null;
   detail?: string | null;
 }) {
-  const lines: string[] = [];
-  if (typeof message === 'string' && message.length > 0) lines.push(message);
-  if (typeof detail === 'string' && detail.length > 0) lines.push(detail);
-  if (lines.length === 0) return null;
+  const lines = [
+    ...new Set(
+      [message, detail].filter((line): line is string => Boolean(line)),
+    ),
+  ];
+  const diagnostic = lines.join('\n');
+  const [copied, setCopied] = useState<{ text: string; ok: boolean }>();
+  if (!diagnostic) return null;
+  const feedback = copied?.text === diagnostic ? copied : undefined;
   return (
     <details className="settings__update-technical">
       <summary>Technical details</summary>
       {lines.map((line) => (
         <pre key={line}>{line}</pre>
       ))}
+      <Button
+        size="sm"
+        onClick={async () =>
+          setCopied({ text: diagnostic, ok: await copyToClipboard(diagnostic) })
+        }
+      >
+        Copy details
+      </Button>
+      {feedback && (
+        <span role="status">
+          {feedback.ok
+            ? 'Copied to clipboard'
+            : "Couldn't copy to the clipboard"}
+        </span>
+      )}
     </details>
   );
 }
