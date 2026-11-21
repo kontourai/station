@@ -83,14 +83,14 @@ describe('the locator engine source', () => {
     };
     // Exact (no range), a runtime dependency, and the same release the test
     // runner uses.
-    expect(manifest.dependencies['playwright-core']).toBe('1.65.0');
+    expect(manifest.dependencies['playwright-core']).toBe('1.65.1');
     const installed = JSON.parse(
       readFileSync(require.resolve('playwright-core/package.json'), 'utf8'),
     ) as { version: string };
     const runner = JSON.parse(
       readFileSync(require.resolve('@playwright/test/package.json'), 'utf8'),
     ) as { version: string };
-    expect(installed.version).toBe('1.65.0');
+    expect(installed.version).toBe('1.65.1');
     expect(runner.version).toBe(installed.version);
     // A different injected script (a bump, a patched install) fails here
     // until someone reviews it and moves this digest on purpose.
