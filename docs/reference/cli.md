@@ -2772,7 +2772,8 @@ SIGTERM starts elsewhere. `service stop` therefore ends the task, waits for
 the launcher to stop Station and exit (up to its 150-second stop budget, after
 which it ends the launcher by pid only if the launcher's start time proves the
 pid is still the launcher's, and otherwise refuses, naming the pid), and then
-stops anything left by record.
+stops anything left by record. For a Windows archive service, `service uninstall`
+completes the same stop sequence before removing the task and its wrapper.
 If the launcher process itself is killed, nothing starts it again until the
 next logon or `service start`.
 `station service status` shows the update (`update` in `--json`), and in this
