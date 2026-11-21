@@ -628,6 +628,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
   test.each([204, 500])(
     'a late steer is withdrawn or blocks successor work when withdrawal fails (%s)',
     async (deleteStatus) => {
+      let releaseWithdrawal = false;
       const delivered = (record: OpenCodeReplayRecord) =>
         (record.kind === 'http' &&
           (JSON.stringify(record.body ?? null).includes('STEER-delivered') ||
@@ -645,6 +646,10 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
           scenario: 'steer',
           omit: delivered,
           ungated: (record) => record.method === 'DELETE',
+          holdUntil: (record) =>
+            record.method === 'DELETE' && record.path?.includes('/inbox/')
+              ? () => releaseWithdrawal
+              : undefined,
           respond: (request) =>
             request.method === 'DELETE' && request.path.includes('/inbox/')
               ? { status: deleteStatus }
@@ -674,6 +679,11 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         'accept',
       );
       await h.waitFor(completedFor(turnId));
+      try {
+        await expect(h.turn('next')).rejects.toMatchObject({ kind: 'busy' });
+      } finally {
+        releaseWithdrawal = true;
+      }
       if (deleteStatus === 204)
         expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
       else expect(String(await outcome)).toContain('withdrawal is unconfirmed');
@@ -966,7 +976,16 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
   const asStationControl = (record: OpenCodeReplayRecord) =>
     record.path === '/api/experimental/mcp/station-echo'
       ? { ...record, path: '/api/experimental/mcp/station-control' }
-      : record;
+      : record.path === '/api/mcp' && record.method === 'GET'
+        ? {
+            ...record,
+            response: {
+              data: [
+                { name: 'station-control', status: { status: 'connected' } },
+              ],
+            },
+          }
+        : record;
 
   /** Station's tool servers for a thread: the built-in station-control, by HTTP. */
   function stationTools(tokens: Record<string, string>) {
@@ -1003,8 +1022,28 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
 
   test("a session's Station tool servers are added to its OpenCode server before the session, and their credentials go nowhere else", async () => {
     const tools = stationTools({ 'thread-1': 'tok-session-one' });
+    let statusReads = 0;
     const h = await setup(
-      { scenario: 'mcp-add', rewrite: asStationControl },
+      {
+        scenario: 'mcp-add',
+        rewrite: asStationControl,
+        respond: (request) => {
+          if (request.method !== 'GET' || request.path !== '/api/mcp') return;
+          return {
+            status: 200,
+            body: {
+              data: [
+                {
+                  name: 'station-control',
+                  status: {
+                    status: ++statusReads === 1 ? 'pending' : 'connected',
+                  },
+                },
+              ],
+            },
+          };
+        },
+      },
       tools.options,
     );
     await h.start();
@@ -1032,6 +1071,11 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(
       writes.indexOf('PUT /api/experimental/mcp/station-control'),
     ).toBeLessThan(writes.indexOf('POST /api/session'));
+    expect(
+      writes
+        .slice(0, writes.indexOf('POST /api/session'))
+        .filter((write) => write === 'GET /api/mcp'),
+    ).toHaveLength(2);
     // Its server is keyed by the session's tool servers.
     expect(h.leaser.acquired[0]?.mcpDigest).not.toBe(openCodeMcpDigest([]));
     const { turnId } = await h.turn('DO_MCP');

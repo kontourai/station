@@ -649,10 +649,15 @@ export class OpenCodeNativeSession {
         'This OpenCode session has stopped.',
         'unavailable',
       );
-    if (this.withdrawalUnconfirmed || this.withdrawingSteers.size > 0)
+    if (this.withdrawalUnconfirmed)
       throw new SendTurnRefusedError(
         'OpenCode steer withdrawal is unconfirmed; this session cannot accept more work.',
         'unavailable',
+      );
+    if (this.withdrawingSteers.size > 0)
+      throw new SendTurnRefusedError(
+        'OpenCode is still clearing queued input from the previous turn.',
+        'busy',
       );
     if (this.rewinding) throw new SessionRewindingError();
     const live = this.turn ?? this.pendingStart;
