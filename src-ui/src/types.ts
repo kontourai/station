@@ -161,6 +161,8 @@ export interface ComposerAttachmentStageSnapshot {
 }
 
 export interface ChatMessage {
+  /** This view loaded the row from history without observing its arrival. */
+  historyEntry?: true;
   /** Stable server/event identity when the projection can provide one. */
   id?: string;
   /** Stable client identity while an optimistic user row awaits persistence. */
