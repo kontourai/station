@@ -1,0 +1,13 @@
+{
+  "revision": "26a7c2a62bcfaede964e3221cb798a48a89b474b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed create claim ownership, SDK retry, API conflict and delegation receipt guidance. The ledger computes the original intent digest before caller lookup and still joins the verified caller before claiming. Wires and receipt formats are unchanged. The original-intent replay regression failed on main and all 41 claim tests passed after repair.","inputs":["src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed create claim ownership, SDK retry, API conflict and delegation receipt guidance. The ledger computes the original intent digest before caller lookup and still joins the verified caller before claiming. Wires and receipt formats are unchanged. The original-intent replay regression failed on main and all 41 claim tests passed after repair.","inputs":["src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed create claim ownership, SDK retry, API conflict and delegation receipt guidance. The ledger computes the original intent digest before caller lookup and still joins the verified caller before claiming. Wires and receipt formats are unchanged. The original-intent replay regression failed on main and all 41 claim tests passed after repair.","inputs":["src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed create claim ownership, SDK retry, API conflict and delegation receipt guidance. The ledger computes the original intent digest before caller lookup and still joins the verified caller before claiming. Wires and receipt formats are unchanged. The original-intent replay regression failed on main and all 41 claim tests passed after repair.","inputs":["src-server/services/orchestration/create-request-claims.ts"]}
+  ]
+}
