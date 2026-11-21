@@ -444,10 +444,16 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .poll(() => page.locator('.inbox-row__swipe-actions:visible').count())
       .toBe(0);
 
-    await swipe(cdp, page, -75, 0, { cancel: true });
-    expect(
-      await page.locator('.inbox-row__swipe-actions:visible').count(),
-    ).toBe(0);
+    await swipe(cdp, page, -75, 0, {
+      cancel: true,
+      during: async () => {
+        await expectBrowser(rail).toBeVisible();
+        await expectBrowser(rail).toHaveAttribute('aria-hidden', 'true');
+      },
+    });
+    await expectBrowser(
+      page.locator('.inbox-row__swipe-actions:visible'),
+    ).toHaveCount(0);
     expect(
       await page.evaluate(() => (window as unknown as { opens: number }).opens),
     ).toBe(0);
