@@ -303,19 +303,25 @@ tool servers an ACP or OpenCode connection provides by itself
 `mcpMode: 'add'`), and the engine connection it runs on (Claude and Codex
 connection config with their model proxy connection and active credential
 profile, or the ACP connection record). Recovery bookkeeping, probe
-timestamps and the order of tool-name lists do not count. If all of that is
+timestamps and the order of tool-name lists do not count. A probe that finds
+a new tool does count when the session was given that server's tool list
+(its Agent or integration selects or disables tools by name). If all of that is
 unchanged, the session keeps running, whatever else changed. If any of it
 changed, or the Agent was deleted, every later call in that session is
 refused. The conversation's next message then restarts the engine in place
 from its resume cursor under the current configuration, or, for an engine
-that cannot resume, starts a successor session and stops the old engine. A
+that cannot resume, starts a successor session and stops the old engine if
+it is idle. A
 session still running work it started under the old configuration refuses
 that message until the work ends, so a conversation never has two engines.
 While a change is still being applied, or the configuration cannot be read,
 a call is refused with a request to retry it.
 
 Codex's own MCP calls never pass through this evaluator, on any build: it
-decides only Station's bound browser and device tools. A Codex Agent session
+decides only Station's bound dynamic tools (browser and device tools, and the
+Station Control tools a session serves on that channel). A bound call refused
+because the configuration was replaced returns the refusal's text to the
+model as the tool's result, so the model can tell the person what happened. A Codex Agent session
 still holds a launch binding, so when its Agent or integrations change, its
 next turn restarts it under the current configuration; until then it keeps
 calling the tools it was launched with, for the rest of the turn in
@@ -328,8 +334,11 @@ mode, workspace isolation, the no-Project folder) apply to the next chat
 only. A session that started while a change was still being applied
 refuses its tools and restarts at its next turn. Known limit: nothing in the
 conversation shows that a session was replaced until its next message
-restarts it. The following is the interactive branch, not every possible
-tool outcome:
+restarts it. Known limit: a predecessor still running work when its
+successor starts is not stopped, since stopping it would kill that work; it
+stays resident with its tools refused until the idle sweep parks it (never,
+with idle parking turned off). The following is the interactive branch, not
+every possible tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.
 2. If the result requires interaction and a requester exists, the hook calls

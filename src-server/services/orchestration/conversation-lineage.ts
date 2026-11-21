@@ -260,8 +260,10 @@ interface ConversationLineageDeps {
    */
   needsPolicySuccessor?: (threadId: string) => Promise<boolean>;
   /**
-   * Stops the engine of the Session a policy successor replaced, so it does
-   * not stay resident under the configuration it was launched with.
+   * Stops the engine of the Session a policy successor replaced, when it is
+   * idle, so it does not stay resident under the configuration it was
+   * launched with. A busy one is left running; it does nothing for a
+   * predecessor whose launch was not replaced.
    */
   retireReplacedSession?: (threadId: string) => Promise<void>;
   nativeReturnSupported?: (provider: EngineId) => boolean;
@@ -446,6 +448,10 @@ export class ConversationLineage {
         const predecessor = current.predecessorSessionId
           ? await this.deps.readSession(current.predecessorSessionId, authority)
           : null;
+        // A reset (or any reserved successor) of a Session whose launch was
+        // replaced retires that engine too, as an ordinary successor does.
+        if (current.predecessorSessionId)
+          await this.deps.retireReplacedSession?.(current.predecessorSessionId);
         return {
           sessionId: current.sessionId,
           startRequired: true,
@@ -477,6 +483,8 @@ export class ConversationLineage {
       const predecessor = current.predecessorSessionId
         ? await this.deps.readSession(current.predecessorSessionId, authority)
         : null;
+      if (current.predecessorSessionId)
+        await this.deps.retireReplacedSession?.(current.predecessorSessionId);
       return {
         sessionId: current.sessionId,
         startRequired: true,
@@ -553,8 +561,10 @@ export class ConversationLineage {
     observeConversationContinuation(child.outcome);
     // Whatever reserved the child (a replaced launch, or an engine that
     // ended its turn in error over a replaced policy), a predecessor engine
-    // still bound to a replaced configuration is retired, never left
-    // resident beside its successor.
+    // still bound to a replaced configuration is retired here when it is
+    // idle. One still running work is not stopped (that would kill the
+    // work): it stays resident, its tools refused, until the idle sweep parks
+    // it (never, with idle parking turned off). A predecessor that was not replaced is never stopped here.
     await this.deps.retireReplacedSession?.(current.sessionId);
     return {
       sessionId: child.lineage.sessionId,

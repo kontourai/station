@@ -115,7 +115,12 @@ type Engine = (typeof ENGINES)[number] | 'opencode';
 
 function world(
   engine: Engine,
-  options: { resumable?: boolean; openWork?: () => boolean } = {},
+  options: {
+    resumable?: boolean;
+    openWork?: () => boolean;
+    /** False: a model switch needs a successor session. */
+    perTurnModel?: boolean;
+  } = {},
 ) {
   const home = makeTempDir('external-policy-generation-');
   const config: Config = {
@@ -185,7 +190,19 @@ function world(
       displayName: 'fake engine',
       description: 'holds its pre-tool policy for the process, like a real one',
       capabilities: ['agent-runtime'],
-    },
+      ...(options.perTurnModel === false
+        ? {
+            modelLaunch: {
+              defaultAtStart: 'engine-selected',
+              omissionAtResume: 'retain-session-model',
+              omissionPerTurn: 'retain-session-model',
+              overrideAtStart: true,
+              overrideAtResume: true,
+              overridePerTurn: false,
+            },
+          }
+        : {}),
+    } as never,
     async startSession(input) {
       starts.push(input);
       // What every external adapter does at session start.
@@ -305,6 +322,7 @@ function world(
   const start = async (
     threadId: string,
     extra: Record<string, unknown> = {},
+    model?: string,
   ) => {
     await service.dispatch(
       {
@@ -312,6 +330,7 @@ function world(
         input: {
           threadId,
           provider: engine,
+          ...(model ? { model } : {}),
           metadata: {
             userId: 'owner',
             agentSlug: 'claude',
@@ -656,6 +675,88 @@ describe('external engine pre-tool policy generation', () => {
       });
     }
   }
+
+  test('a successor reserved for another reason retires nothing: only a replaced predecessor is stopped', async () => {
+    const w = world('claude', { perTurnModel: false });
+    await w.start('conversation', {}, 'first-model');
+    await w.turn('conversation', 'Run the tests.');
+    expect(
+      await w.runtime.preToolPolicyGenerations.replaced('conversation'),
+    ).toBe(false);
+    // A model switch this engine cannot apply to a turn reserves a successor.
+    const successor = await w.service.resolveConversationContinuation(
+      'conversation',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', modelOverride: 'another-model' },
+    );
+    expect(successor.startRequired).toBe(true);
+    expect(successor.sessionId).not.toBe('conversation');
+    // The predecessor's policy was never replaced, so it is not retired.
+    expect(w.stops).toEqual([]);
+    expect(w.policies.has('conversation')).toBe(true);
+  });
+
+  test.each(['after', 'with'] as const)(
+    'an explicit context reset %s a real configuration change: one engine at the end, history once',
+    async (timing) => {
+      const w = world('claude');
+      await w.start('conversation');
+      await w.turn('conversation', 'Run the tests.');
+      const change = () =>
+        w.saveAgent('claude', {
+          name: 'Claude',
+          prompt: 'Help the person.',
+          tools: { mcpServers: ['github'], autoApprove: [] },
+        });
+      const reset = () =>
+        w.service.reserveConversationContextBoundary(
+          'conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            policy: 'continue-from-history',
+            idempotencyKey: `reset-${timing}`,
+            expectedCurrentSessionId: 'conversation',
+            actorId: 'owner',
+          },
+        );
+      if (timing === 'after') {
+        await change();
+        expect(await w.call('conversation')).toMatchObject(replaced);
+        await reset();
+      } else {
+        // The reset and the change land together, before the next message.
+        await Promise.all([reset(), change()]);
+      }
+      const successor = await w.next();
+      expect(successor.startRequired).toBe(true);
+      expect(successor.sessionId).not.toBe('conversation');
+      await w.start(successor.sessionId, {
+        ...(successor.contextSeed
+          ? {
+              conversationStartSeedCarrier: {
+                pinDigest: successor.contextSeed.pinDigest,
+                seedDigest: successor.contextSeed.seedDigest,
+                clientTurnId: 'next-turn',
+              },
+            }
+          : {}),
+      });
+      // The replaced engine was retired before the successor started.
+      expect(w.stops).toEqual(['conversation']);
+      // One engine alive: the successor, under the current definition.
+      expect([...w.policies.keys()]).toEqual([successor.sessionId]);
+      expect(w.starts.at(-1)?.agent?.autoApprove).toEqual([]);
+      expect(await w.call(successor.sessionId)).toEqual({ behavior: 'defer' });
+      // The prior conversation is replayed once.
+      expect(
+        successor.contextSeed?.text.split('User: Run the tests.').length,
+      ).toBe(2);
+      expect(successor.contextBoundary?.policy).toBe('continue-from-history');
+      expect(
+        w.store.listEventsByMethods('conversation', ['runtime.error']),
+      ).toEqual([]);
+    },
+  );
 
   test('an unrelated change to the approval guardian reaches a running session on its next call', async () => {
     const w = world('claude');

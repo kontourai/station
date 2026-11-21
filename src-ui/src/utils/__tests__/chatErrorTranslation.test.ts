@@ -65,21 +65,27 @@ describe('translateChatError', () => {
     expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
   });
 
-  it('names a replaced-configuration refusal and says sending again after the work restarts the chat', () => {
-    const message =
-      "This agent's configuration changed while the session was still running work started under the old configuration. That work cannot use tools any more; once it ends, send your message again and the session restarts under the current configuration.";
-    const result = translateChatError({
-      status: 409,
-      code: 'session_configuration_replaced',
-      message,
-    });
-    expect(result.title).toBe("This agent's settings changed");
-    expect(result.body).toBe(message);
-    expect(result.hint).toMatch(/send again once the current work finishes/i);
-    expect(result.hint).toMatch(/keeps this conversation/);
-    expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
-    expect(result.title).not.toBe('Error');
-  });
+  it.each([
+    "This agent's configuration changed while the session was still running work started under the old configuration. That work cannot use tools any more; once it ends, send your message again and the session restarts under the current configuration.",
+    "This agent's configuration changed and this session's engine cannot resume. Continue from the conversation: its next message starts a new session under the current configuration.",
+  ])(
+    'names a replaced-configuration refusal with a hint true whether the engine is busy or cannot resume: %s',
+    (message) => {
+      const result = translateChatError({
+        status: 409,
+        code: 'session_configuration_replaced',
+        message,
+      });
+      expect(result.title).toBe("This agent's settings changed");
+      expect(result.body).toBe(message);
+      // Neither case promises a restart of this engine or that work is running.
+      expect(result.hint).toBe(
+        'Send your message again, after any work still running has finished: the chat continues this conversation with the new settings.',
+      );
+      expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+      expect(result.title).not.toBe('Error');
+    },
+  );
 
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({

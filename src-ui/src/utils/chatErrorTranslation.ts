@@ -446,17 +446,19 @@ export function translateChatError(
   }
 
   // The agent's configuration (its Agent, tool servers or engine connection)
-  // changed while this chat's engine was still running work it started
-  // before the change. Nothing was sent. That work can no longer use tools,
-  // so it ends; sending again after it does restarts the chat's engine in
-  // place, with this conversation, under the current configuration.
+  // changed under this chat's engine. Nothing was sent. Either the engine is
+  // still running work it started before the change (that work can no longer
+  // use tools, so it ends; sending again after it restarts the engine in
+  // place), or the engine cannot resume (sending again starts a new session
+  // from this conversation). The server's text says which; the hint is true
+  // of both.
   if (code === SESSION_CONFIGURATION_REPLACED_CODE) {
     return {
       title: "This agent's settings changed",
       body:
         text ||
         "This agent's configuration changed while the chat was still running work started under the old one. Nothing was sent.",
-      hint: 'Send again once the current work finishes: the chat restarts with the new settings and keeps this conversation.',
+      hint: 'Send your message again, after any work still running has finished: the chat continues this conversation with the new settings.',
       // A caller that may not send here has nothing true to be told.
       callerHints: { noNewChat: true, noSend: null, neither: null },
     };

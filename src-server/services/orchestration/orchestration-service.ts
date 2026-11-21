@@ -4805,7 +4805,11 @@ export class OrchestrationService {
   /**
    * Stops the engine of a Session a policy successor replaced, the way an
    * idle engine is parked: its exit is absorbed, so the conversation records
-   * no failure. Refused while a turn or transition holds the Session.
+   * no failure. Only a Session whose launch was replaced is stopped. A
+   * Session still running work (a turn, engine work, an open request) is
+   * not: parking refuses it and this returns without stopping anything, so
+   * that engine stays resident, its tools refused, until the idle sweep parks
+   * it (never, with idle parking turned off).
    */
   private async retirePolicyReplacedEngine(threadId: string): Promise<void> {
     const adapter = this.sessionAdapters.get(threadId);

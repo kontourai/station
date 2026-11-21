@@ -76,6 +76,14 @@ function fingerprintOf(value: unknown): string {
     .digest('hex');
 }
 
+/** The fingerprint a binding compares: of the Agent record and its launch. */
+export function preToolPolicyLaunchFingerprint(read: {
+  spec: AgentSpec;
+  launch: unknown;
+}): string {
+  return fingerprintOf({ spec: read.spec, launch: read.launch });
+}
+
 /**
  * What a session was launched with, read again from the current
  * configuration by the same resolution its launch used.
@@ -170,7 +178,7 @@ export async function bindPreToolPolicyGeneration(options: {
     throw new Error(
       'The Agent this session runs could not be read; pre-tool policy preparation was denied.',
     );
-  const fingerprint = fingerprintOf({ spec: bound.spec, launch: bound.launch });
+  const fingerprint = preToolPolicyLaunchFingerprint(bound);
   let revision = revisionAtBind;
   // The last verdict short of current, and the revision it was reached at.
   let verdict: { state: 'replaced' | 'unreadable'; at: number } | undefined;
@@ -199,7 +207,7 @@ export async function bindPreToolPolicyGeneration(options: {
         verdict = { state: 'unreadable', at: current };
       } else if (
         read.state === 'missing' ||
-        fingerprintOf({ spec: read.spec, launch: read.launch }) !== fingerprint
+        preToolPolicyLaunchFingerprint(read) !== fingerprint
       ) {
         verdict = { state: 'replaced', at: current };
       } else {
