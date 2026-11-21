@@ -1,0 +1,7 @@
+{
+  "revision": "cc70d56a79a4024f0dddad9a6ac3f9fdbd5241cf",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked child image intake against the SDK request scope. A child with a missing or stale Station lease cannot upload or reconcile files against the active host. The wire message and receipt shape are unchanged.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat/ChildWorkInstructionPanel.tsx"]}
+  ]
+}
