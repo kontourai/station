@@ -134,6 +134,7 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   parts: P[] | undefined | null,
   appTools: ReadonlySet<string> = new Set(),
   showReasoning = true,
+  anchoredCallIds: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
   if (!parts || parts.length === 0) return [];
 
@@ -181,6 +182,10 @@ export function splitToolCallRuns<P extends ToolCallLike>(
       isToolCallPart(part) &&
       !appTools.has(transcriptMcpToolRef(part) ?? '')
     ) {
+      const previous = pending.at(-1)?.part.toolCallId;
+      const anchored = anchoredCallIds.has(part.toolCallId ?? '');
+      if (pending.length && anchored !== anchoredCallIds.has(previous ?? ''))
+        flushRun();
       const name = part.toolName ?? part.name ?? part.type;
       const reference =
         stationControlToolName(name) === 'html_render'
@@ -223,7 +228,7 @@ function isFoldableProse(part: ToolCallLike): boolean {
 }
 
 /**
- * The phone transcript's shape for a SETTLED assistant turn: every tool call
+ * The transcript's shape for a settled assistant turn: every tool call
  * from the first to the last — and the narration between them — becomes ONE
  * run, placed where the first call was. Text after the last call (the
  * outcome) and text before the first (the intent) stay as they were.
@@ -239,16 +244,29 @@ export function foldTurnWork<P extends ToolCallLike>(
   parts: P[] | undefined | null,
   appTools: ReadonlySet<string> = new Set(),
   showReasoning = true,
+  anchoredCallIds: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
-  const blocks = splitToolCallRuns(parts, appTools, showReasoning);
+  const blocks = splitToolCallRuns(
+    parts,
+    appTools,
+    showReasoning,
+    anchoredCallIds,
+  );
   const folded: RunBlock<P>[] = [];
   let start = 0;
   for (const [index, block] of blocks.entries()) {
-    const ownRow =
-      block.type === 'html-reply' ||
-      (block.type === 'content-part' && isToolCallPart(block.part));
-    if (!ownRow) continue;
-    folded.push(...foldToolRuns(blocks.slice(start, index)), block);
+    const childRow =
+      block.type === 'tool-call-run' &&
+      block.calls.some(
+        ({ part }) => part.toolCallId && anchoredCallIds.has(part.toolCallId),
+      );
+    if (
+      !childRow &&
+      block.type !== 'html-reply' &&
+      !(block.type === 'content-part' && isToolCallPart(block.part))
+    )
+      continue;
+    folded.push(...foldToolRuns(blocks.slice(start, index), childRow), block);
     start = index + 1;
   }
   return [...folded, ...foldToolRuns(blocks.slice(start))];
@@ -256,6 +274,7 @@ export function foldTurnWork<P extends ToolCallLike>(
 
 function foldToolRuns<P extends ToolCallLike>(
   blocks: RunBlock<P>[],
+  followedByChild = false,
 ): RunBlock<P>[] {
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
   if (runCount < 2) return blocks;
@@ -302,7 +321,7 @@ function foldToolRuns<P extends ToolCallLike>(
     lastProse -= 1;
   }
   const lastWords =
-    !hasOutcome && lastProse >= 0
+    !followedByChild && !hasOutcome && lastProse >= 0
       ? interludes.splice(lastProse, 1)[0]
       : undefined;
   if (lastWords) {

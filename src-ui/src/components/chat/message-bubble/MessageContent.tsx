@@ -107,13 +107,16 @@ function MessageContentComponent({
       part.toolCallId ? [part.toolCallId] : [],
     ) ?? [],
   );
-  const keepChildAnchors = anchoredChildren.length > 0;
   // A call that spawned child work is drawn as that child's card, which
   // carries its status; its own row would only repeat the title.
-  const cardCallIds = new Set(
-    anchoredChildren.flatMap((child) =>
-      child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
-    ),
+  const cardCallIds = useMemo(
+    () =>
+      new Set(
+        anchoredChildren.flatMap((child) =>
+          child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
+        ),
+      ),
+    [anchoredChildren],
   );
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
@@ -121,14 +124,14 @@ function MessageContentComponent({
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork && !keepChildAnchors && !browserScope
-      ? foldTurnWork(parts, appTools, showReasoning)
+    return foldWork && !browserScope
+      ? foldTurnWork(parts, appTools, showReasoning, cardCallIds)
       : splitToolCallRuns(parts, appTools, showReasoning);
   }, [
     contentParts,
     textContent,
     foldWork,
-    keepChildAnchors,
+    cardCallIds,
     appTools,
     showReasoning,
     browserScope,

@@ -841,15 +841,14 @@ work; with none, it settles `unresolved` everywhere at once. A settled call with
 the live record is not seeded from history. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
-A settled answer without anchored child work shows its tool work as one row. Every call from
+A settled answer folds its tool activity into a summary. Every call from
 the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
 original order. Files, UI blocks, MCP app preview candidates, runtime errors
 appearance proposal cards and calls still waiting on a grant stay outside the fold, and so does the last narration when no text
 follows the last call. While the turn is live it keeps the shape it streamed
-with. Messages with anchored subagents keep their original tool runs at every
-width, preserving each child card's expansion and keyboard focus during resizing.
+with. Tool calls linked to subagent cards keep their place in the transcript. The activity on either side folds separately.
 A call that spawned child work is drawn as that child's card, not also as its
 own tool row or inside an activity summary. A Claude background shell command
 (`local_bash`, including one a Monitor launched) is child work of kind
