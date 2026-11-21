@@ -234,6 +234,26 @@ test('sends only to the named child and keeps the same request after an uncertai
   ).toBe(first.clientInputId);
 });
 
+test('a child reader missing its Station lease cannot offer image upload using the active host', async () => {
+  render(
+    <ConversationConnectionProvider
+      value={{ apiBase: 'https://other.example' }}
+    >
+      <ChildWorkInstructionPanel
+        threadId="parent"
+        childId="child"
+        turnId="turn"
+        name="Worker"
+        running
+        historyAvailable
+        composer={{ canContinue: true, run: { images: true } }}
+      />
+    </ConversationConnectionProvider>,
+  );
+  await screen.findByRole('textbox', { name: 'Message' });
+  expect(screen.queryByRole('button', { name: 'Attach files' })).toBeNull();
+});
+
 test('a writable child sends a staged screenshot without text and retains only its reference while delivery is uncertain', async () => {
   const key = 'child-steer:' + JSON.stringify(['owner', 'parent', 'child']);
   const ref = {

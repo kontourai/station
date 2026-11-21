@@ -207,19 +207,19 @@ export function ChildWorkInstructionPanel({
     [key, drafts],
   );
   const { text, turnId: draftTurnId, files = [], stages = [] } = draft;
+  // Staging must use the child reader's captured Station. A missing target scope cannot fall back to the host.
+  const uploadScope = targetScope ? targetScope.requestScope : host;
+  const canAccessUploads =
+    !!uploadScope?.isCurrent() && !!apiBase && canOperate && mayContinue;
   const allowImages =
-    composer?.run.images === true &&
-    mayContinue &&
-    canOperate &&
-    running &&
-    !!turnId;
+    canAccessUploads && composer?.run.images === true && running && !!turnId;
   const uploads = useComposerAttachments({
     apiBase: apiBase ?? '',
     ownerKey: key ?? undefined,
-    requestScope: scope ?? undefined,
+    requestScope: uploadScope ?? undefined,
     cancelOnUnmount: true,
-    attachments: files,
-    stages,
+    attachments: canAccessUploads ? files : [],
+    stages: canAccessUploads ? stages : [],
     capabilities: { images: allowImages, files: false },
     getCurrentAttachments: () => latestDraft.current.files ?? [],
     getCurrentStages: () => latestDraft.current.stages ?? [],
@@ -246,15 +246,18 @@ export function ChildWorkInstructionPanel({
   const reads = useRef(0);
   const [readingImages, setReadingImages] = useState(false);
   const selectImages = async (chosen: File[]) => {
+    if (!allowImages || !uploadScope?.isCurrent()) return;
     reads.current += 1;
     setReadingImages(true);
     try {
       await uploads.selectFiles(chosen);
     } finally {
-      setReadingImages(--reads.current > 0);
+      reads.current -= 1;
+      setReadingImages(reads.current > 0);
     }
   };
   const removeImage = (id: string) => {
+    if (!uploadScope?.isCurrent()) return;
     void uploads.remove(id);
     writeDraft({
       ...latestDraft.current,
@@ -667,7 +670,9 @@ export function ChildWorkInstructionPanel({
       ) : (
         <ChildInstructionEditor
           images={
-            composer && (allowImages || files.length || stages.length)
+            composer &&
+            canAccessUploads &&
+            (allowImages || files.length || stages.length)
               ? {
                   sessionId: JSON.stringify([scope?.authorityKey, key, turnId]),
                   attachments: files,
@@ -677,9 +682,15 @@ export function ChildWorkInstructionPanel({
                   onRemoveAttachment: removeImage,
                   onClearAttachments: () =>
                     files.forEach((file) => removeImage(file.id)),
-                  onRetryAttachmentStage: uploads.retry,
-                  onCancelAttachmentStage: uploads.cancel,
-                  onReplaceAttachmentFile: uploads.replaceFile,
+                  onRetryAttachmentStage: allowImages
+                    ? uploads.retry
+                    : undefined,
+                  onCancelAttachmentStage: canAccessUploads
+                    ? uploads.cancel
+                    : undefined,
+                  onReplaceAttachmentFile: allowImages
+                    ? uploads.replaceFile
+                    : undefined,
                   attachmentError: uploads.error,
                   sendBlockedReason: readingImages
                     ? 'Preparing image…'
