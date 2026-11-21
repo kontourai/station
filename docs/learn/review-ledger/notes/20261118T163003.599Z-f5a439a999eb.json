@@ -1,0 +1,47 @@
+{
+  "revision": "999d9c6749e1848c00e3df7d2dbfb2f8445864f2",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the four Settings destinations, current editor handoffs, device skill binding and account model preference import against the existing app and browser journeys. The disclosure only reads Station-reported fields.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/ModelPickerPreferencesRow.tsx","src-ui/src/views/settings/UsageDisclosureRow.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the four added paths against the generated catalog and Settings reveal logic. Older navigation aliases and the separate persistence authorities are unchanged.","inputs":["docs/reference/settings-deep-links.md","scripts/gen-settings-registry.ts","src-server/generated/settings-registry.json","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the new read-only disclosure against the existing Station telemetry report. The separate sharing controls and consent remain unchanged.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/UsageSharingChoices.tsx","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/StationConfigSection.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"The four stable row links resolve within the existing Settings topic and highlight conventions. Each stored preference retains its existing write owner.","inputs":["docs/reference/settings-deep-links.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed added Settings search and palette guidance. Account, device and telemetry storage paths maintain their existing scope and settings navigation.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed added Settings search and palette guidance. Account, device and telemetry storage paths maintain their existing scope and settings navigation.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"The floor reflects 100 existing entries plus the four new surfaces. The generator still emits stable catalog metadata and does not read stored values.","inputs":["scripts/gen-settings-registry.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Verified the four added rows, their routes, declared configuration keys and separate Station, informational, device and account scopes.","inputs":["src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the mounted Settings grouping and link resolution. The four destinations reuse existing System, Privacy and sharing, Keyboard shortcuts and Chat sections, with unchanged topic routing.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the mounted Settings grouping and link resolution. The four destinations reuse existing System, Privacy and sharing, Keyboard shortcuts and Chat sections, with unchanged topic routing.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the mounted Settings grouping and link resolution. The four destinations reuse existing System, Privacy and sharing, Keyboard shortcuts and Chat sections, with unchanged topic routing.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the mounted Settings grouping and link resolution. The four destinations reuse existing System, Privacy and sharing, Keyboard shortcuts and Chat sections, with unchanged topic routing.","inputs":["src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the four new discoverable ids and their scope. Keyed consequences come from the preference definitions. Local accounts remain operator-authorized and usage disclosure is informational.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed the four new discoverable ids and their scope. Keyed consequences come from the preference definitions. Local accounts remain operator-authorized and usage disclosure is informational.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed the four new discoverable ids and their scope. Keyed consequences come from the preference definitions. Local accounts remain operator-authorized and usage disclosure is informational.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the four new discoverable ids and their scope. Keyed consequences come from the preference definitions. Local accounts remain operator-authorized and usage disclosure is informational.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The dedicated skill group reuses the existing binding editor and shows saved bindings for unavailable skills. Command registration, reserved key checks and dispatch are unchanged.","inputs":["src-ui/src/views/settings/KeyboardShortcutsSection.tsx"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"The dedicated skill group reuses the existing binding editor and shows saved bindings for unavailable skills. Command registration, reserved key checks and dispatch are unchanged.","inputs":["src-ui/src/views/settings/KeyboardShortcutsSection.tsx"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"The account administration row has a stable Settings target even while disconnected. Account reads, writes and restrictions keep their existing authority.","inputs":["src-ui/src/views/settings/LocalAccountsSection.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The telemetry group mounts a read-only disclosure alongside the existing sharing choice. Disclosure fields come from the same Station reports.","inputs":["src-ui/src/views/settings/StationConfigSection.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reused the included-fields display with an optional heading for the read-only row. The shared choice control and confirmation still use their existing copy and authority.","inputs":["src-ui/src/components/UsageSharingChoices.tsx"]}
+  ]
+}

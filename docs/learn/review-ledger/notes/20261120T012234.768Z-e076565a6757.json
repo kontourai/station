@@ -1,0 +1,11 @@
+{
+  "revision": "d631925376a2124ee3a4290a36af77b5bfe2210b",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the privacy captures against Home's Review choices action and the direct Privacy & sharing route. The endpoint variants use the disclosure response's additional host. Screenshot selection, coverage and reduced-motion behavior still match the guides.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the privacy captures against Home's Review choices action and the direct Privacy & sharing route. The endpoint variants use the disclosure response's additional host. Screenshot selection, coverage and reduced-motion behavior still match the guides.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the privacy captures against Home's Review choices action and the direct Privacy & sharing route. The endpoint variants use the disclosure response's additional host. Screenshot selection, coverage and reduced-motion behavior still match the guides.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

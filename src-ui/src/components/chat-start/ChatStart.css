@@ -39,7 +39,45 @@
   margin-block: var(--k-space-3);
 }
 .chat-start__setup {
-  padding-block: var(--k-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.chat-start__setup .chat-start__recent-heading h4 {
+  margin: 0;
+}
+.chat-start__setup-agents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-start__setup-agent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.chat-start__setup-details {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+/* --touch-target-min is set only on touch widths, so desktop keeps its size. */
+.chat-start__setup-details > summary {
+  min-height: var(--touch-target-min, auto);
+  align-content: center;
+}
+.chat-start__setup-details p {
+  margin-block: var(--k-space-2);
+}
+.chat-start__setup-actions {
+  justify-content: flex-start;
 }
 .chat-start__body p {
   color: var(--k-text-muted);
@@ -65,9 +103,6 @@
 }
 .new-chat-draft__lead:empty {
   display: none;
-}
-.new-chat-draft__body .chat-start__setup {
-  padding-block: 0;
 }
 .new-chat-draft__body .chat-start__recent-heading h4 {
   margin-block: 0;

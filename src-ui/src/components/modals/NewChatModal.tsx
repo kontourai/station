@@ -93,6 +93,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import type { StartPickerMenu } from '../chat-start/StartPickerMenus';
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
@@ -386,11 +387,7 @@ export function NewChatModal({
   // The Station list (for "on <Station>" and the Station control) is read
   // only while the composer shows; a fork's Agent list does not use it.
   // Which chip menu is open, and the control that opened it.
-  const [chipMenu, setChipMenu] = useState<{
-    kind: 'agents' | 'project' | 'model' | 'station';
-    trigger: HTMLElement | null;
-    agentSlug?: string;
-  } | null>(null);
+  const [chipMenu, setChipMenu] = useState<StartPickerMenu | null>(null);
   const taskScope = useHostRequestAuthorityScope();
   const [remoteLaunch, setRemoteLaunch] = useState<{
     profile: AgentData;
@@ -556,6 +553,7 @@ export function NewChatModal({
     : 0;
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
+    collapseDockForSetup: true,
     readyToResume:
       startWithDefault &&
       !runtimeFetching &&
@@ -615,7 +613,9 @@ export function NewChatModal({
     },
   });
   const beginSetup = (path: string, agentSlug?: string) => {
-    if (showStart && agentSlug) start.chooseAgent(agentSlug);
+    // Shown once setup makes it ready; backing out leaves the working choice.
+    if (showStart && agentSlug)
+      start.chooseAgent(agentSlug, { untilReady: true });
     if (!setupReturn.begin(path)) {
       setSelectFeedback('Reconnect to this Station before opening setup.');
       return;
@@ -1270,8 +1270,12 @@ export function NewChatModal({
     if (seededSelection.current || !startSelection?.agentSlug || automaticMode)
       return;
     seededSelection.current = true;
-    start.chooseAgent(startSelection.agentSlug);
-  }, [start, startSelection, automaticMode]);
+    // A hand-off for setup carries an Agent that is not ready yet; the draft
+    // shows it once it is, and the working default until then.
+    start.chooseAgent(startSelection.agentSlug, {
+      untilReady: handoff?.kind === 'repair',
+    });
+  }, [start, startSelection, automaticMode, handoff?.kind]);
   const seededModel = useRef(false);
   useEffect(() => {
     if (
@@ -1409,7 +1413,7 @@ export function NewChatModal({
   const draftModel = draftAgent ? start.modelFor(draftAgent) : undefined;
   const draftModelLabel =
     draftModel?.engineName && draftModel.executionAgentId
-      ? `${draftModel.engineName} · ${draftModel.label}`
+      ? `${draftModel.label} · ${draftModel.engineName}`
       : draftModel?.label;
   const agentChip: StartAgentChip =
     runtimeLoading ||
@@ -1449,6 +1453,7 @@ export function NewChatModal({
           approvalProjectDefaultUnavailable:
             selectionModel.projectChatDefaultsUnavailable,
           approvalPick,
+          approvalConnections: acpConnections,
           onApprovalPick: setApprovalPick,
         };
   const projectChip: StartProjectChip = targetStart.active
@@ -1479,6 +1484,7 @@ export function NewChatModal({
           accent: isGlobal ? undefined : accents.get(selectedContext),
           icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
           folder: workspaceHintText(workspaceHint),
+          folderIsHelp: workspaceHint.kind === 'managed',
           folderTitle:
             'path' in workspaceHint
               ? [

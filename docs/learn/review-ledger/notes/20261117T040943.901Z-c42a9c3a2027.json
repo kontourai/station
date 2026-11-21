@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"User-facing concepts are unchanged: reopening a conversation can now paint its last read immediately and revalidate it, without changing what Sessions, Tasks or continuation mean.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

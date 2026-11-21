@@ -1,0 +1,23 @@
+{
+  "revision": "07184f79cd0c9e409ac3a21ef3a1e69937c6c5bf",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the working-chat title row and its existing delegation caption. The caption can show a confirmed reported start; the same chat controller owns composer admission and send behavior.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked the shared start receipt selector from working and imported conversations. Working chat reads the host-scoped exact thread, and the imported reader waits for its matching delegated session.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ImportedConversationPane.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Verified compact cards prefix recorded provider summaries, child messages and provider errors. Old content shows unknown provenance when expanded. The delegation header shows accepted start provenance on a host-owned thread.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the inherited title row and compact card preview classes. Both provenance strings fit the existing text slots, preserving the existing responsive and accessible controls.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the established command-receipts query and matching thread guard. Accepted start receipts provide reported client context while the existing Station authority owns the request.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the active session origin input. CLI provenance comes from the recorded accepted lifecycle receipt; engine and model configuration continue to resolve through the existing execution owner.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Verified that a delegated chat's displayed launch hint comes from its own accepted Station receipt, and that the suffix marks the client surface as reported.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified the reopened reader and active title both expose the recorded CLI start through the same selector. Directory remains folder context for a Project-less delegation.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the ChatDock caller used by boards. The origin caption follows the owning thread, and board selection and pane placement stay with their existing controllers.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

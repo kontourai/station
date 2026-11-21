@@ -2188,9 +2188,7 @@ fn native_grant_cleanup_owner_index_account(
     app_identifier: &str,
     channel: &str,
 ) -> RedemptionResult<String> {
-    if !valid_app_identifier(app_identifier)
-        || !matches!(channel, "stable" | "nightly" | "dev")
-    {
+    if !valid_app_identifier(app_identifier) || !matches!(channel, "stable" | "nightly" | "dev") {
         return Err(NativeRedemptionError::InvalidProfile);
     }
     let app_hash = URL_SAFE_NO_PAD.encode(digest(&SHA256, app_identifier.as_bytes()));

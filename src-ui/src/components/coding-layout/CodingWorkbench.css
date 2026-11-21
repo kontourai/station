@@ -964,20 +964,40 @@
   line-height: 1;
 }
 
+/* Same corner and size as the count badge, inside the 44px item, so the
+   rail's scroll box never clips it; neutral where the count is accent. */
 .coding-workbench__rail-ordinal {
   position: absolute;
-  bottom: 0;
-  right: 0;
+  top: 3px;
+  right: 1px;
   display: grid;
   place-items: center;
   min-width: 15px;
   height: 15px;
-  padding-inline: var(--k-space-1);
+  padding: 0 3px;
   border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-sm);
+  border-radius: calc(var(--k-radius-md) * 2);
   background: var(--k-panel);
   color: var(--k-text);
-  font-size: var(--k-text-sm);
+  font-size: var(--k-text-xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+/* The Browser launcher's "+": it adds a pane, unlike the Browser beside it. */
+.coding-workbench__rail-add-mark {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: calc(var(--k-radius-md) * 2);
+  background: var(--k-bg);
+  color: currentColor;
+  font-size: var(--k-text-xs);
+  font-weight: var(--weight-bold);
   line-height: 1;
 }
 
@@ -994,4 +1014,50 @@
   gap: var(--k-space-1);
   margin-inline-start: 0;
   padding-inline: var(--k-space-2);
+}
+
+/* A pane that has both keeps its count in the corner; the ordinal drops to
+   the opposite one rather than covering it. */
+.coding-workbench__rail-item:has(.coding-workbench__rail-count)
+  .coding-workbench__rail-ordinal {
+  top: auto;
+  bottom: 3px;
+}
+
+/* A label, not a paragraph: it never wraps to a second line of the bar. */
+.coding-workbench__open-browser {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* A subagent's chat brings its own crumbs (parent / child) into the bar's
+   leading slot, and the parent crumb there is the way back. The bar's own
+   conversation crumb would name the parent a second time. */
+.coding-workbench__bar:has(.child-chat-trail)
+  .coding-workbench__crumb:not(:first-child) {
+  display: none;
+}
+/* "Inbox" alone: it keeps its width while the trail's titles yield, and
+   the bar's own gap (--k-space-2) is the space before the trail's "/". */
+.coding-workbench__bar:has(.child-chat-trail) .coding-workbench__nav {
+  flex: none;
+}
+.coding-workbench__bar:has(.child-chat-trail) .coding-workbench__crumb-link {
+  padding-inline-end: 0;
+}
+/* Every "/" sits the bar's gap (--k-space-2) from the text on each side. */
+.coding-workbench__bar-leading .child-chat-trail,
+.coding-workbench__bar-leading .child-chat-trail__segment {
+  gap: 0;
+}
+.coding-workbench__bar-leading .child-chat-trail::before {
+  content: "/";
+  flex: none;
+  color: var(--k-text-muted);
+}
+.coding-workbench__bar-leading .child-chat-trail__segment .button {
+  padding-inline: var(--k-space-2);
+}
+.coding-workbench__bar-leading .child-chat-trail [aria-current] {
+  padding-inline-start: var(--k-space-2);
 }

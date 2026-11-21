@@ -1,0 +1,7 @@
+{
+  "revision": "cb32c4eff0ffcc72bd39ae0778df90950968e6cb",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Adds the projectSchedules flag, withdrawn in hosted mode like scheduledConversationTarget; existing flags and their deployment rules unchanged.","inputs":["src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

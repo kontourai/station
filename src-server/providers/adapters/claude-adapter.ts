@@ -59,6 +59,7 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import {
+  type ChildWorkloadNotice,
   type ChildWorkloadOutcome,
   childWorkloadMemoryExhausted,
 } from '@kontourai/station-shared/child-workload';
@@ -116,6 +117,7 @@ import {
 import {
   assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
+  managedEngineEnvironmentLocked,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
@@ -148,6 +150,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
 import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
+import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import {
   childProcessEnvironment,
@@ -297,7 +300,12 @@ import {
   skillOverlayDirFor,
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
+import { resolveClaudeStationDocs } from './claude-station-docs.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
+import {
+  EngineWorkloadNotices,
+  workloadNoticeWarning,
+} from './engine-workload-notices.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { claudeAnswers, claudeInputRequest } from './harness-questions.js';
 import {
@@ -801,6 +809,7 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  configuredClaudeEndpoint: boolean;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -827,8 +836,16 @@ type ClaudeSessionRecord = {
   lastDispatchedTurnId?: string;
   /** Stops observing the engine process's exit. */
   stopWatchingEngineExit?: () => void;
+  /**
+   * #5113: workload notices the engine has not been told yet, drained into
+   * its context by the PostToolUse, PostToolUseFailure and UserPromptSubmit
+   * hooks; and the unsubscribe from the engine process's notices.
+   */
+  workloadNotices?: EngineWorkloadNotices;
+  stopWatchingWorkloadNotices?: () => void;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
+  stationDocs?: Awaited<ReturnType<typeof resolveClaudeStationDocs>>;
   mcpServers: Record<string, McpServerConfig>;
   tenantExecutionContext?: TenantExecutionContext;
   configuredMetadata?: Record<string, unknown>;
@@ -1013,6 +1030,26 @@ function newSessionTitle(threadId: string): string {
 }
 
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+function hasConfiguredClaudeEndpoint(
+  env: Options['env'],
+  configuredBaseUrl: string | undefined,
+): boolean {
+  if (
+    !configuredBaseUrl ||
+    env?.ANTHROPIC_BASE_URL !== configuredBaseUrl ||
+    managedEngineEnvironmentLocked('claude') ||
+    !/^https?:\/\//i.test(configuredBaseUrl)
+  ) {
+    return false;
+  }
+  try {
+    const { hostname } = new URL(configuredBaseUrl);
+    return hostname.replace(/\.$/, '') !== 'api.anthropic.com';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
@@ -1655,6 +1692,12 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  onGuardianAsk: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+    reason: string,
+  ) => void,
   /** The engine runs at `bypassPermissions` for this call. */
   fullAccess = false,
 ) {
@@ -1691,6 +1734,14 @@ async function evaluateClaudePreToolPolicy(
     ]);
     if (decision.behavior === 'allow' && !decision.toolGrant) {
       onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
+    }
+    if (decision.behavior === 'ask' && decision.guardianReason) {
+      onGuardianAsk(
+        input.tool_use_id,
+        input.tool_name,
+        input.tool_input,
+        decision.guardianReason,
+      );
     }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
@@ -1910,7 +1961,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
-      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism))
+      if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism)) {
+        const docs = resolveClaudeStationDocs(input);
+        const stationDocs = docs ? await docs : undefined;
+        if (docs) input.signal?.throwIfAborted();
         return this.startTrackedSession(
           sdk,
           input,
@@ -1927,7 +1981,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           undefined,
           oauthTokens,
           artifactsEnv,
+          stationDocs,
         );
+      }
       const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
         connectionEnv,
@@ -2177,6 +2233,62 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(record.port !== undefined ? { port: record.port } : {}),
       });
     };
+  }
+
+  /**
+   * #5113: a transition in this engine's own workload scope. The transcript
+   * shows it at once as a `runtime.warning`; the engine is told at its next
+   * tool result (PostToolUse/PostToolUseFailure `additionalContext`, which
+   * Claude Code adds to the model's context as a system reminder) or, when
+   * no tool runs first, with its next prompt (UserPromptSubmit).
+   */
+  private receiveWorkloadNotice(
+    record: ClaudeSessionRecord,
+    notice: ChildWorkloadNotice,
+  ): void {
+    const threadId = record.session.threadId;
+    if (
+      record.stopping ||
+      record.engineExit ||
+      this.sessions.get(threadId) !== record
+    )
+      return;
+    record.workloadNotices?.receive(notice);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      ...(record.activeTurnId ? { turnId: record.activeTurnId } : {}),
+      ...workloadNoticeWarning(notice),
+    });
+  }
+
+  /** The hook result, carrying any workload notices the engine has not seen. */
+  private withWorkloadNotices(
+    threadId: string,
+    hookEventName: 'PostToolUse' | 'PostToolUseFailure' | 'UserPromptSubmit',
+    delivery: 'mid-turn' | 'turn-start',
+  ) {
+    const record = this.sessions.get(threadId);
+    const notices =
+      record && !record.stopping && !record.engineExit
+        ? record.workloadNotices
+        : undefined;
+    const batch = notices?.take();
+    if (!notices || !batch) return { continue: true };
+    notices.delivered(batch, delivery);
+    return {
+      continue: true,
+      hookSpecificOutput: { hookEventName, additionalContext: batch.text },
+    };
+  }
+
+  private endWorkloadNotices(record: ClaudeSessionRecord): void {
+    record.stopWatchingWorkloadNotices?.();
+    record.stopWatchingWorkloadNotices = undefined;
+    record.workloadNotices?.end();
   }
 
   private publishNetworkDenial(
@@ -2564,6 +2676,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     seatbelt?: SeatbeltStart,
     oauthTokens?: ReadonlyMap<string, string>,
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
+    stationDocs?: ClaudeSessionRecord['stationDocs'],
   ): ProviderSession | Promise<ProviderSession> {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -2618,6 +2731,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       : undefined;
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input, oauthTokens);
+    if (stationDocs && toolServers.mcpServers?.[stationDocs.config.name]) {
+      toolServers.mcpServers[stationDocs.config.name] = stationDocs.config;
+    }
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const configHome = claudeSpawnConfigHome(
       appHomeEnv,
@@ -2664,6 +2780,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       input.threadId,
     );
     let sdkQuery: Query;
+    let configuredClaudeEndpoint: boolean;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
@@ -2673,31 +2790,37 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ]);
       // After station-control, so the browser server reuses its credential.
       builtinServers = this.resolveStationBrowser(input);
-      sdkQuery = sdk.query({
-        prompt: promptQueue,
-        options: this.buildOptions(
-          input,
-          engineProcess,
-          persistSession,
-          permissionMode,
-          appHomeEnv,
-          connectionEnv,
-          toolServers.mcpServers,
-          skillsOverlayDir,
-          augmentedEnv,
-          preToolPolicy,
-          claudeExecutable,
-          builtinServers,
-          Boolean(seatbelt) ||
-            hostBypassGrant ||
-            permissionMode === 'bypassPermissions',
-          sessionTmpDir,
-          artifactsEnv,
-        ),
-      });
+      const options = this.buildOptions(
+        input,
+        engineProcess,
+        persistSession,
+        permissionMode,
+        appHomeEnv,
+        connectionEnv,
+        toolServers.mcpServers,
+        skillsOverlayDir,
+        augmentedEnv,
+        preToolPolicy,
+        claudeExecutable,
+        builtinServers,
+        Boolean(seatbelt) ||
+          hostBypassGrant ||
+          permissionMode === 'bypassPermissions',
+        sessionTmpDir,
+        artifactsEnv,
+      );
+      configuredClaudeEndpoint = hasConfiguredClaudeEndpoint(
+        options.env,
+        appHomeEnv?.ANTHROPIC_BASE_URL ?? connectionEnv?.ANTHROPIC_BASE_URL,
+      );
+      sdkQuery = sdk.query({ prompt: promptQueue, options });
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
+      if (stationDocs)
+        return stationDocs.close().then(() => {
+          throw error;
+        });
       throw error;
     }
 
@@ -2721,6 +2844,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      configuredClaudeEndpoint,
       deliveryProbeServerId:
         probeServer &&
         input.agent?.toolServers?.some((server) => server.id === probeServer)
@@ -2732,6 +2856,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
+      stationDocs,
       mcpServers: { ...toolServers.mcpServers, ...builtinServers },
       coordinatorControlGeneration: input.agent?.toolServers?.find(
         (server) =>
@@ -2824,6 +2949,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       commitHostImageLaunch();
       record.stopWatchingEngineExit = engineProcess.onExit((exit) =>
         this.observeEngineExit(record, exit),
+      );
+      record.workloadNotices = new EngineWorkloadNotices('claude');
+      record.stopWatchingWorkloadNotices = engineProcess.onWorkloadNotice(
+        (notice) => this.receiveWorkloadNotice(record, notice),
       );
       record.streamTask = this.consumeMessages(record);
 
@@ -3278,14 +3407,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
     turnId: ReturnType<typeof crypto.randomUUID>,
   ): Promise<ProviderTurnStartResult> {
+    const { ambientContext, displayInput, input: canonicalInput } = input;
+    const splitText: ContentBlockParam[] | undefined =
+      ambientContext?.trim() &&
+      typeof displayInput === 'string' &&
+      displayInput.length > 0 &&
+      composeAmbientTurnText(ambientContext, displayInput) === canonicalInput
+        ? [
+            {
+              type: 'text',
+              text: canonicalInput.slice(0, -displayInput.length),
+            },
+            { type: 'text', text: displayInput },
+          ]
+        : undefined;
     const decodedAttachments = decodeChatAttachments(input.attachments);
     const content: string | ContentBlockParam[] =
       decodedAttachments.length === 0
-        ? input.input
+        ? (splitText ?? canonicalInput)
         : [
-            ...(input.input
-              ? ([{ type: 'text', text: input.input }] as ContentBlockParam[])
-              : []),
+            ...(splitText ??
+              (canonicalInput
+                ? ([{ type: 'text', text: canonicalInput }] as const)
+                : [])),
             ...decodedAttachments.map(({ attachment, base64 }) => {
               if (attachment.kind === 'image') {
                 return {
@@ -3944,8 +4088,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
     record.stopping = true;
+    this.endWorkloadNotices(record);
     record.promptQueue.close();
-    record.query.close();
+    try {
+      record.query.close();
+    } finally {
+      if (record.stationDocs) await record.stationDocs.close();
+    }
     await record.engineProcess?.terminate();
     record.confinementCleanup?.();
     this.options.nativeSessionOwnership?.retired(threadId);
@@ -4587,12 +4736,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
-      {
-        ...this.options.getStationControlEnv?.(),
-        ...(tenantExecutionContext
-          ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
-          : {}),
-      },
+      this.options.getStationControlEnv?.(),
       {
         ...(this.options.createInProcessStationKnowledge
           ? {
@@ -4637,7 +4781,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       ),
             }
           : {}),
-        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
       },
       oauthTokens,
     );
@@ -4776,6 +4919,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       return allow.inputDigest === toolInputDigest(toolInput)
         ? 'allowed'
         : 'changed';
+    };
+    const guardianAsks = new Map<
+      string,
+      { toolName: string; inputDigest?: string; reason: string }
+    >();
+    const rememberGuardianAsk = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+      reason: string,
+    ) => {
+      if (!toolUseId) return;
+      guardianAsks.delete(toolUseId);
+      guardianAsks.set(toolUseId, {
+        toolName,
+        inputDigest: toolInputDigest(toolInput),
+        reason,
+      });
+      if (guardianAsks.size > MAX_PENDING_POLICY_ALLOWS) {
+        const oldest = guardianAsks.keys().next();
+        if (!oldest.done) guardianAsks.delete(oldest.value);
+      }
     };
     const disallowedTools = [
       ...(input.agent?.toolServers?.some(
@@ -5010,7 +5175,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           input.agent?.askBeforeUse,
           sourceApproval.key,
         );
+        const guardianAsk = options.toolUseID
+          ? guardianAsks.get(options.toolUseID)
+          : undefined;
+        if (options.toolUseID) guardianAsks.delete(options.toolUseID);
+        const guardianReason =
+          guardianAsk?.toolName === toolName &&
+          guardianAsk.inputDigest !== undefined &&
+          guardianAsk.inputDigest === toolInputDigest(toolInput)
+            ? guardianAsk.reason
+            : undefined;
         const explicitAsk =
+          guardianAsk !== undefined ||
           authoredApproval === 'ask' ||
           (sourceApproval.ambiguous && !!input.agent?.askBeforeUse?.length);
         // Fix (external autoApprove parity): match Station's own
@@ -5156,6 +5332,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               claudeSandboxNetworkTitle(toolName, toolInput) ??
               `Allow ${toolName}`),
           description: claudeRequestDisplayText(options.description),
+          ...(guardianReason ? { guardianReason } : {}),
           payload: {
             ...(inputRequest ? { inputRequest } : {}),
             toolName,
@@ -5275,8 +5452,40 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   : undefined;
                 if (delegatedTool && DELEGATED_RESULT_TOOLS.has(delegatedTool))
                   ledger.carryDescendantRead(input.threadId);
-                return { continue: true };
+                return this.withWorkloadNotices(
+                  input.threadId,
+                  'PostToolUse',
+                  'mid-turn',
+                );
               },
+            ],
+          },
+        ],
+        // #5113: a failed command (one the kernel killed, often) is where a
+        // pending workload notice matters most.
+        PostToolUseFailure: [
+          {
+            hooks: [
+              async () =>
+                this.withWorkloadNotices(
+                  input.threadId,
+                  'PostToolUseFailure',
+                  'mid-turn',
+                ),
+            ],
+          },
+        ],
+        // #5113: a notice that arrived while no tool ran reaches the engine
+        // with its next prompt.
+        UserPromptSubmit: [
+          {
+            hooks: [
+              async () =>
+                this.withWorkloadNotices(
+                  input.threadId,
+                  'UserPromptSubmit',
+                  'turn-start',
+                ),
             ],
           },
         ],
@@ -5343,6 +5552,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        rememberGuardianAsk,
                         // Read per call: a mid-chat switch changes it.
                         this.sessions.get(input.threadId)
                           ?.currentPermissionMode === 'bypassPermissions',
@@ -5553,6 +5763,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       await this.consumeMessagesInner(record);
     } finally {
+      if (record.stationDocs) await record.stationDocs.close();
       record.streamEnded = true;
       // An exit nobody asked for, with no failure published for it yet: the
       // stream ended (or was closed) without saying why. Its children settle
@@ -5601,6 +5812,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (record.stopping || record.engineExit) return;
     record.engineExit = exit;
     record.stopWatchingEngineExit?.();
+    this.endWorkloadNotices(record);
     // The stream already ended (stdout closed before the exit was seen):
     // nothing else will record this death.
     if (record.streamEnded) {

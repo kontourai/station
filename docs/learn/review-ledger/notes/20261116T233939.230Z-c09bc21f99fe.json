@@ -1,0 +1,13 @@
+{
+  "revision": "47671278b97f1dec8fb305178217b9b854b9643a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta-review fix: an idle transcript rewritten to exactly its first page's start (the server's read comes back empty at the asked nonzero offset) also resets to the latest messages. SDK reference wording still accurate.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Delta-review fix: an idle transcript rewritten to exactly its first page's start (the server's read comes back empty at the asked nonzero offset) also resets to the latest messages. SDK reference wording still accurate.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta-review fix: an idle transcript rewritten to exactly its first page's start (the server's read comes back empty at the asked nonzero offset) also resets to the latest messages. SDK reference wording still accurate.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta-review fix: an idle transcript rewritten to exactly its first page's start (the server's read comes back empty at the asked nonzero offset) also resets to the latest messages. SDK reference wording still accurate.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

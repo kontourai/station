@@ -104,11 +104,7 @@ fn write(home: &Path, registration: &Registration) -> Result<(), String> {
 }
 
 fn service_birth(app: &AppHandle, home: &Path) -> Result<Option<String>, String> {
-    let resource = crate::simplified_sidecar_resource_dir(
-        &app.path()
-            .resource_dir()
-            .map_err(|error| error.to_string())?,
-    );
+    let resource = crate::desktop_runtime_resource_dir(app).map_err(|error| error.to_string())?;
     let entries = crate::read_registry_bridge(&resource, home)
         .map_err(|_| "Cannot read service ownership")?;
     let services = entries

@@ -37,8 +37,10 @@ import {
 } from './codex-adapter-events.js';
 import {
   type CodexSessionRecord,
+  codexTurnAlreadyTerminal,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import { mapCodexApprovalReviewer } from './codex-approval-mode.js';
 import {
   codexUsageLimitDetails,
   observeCodexRateLimits,
@@ -168,6 +170,16 @@ interface HandleCodexNotificationOptions {
   onQuotaUpdate?: (record: CodexSessionRecord, payload: unknown) => void;
 }
 
+function codexInterruptedTurnIsTerminal(
+  record: CodexSessionRecord,
+  turnId: string,
+): boolean {
+  return (
+    record.cancelledBoundTurns?.has(turnId) === true &&
+    codexTurnAlreadyTerminal(record, turnId)
+  );
+}
+
 /**
  * Handles one notification. Returns a promise only when handling had to wait
  * on I/O (an image read from the host); the transport holds every later
@@ -183,6 +195,32 @@ export function handleCodexNotification(
   }
 
   switch (notification.method) {
+    case 'thread/settings/updated': {
+      const payload = notification.params;
+      if (
+        record.stopped ||
+        !record.codexThreadId ||
+        !isRecord(payload) ||
+        payload.threadId !== record.codexThreadId ||
+        !isRecord(payload.threadSettings) ||
+        !Object.hasOwn(payload.threadSettings, 'approvalsReviewer')
+      )
+        return;
+      const reviewer = mapCodexApprovalReviewer(
+        payload.threadSettings.approvalsReviewer,
+      );
+      if (record.reportedApprovalReviewer === reviewer) return;
+      record.reportedApprovalReviewer = reviewer;
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'session.approval-reviewer-observed',
+        reviewer,
+      });
+      return;
+    }
     case 'thread/status/changed': {
       if (!isRecord(notification.params)) return;
       const nextState = mapThreadStatusToState(notification.params.status);
@@ -221,7 +259,13 @@ export function handleCodexNotification(
       const turnId = extractString(notification.params.turnId);
       const itemId = extractString(notification.params.itemId);
       const delta = extractString(notification.params.delta);
-      if (!turnId || !itemId || !delta) return;
+      if (
+        !turnId ||
+        !itemId ||
+        !delta ||
+        codexInterruptedTurnIsTerminal(record, turnId)
+      )
+        return;
       const priorOutput = record.turnOutput.get(turnId) ?? '';
       record.turnOutputItemId ??= new Map();
       // A new agent message after text from an earlier one opens a new
@@ -254,7 +298,13 @@ export function handleCodexNotification(
       const turnId = extractString(notification.params.turnId);
       const itemId = extractString(notification.params.itemId);
       const delta = extractString(notification.params.delta);
-      if (!turnId || !itemId || !delta) return;
+      if (
+        !turnId ||
+        !itemId ||
+        !delta ||
+        codexInterruptedTurnIsTerminal(record, turnId)
+      )
+        return;
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -404,28 +454,17 @@ export function handleCodexNotification(
       const turn = notification.params.turn;
       const turnId = extractString(turn.id);
       if (!turnId) return;
+      const alreadyTerminal = codexInterruptedTurnIsTerminal(record, turnId);
+      const active = turnId === record.activeTurnId;
+      // An acknowledged Stop already emitted the terminal but still needs
+      // the engine's final cursor. A newer turn owns its own session state.
+      const ownsSettlement =
+        active ||
+        (record.activeTurnId === undefined &&
+          (!alreadyTerminal || record.terminalPublishedForTurnId === turnId));
+      if (alreadyTerminal && !ownsSettlement) return;
       const outputText = record.turnOutput.get(turnId);
-      // archive#3451 fix round D8 / archive#3572(a) (widened): only touch
-      // the CURRENTLY active turn's bookkeeping — `activeTurnId`,
-      // `activeTurnStartedAt`, AND the duration metric that reads it — when
-      // this notification actually names that turn. Mirrors the
-      // target-mismatch guard `interruptTurn` already has. D8 originally
-      // gated only the `activeTurnId` clear; a late `turn/completed` for
-      // turn-1 arriving while turn-2 is already active still (a) recorded an
-      // `adapterTurnDuration` sample using turn-2's OWN in-flight
-      // `activeTurnStartedAt` — attributing a bogus duration to turn-1's
-      // stale completion — and (b) unconditionally cleared
-      // `activeTurnStartedAt` immediately below, so when turn-2 genuinely
-      // completed later this same block found no `activeTurnStartedAt` to
-      // read and silently recorded NO duration sample for turn-2 at all: one
-      // bogus datapoint, one real one lost. All three now share the single
-      // identity check. `terminalPublishedForTurnId` stays unconditional
-      // below: it states a true fact (turn-1's terminal WAS published) that
-      // is harmless to record even when turn-1 is no longer the active
-      // turn — `publishOrphanedTurnFailure`'s guard compares it against
-      // `activeTurnId`, so it only ever matches (and skips synthesis) when
-      // the ids actually agree.
-      if (turnId === record.activeTurnId) {
+      if (active) {
         if (record.activeTurnStartedAt) {
           adapterTurnDuration.record(Date.now() - record.activeTurnStartedAt, {
             provider: 'codex',
@@ -434,22 +473,20 @@ export function handleCodexNotification(
         record.activeTurnId = undefined;
         record.activeTurnStartedAt = undefined;
       }
-      // archive#3473 fix round: this notification ALWAYS publishes a real
-      // terminal below (turn.completed, or runtime.error for the failed
-      // branch) — mark it before either publish path so a concurrent
-      // `stopSession`/process-exit synthesis (`publishOrphanedTurnFailure`)
-      // never double-publishes for this turn.
+      if (ownsSettlement) {
+        record.session = {
+          ...record.session,
+          status: 'ready',
+          updatedAt: nowIso(),
+          resumeCursor: codexResumeCursor(
+            record.codexThreadId,
+            record.session.resumeCursor,
+            turnId,
+          ),
+        };
+      }
+      if (alreadyTerminal) return;
       markCodexTurnTerminal(record, turnId);
-      record.session = {
-        ...record.session,
-        status: 'ready',
-        updatedAt: nowIso(),
-        resumeCursor: codexResumeCursor(
-          record.codexThreadId,
-          record.session.resumeCursor,
-          turnId,
-        ),
-      };
       // archive#3442: Codex reports a genuinely failed turn (e.g. a
       // usage-limit or context-window exhaustion mid-turn) through the SAME
       // `turn/completed` notification as a success — `turn.status` is the
@@ -553,6 +590,8 @@ export function handleCodexNotification(
         return;
       }
       const errorTurnId = extractString(notification.params.turnId);
+      if (errorTurnId && codexInterruptedTurnIsTerminal(record, errorTurnId))
+        return;
       const willRetry = Boolean(notification.params.willRetry);
       // archive#3451 finding B2: when `willRetry` is falsy this event IS a
       // genuine terminal for the turn it names — every consumer downstream

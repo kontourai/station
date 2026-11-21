@@ -29,7 +29,7 @@ Updating has three separate steps:
    rail or mobile drawer, to review app and connected-server updates in one
    panel. Its **Desktop app** section offers **Download update**; the same
    controls remain in Settings → System → **Desktop app updates**. The
-   **Automatic download** setting (Never, After 24 hours, Immediately; default
+   **Automatic desktop app download** setting (Never, After 24 hours, Immediately; default
    After 24 hours) decides when it downloads without a click; the 24-hour clock
    starts when that version is first seen and survives restarts. A manual
    download always works. Downloading shows byte progress and never restarts
@@ -39,7 +39,8 @@ Updating has three separate steps:
    package in memory.
 2. **Confirm.** A downloaded update offers **Restart to update**, which only
    opens a confirmation. When the app's built-in server serves this window,
-   the confirmation lists the running agent turns the restart interrupts; an
+   the confirmation gives the number of running agent turns a restart interrupts.
+   It lists titles you can read and shows only a count for private turns. An
    installed service or another server keeps running.
 
    A downloaded update survives quitting. Shortly after the next start (off
@@ -60,8 +61,10 @@ Updating has three separate steps:
    install error; the next check offers the update again.
 3. **Install and restart.** Only **Restart now** installs the download, after
    its digest and signature check, and restarts the app. **Restart now** waits
-   until the running agent turns are listed. A failed install leaves the update
-   downloaded and the app running, with the failure shown.
+   for the built-in server’s running-turn check to finish. A failed install leaves the update
+   downloaded and the app running. If the installer runs out of disk space,
+   free space on the volume where Station is installed, then choose **Retry
+   install**. **Copy details** copies the full diagnostic.
 
 The Updates panel and Settings show check failures with the updater's own
 text; the sidebar control does not announce routine check failures. The
@@ -86,8 +89,9 @@ upgrades can each open a changelog once; server presentation is remembered per
 endpoint and instance, and the app prompt takes precedence when both are pending.
 The first observation of each server records its version without a popup.
 
-**Update policies and details** opens Settings, where automatic-download
-policies remain. Source-installation and manual host guidance remain reachable
+**Update policies and details** opens Settings. **Automatic server download**
+appears within the connected server’s card when that server supports staging
+updates from a release archive. Source-installation and manual host guidance remain reachable
 from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
 
 Updating a separately running server remains a separate operation. Its source
@@ -312,9 +316,10 @@ child-process environments still scrub it. User and third-party Node
 programs, terminal PTYs and engine children never write into this cache.
 [`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
 gives the home's cache directory only to the built-in `station-control` and
-`station-knowledge` bundles, through the same exact-binary check that gates
-their API credential. That covers the pooled MCP children and the copies an
-engine starts from its MCP configuration. Measured, a warm cache starts those
+`station-knowledge` bundles, through the same exact-binary check
+(`withStationControlRuntimeEnv`), which no longer hands them any API
+credential. That covers the copies an engine or the tool catalogue starts
+from its MCP configuration. Measured, a warm cache starts those
 bundles faster and leaves them smaller. Each removes the setting from its own
 environment at startup and writes its cache straight away, because an engine
 may end it with a signal, after which Node writes nothing. A cold cache, the
@@ -358,8 +363,10 @@ use instead, because an idle server needs none of them and each costs memory
 once loaded. The server build fails if the bundle statically imports any of
 those packages, or any subpath of one, again
 ([deny list](../../scripts/lib/server-static-imports.mjs)).
-The `@kontourai/flow-agents` root is still imported at boot because some
-synchronous callers need values only it exports.
+The build also fails on a static import of the `@kontourai/flow-agents` root,
+which re-exports the whole package. Its narrow subpaths may still be imported
+statically; the ones only async callers need are loaded on first use
+([loaders](../../src-server/services/evidence/load-flow-agents.ts)).
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an

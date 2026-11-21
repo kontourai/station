@@ -33,6 +33,12 @@ export interface SessionActingPrincipal {
   readonly source: StationControlCallerPrincipalSource;
 }
 
+/** #4568: who began a start that no Session record answers for yet. */
+export interface PendingStartOwner {
+  readonly userId: string;
+  readonly tenantExecutionContext?: TenantExecutionContext;
+}
+
 export interface PersonalConversationAccess {
   canRead(requesterId: string, ownerId: string): boolean;
   ownerIds(requesterId: string): readonly string[] | undefined;
@@ -415,6 +421,69 @@ export class SessionAuthorization {
     // Every other owner is exact principal-id equality. An owner that names
     // no principal (a display alias, say) is readable by no one.
     return userId === ownerUserId;
+  }
+
+  /**
+   * #4568: may `scope` read a start `owner` has begun that no Session record
+   * answers for yet (a brand-new chat's engine-start wait)? The same rule as
+   * {@link canReadSession}, with the owner and tenant taken from the start's
+   * own server-derived command context instead of a persisted record.
+   */
+  canReadPendingStart(
+    owner: PendingStartOwner,
+    scope: SessionReadScope,
+  ): boolean {
+    const runtimeScope: unknown = scope;
+    if (runtimeScope === INTERNAL_SESSION_READ_SCOPE) return true;
+    const authority = isSessionReadAuthority(runtimeScope)
+      ? runtimeScope
+      : undefined;
+    if (this.deps.requireTenantExecutionContext?.() === true) {
+      if (authority?.mode !== 'hosted' || !authority.tenantExecutionContext)
+        return false;
+      const tenant = this.deps.validateRecoveredTenantExecutionContext?.(
+        owner.tenantExecutionContext,
+      );
+      return (
+        tenant !== undefined &&
+        tenant.tenantId === authority.tenantExecutionContext.tenantId &&
+        owner.userId === authority.userId
+      );
+    }
+    if (!authority || authority.mode !== 'personal') return false;
+    if (
+      this.deps.personalConversationAccess?.canRead(
+        authority.userId,
+        owner.userId,
+      )
+    )
+      return true;
+    return authority.userId === owner.userId;
+  }
+
+  /** #4568: the command-side mirror of {@link canReadPendingStart} (a Stop). */
+  canCommandPendingStart(
+    owner: PendingStartOwner,
+    userId: string | undefined,
+    tenantExecutionContext: TenantExecutionContext | undefined,
+  ): boolean {
+    if (userId === undefined) return true;
+    if (this.deps.requireTenantExecutionContext?.()) {
+      const tenant = this.deps.validateRecoveredTenantExecutionContext?.(
+        owner.tenantExecutionContext,
+      );
+      return (
+        tenant !== undefined &&
+        tenantExecutionContext !== undefined &&
+        tenant.tenantId === tenantExecutionContext.tenantId &&
+        owner.userId === userId
+      );
+    }
+    return (
+      owner.userId === userId ||
+      this.deps.personalConversationAccess?.canRead(userId, owner.userId) ===
+        true
+    );
   }
 
   /** Validate the persisted binding with the runtime's trusted registry seam. */

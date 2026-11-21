@@ -1,0 +1,7 @@
+{
+  "revision": "3afec36bb999e09105c317e05f2388d30cefb2bd",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Read the Nightly base-guard paragraph against scripts/nightly-release-base.mjs: bounded (64 MiB capture) paginated listing, failed/malformed query refused; corrected bootstrap to require a successfully read non-empty history, since an empty listing is now refused. Guard locations unchanged.","inputs":["docs/guides/native-releases.md",".github/workflows/nightly-native-cohort.yml",".github/workflows/nightly.yml"]}
+  ]
+}

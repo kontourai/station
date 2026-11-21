@@ -359,7 +359,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const replay = isReplayThread(session.id);
   const replayHistory = useReplayHistory(session.id);
   const enabled = Boolean(
-    session.orchestrationSessionStarted &&
+    (session.orchestrationSessionStarted ||
+      session.conversationOpenState?.status === 'fresh-context-ready') &&
       (!replay || replayHistory) &&
       !unavailable &&
       !resolving,
@@ -388,6 +389,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             loadOlder: () => requestReplayHistory(session.id),
             loadTurn: async () => false,
             reload: () => requestReplayHistory(session.id),
+            // A replay's tape is never painted from the reopen cache.
+            revalidating: false,
           }
         : { ...serverWindow, reload: retryHistory },
     [replayHistory, serverWindow, session.id, retryHistory],
@@ -409,8 +412,19 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const windowWatermark = replay
     ? Number.MAX_SAFE_INTEGER
     : serverWindow.watermark;
-  const liveGap =
+  // A failed read that holds nothing has no rows for live events to gap
+  // against: its failure is the state to show, not a catch-up that never ends
+  // (the gap reload waits on the error, so it would never clear).
+  const windowFailedEmpty = Boolean(
+    serverWindow.error && serverWindow.events.length === 0,
+  );
+  const truncatedPastWindow =
     !replay && windowWatermark < readSequencedLiveTruncation(apiBase);
+  const liveGap = truncatedPastWindow && !windowFailedEmpty;
+  // The same failed, empty window must not draw the buffered live tail as
+  // its transcript either: past the truncation that tail starts mid-chat.
+  // Its rows are withheld (not its events) without counting as a catch-up.
+  const failedTailWithheld = windowFailedEmpty && truncatedPastWindow;
   const gapReloadKey = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (
@@ -450,6 +464,58 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     readLiveFloor,
     readLiveFloor,
   );
+  const viewKey = JSON.stringify([
+    apiBase,
+    target?.station?.runtimeKey ?? target?.requestScope?.authorityKey,
+    session.conversationId ?? session.id,
+  ]);
+  // Frames buffered before this view opened belong to its history even if
+  // the live store can still supply them while the server page loads.
+  const initialSequence = Math.max(
+    liveFloor,
+    liveEvents.at(-1)?.sequence ?? 0,
+    session.conversationActivity?.asOfSequence ?? 0,
+  );
+  const [entryView, setEntryView] = useState(() => ({
+    key: viewKey,
+    sequence: initialSequence,
+  }));
+  if (entryView.key !== viewKey) {
+    setEntryView({ key: viewKey, sequence: initialSequence });
+  }
+  const previousArrivals = useRef<readonly OrchestrationSequencedEvent[]>([]);
+  const arrivals = useMemo(() => {
+    const threadIds = new Set([
+      session.id,
+      session.currentSessionId,
+      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+    ]);
+    const next = replay
+      ? []
+      : liveEvents.filter(
+          ({ sequence, event }) =>
+            sequence > entryView.sequence &&
+            threadIds.has(event.threadId) &&
+            (event.method === 'turn.started' ||
+              (TURN_TERMINAL_METHODS.includes(event.method) &&
+                !isDeferredRetriableTurnError(event))),
+        );
+    const prior = previousArrivals.current;
+    if (
+      next.length === prior.length &&
+      next.every((event, index) => event === prior[index])
+    )
+      return prior;
+    previousArrivals.current = next;
+    return next;
+  }, [
+    entryView.sequence,
+    liveEvents,
+    replay,
+    session.id,
+    session.currentSessionId,
+    window.sessionLineage,
+  ]);
   const behindSnapshot =
     !replay &&
     windowWatermark < liveFloor &&
@@ -534,25 +600,23 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {
-    // A restored conversation may have continued in another client. The
-    // conversation read is authoritative for which child session receives
-    // subsequent Stop/approval/live-event routing; no route-local workspace
-    // reconstruction is involved.
-    const currentSessionId = window.currentSessionId;
+    const read = serverWindow.executionRead;
     const latest = activeChatsStore.getSnapshot()[session.id];
+    // A settled head read may advance the binding it began with. An /open
+    // response or live Session start applied since then supersedes it.
     if (
-      currentSessionId &&
-      session.currentSessionId !== currentSessionId &&
-      latest?.currentSessionId === session.currentSessionId
+      !serverWindow.revalidating &&
+      read &&
+      latest &&
+      read.priorSessionId === (latest.currentSessionId ?? session.id) &&
+      read.sessionId !== read.priorSessionId
     ) {
       activeChatsStore.updateChat(session.id, {
-        currentSessionId,
+        currentSessionId: read.sessionId,
         ...(session.conversationId
           ? {
               conversationOpenPending: true,
               conversationOpenFailed: false,
-              // Retire the predecessor shell at the boundary. Subsequent
-              // live events and open revalidation now address the new child.
               orchestrationTurnOpen: false,
               openTurnId: undefined,
               streamingMessage: undefined,
@@ -562,9 +626,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     }
   }, [
     session.conversationId,
-    session.currentSessionId,
     session.id,
-    window.currentSessionId,
+    serverWindow.executionRead,
+    serverWindow.revalidating,
   ]);
   // #2304: seed the open turn's server start when this client attached to a
   // turn already running (fresh load, reconnect), so the "Working for" clock
@@ -704,6 +768,18 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const agentPresentationBySessionId = new Map(
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
+    const newInputs = new Set<string>();
+    const newTurns = new Set<string>();
+    const newTerminals = new Set<string>();
+    for (const { event } of arrivals) {
+      const key = JSON.stringify([event.threadId, event.turnId]);
+      if (event.method === 'turn.started') {
+        if (event.eventId) newInputs.add(event.eventId);
+        if (event.turnId && event.inputKind !== 'steer') newTurns.add(key);
+      } else if (event.turnId) {
+        newTerminals.add(key);
+      }
+    }
     const projectedRows = projectRuntimeEventsToMessages(
       stitchedEvents
         .map((item) => item.event)
@@ -746,20 +822,34 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             message.metadata?.turnId === session.openTurnId
           ),
       )
-      .map<ChatMessage>((message) => ({
-        ...conversationMessageToChatMessage(message),
-        agentSlug: message.metadata?.sessionId
-          ? agentBySessionId.get(message.metadata.sessionId)
-          : undefined,
-        agentDisplayName: message.metadata?.sessionId
-          ? agentPresentationBySessionId.get(message.metadata.sessionId)
-              ?.agentDisplayName
-          : undefined,
-        agentIcon: message.metadata?.sessionId
-          ? agentPresentationBySessionId.get(message.metadata.sessionId)
-              ?.agentIcon
-          : undefined,
-      }));
+      .map<ChatMessage>((message) => {
+        const row = conversationMessageToChatMessage(message);
+        const key = JSON.stringify([row.sessionId, row.turnId]);
+        const isArrival =
+          row.role === 'user'
+            ? row.sourceEventId !== undefined &&
+              newInputs.has(row.sourceEventId)
+            : newTurns.has(key) ||
+              (row.turnEnded !== undefined && newTerminals.has(key)) ||
+              (openTurnProjected &&
+                row.turnEnded === undefined &&
+                row.sessionId === projectedOpenThread &&
+                row.turnId === projectedOpenTurn?.turnId);
+        const agent = row.sessionId
+          ? agentPresentationBySessionId.get(row.sessionId)
+          : undefined;
+        return {
+          ...row,
+          ...(!replay && row.role !== 'system' && !isArrival
+            ? { historyEntry: true }
+            : {}),
+          agentSlug: row.sessionId
+            ? agentBySessionId.get(row.sessionId)
+            : undefined,
+          agentDisplayName: agent?.agentDisplayName,
+          agentIcon: agent?.agentIcon,
+        };
+      });
     // A turn Station's restart cut off says so once, on its own row.
     const projected = withoutRepeatedRestartNotice(projectedRows);
     // #2309: the server's record when it sent one; the legacy fold otherwise.
@@ -1061,6 +1151,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.sendAwaitingTurnStart,
     session.stopSettledTurnId,
     changedFilesByTurn,
+    arrivals,
+    replay,
+    projectedOpenThread,
+    projectedOpenTurn?.turnId,
     window.events,
     serverWindow.memoryContinuation,
     stitchedEvents,
@@ -1124,12 +1218,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       ? { error: new Error('The owning Station connection is unavailable.') }
       : {}),
     loading: resolving || window.loading,
+    // Events stay stitched (a live approval in the tail stays answerable),
+    // as they do while catching up; only the rows are withheld.
     events: stitchedEvents,
     enabled,
     catchingUp: !replay && (serverWindow.catchingUp || liveGap),
     openTurnProjected,
     messages:
-      enabled && !replay && (serverWindow.catchingUp || liveGap)
+      enabled &&
+      !replay &&
+      (serverWindow.catchingUp || liveGap || failedTailWithheld)
         ? EMPTY_MESSAGES
         : enabled
           ? messages

@@ -1374,3 +1374,79 @@ test('revived tool progress shares the running-row bound with new tools', () => 
   expect(view.running).toHaveLength(100);
   expect(view.toolHistoryLimited).toBe(true);
 });
+
+describe('reconnect snapshot — a tool still running after its turn', () => {
+  function storeWithPostTurnTool() {
+    const state = reconcileBackgroundTasksSnapshot(
+      createEmptyBackgroundTasksState(),
+      { sessions: [] },
+    );
+    // The turn ended first, then the background call started: the shape a
+    // subagent's own shell call has in the main chat.
+    const ended = ingestBackgroundTaskEvent(
+      state,
+      event('turn.completed', { turnId: 'turn-1' }),
+    );
+    return ingestBackgroundTaskEvent(
+      ended,
+      event('tool.started', {
+        toolCallId: 'bg-1',
+        toolName: 'Bash',
+        createdAt: '2026-07-29T00:01:00.000Z',
+      }),
+    );
+  }
+  function idleParent(runningChildWork?: number) {
+    return {
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: 'chat-1',
+          status: 'running',
+          hasActiveTurn: false,
+          ...(runningChildWork === undefined
+            ? {}
+            : {
+                conversationActivity: {
+                  conversationId: 'conversation-1',
+                  asOfSequence: 4,
+                  runningChildWork: {
+                    count: runningChildWork,
+                    producers: [],
+                    oldestStartedAt: '2026-07-29T00:00:30.000Z',
+                  },
+                },
+              }),
+        },
+      ],
+    } as unknown as OrchestrationSnapshotPayload;
+  }
+
+  test('stays running while the conversation still reports running child work', () => {
+    const state = reconcileBackgroundTasksSnapshot(
+      storeWithPostTurnTool(),
+      idleParent(9),
+    );
+    expect(state.entries['bg-1']?.state).toBe('running');
+    // ...so its next progress line is not a revival: nothing toggled.
+    const progressed = ingestBackgroundTaskEvent(
+      state,
+      event('tool.progress', { toolCallId: 'bg-1', message: 'still going' }),
+    );
+    expect(progressed.entries['bg-1']?.state).toBe('running');
+  });
+
+  test('settles unresolved once the conversation reports no running child work', () => {
+    expect(
+      reconcileBackgroundTasksSnapshot(storeWithPostTurnTool(), idleParent(0))
+        .entries['bg-1']?.state,
+    ).toBe('unresolved');
+  });
+
+  test('settles unresolved for a server that reports no activity record', () => {
+    expect(
+      reconcileBackgroundTasksSnapshot(storeWithPostTurnTool(), idleParent())
+        .entries['bg-1']?.state,
+    ).toBe('unresolved');
+  });
+});

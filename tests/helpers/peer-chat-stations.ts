@@ -172,6 +172,8 @@ interface PeerChatStations {
     station: 'source' | 'receiver';
     stream: OllamaFixtureStream;
     offeredTools: string[];
+    /** The model request as the engine sent it (its messages carry any seed). */
+    request: unknown;
   }>;
 }
 
@@ -313,6 +315,7 @@ export const test = mergeTests(authenticatedTest, auditedTest).extend<{
               streams.push({
                 station,
                 stream,
+                request: body,
                 offeredTools:
                   request.tools?.flatMap((tool) =>
                     tool.function?.name ? [tool.function.name] : [],
@@ -489,7 +492,7 @@ export async function startConnectionChat(
         )
       ).click();
     await modelPicker
-      .getByRole('option', { name: new RegExp(CONNECTION_MODEL) })
+      .getByRole('button', { name: new RegExp('^' + CONNECTION_MODEL) })
       .click();
     await closeRunSetup(page);
     await form.getByRole('button', { name: /^Project:/ }).click();

@@ -1,3 +1,4 @@
+import { CLAUDE_PROXY_VERSION_FAILURE } from '@kontourai/station-contracts/connection';
 import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
@@ -634,6 +635,12 @@ export function translateChatError(
   }
 
   if (code === ENGINE_TURN_FAILED_CODE) {
+    if (text === CLAUDE_PROXY_VERSION_FAILURE) {
+      return {
+        title: 'This turn did not complete',
+        body: text,
+      };
+    }
     const auth = engineAuthTranslation(text);
     if (auth) return auth;
     return {

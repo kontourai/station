@@ -32,6 +32,8 @@ export function incomingMessageLabel(sender: ClientOriginSender): string {
   if (sender.kind === 'pull-request-feedback')
     return `${PULL_REQUEST_FEEDBACK_LABEL}, not from you`;
   const agent = senderAgentLabel(sender);
+  const source = agent ?? senderSessionLabel(sender);
+  if (sender.kind === 'delegation-result') return `Task result from ${source}`;
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
 
@@ -89,7 +91,9 @@ export function IncomingAgentHeader({
         className="agent-incoming__link"
         label={`Open ${session}, the Session that sent this message`}
       >
-        <span className="agent-incoming__from">From</span>{' '}
+        <span className="agent-incoming__from">
+          {sender.kind === 'delegation-result' ? 'Task result from' : 'From'}
+        </span>{' '}
         <span className="agent-incoming__session">{session}</span>
         {agent ? (
           <>
@@ -123,9 +127,14 @@ export function IncomingAgentCause({
           ? 'Update from Station'
           : sender.kind === 'pull-request-feedback'
             ? PULL_REQUEST_FEEDBACK_LABEL
-            : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
+            : sender.kind === 'delegation-result'
+              ? incomingMessageLabel(sender)
+              : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
   return (
-    <details className="agent-cause-disclosure">
+    <details
+      className="agent-cause-disclosure"
+      open={sender.kind === 'delegation-result' || undefined}
+    >
       <summary className="agent-cause">
         <InboxGlyph />
         <span>{label}</span>

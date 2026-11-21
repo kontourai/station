@@ -59,9 +59,10 @@
   cursor: pointer;
 }
 
-.shortcut-editor__command code {
-  display: inline-block;
+.shortcut-editor__command details :is(code, span) {
+  display: block;
   margin-top: 5px;
+  overflow-wrap: anywhere;
 }
 
 .shortcut-editor__warning {

@@ -21,6 +21,11 @@ import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   peerChatTunnelV1: true,
   delegationLocalConversationV1: true,
+  // Cross-Station conversation handoff: the source route in
+  // src-server/routes/environments/peer-chat-routes.ts and the receiver's
+  // import in src-server/routes/chat/conversations.ts. Hosted deployments
+  // withdraw it: see servesConversationStationHandoff.
+  conversationStationHandoff: true,
   childWorkSteering: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
@@ -72,6 +77,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `GET …/members` in src-server/routes/projects/project-room-routes.ts.
   // Served wherever Project rooms are; each room's own read check decides.
   projectRoomLive: true,
+  // #5063: the `#general` coordinator's routes (`…/room/coordinator…` in
+  // project-room-routes.ts, `PUT /:slug/room-coordinator` in projects.ts).
+  // Served wherever Project rooms are; the preview decides if they answer.
+  projectRoomCoordinator: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -164,6 +173,16 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // fact; the off `pull-request-agent-feedback` preview answers 404. Hosted
   // deployments withdraw it: see servesPullRequestFeedback.
   pullRequestFeedback: true,
+  // Project schedules (#5070): src-server/routes/operations/scheduler.ts
+  // accepts a job `projectId` and the built-in scheduler runs each run as a
+  // Task in that Project. An older host strips the field and would create a
+  // plain job, so a client offers Project schedules only on this flag.
+  // Hosted deployments withdraw it: they compose no Project runner.
+  projectSchedules: true,
+  // #5067: the Project Library, `/api/projects/:slug/library…`
+  // (src-server/routes/projects/project-library-routes.ts). Hosted
+  // deployments withdraw it: see servesProjectLibrary.
+  projectLibrary: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -171,6 +190,7 @@ export interface StationCapabilityDeployment {
   /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
   hosted: boolean;
   peerChatEnabled?: boolean;
+  sharedProjectRooms?: boolean;
 }
 
 /**
@@ -222,6 +242,13 @@ function servesScheduledConversationTarget(
   return !deployment.hosted;
 }
 
+/** Coordinator results may include output from a private Task Session. */
+export function servesProjectRoomCoordinator(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted && !deployment.sharedProjectRooms;
+}
+
 /** Hosted Stations have no conversation inbox through which to wake a coordinator. */
 export function servesCoordinatorSession(
   deployment: StationCapabilityDeployment,
@@ -254,6 +281,24 @@ export function servesRemoteSessionReads(
   return !deployment.hosted;
 }
 
+/**
+ * Whether the cross-Station handoff routes serve. Peer credentials and fork
+ * contexts have no durable tenant ownership, so a hosted deployment refuses
+ * both routes.
+ */
+function servesConversationStationHandoff(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Library uploads and Task outputs are personal-home stores; hosted mounts neither. */
+function servesProjectLibrary(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -266,6 +311,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   peerChatTunnelV1: (deployment) =>
     !deployment.hosted && deployment.peerChatEnabled === true,
   delegationLocalConversationV1: (deployment) => !deployment.hosted,
+  conversationStationHandoff: servesConversationStationHandoff,
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
@@ -274,7 +320,10 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   coordinatorSession: servesCoordinatorSession,
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
+  projectSchedules: servesScheduledConversationTarget,
+  projectRoomCoordinator: servesProjectRoomCoordinator,
   remoteSessionHistory: servesRemoteSessionReads,
+  projectLibrary: servesProjectLibrary,
 };
 
 /**

@@ -1,0 +1,23 @@
+[
+  {
+    "headRefName": "station/task/t-91",
+    "headRepositoryOwner": {
+      "id": "MDEyOk9yZ2FuaXphdGlvbjEwMDAwMDE=",
+      "login": "acme"
+    },
+    "isCrossRepository": false,
+    "number": 42,
+    "url": "https://github.com/acme/widgets/pull/42"
+  },
+  {
+    "headRefName": "station/task/t-91",
+    "headRepositoryOwner": {
+      "id": "MDQ6VXNlcjEwMDAwMDI=",
+      "name": "Mallory Example",
+      "login": "mallory"
+    },
+    "isCrossRepository": true,
+    "number": 57,
+    "url": "https://github.com/acme/widgets/pull/57"
+  }
+]

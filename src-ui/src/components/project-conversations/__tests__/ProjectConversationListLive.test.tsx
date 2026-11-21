@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -24,6 +25,10 @@ let streams: ReadableStreamDefaultController<Uint8Array>[];
 let liveRequests: string[][];
 let summaries: number;
 let mentioned: boolean;
+let memberSummaryTargets: string[];
+let ownerInventoryReads: string[];
+const readableTask = 'task-room-readable';
+const refusedTask = 'task-room-refused';
 
 function push(key: string, event: string, data: Record<string, unknown>) {
   for (const stream of streams)
@@ -38,6 +43,8 @@ beforeEach(() => {
   liveRequests = [];
   summaries = 0;
   mentioned = false;
+  memberSummaryTargets = [];
+  ownerInventoryReads = [];
   _setApiBase(API);
   setClientCredentialResolver(() => ({
     origin: API,
@@ -70,26 +77,44 @@ beforeEach(() => {
           { headers: { 'Content-Type': 'text/event-stream' } },
         );
       }
-      if (url.pathname === '/api/tasks') return ok([]);
-      if (url.pathname === '/api/agents') return ok([]);
-      if (url.pathname === '/api/orchestration/sessions/read-model')
+      if (
+        url.pathname === '/api/tasks' ||
+        url.pathname === '/api/orchestration/sessions/read-model'
+      ) {
+        ownerInventoryReads.push(url.pathname);
         return ok([]);
+      }
+      if (url.pathname === '/api/agents') return ok([]);
       if (url.pathname === '/api/read-markers/summary') {
         summaries += 1;
         const { targets } = JSON.parse(String(init?.body)) as {
-          targets: Array<{ roomId: string }>;
+          targets: Array<{ roomId?: string; taskId?: string }>;
         };
+        memberSummaryTargets = targets.flatMap((target) =>
+          target.taskId === undefined ? [] : [target.taskId],
+        );
         return ok({
-          items: targets.map((target) => ({
-            target,
-            latestVersion: 3,
-            seenVersion: target.roomId === general ? 1 : 3,
-            unread: target.roomId === general,
-            unreadCount: target.roomId === general ? 2 : 0,
-            ...(target.roomId === general && mentioned
-              ? { mentioned: true }
-              : {}),
-          })),
+          items: targets.map((target) =>
+            target.taskId === refusedTask
+              ? { target, unavailable: true }
+              : {
+                  target,
+                  latestVersion: 3,
+                  seenVersion:
+                    target.roomId === general || target.taskId === readableTask
+                      ? 1
+                      : 3,
+                  unread:
+                    target.roomId === general || target.taskId === readableTask,
+                  unreadCount:
+                    target.roomId === general || target.taskId === readableTask
+                      ? 2
+                      : 0,
+                  ...(target.roomId === general && mentioned
+                    ? { mentioned: true }
+                    : {}),
+                },
+          ),
         });
       }
       return new Response('Not Found', { status: 404 });
@@ -198,4 +223,60 @@ test('a message that lands while the stream is connecting still marks its row', 
   await screen.findByRole('button', {
     name: 'general, 2 unread, mentions you',
   });
+});
+
+test('a member lists only shared Tasks whose room the member can read', async () => {
+  _setApiBase('https://operator-inventory.example');
+  const sharedAt = '2026-11-15T12:00:00Z';
+  const publications: ProjectSharedTaskSummary[] = [
+    [readableTask, 'Shared work room', '11111111-1111-4111-8111-111111111112'],
+    [
+      refusedTask,
+      'Unavailable work room',
+      '11111111-1111-4111-8111-111111111113',
+    ],
+  ].map(([id, title, shareId]) => ({
+    version: 'station.shared-project-task/v1',
+    project: {
+      stationId: 'station',
+      localProjectId: 'project-team',
+      localProjectSlug: 'team',
+      portableProjectId: 'portable-team',
+    },
+    task: { id, title, status: 'todo', createdAt: sharedAt },
+    sharedAt,
+    shareId,
+  }));
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProjectConversationList
+        project={{ slug: 'team', id: 'project-team', name: 'Team' }}
+        requestScope={{ apiBase: API, authorityKey: 'one' }}
+        member={{
+          tasks: {
+            data: publications,
+            isPending: false,
+            isError: false,
+            refetch: vi.fn(),
+          },
+          isCurrent: () => true,
+        }}
+        variant="page"
+        onOpenChannel={() => {}}
+        onOpenTask={() => {}}
+        onMoreTasks={() => {}}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByRole('button', {
+    name: 'Shared work room, Task room, 2 unread',
+  });
+  expect(
+    screen.queryByRole('button', { name: /Unavailable work room/ }),
+  ).toBeNull();
+  expect(memberSummaryTargets).toEqual([readableTask, refusedTask]);
+  expect(ownerInventoryReads).toEqual([]);
 });

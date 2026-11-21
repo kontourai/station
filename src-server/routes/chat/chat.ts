@@ -17,7 +17,7 @@ import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { WORKSPACE_PANE_HOST_ACTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { resolveMaxSteps } from '../../constants.js';
+import { resolveStationRunMaxSteps } from '../../constants.js';
 import {
   isCredentialShapedMessage,
   outwardModelProviderError,
@@ -100,6 +100,7 @@ import { ChatTurnDedupStore } from './chat-turn-dedup.js';
  * pre-existing behavior (no honesty check, same as before this fix).
  */
 type ChatRuntimeContext = RuntimeContext & {
+  fileConversationOwnerId?: (request: Request) => string | undefined;
   connectionService?: Pick<ConnectionService, 'listRuntimeConnections'>;
   listAgents?: () => Promise<
     Array<{
@@ -422,6 +423,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         ambientContext,
         skillExperienceContext,
         restOptions,
+        fileConversationOwnerId: relayThread
+          ? undefined
+          : ctx.fileConversationOwnerId?.(c.req.raw),
         injectContext,
         ragContext,
         contextInjection,
@@ -778,8 +782,8 @@ async function launchPersistedAgentWithOverride({
       },
       model,
       tools: [],
-      maxSteps: resolveMaxSteps({
-        defaultMaxTurns: appConfig.defaultMaxTurns,
+      maxSteps: resolveStationRunMaxSteps(appConfig, {
+        specMaxSteps: spec.maxSteps,
       }),
       memoryAdapter,
     });

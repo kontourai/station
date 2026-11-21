@@ -1,0 +1,7 @@
+{
+  "revision": "86a601bb95062539dfad0a4176fc4ea1e6aa3085",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Release-bot slot sentence now says the PR is re-pushed only when a main push changes what it releases, matching the publish-packages.yml probe; slot groups in ci.yml unchanged. Added the new test to the child-process manifest only.","inputs":["docs/guides/testing.md","docs/guides/development.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -27,6 +27,7 @@ import {
 } from './decision-surfaces';
 import { customPaletteCss } from './palette-css';
 import { constructedSheetsSupported, sanitizeCustomCss } from './sanitize-css';
+import { customAppearanceVisualCss } from './visual-css';
 
 export const CUSTOM_APPEARANCE_CACHE_KEY = 'station-custom-appearance-v1';
 const SAFE_SESSION_KEY = 'station-custom-appearance-safe';
@@ -42,6 +43,7 @@ interface State {
   safe: boolean;
   palette: CSSStyleSheet | null;
   css: CSSStyleSheet | null;
+  visual: CSSStyleSheet | null;
 }
 
 const state: State = {
@@ -50,6 +52,7 @@ const state: State = {
   safe: false,
   palette: null,
   css: null,
+  visual: null,
 };
 const listeners = new Set<() => void>();
 let snapshot = 0;
@@ -77,21 +80,33 @@ function prepare(appearance: CustomAppearance): Applied {
 function render(): void {
   if (typeof document === 'undefined' || !constructedSheetsSupported()) return;
   const shown = state.preview ?? state.active;
-  const ours = new Set([state.palette, state.css].filter(Boolean));
+  const ours = new Set(
+    [state.palette, state.css, state.visual].filter(Boolean),
+  );
   const others = document.adoptedStyleSheets.filter((s) => !ours.has(s));
   state.palette = null;
   state.css = null;
+  state.visual = null;
   if (shown && !state.safe) {
     const palette = new CSSStyleSheet();
     palette.replaceSync(customPaletteCss(shown.appearance.palette));
     const css = sanitizeCustomCss(shown.appearance.css).sheet;
+    const visualText = customAppearanceVisualCss(shown.appearance);
+    if (visualText) {
+      const visual = new CSSStyleSheet();
+      visual.replaceSync(visualText);
+      visual.disabled = decisionSurfaceMounted();
+      state.visual = visual;
+    }
     state.palette = palette;
     state.css = css;
     if (css) css.disabled = decisionSurfaceMounted();
   }
   document.adoptedStyleSheets = [
     ...others,
-    ...[state.palette, state.css].filter((s): s is CSSStyleSheet => !!s),
+    ...[state.palette, state.visual, state.css].filter(
+      (s): s is CSSStyleSheet => !!s,
+    ),
   ];
   snapshot += 1;
   for (const listener of listeners) listener();
@@ -99,6 +114,7 @@ function render(): void {
 
 function suspendForDecisions(): void {
   if (state.css) state.css.disabled = decisionSurfaceMounted();
+  if (state.visual) state.visual.disabled = decisionSurfaceMounted();
   snapshot += 1;
   for (const listener of listeners) listener();
 }
@@ -191,7 +207,7 @@ export function getCustomAppearanceSnapshot(): CustomAppearanceSnapshot {
       previewing: state.preview?.appearance ?? null,
       safe: state.safe,
       cssApplied: !!state.css && !state.css.disabled,
-      suspendedForDecision: !!state.css?.disabled,
+      suspendedForDecision: !!state.css?.disabled || !!state.visual?.disabled,
       version: snapshot,
     };
   return cachedSnapshot;
@@ -209,13 +225,14 @@ export function subscribeCustomAppearance(listener: () => void): () => void {
  * page content. Synchronous: no frame is painted in between.
  */
 export function withoutCustomCss<T>(read: () => T): T {
-  const sheet = state.css;
-  if (!sheet || sheet.disabled) return read();
-  sheet.disabled = true;
+  const sheets = [state.css, state.visual].filter(
+    (sheet): sheet is CSSStyleSheet => !!sheet && !sheet.disabled,
+  );
+  for (const sheet of sheets) sheet.disabled = true;
   try {
     return read();
   } finally {
-    sheet.disabled = decisionSurfaceMounted();
+    for (const sheet of sheets) sheet.disabled = decisionSurfaceMounted();
   }
 }
 

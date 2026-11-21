@@ -1,6 +1,8 @@
 /** The sole authored catalog for eager route-shell UI. */
 export const enUSCatalog = {
   'route.loading': 'Loading view',
+  'route.pending.title': 'This view is taking longer to load.',
+  'route.pending.connectionTitle': 'Check your Station connection.',
   'route.chunk.title': 'Couldn’t download this view.',
   'route.chunk.description':
     '{product} may have been updated since this tab opened. Reload to get the current version.',

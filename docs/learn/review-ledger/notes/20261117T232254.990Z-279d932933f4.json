@@ -1,0 +1,7 @@
+{
+  "revision": "aa15ddfe6b8021002f6b8a7054dee921dfdab728",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed short Seatbelt TMPDIR placement, owned/private roots, exact grants, hidden sibling roots and refusal of overlapping workspaces against integrated seatbelt.ts, session-tmpdir.ts and prepareConfinedClaudeLaunch. Bubblewrap retains in-home placement. Real macOS focused kernel suite and owner/adapter suites pass; hosted qualification remains pending.","inputs":["docs/design/approval-posture-server-ordered.md","packages/contracts/src/execution-confinement.ts","src-server/providers/adapters/codex-confinement.ts","src-server/security/confinement/bubblewrap.ts","src-server/security/confinement/confinement-provider.ts","src-server/security/confinement/default-confinement-providers.ts","src-server/services/orchestration/approval-posture.ts"]}
+  ]
+}

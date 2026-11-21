@@ -1,0 +1,15 @@
+{
+  "revision": "be64c7c6fda5c9640cfc571a9a272d44c33587f6",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"This lane's delta against main adds AttachedSourceActivity, ATTACHED_SOURCE_ACTIVE_WINDOW_MS, the summary field and the adoptSession override; ADR 0012, chat-composer, placement, self-configuring-agent and contracts.md claims about the contract remain accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"This lane's delta against main adds AttachedSourceActivity, ATTACHED_SOURCE_ACTIVE_WINDOW_MS, the summary field and the adoptSession override; ADR 0012, chat-composer, placement, self-configuring-agent and contracts.md claims about the contract remain accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"This lane's delta against main adds AttachedSourceActivity, ATTACHED_SOURCE_ACTIVE_WINDOW_MS, the summary field and the adoptSession override; ADR 0012, chat-composer, placement, self-configuring-agent and contracts.md claims about the contract remain accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"This lane's delta against main adds AttachedSourceActivity, ATTACHED_SOURCE_ACTIVE_WINDOW_MS, the summary field and the adoptSession override; ADR 0012, chat-composer, placement, self-configuring-agent and contracts.md claims about the contract remain accurate.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"This lane's delta against main adds AttachedSourceActivity, ATTACHED_SOURCE_ACTIVE_WINDOW_MS, the summary field and the adoptSession override; ADR 0012, chat-composer, placement, self-configuring-agent and contracts.md claims about the contract remain accurate.","inputs":["packages/contracts/src/orchestration.ts"]}
+  ]
+}

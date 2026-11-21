@@ -9,7 +9,10 @@ import type {
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
-import { authenticatedFetch } from '@kontourai/station-sdk';
+import {
+  authenticatedFetch,
+  type CoreUpdateStatus,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -22,6 +25,7 @@ import {
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
+import type { CoreUpdateCheck } from '../views/settings/CoreUpdateCheck';
 import {
   matchingSettingsRows,
   OPERATOR_ONLY_SECTION_IDS,
@@ -93,9 +97,24 @@ vi.mock('@kontourai/station-sdk', async () => {
       isPending: false,
     }),
     usePairedDevicesQuery: () => ({ data: [] }),
-    // ConnectedServerUpdates reads the shared core-update answer (it never
-    // fetches it). No answer yet is the neutral case for the catalog.
-    useCoreUpdateStatusQuery: () => ({ data: undefined }),
+    useAutomationSources: () => ({
+      data: { configurationFingerprint: 'f'.repeat(64), sources: [] },
+    }),
+    useAutomationRules: () => ({
+      data: { configurationFingerprint: 'f'.repeat(64), rules: [] },
+    }),
+    useAutomationEpisodes: () => ({ data: { episodes: [] } }),
+    useAutomationDeliveries: () => ({ data: { deliveries: [], polls: [] } }),
+    // Exercise the catalog with a server that supports staged updates.
+    useCoreUpdateStatusQuery: () => ({
+      data: {
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        releaseCheck: 'verified',
+        stagedUpdates: true,
+        updateAvailable: false,
+      } satisfies CoreUpdateStatus,
+    }),
     StationReadOnlyError: class extends Error {},
     // #4402: "New Muse chats" renders only with a Muse engine; the catalog
     // lists it, so this Station has one and every row renders.
@@ -596,7 +615,14 @@ vi.mock('../components/header/ThemeToggle', () => ({
   ThemeToggle: () => <button type="button">theme</button>,
 }));
 vi.mock('../views/settings/CoreUpdateCheck', () => ({
-  CoreUpdateCheck: () => <button type="button">check</button>,
+  CoreUpdateCheck: ({
+    downloadPolicy,
+  }: ComponentProps<typeof CoreUpdateCheck>) => (
+    <>
+      <button type="button">check</button>
+      {downloadPolicy}
+    </>
+  ),
 }));
 
 /**
@@ -1681,7 +1707,7 @@ describe('settings catalog completeness', () => {
     );
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        container.querySelector('#core-app-updates'),
+        screen.getByRole('combobox', { name: 'Automatic server download' }),
       ),
     );
     expect(window.location.search).toBe('?keep=1&view=system');
@@ -1744,9 +1770,15 @@ describe('settings catalog completeness', () => {
       const target = trayNavigationTarget(destination);
       expect(target?.pathname).toBe('/settings');
       navigationStore.navigate(target!.pathname, target!.params);
-      await waitFor(() =>
-        expect(document.activeElement).toBe(container.querySelector(`#${id}`)),
-      );
+      await waitFor(() => {
+        const target =
+          destination === 'serverUpdates'
+            ? screen.getByRole('combobox', {
+                name: 'Automatic server download',
+              })
+            : container.querySelector(`#${id}`);
+        expect(document.activeElement).toBe(target);
+      });
       expect(
         container
           .querySelector(`#${id}`)

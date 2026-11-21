@@ -31,6 +31,7 @@ import {
   renderBounded,
   runVerificationCli,
 } from '../run-verification.mjs';
+import { renderSummary } from '../verification-gate-summary.mjs';
 import {
   ORDINARY_SHARD_FAILING_TEST_FILE,
   ORDINARY_SHARD_PHASE_ID,
@@ -53,6 +54,61 @@ const INNOCENT_PASSING_PHASE_TEST_FILE =
 const PASSING_PHASE_ECHOED_FAIL_STDERR = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_PASSING_PHASE_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
 
 describe('verification status projection', () => {
+  test.each([
+    {
+      terminal: { status: 'completed', exitCode: 0, passed: true },
+      verdict: true,
+    },
+    { terminal: { status: 'failed', passed: false }, verdict: false },
+    { terminal: { status: 'invalid', passed: true }, verdict: undefined },
+  ])(
+    'bounds an oversized receipt with terminal $terminal.status',
+    ({ terminal, verdict }) => {
+      const request = { key: 'a'.repeat(64), laneId: 'full-regression' };
+      const counts = {
+        executed: 19,
+        passed: verdict === true ? 19 : 18,
+        failed: verdict === true ? 0 : 1,
+        infrastructureErrors: 0,
+      };
+      const cleanup = { status: 'passed', survivingOwnedChildren: 0 };
+      const secret = `ghp_${'b'.repeat(40)}`;
+      const rendered = renderBounded({
+        disposition: 'executed',
+        request,
+        receipt: {
+          terminal,
+          counts,
+          cleanup,
+          artifacts: Array.from({ length: 21 }, (_, index) => ({
+            path: `artifact-${index}-${secret}-${'界'.repeat(125)}`,
+          })),
+        },
+      });
+
+      expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+      expect(rendered).not.toContain(secret);
+      const document = JSON.parse(rendered);
+      expect(document).toMatchObject({ request, truncated: true });
+      expect(document.summary).toMatchObject({ counts, cleanup });
+      expect(document.summary.passed).toBe(verdict);
+      expect(document.summary).not.toHaveProperty('artifacts');
+      expect(document.omittedDetails).toContain('artifacts');
+      if (verdict === true) {
+        expect(document.canonicalReceipt).toBe(
+          `.kontourai/verification-receipts/${request.key}.canonical.json`,
+        );
+        const markdown = renderSummary({
+          document,
+          sourcePath: undefined,
+          unparseableReason: undefined,
+        });
+        expect(markdown).toContain('✅ passed');
+        expect(markdown).toContain('| executed | 19 |');
+      }
+    },
+  );
+
   test('preserves explain request identity when unrelated coordinator status exceeds the output cap', () => {
     const request = {
       key: 'a'.repeat(64),
@@ -796,6 +852,7 @@ describe('verification status projection', () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-1827-overcap-'));
     const key = 'e'.repeat(64);
     const cause = CI_FAST_BUDGET_EXCEEDED_CAUSE;
+    const warning = 'scripts/check-workflows.mjs:2:1 warning: context only';
     try {
       const persisted = persistVerificationOutput({
         root: worktree,
@@ -834,6 +891,7 @@ describe('verification status projection', () => {
           },
           firstCausalExcerpt: cause,
           infrastructureCause: cause,
+          diagnosticExcerpts: [warning],
         },
       });
 
@@ -849,6 +907,7 @@ describe('verification status projection', () => {
       // together or not at all.
       expect(parsed.summary.firstCausalExcerpt).toBe(cause);
       expect(parsed.summary.infrastructureCause).toBe(cause);
+      expect(parsed.summary.diagnosticExcerpts).toEqual([warning]);
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }

@@ -28,6 +28,7 @@ import { composeGitHubAutomationObservation } from '../../services/automation/gi
 import { IsolatedRepairController } from '../../services/automation/repair-controller.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -56,6 +57,7 @@ import {
   FinishedAlertEpisodes,
 } from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
@@ -70,7 +72,11 @@ import {
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
 import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
-import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
+import type {
+  ScheduledProjectHold,
+  ScheduledProjectRunner,
+  ScheduledTurnAdapter,
+} from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -91,6 +97,11 @@ import { createAutomationActionsRuntime } from '../automation-actions-runtime.js
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import { canUseTaskSource } from '../context-efficiency-runtime.js';
 import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
+import { openNativeStationControlRequestRun } from '../mcp/station-control-native-tools.js';
+import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
 } from '../plugins/runtime-provider-resolution.js';
@@ -107,6 +118,28 @@ const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
  * the runtime's private invocation context rather than accepting caller
  * supplied unattended authority.
  */
+/**
+ * #2377 slice D: a personal Station has one person, its operator: not
+ * hosted, and no other people's accounts (local accounts or deployment
+ * authentication). Only there is an ownerless job the operator's.
+ */
+export function isPersonalStation(
+  context: Pick<
+    ConfigureRuntimeRoutesContext,
+    'localAccounts' | 'deploymentAuthentication'
+  >,
+): boolean {
+  return (
+    !isHostedTenantExecutionRequired() &&
+    !context.localAccounts &&
+    !context.deploymentAuthentication
+  );
+}
+
+/** What a run of a job with no recorded owner tells the model (#2377 slice D). */
+export const JOB_OWNER_NEEDED_MODEL_NOTE =
+  'Station tools are unavailable for this run: this scheduled job has no recorded owner. Do not call Station tools.';
+
 export function createScheduledTurnAdapter(
   activeAgents: ReadonlyMap<
     string,
@@ -119,7 +152,7 @@ export function createScheduledTurnAdapter(
   >,
 ): ScheduledTurnAdapter {
   return {
-    invoke: async ({ agentSlug, prompt, principal, signal }) => {
+    invoke: async ({ agentSlug, prompt, principal, signal, receipt }) => {
       if (signal.aborted) {
         return {
           kind: 'definitely-not-invoked' as const,
@@ -134,11 +167,24 @@ export function createScheduledTurnAdapter(
           error: `Agent '${resolvedSlug}' not found`,
         };
       }
+      // #2377 slice D: a run acts for the job's recorded owner, through its
+      // own in-process station-control caller. A job with no owner (one
+      // created before owners were recorded, on a shared or hosted Station)
+      // gets no caller, and the model is told it has no Station tools.
+      const owner = receipt.job.createdBy;
+      const run = owner
+        ? openNativeStationControlRequestRun({ principalId: owner.userId })
+        : undefined;
+      const generate = () =>
+        agent.generateText(
+          owner ? prompt : `${JOB_OWNER_NEEDED_MODEL_NOTE}\n\n${prompt}`,
+          { signal },
+        );
       try {
         const result = await runWithUnattendedPrincipal(
           { kind: 'scheduled-job', jobId: principal.jobId },
           principal.runId,
-          () => agent.generateText(prompt, { signal }),
+          () => (run ? run.run(generate) : generate()),
         );
         return { kind: 'completed' as const, output: result.text ?? '' };
       } catch (error) {
@@ -153,6 +199,8 @@ export function createScheduledTurnAdapter(
           error:
             error instanceof Error ? error.message : 'Scheduler agent failed',
         };
+      } finally {
+        await run?.close();
       }
     },
   };
@@ -261,8 +309,8 @@ export function createRuntimeSystemRouteDeps(
     // the SAME call `enriched-agents.ts` uses to decide whether to manufacture
     // a selectable agent, so chat readiness and agent availability cannot
     // disagree (station#1194).
-    listEngineConnectionStates: () =>
-      context.connectionService.listEngineConnectionStates(),
+    listEngineConnectionStates: (signal?: AbortSignal) =>
+      context.connectionService.listEngineConnectionStates(signal),
     listUnconnectedACPRegistryEntries: () =>
       listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
@@ -519,10 +567,19 @@ export function configureRuntimeSupportServices(
     focus?: FocusSource;
     inAppLiveness?: InAppLiveness;
     /**
+     * #5072: the `project-overview` Feature Preview, which turns on
+     * per-Project notification settings. Absent: off.
+     */
+    projectOverviewPreview?: FeaturePreviewSelector;
+    /**
      * Runs automations that target a conversation, through its inbox.
      * Absent (hosted, or no inbox): such a job fails without invoking.
      */
     conversationRuns?: ScheduledConversationRunner;
+    /** #5070: runs a Project job as a Task. Absent: no Project jobs. */
+    projectRuns?: ScheduledProjectRunner;
+    /** #5069: which Projects hold their schedules. */
+    projectHold?: ScheduledProjectHold;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -546,9 +603,24 @@ export function configureRuntimeSupportServices(
   );
   // Composed before this service exists; its notices go here from now on.
   options.pullRequestFeedback?.bindNotifier(notificationService);
+  // #5072: the local Project a session recorded at its start, the same
+  // record station-control callers resolve, so a Project's notification
+  // level reaches its turn and approval notifications.
+  const resolveSessionRecord = createStationControlCallerRecordResolver(
+    stationControlCallerRecordSources({
+      orchestrationService: context.orchestrationService,
+      getProject: (slug) => context.storageAdapter.getProject(slug),
+      coordinatorEnabled: () => false,
+    }),
+  );
+  const resolveSessionProjectId = (threadId: string) =>
+    resolveSessionRecord(threadId)?.localProjectId;
+  const resolveChatTitle = (threadId: string) =>
+    notificationChatTitle(context.orchestrationEventStore, threadId);
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
+    resolveSessionProjectId,
   });
   notificationService.addProvider(approvalInboxProvider);
   // An inbound pairing request used to surface only inside the Connections
@@ -603,6 +675,8 @@ export function configureRuntimeSupportServices(
     notificationService,
     context.logger,
     {
+      resolveProjectId: resolveSessionProjectId,
+      resolveChatTitle,
       readFinishedAlertHold,
       onReplayedDelivery: (notification) =>
         options.coordinatorWakes?.()?.observeNotification(notification),
@@ -622,6 +696,7 @@ export function configureRuntimeSupportServices(
     context.orchestrationService,
     notificationService,
     context.logger,
+    { resolveProjectId: resolveSessionProjectId, resolveChatTitle },
   );
   notificationService.dispatch('service-start', () =>
     notificationService.start(),
@@ -766,9 +841,16 @@ export function configureRuntimeSupportServices(
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
+      // #2377 slice D: only a personal Station's older ownerless jobs are
+      // the operator's; a shared or hosted Station never guesses an owner.
+      ...(isPersonalStation(context)
+        ? { personalJobOwner: { userId: LOCAL_OPERATOR_PRINCIPAL_ID } }
+        : {}),
       ...(options.conversationRuns
         ? { conversationRuns: options.conversationRuns }
         : {}),
+      ...(options.projectRuns ? { projectRuns: options.projectRuns } : {}),
+      ...(options.projectHold ? { projectHold: options.projectHold } : {}),
       integrationSecretResolver,
       automationPoller: {
         async poll(input) {
@@ -981,6 +1063,11 @@ export function configureRuntimeSupportServices(
       : {}),
     ...(options.focus ? { focus: options.focus } : {}),
     ...(options.inAppLiveness ? { inAppLiveness: options.inAppLiveness } : {}),
+    projectNotificationSettings: () =>
+      options.projectOverviewPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
   });
 
   const agentActivityPublisher = wireAgentActivityPublisher({
@@ -1099,6 +1186,7 @@ export function configureRuntimeSupportServices(
   return {
     schedulerService,
     automationLedger,
+    automationStore,
     automationPreview: automationObservation.preview,
     automationActions,
     isolatedRepairs,

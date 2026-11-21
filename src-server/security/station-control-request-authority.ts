@@ -19,8 +19,8 @@
  *   `boundOperator` is true only for a `bound` caller whose recorded owner is
  *   the operator; only that caller keeps the operator-wide reads (unredacted
  *   logs, other users' monitoring rows).
- * - `caller-less`: a pooled child or a bare copy of the token. It acts for
- *   no principal, so it reads nothing that is principal-scoped.
+ * - `caller-less`: a bare copy of the token or a stray child. It acts for no
+ *   principal, and the guard refuses it before any route (slice D).
  *
  * Absent means the request is not internal, or no guard ran for it (a test
  * composition without the guard); callers keep today's behaviour then.

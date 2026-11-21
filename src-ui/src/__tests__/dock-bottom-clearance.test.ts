@@ -1,7 +1,10 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import { VISUAL_VIEWPORT_BOTTOM_INSET_VAR } from '../hooks/useMobileVisualViewport';
+import { DOCK_REGION_IDS } from '../regions/region-model';
 
 /**
  * archive#3902 — the chat dock is rendered by the shell (`App.tsx`), so how
@@ -65,6 +68,79 @@ function sourceFiles(directory: string): string[] {
   });
 }
 
+const makeTempDir = trackTempDirs();
+const clearanceVariables = [
+  ...DOCK_REGION_IDS.map((region) => `--region-${region}-size`),
+  '--dock-slot-size',
+];
+const mutationMethods = new Set(['setProperty', 'removeProperty']);
+
+function possibleNames(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+  seen = new Set<ts.Symbol>(),
+): string[] {
+  if (ts.isStringLiteralLike(expression)) return [expression.text];
+  const type = checker.getTypeAtLocation(expression);
+  const names = (type.isUnion() ? type.types : [type]).flatMap((part) =>
+    part.isStringLiteral() ? [part.value] : [],
+  );
+  const found = checker.getSymbolAtLocation(expression);
+  const symbol =
+    found && found.flags & ts.SymbolFlags.Alias
+      ? checker.getAliasedSymbol(found)
+      : found;
+  if (!symbol || seen.has(symbol)) return names;
+  seen.add(symbol);
+  const declaration = symbol.valueDeclaration;
+  if (
+    declaration &&
+    ts.isVariableDeclaration(declaration) &&
+    declaration.initializer
+  )
+    names.push(...possibleNames(declaration.initializer, checker, seen));
+  return names;
+}
+
+function clearanceWriters(root: string, files: string[]) {
+  const program = ts.createProgram(files, {
+    types: [],
+    lib: ['lib.es2022.d.ts'],
+    noResolve: true,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    jsx: ts.JsxEmit.Preserve,
+  });
+  const checker = program.getTypeChecker();
+  const writers = new Map(
+    clearanceVariables.map((name) => [name, new Set<string>()]),
+  );
+  for (const file of program.getSourceFiles()) {
+    const path = relative(root, file.fileName).replaceAll('\\', '/');
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node)) {
+        const target = node.expression;
+        const method = ts.isPropertyAccessExpression(target)
+          ? target.name.text
+          : ts.isElementAccessExpression(target) &&
+              ts.isStringLiteralLike(target.argumentExpression)
+            ? target.argumentExpression.text
+            : undefined;
+        const name = node.arguments[0];
+        if (method && mutationMethods.has(method) && name) {
+          for (const variable of possibleNames(name, checker))
+            writers.get(variable)?.add(path);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+  }
+  return Object.fromEntries(
+    [...writers].map(([name, paths]) => [name, [...paths].sort()]),
+  );
+}
+
 describe('the dock clearance is one derivation (station#3902)', () => {
   test('it sums the published height, the safe area and the visible-viewport inset', () => {
     const value = declaration(indexCss, '--dock-bottom-clearance');
@@ -105,24 +181,37 @@ describe('the dock clearance is one derivation (station#3902)', () => {
     expect(offenders, offenders.join('\n')).toEqual([]);
   });
 
-  test('the clearance reducer is the sole --dock-slot-size writer', () => {
-    // A file that names the variable as a string and writes inline styles
-    // is a writer; the reducer passes the name through its `write` helper,
-    // so the two are never adjacent there.
-    const writers = sourceFiles(uiSrc).flatMap((path) => {
-      const source = readFileSync(path, 'utf8');
-      return /['"]--dock-slot-size['"]/.test(source) &&
-        /\.style\.setProperty\(/.test(source)
-        ? [path.slice(uiSrc.length + 1)]
-        : [];
-    });
+  test('the reducer alone writes or clears each active shell-clearance variable', () => {
+    expect(clearanceWriters(uiSrc, sourceFiles(uiSrc))).toEqual(
+      Object.fromEntries(
+        clearanceVariables.map((name) => [
+          name,
+          ['regions/region-clearance.ts'],
+        ]),
+      ),
+    );
+  });
 
-    // archive#3929: Chat supplies live geometry to the ambient slot, but the
-    // host alone publishes the shell's clearance. A second writer races the
-    // mount order and loses mobile safe-area and drag-frame correctness.
-    expect(
-      writers,
-      `second dock-slot publisher(s): ${writers.join(', ')}`,
-    ).toEqual(['regions/region-clearance.ts']);
+  test('detects an imported variable at the actual mutation and ignores reads', () => {
+    const root = makeTempDir('station-clearance-writers-');
+    const fixtures = {
+      'variables.ts':
+        "export const left: string = '--region-left-size'; export const right = '--region-right-size';",
+      'writer.ts':
+        "import { left as variable, right } from './variables'; element.style.setProperty(variable, '2px'); const style = element.style; style['removeProperty'](right);",
+      'reader.ts':
+        "import { left } from './variables'; element.style.getPropertyValue(left); element.style.setProperty('--another-property', '2px');",
+    };
+    const files = Object.entries(fixtures).map(([path, text]) => {
+      const file = join(root, path);
+      writeFileSync(file, text);
+      return file;
+    });
+    expect(clearanceWriters(root, files)).toEqual({
+      '--region-left-size': ['writer.ts'],
+      '--region-right-size': ['writer.ts'],
+      '--region-bottom-size': [],
+      '--dock-slot-size': [],
+    });
   });
 });

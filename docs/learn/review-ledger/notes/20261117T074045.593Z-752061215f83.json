@@ -1,0 +1,7 @@
+{
+  "revision": "5d54bf3f4cc360cc47b83ce0f5c974c92582b3fb",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"#5111: STATION_FALLOW_MEMORY_MAX_MIB entry matches resolveFallowMemoryBudgetMib (default 5120, whole MiB, at least 1024) and links the code-quality memory-budget anchor and source.","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

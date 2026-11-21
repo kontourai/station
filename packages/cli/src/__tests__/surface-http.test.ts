@@ -541,7 +541,15 @@ describe('CLI surface commands over HTTP', () => {
       }
       if (method === 'GET' && url.pathname === '/api/users/search') {
         const q = url.searchParams.get('q') || '';
-        sendJson(200, [{ alias: q, name: q }]);
+        if (q === 'unavailable') {
+          sendJson(503, {
+            success: false,
+            code: 'user_directory_unavailable',
+            error: 'People directory is unavailable',
+          });
+          return;
+        }
+        sendJson(200, q === 'no-match' ? [] : [{ alias: q, name: q }]);
         return;
       }
       if (method === 'GET' && url.pathname === '/api/users/testuser') {
@@ -627,6 +635,19 @@ describe('CLI surface commands over HTTP', () => {
             totalErrors: 0,
             days: Number(url.searchParams.get('days') || 14),
           },
+        });
+        return;
+      }
+      if (method === 'GET' && url.pathname === '/acp/setup') {
+        sendJson(200, {
+          success: true,
+          data: [
+            {
+              id: 'antigravity',
+              setupPath: '/connections/engines/new/antigravity',
+              httpTools: 'unknown',
+            },
+          ],
         });
         return;
       }
@@ -1022,6 +1043,7 @@ describe('CLI surface commands over HTTP', () => {
     await runCli(['feedback', 'status', `--api-base=${apiBase}`]);
     await runCli(['feedback', 'test', `--api-base=${apiBase}`]);
     await runCli(['insights', 'get', '--days=7', `--api-base=${apiBase}`]);
+    await runCli(['acp', 'setup', `--api-base=${apiBase}`]);
     await runCli(['acp', 'status', `--api-base=${apiBase}`]);
     await runCli(['acp', 'commands', `--api-base=${apiBase}`]);
     await runCli([
@@ -1096,6 +1118,30 @@ describe('CLI surface commands over HTTP', () => {
         !call[0].includes('"name": "review"'),
     );
     expect(filteredCommandOptionsCall).toBeDefined();
+  });
+
+  test('auth users search prints a successful empty array and preserves directory failure', async () => {
+    const { runCli } = await import('../cli.js');
+    const search = (query: string) =>
+      runCli(['auth', 'users', 'search', query, `--api-base=${apiBase}`]);
+
+    await search('no-match');
+    expect(_consoleLog).toHaveBeenCalledWith('[]');
+    _consoleLog.mockClear();
+
+    await expect(search('unavailable')).rejects.toMatchObject({
+      status: 503,
+      code: 'user_directory_unavailable',
+      message: 'People directory is unavailable',
+    });
+    expect(_consoleLog).not.toHaveBeenCalled();
+  });
+
+  test('ACP commands refuses an engine id instead of presenting a shared catalog as an engine check', async () => {
+    const { runCli } = await import('../cli.js');
+    await expect(
+      runCli(['acp', 'commands', 'grok', `--api-base=${apiBase}`]),
+    ).rejects.toThrow('takes no engine id');
   });
 
   // station#2844: flag-based engine-connection creation — adding a

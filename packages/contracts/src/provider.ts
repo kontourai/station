@@ -35,6 +35,15 @@ export interface ProviderContinuityCapabilities {
   resumeIdentity?: 'require-match';
   /** Resume a prior Session only within its recorded engine-home/profile binding. */
   nativeReturn?: 'same-binding';
+  /**
+   * Opt-in: this adapter refuses a resume without the binding key its start
+   * recorded, so restart recovery and a credential retry that keeps its
+   * profile pass that key as `ProviderSessionStartInput.nativeResumeBindingKey`.
+   * Absent: recovery passes none and the adapter keeps its own resume rules
+   * (a recorded key can legitimately change with the engine home, a profile
+   * switch or an older key scheme).
+   */
+  recoveryBinding?: 'required';
 }
 
 /** Current delivery fidelity, not a promise that an interrupted effect is replayable. */
@@ -277,6 +286,21 @@ export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
  * brief's digest: that turn's own record of what it carried.
  */
 export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
+/**
+ * #5062/#5065: what a new Session in a Project starts from, the
+ * `ProjectSessionContext` (`project-session-context.ts`): the Project brief and
+ * memory index, read once when the Session starts. Stamped into start
+ * metadata by Station's start choke point after the reserved-key strip, and
+ * prepended to the first turn's ambient context on every engine, like the
+ * Task brief.
+ */
+export const PROJECT_SESSION_CONTEXT_METADATA_KEY = 'stationProjectContext';
+/**
+ * Stamped on the one turn that composed the Project context, with a
+ * `ProjectSessionContextComposed` receipt (digest and approximate tokens).
+ */
+export const PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY =
+  'stationProjectContextComposed';
 export const TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY =
   'stationLearningContextContributions';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
@@ -368,6 +392,8 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY,
   TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
@@ -609,6 +635,15 @@ export function modelLaunchTelemetryAttributes(
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
 
+/** Who the provider reports it would use to review eligible escalations. */
+export type EngineApprovalReviewer = 'user' | 'automatic' | 'unknown';
+
+export function isEngineApprovalReviewer(
+  value: unknown,
+): value is EngineApprovalReviewer {
+  return value === 'user' || value === 'automatic' || value === 'unknown';
+}
+
 export const APPROVAL_MODES: readonly ApprovalMode[] = [
   'ask',
   'auto',
@@ -665,6 +700,9 @@ export function readApprovalMode(
 export const PROVIDER_ACP = 'acp';
 export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
+/** GitHub Copilot through the Copilot SDK (Feature Preview `copilot-sdk-engine`). */
+export const PROVIDER_COPILOT_SDK = 'copilot-sdk';
+
 /**
  * OpenCode as its own engine: it runs saved ACP connection records, over
  * OpenCode 2's own server where verified and over ACP otherwise
@@ -774,6 +812,9 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // identity; a value outside that set is refused, never coerced. Nothing
     // else in `modelOptions` is read, so nothing else is listed.
     [PROVIDER_MUSE]: ['approvalMode', 'effort'],
+    // `copilot-sdk-adapter.ts` reads `approvalMode` at session start and
+    // answers each permission request with it (`copilot-sdk-approval.ts`).
+    [PROVIDER_COPILOT_SDK]: ['approvalMode'],
   };
 
 /**
@@ -1018,6 +1059,16 @@ export function lastRuntimeError<T extends { readonly method?: unknown }>(
  * reports that command's own failure.
  */
 export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
+
+/**
+ * #5113: `runtime.warning` codes for an engine's own workload scope entering
+ * and leaving near-cap memory pressure. `details` carries
+ * `workingSetBytes`, `memoryMaxBytes` and `thresholdPercent`. The engine is
+ * told the same transition in its turn.
+ */
+export const WORKLOAD_MEMORY_PRESSURE_CODE = 'workload-memory-pressure';
+export const WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE =
+  'workload-memory-pressure-cleared';
 
 /**
  * A provider reported a failed query/turn without disproving its native binding.
@@ -1288,6 +1339,12 @@ export interface AttachedSessionSourceMetadata {
   completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
+  /**
+   * The newest write the source reported for this session (to the nearest
+   * 30 seconds), including writes that produce no event. Read by
+   * `attachedSourceActivity`.
+   */
+  lastWriteAt?: string;
 }
 
 // ── #895 wave A: per-agent capability delivery (agent-engine-unification.md §3.2/§5/§6.2) ──
@@ -1599,12 +1656,11 @@ export interface ProviderSendTurnInput {
    */
   displayInput?: string;
   /**
-   * Relay-only passthrough of the raw ambient context. `input` already
-   * carries the composed text, so adapters that talk to a model directly
-   * MUST ignore this. Only adapters that re-enter a server pipeline with
-   * its own composition choke point (station-agent → /chat) forward
-   * `displayInput` + this field instead of the pre-composed `input`, so the
-   * downstream pipeline persists typed text and composes exactly once.
+   * Raw ambient context already composed into `input`. Claude can use it
+   * with `displayInput` to preserve the text block boundary when the blocks
+   * reproduce `input` exactly. The station-agent relay forwards the separate
+   * fields so the downstream chat route composes them once and persists typed
+   * text.
    */
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];
@@ -1701,6 +1757,11 @@ export interface ProviderSession {
   tenantExecutionContext?: TenantExecutionContext;
   createdAt: string;
   updatedAt: string;
+}
+
+/** An engine binding in one of these states cannot take a turn. */
+export function providerSessionBindingEnded(status: string): boolean {
+  return status === 'closed' || status === 'dead' || status === 'error';
 }
 
 export interface ProviderTurnStartResult {

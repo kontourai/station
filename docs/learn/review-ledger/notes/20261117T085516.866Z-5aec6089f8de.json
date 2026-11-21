@@ -1,0 +1,13 @@
+{
+  "revision": "41d38eb724d65140db9d8cebd483d2bf5bcf3b3a",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#373 changed only the Profile usage rebuild paragraph (incremental refold, kept-fold invalidation, two usage_projection metrics, Rebuild usage discarding kept folds). The citing page's claims about the monitoring review findings (#2750-#2758) and the metric catalog are unaffected.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Regenerated catalog gained two usage_projection histogram rows only; the citing page's claim that the generated catalog prevents declaration drift without proving recording or export still holds.","inputs":["docs/reference/metrics.md"]},
+
+    {"path":"docs/design/terminal.md","note":"#373 changed only the Rescan Analytics paragraph (a forced rescan discards kept per-session engine folds). The citing pages link to the terminal socket transport, experimental project S3 sources and the API reference generally; those sections are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#373 changed only the Rescan Analytics paragraph (a forced rescan discards kept per-session engine folds). The citing pages link to the terminal socket transport, experimental project S3 sources and the API reference generally; those sections are unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

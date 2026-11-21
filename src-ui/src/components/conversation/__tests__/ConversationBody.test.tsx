@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { PreviewProvider } from '../../../contexts/PreviewContext';
@@ -69,6 +69,19 @@ vi.mock('../../../hooks/useTTS', () => ({
     cancel: vi.fn(),
   }),
 }));
+// The person's Open and Settled inbox record, as the shared provider answers
+// it. Unsupported (preview off) unless a test settles the conversation.
+const workState = vi.hoisted(() => ({
+  current: {
+    supported: false,
+    settled: {} as Record<string, string>,
+    query: { isError: false, refetch: vi.fn() },
+    change: { isPending: false, mutate: vi.fn() },
+  },
+}));
+vi.mock('../../chat-dock/useConversationWorkState', () => ({
+  useConversationWorkState: () => workState.current,
+}));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => new Set<string>(),
 }));
@@ -98,6 +111,12 @@ const agent: AgentData = {
 const clients: QueryClient[] = [];
 afterEach(() => {
   cleanup();
+  workState.current = {
+    supported: false,
+    settled: {},
+    query: { isError: false, refetch: vi.fn() },
+    change: { isPending: false, mutate: vi.fn() },
+  };
   for (const client of clients.splice(0)) client.clear();
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
@@ -527,3 +546,115 @@ test.each([
     }
   },
 );
+
+describe('a conversation this person settled', () => {
+  const settledAt = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+  function renderSettled(route: 'host' | 'relay', supported = true) {
+    const connection = conversationConnection(route);
+    workState.current = {
+      supported,
+      settled: supported ? { 'conversation-1': settledAt } : {},
+      query: { isError: false, refetch: vi.fn() },
+      change: { isPending: false, mutate: vi.fn() },
+    };
+    setClientCredentialResolver(() => ({
+      origin: connection.requestScope.apiBase,
+      credential: 'fixture-token',
+      requestAuthority: { ...connection.requestScope, isCurrent: () => true },
+    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith('/api/agents'))
+          return Response.json({ success: true, data: [agent] });
+        return Response.json({
+          success: true,
+          data:
+            init?.method === 'POST' && url.endsWith('/chat')
+              ? {
+                  conversationId: 'conversation-1',
+                  sessionId: 'child',
+                  providerTurnId: 'turn',
+                }
+              : [],
+        });
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    clients.push(client);
+    return render(
+      <QueryClientProvider client={client}>
+        <PreviewProvider>
+          <Harness
+            route={route}
+            sessionFacts={{
+              conversationId: 'conversation-1',
+              messages: [
+                { id: 'ask', role: 'user', content: 'Ship it', timestamp: 0 },
+                {
+                  id: 'reply',
+                  role: 'assistant',
+                  content: 'Shipped',
+                  timestamp: 1,
+                },
+              ],
+            }}
+          />
+        </PreviewProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  test('ends the transcript with when it was settled and a Reopen', async () => {
+    const { container } = renderSettled('host');
+    await screen.findByText('Shipped');
+    const footer = await waitFor(() => {
+      const found = container.querySelector('.settled-conversation-footer');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(footer.textContent).toBe('Settled 2h ago·Reopen');
+    // The footer follows the transcript's last message.
+    const reply = screen.getByText('Shipped');
+    expect(
+      reply.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Reopen' }));
+    expect(workState.current.change.mutate).toHaveBeenCalledWith({
+      conversationId: 'conversation-1',
+      settled: false,
+    });
+  });
+
+  test('the composer says sending reopens it, and a send re-reads the record', async () => {
+    renderSettled('host');
+    expect(
+      await screen.findByText('Sending reopens this conversation'),
+    ).toBeTruthy();
+    expect(workState.current.query.refetch).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    const composer = await screen.findByRole('textbox');
+    await waitFor(() => expect(composer.hasAttribute('disabled')).toBe(false));
+    await user.type(composer, 'One more thing');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(workState.current.query.refetch).toHaveBeenCalledOnce(),
+    );
+  });
+
+  test.each([
+    ['the preview is off', 'host' as const, false],
+    ["it is another Station's conversation", 'relay' as const, true],
+  ])('shows neither when %s', async (_label, route, supported) => {
+    const { container } = renderSettled(route, supported);
+    await screen.findByText('Shipped');
+    await screen.findByRole('textbox');
+    expect(container.querySelector('.settled-conversation-footer')).toBeNull();
+    expect(screen.queryByText('Sending reopens this conversation')).toBeNull();
+  });
+});

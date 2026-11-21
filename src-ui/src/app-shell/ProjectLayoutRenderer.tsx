@@ -70,6 +70,7 @@ import {
 import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspacePaneNotice';
 import {
   admitRestoredFilePreviewPaneInstance,
+  FILE_PREVIEW_PANE_DESCRIPTOR,
   filePreviewPanePresentationLabel,
   filePreviewPanePresentationPath,
   removeRemovedFilePreviewPaneState,
@@ -1016,7 +1017,9 @@ export function LayoutStackHost({
       paneEntry?.descriptor ??
       (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
         ? WORKSPACE_BASIS_PANE_DESCRIPTOR
-        : stack.descriptorFor(instance.descriptorId));
+        : instance.descriptorId === FILE_PREVIEW_PANE_DESCRIPTOR.id
+          ? FILE_PREVIEW_PANE_DESCRIPTOR
+          : stack.descriptorFor(instance.descriptorId));
     const Pane =
       descriptor &&
       getBuiltinWorkspacePaneRenderer(

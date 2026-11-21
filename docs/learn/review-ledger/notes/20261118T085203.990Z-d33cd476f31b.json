@@ -1,0 +1,93 @@
+{
+  "revision": "90ad828e699a3416d2c7fdb09f9f8e64f7d5bf13",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked the scope owned by the extension and runtime contexts against the matrix note. The VoltAgent model-step limit belongs to the Station runtime, while external engines own their own controls.","inputs":["CONTEXT-MAP.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"CONTEXT.md","note":"Checked the Agent, engine, and model connection definitions against the Station row of the matrix. A local model-step limit is part of the executing framework and does not establish any capability of an external engine.","inputs":["CONTEXT.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"README.md","note":"Checked the product introduction and supported runtime links against the engine matrix. VoltAgent-only per-Agent steps are an execution property, and the existing distinctions among engines and model connections remain accurate.","inputs":["README.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Reviewed the content schema delta. Agent create and update accept only the existing file schema range and null for top-level maxSteps. Skill bindings, retired Agent prompts and playbook migration shapes have no semantic delta.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","src-server/routes/schemas/schema-definitions/content.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Rechecked the historical nested maxSteps mismatch, the actual file validator and the two Station framework adapters. Recorded the correction on the canonical top-level field and the scope of the runtime stop proof.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced Agent configuration admission through persisted load, activation, runtime chat overrides and buffered invoke. VoltAgent receives the cap and the live step loop stops at it. Existing route binding, turn authority and durable receipts use their original owners.","inputs":["docs/architecture/module-map.md","src-server/routes/agents/__tests__/invoke.routes.test.ts","src-server/routes/agents/invoke.ts","src-server/routes/chat/chat.ts","src-server/runtime/frameworks/voltagent-adapter.ts","src-server/services/agents/agent-service.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the matrix change at the Station row. The new step-limit comment addresses model-loop length. Before-tool checks, engine-specific callback delivery and denial scope continue to come from the original policy cells.","inputs":["docs/conformance/tool-policy-delivery.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Reviewed how curated capability descriptions relate to installed runtime behavior. The Station row documents the scope of its own framework step cap and adds no new extension capability claim.","inputs":["docs/contexts/extension-ecosystem/CONTEXT.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/decisions/telemetry-tiers.md","note":"Reviewed the config route test delta. It exercises template format admission, preserved config bytes on refusal and ordinary update. Existing telemetry decisions and transport tests have no semantic delta.","inputs":["docs/decisions/telemetry-tiers.md","src-server/routes/system/__tests__/config.routes.test.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked AgentSpec, the on-disk schema and external prompt delivery. Top-level maxSteps governs VoltAgent model steps. External delivered Agent prompt text retains authored placeholders and keeps the existing delivery channels.","inputs":["docs/design/agent-engine-unification.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced chat model overrides through existing runtime leases and captured Agent scope. Rebuilding a VoltAgent for the override keeps the authored cap while the model and history continue to use the existing owners.","inputs":["docs/design/chat-composer.md","packages/contracts/src/engine-capability-matrix.ts","src-server/routes/chat/chat.ts","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/design/conduit-runtime-integration.md","note":"Reviewed the VoltAgent construction and fake-model loop trace. The cap is passed to the framework while durable turn and tool hooks still compose through the cited runtime boundary.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/design/entity-hierarchy.md","note":"Checked the editor Model section against runtime selection. Its cap field is for authored VoltAgent Agents. Built-in Station uses app settings and Strands has no supported authored cap.","inputs":["docs/design/entity-hierarchy.md","src-ui/src/views/AgentEditorForm.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the engine matrix comment against the placement capability separation. The comment documents runtime step limits and carries no new pane, delivery or placement contract.","inputs":["docs/design/placement.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked the framed runtime and external engine capability references. The added matrix scope is about running VoltAgent model steps, separate from tape replay and transcript continuation.","inputs":["docs/design/session-tape-replay.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked model and region inheritance separately from prompt composition. Station composes defaults ahead of authored instructions, replaces the built-in prompt and expands template variables. External engines retain the authored text.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked registry scope copy and the settings layout. Default instructions and variables describe Station-built prompts. The existing Strands limitation is now also shown next to the editor control.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Inspected the buffered invoke route delta. A VoltAgent cap is clamped before run construction. Scoped request authority, tool approval and plugin distribution boundaries retain their existing implementation.","inputs":["docs/design/shell-plugins-distributions.md","src-server/routes/agents/invoke.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the API reference paragraph added to buffered Agent invocation. It does not change the terminal routing, PTY ownership or shell capability described by this design.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Checked engine and framework terminology against the capability matrix and contracts reference. The framework distinction matters specifically to the top-level Agent model-step cap.","inputs":["docs/glossary.md","docs/reference/contracts.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked top-level maxSteps, null and omitted fallback, generated Station Agent settings and runtime invocation. The deterministic VoltAgent fixture stops at one and two authored steps. Strands and external engine limits have their own scope.","inputs":["docs/guides/agent-configuration.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts","schemas/agent.schema.json","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/frameworks/voltagent-adapter.ts","src-ui/src/views/agent-editor/AgentEditorModelSection.tsx"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Checked Agent instruction and builder guidance against the admitted AgentSpec. Top-level maxSteps is 1–100 or null. The Agent tools, skills, and prompt ownership contracts retain their existing shapes.","inputs":["docs/guides/agent-development.md","packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Checked the agent file and route schema delta against slash-command persistence. The only admitted control change is top-level maxSteps validation and null; command metadata, skills and dispatch behavior retain their existing owners.","inputs":["docs/guides/commands.md","packages/contracts/src/agent.ts","schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the capability matrix and Agent editor under the normal Model section. The framework selection and model connection identities stay distinct, and the cap scope is stated beside the external engine catalogue.","inputs":["docs/guides/connections.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts","schemas/agent.schema.json","src-ui/src/views/agent-editor/useAgentsViewModel.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked the registry delta against Discord settings. Updated prompt and step-cap help and template validation affect no Discord account, messaging or transport rule.","inputs":["docs/guides/discord-gateway.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the new API and contracts references against current Agent invocation, settings options validation and runtime enforcement. Provider and external engine evidence remain separately scoped.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked built-in Station Agent construction. Its explicit app step cap applies only on VoltAgent. Knowledge tool composition and the selected store and index authorities are outside this construction delta.","inputs":["docs/guides/knowledge.md","src-server/runtime/agents/runtime-default-agent.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the connection guide addition. VoltAgent model steps belong to the chosen Station runtime. Device grant, relay and model service identity keep separate owners.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked agent completion payloads. The authored top-level cap is the Agent max-step attribute for VoltAgent and is omitted for Strands. The attribute reports configured authored state rather than measured steps.","inputs":["docs/guides/monitoring.md","src-server/routes/chat/chat-lifecycle.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked the example and Agent JSON schema against the contract fields it uses. Template instructions built by Station can expand configured variables, and a model step cap belongs at the top level when using VoltAgent.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts","schemas/agent.schema.json"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked the Agent configuration guide delta against the inventory. It changes no supported Agent identity, and the authored model-step cap is now explicitly scoped to one runtime.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the Agent mutation and catalog projection against the confidence guide. Schema admission and deterministic fixture loop proof are separate from live model, external engine and provider qualification.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/schemas/schema-definitions/content.ts","src-server/services/agents/agent-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the real config write path, schema and Agent invoke dispatch. Invalid template formats fail before save. VoltAgent buffered invokes preserve the authored bound, and the API accepts null to clear the authored cap and use the app fallback.","inputs":["docs/reference/api.md","packages/contracts/src/agent.ts","packages/contracts/src/config.ts","packages/contracts/src/engine-capability-matrix.ts","src-server/constants.ts","src-server/routes/agents/invoke.ts","src-server/routes/chat/chat.ts","src-server/routes/schemas/schema-definitions/content.ts","src-server/runtime/agents/runtime-default-agent.ts","src-ui/src/views/agent-editor/useAgentsViewModel.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the matrix comment against the linked CLI engine and config concepts. The new wording identifies the VoltAgent cap, while CLI parsing and external engine routing retain their current contracts.","inputs":["docs/reference/cli.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Traced default prompt composition in the Station builder and export, external authored-text delivery, strict date options at write and read, and VoltAgent stop behavior through actual fixtures. The updated example uses JSON Intl options and UTC explicitly.","inputs":["docs/reference/config.md","packages/contracts/src/agent.ts","packages/contracts/src/config.ts","packages/contracts/src/settings-registry.ts","schemas/agent.schema.json","src-server/constants.ts","src-server/routes/chat/chat.ts","src-server/runtime/agents/runtime-template-variables.ts","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked AgentSpec, enriched Agent projection, matrix scope and config formatter export. Nullable authored caps continue to project their existing JSON meaning, and older nested guardrail caps were never admitted by the Agent file reader.","inputs":["docs/reference/contracts.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts","packages/contracts/src/enriched-agent.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked request options and Agent reads against the invoke route and contract projection. A per-request VoltAgent cap can narrow an authored cap. Setting maxSteps is outside Strands and external engine execution.","inputs":["docs/reference/sdk.md","packages/contracts/src/engine-capability-matrix.ts","src-server/routes/agents/invoke.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Regenerated the settings registry and checked both Agent instruction keys and deep-link IDs. The help text changes the stated scope without renaming the control keys or their route IDs.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the reference Agent type snippet against the public contracts. The top-level field now reflects the existing nullable Agent file shape and the guardrails interface omits the unadmitted nested form.","inputs":["docs/reference/shared.md","packages/contracts/src/agent.ts","packages/contracts/src/config.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the Station prompt and engine descriptions against the changed built-in construction and capability scope. The shipped 139-topic bundle check passes with identical generated content.","inputs":["docs/reference/station-docs.md","packages/contracts/src/engine-capability-matrix.ts","src-server/runtime/agents/runtime-default-agent.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the config-route test changes against the documented telemetry controls. Only isolated template format cases were extended, and telemetry-specific authority and upload evidence stay separate.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config.routes.test.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the engine selection and built-in Station explanations against the matrix comment. The scope of authored step caps does not change the required model connection or setup flow.","inputs":["docs/user/getting-started.md","packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the bundled example Agent fields against the file validator and capability notes. Its prompt uses the Station construction path, and none of its saved fields uses the rejected nested step cap.","inputs":["examples/self-configuring-agent/README.md","packages/contracts/src/agent.ts","packages/contracts/src/engine-capability-matrix.ts","schemas/agent.schema.json"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the linked contracts reference against actual ownership. The Intl options parser is pure over AppConfig values, and the Agent and enriched cap shapes share the same contract.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

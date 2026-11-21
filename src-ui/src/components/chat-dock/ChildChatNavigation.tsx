@@ -1,3 +1,5 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import {
   applyReturnFocus,
@@ -10,14 +12,21 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
+import { stationPartitionKey } from '../../connections/station-state';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { Button } from '../Button';
+import {
+  type ChildInstructionDrafts,
+  ChildWorkInstructionPanel,
+} from '../chat/ChildWorkInstructionPanel';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { registerDialogHistory } from '../dialog-history';
+import { ArrowLeftGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import {
@@ -49,8 +58,10 @@ export function ChildChatNavigation({
   onBeforeChildOpen,
   onInitialChildConsumed,
   dockOutlet = false,
+  writableParent,
 }: {
   dockOutlet?: boolean;
+  writableParent?: { threadId: string; apiBase: string; authorityKey: string };
   rootKey: string;
   title: string;
   children: ReactNode;
@@ -64,6 +75,9 @@ export function ChildChatNavigation({
     root: string;
     entries: ChildChatTarget[];
   }>({ root: rootKey, entries: initialChild ? [initialChild] : [] });
+  // A different parent or Station owns a different draft namespace.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rootKey scopes the child draft lifetime.
+  const drafts = useMemo<ChildInstructionDrafts>(() => new Map(), [rootKey]);
   const entries = state.root === rootKey ? state.entries : [];
   const covered = entries.length > 0;
   useLayoutEffect(() => {
@@ -98,9 +112,10 @@ export function ChildChatNavigation({
         {
           ...target,
           returnFocus:
-            document.activeElement instanceof HTMLElement
+            target.returnFocus ??
+            (document.activeElement instanceof HTMLElement
               ? document.activeElement
-              : undefined,
+              : undefined),
         },
       ],
     }));
@@ -149,16 +164,22 @@ export function ChildChatNavigation({
         }
       }}
     >
+      {/* The phone's way back; on a wider bar the parent's own crumb is. */}
       <Button
         variant="ghost"
+        className="child-chat-trail__back"
         onClick={() => pop(entries.length - 1)}
         aria-label="Back to parent chat"
       >
-        ‹
+        <ArrowLeftGlyph />
       </Button>
       {[{ title }, ...entries].map((entry, index) => (
         <span className="child-chat-trail__segment" key={index}>
-          {index > 0 && <span aria-hidden="true"> › </span>}
+          {index > 0 && (
+            <span className="child-chat-trail__separator" aria-hidden="true">
+              /
+            </span>
+          )}
           {index < entries.length ? (
             <Button variant="ghost" onClick={() => pop(index)}>
               <span className="child-chat-trail__label">{entry.title}</span>
@@ -207,7 +228,26 @@ export function ChildChatNavigation({
             <ConversationConnectionProvider
               value={{ ...entry.connection, record: { readOnly: true } }}
             >
-              <LiveChildReader entry={entry} index={index} />
+              <div className="child-chat-pane__origin">
+                <Button variant="ghost" onClick={() => pop(index)}>
+                  <ArrowLeftGlyph /> Subagent of{' '}
+                  {index === 0 ? title : entries[index - 1].title}
+                </Button>
+              </div>
+              <LiveChildReader
+                entry={entry}
+                drafts={drafts}
+                index={index}
+                mayInstruct={
+                  index === 0 &&
+                  !entry.connection.record &&
+                  !!writableParent &&
+                  writableParent.threadId === entry.threadId &&
+                  writableParent.apiBase === entry.connection.apiBase &&
+                  writableParent.authorityKey ===
+                    entry.connection.requestScope?.authorityKey
+                }
+              />
             </ConversationConnectionProvider>
           </div>
         ))}
@@ -216,7 +256,9 @@ export function ChildChatNavigation({
   return (
     <ChildChatContext.Provider value={push}>
       <ChildChatCoveredContext.Provider value={covered}>
-        <ChildChatPresentationContext.Provider value={{ trail, pane }}>
+        <ChildChatPresentationContext.Provider
+          value={{ trail, pane, currentChild: entries.at(-1) }}
+        >
           <div
             className="child-chat-root"
             hidden={!dockOutlet && covered}
@@ -250,13 +292,22 @@ function ChildHistoryLayer({ close }: { close: () => void }) {
 function LiveChildReader({
   entry,
   index,
+  mayInstruct,
+  drafts,
 }: {
+  drafts: ChildInstructionDrafts;
   entry: ChildChatTarget;
   index: number;
+  mayInstruct: boolean;
 }) {
   const read = useCallback(
-    () => childWorkGlobalStore.getPartition(entry.connection.apiBase),
-    [entry.connection.apiBase],
+    () =>
+      childWorkGlobalStore.getPartition(
+        stationPartitionKey(
+          entry.connection.station ?? entry.connection.apiBase,
+        ),
+      ),
+    [entry.connection.station, entry.connection.apiBase],
   );
   const global = useSyncExternalStore(
     childWorkGlobalStore.subscribe,
@@ -302,20 +353,60 @@ function LiveChildReader({
     if (sessions.isSuccess || observed) setObserve(running);
   }, [running, sessions.isSuccess, observed]);
   const revision = JSON.stringify(item ?? parent?.childWork?.asChild ?? null);
+  const engine = parseEngineId(entry.engineId ?? parent?.provider);
+  const identity = [engine && engineDisplayLabel(engine), item?.model?.id]
+    .filter(Boolean)
+    .join(' · ');
   return entry.childId ? (
-    <LazyBoundary
-      load={loadEngineTranscript}
-      componentProps={{
-        id: `child-chat-${index}`,
-        threadId: entry.threadId,
-        childId: entry.childId,
-        title: item?.title ?? entry.title,
-        engineId: entry.engineId ?? parent?.provider,
-        running,
-        revision,
-      }}
-      pending={<SkeletonBlock count={2} label="Reading subagent" />}
-    />
+    <>
+      <div className="child-chat-pane__history">
+        <LazyBoundary
+          load={loadEngineTranscript}
+          componentProps={{
+            id: `child-chat-${index}`,
+            threadId: entry.threadId,
+            childId: entry.childId,
+            title: item?.title ?? entry.title,
+            engineId: entry.engineId ?? parent?.provider,
+            running,
+            revision,
+          }}
+          pending={<SkeletonBlock count={2} label="Reading subagent" />}
+        />
+      </div>
+      {item ? (
+        <ChildWorkInstructionPanel
+          key={JSON.stringify([
+            entry.connection.station?.runtimeKey,
+            entry.connection.requestScope?.authorityKey,
+            entry.threadId,
+            entry.childId,
+          ])}
+          threadId={entry.threadId}
+          childId={entry.childId}
+          turnId={item.controls?.steer?.turnId}
+          running={running}
+          name={item.title || entry.title}
+          historyAvailable={!!item.transcript}
+          composer={{
+            run: {
+              engineId: engine ?? undefined,
+              engineLabel: engine
+                ? (engineDisplayLabel(engine) ?? undefined)
+                : undefined,
+              model: item.model?.id,
+              images: item.controls?.steer?.images === true,
+            },
+            canContinue: mayInstruct,
+            drafts,
+          }}
+        />
+      ) : (
+        <div className="child-chat-pane__record">
+          {identity && `${identity} · `}View only
+        </div>
+      )}
+    </>
   ) : (
     <LazyBoundary
       load={loadSessionTranscript}

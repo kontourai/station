@@ -949,6 +949,12 @@ which consumers drive its rate (#4992). Each read records:
   thread again or reused it: `projection_refolded`, `projection_reused`,
   `count_refreshed` and `count_reused`.
 
+The projection and count cache keeps up to 2,048 marked threads. A wider
+read holds reusable entries until it assembles its response. It refreshes
+existing cache entries and fills spare slots. Other results from that
+request stay request-local. Expect some refolds for a set larger than the
+cache even when the event log is idle.
+
 A purpose outside the vocabulary is recorded as `invalid`. No session, user or
 thread identity is ever a dimension. Without a collector, the diagnostics
 bundle's `sessionReadModel` field carries the same per-purpose totals since the
@@ -996,9 +1002,15 @@ control or an open dialog. The open Paired people disclosure stays open.
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.
 Concurrent readers join that rebuild. Idle Stations retain the existing
-30-minute startup timer. The Profile page displays the scan timestamp, failed
-refreshes, unavailable engine reads, and skipped message rows. **Rebuild usage**
-forces the existing rescan. Clearing the aggregate is not a history deletion;
+30-minute startup timer. A rebuild rereads only the engine sessions whose events
+changed since the previous one: each session's fold is kept in the event store
+behind a `global_sequence` watermark, and deleting or rewriting a session's
+events drops its fold, so the totals equal folding every retained event again.
+`station.usage_projection.pass.duration` and
+`station.usage_projection.rows_scanned` report each pass by mode. The Profile
+page displays the scan timestamp, failed refreshes, unavailable engine reads,
+and skipped message rows. **Rebuild usage** discards the kept folds and rereads
+every session. Clearing the aggregate is not a history deletion;
 retained transcripts and receipts rebuild it, so the profile does not offer a
 permanent-reset action.
 
@@ -1058,12 +1070,17 @@ is attribution, never a grant or a claim of personal lifetime totals.
 | Claude engine | Per-turn input/output/cache tokens and provider-reported USD cost | Cost is a running total. A process that resumes its transcript continues that total; a restart without resume, or a lower figure, starts a new total that is added |
 | Imported Claude transcripts | Input/output/cache tokens accumulated from assistant records | This importer supplies no provider-reported cost |
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
+| OpenCode native transport | Per-step tokens with the exact OpenCode provider and model IDs when Station sees the matching step start | A gap or missing step start leaves the served observation absent. The evidence describes OpenCode’s route and model fields, with no claim about upstream identity or tariff. |
 | Imported OpenCode sessions | Per-turn input, output (reasoning included) and cache read/write tokens, summed from the turn's steps | OpenCode's own cost figure is an estimate from its price catalog, not a provider charge, so it is not imported |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage; the session's USD cost from `cumulative.cost` when Muse priced every call; context occupancy and window from `session/contextUsage` | Tokens use the wire `usage` object rather than `cumulative`; a `partial` cost is a lower bound and is not published; live 1.4.20 sent both a priced cost and the context window (1.4.18 on the probed provider sent no cost); child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
+| GitHub Copilot (SDK) engine (Feature Preview) | Input/output tokens of each model call, a subagent's calls included, plus cache read/write and reasoning tokens when reported, from `assistant.usage`, summed as per-turn usage | No cost figure: the SDK's `cost` is an experimental billing multiplier, not spend |
 | ACP, including ACP-backed engines | Reported context occupancy/window, an engine's own context percentage, costs in the engine's own unit, and per-turn tokens from the prompt answer's `usage` for an engine recorded reporting them (Antigravity) | Occupancy is not consumed tokens; a reported cost (an ISO currency or a vendor unit such as credits) is shown in conversation statistics as reported, one total per unit, never converted to USD, and usage receipts do not include it |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
+
+OpenCode native step model observations are available on local usage receipts.
+The v1 usage export carries its existing receipt fields.
 
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
 persisted cursor. Older aggregation cursors recover identities from a bounded
@@ -1162,12 +1179,10 @@ legacy `parentConversationId`, or a `parentTaskId` the request names. The
 backfills existing events and maintains mentions in the event write transaction.
 The read preserves context precedence and matching-start provenance; these
 mentions describe naming, not authority to stop a child. They do not record an
-exact initiating Session or a detached lifetime. For a Claude Code or Codex
-session's `delegate_task` call Station derives the context from the calling
-session's own record; for Station's own agent the runtime attests it from the
-conversation the tool call ran in. A task launched through a caller-less
-station-control process (as a Strands-runtime agent uses) names neither, so it
-is not found and not shown as missing. A task you can't read is never named
+exact initiating Session or a detached lifetime. For a `delegate_task` call
+from Claude Code, Codex or Station's own agent, Station derives the context
+from the calling session's own record. A station-control request with no
+verified caller is refused, so it launches no task. A task you can't read is never named
 or figured. When Station derived or attested its link to your conversation
 (in hosted mode, a delegate Station couldn't attribute to a bound caller is
 the Station operator's), the total is partial and says how many such tasks
@@ -1444,9 +1459,11 @@ domain operations, so their totals are not counts of one business action.
 | <a id="providers--infrastructure"></a>`station.provider.operations` | Provider management and adapter outcomes | `op` or `operation`, plus `type`, `provider`, `reason`, `model_options`, `outcome`, `status` where supplied |
 | `station.notification.operations` | Notification service/route operations | `op` |
 | `station.notification.agent_operations` | Agent notification admission outcomes; no content or Session identity | `result`, `urgency` |
+| `station.notification.retention_pruned` | Settled records [retention](../reference/config.md#notification-retention) removed from `notifications.json`; `station.notification.operations` counts `op=tombstone-hit` when a removed record's dedupe tag is scheduled again and nothing is delivered | `status`: `expired`, `actioned`, `dismissed` |
 | `station.setup_requirement.probe_outcomes` | Setup-requirement probe reads behind the attention item (memoized reuses are not counted). A failure is logged once per distinct error and once on recovery; this counter keeps every read | `outcome`: `ready`, `blocked`, `failed` |
 | `station.file_mutation_lock.orphan_temporaries` | Orphaned `*.mutation.<uuid>.tmp` lock temporaries the startup sweep found | `outcome`: `removed`, `retained_live`, `failed` |
-| `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `status` or `op`; no per-job label |
+| `station.scheduler.job.runs` | Confirmed built-in executions whose terminal receipt this process applied | `source=built-in`, `status=success\|error` |
+| `station.scheduler.management.operations` | Create, edit, enable, disable, delete, and manual-run requests that reached route dispatch | `op` |
 | `station.recovery.admission_refused` | Automatic recovery attempts refused while credential readiness is unreadable or indeterminate; one observation per refused attempt, not per account | `reason`: `scan-unavailable` or `reconciliation-indeterminate` |
 | `station.scheduler.concurrency.deferrals` | Invocation-capacity lifecycle outcomes | `reason`, `disposition` |
 | `station.mcp.lifecycle` | MCP connection lifecycle observations | `event`, `server` |
@@ -1473,8 +1490,14 @@ domain operations, so their totals are not counts of one business action.
 | `station.system.operations` | System status/update/resource-posture operations | `op` |
 | `station.uicommand.operations` | UI command operations | `op` |
 
-The scheduler counter's mixed meaning is tracked in
-[#2750](https://github.com/kontourai/station/issues/2750).
+The built-in execution owner records one outcome and one duration for each
+confirmed settlement. A manual run reaches that owner through the route and
+the scheduler service. Refusals before invocation, indeterminate outcomes,
+recovery reconciliation, and third-party scheduler providers do not create
+execution observations. The management counter records request dispatch even
+when the operation fails. The dashboard filters the execution counter and
+duration by `source="built-in"` to exclude historical mixed series.
+
 For the separate concurrency lifecycle, `waiting` adds a parked retry and
 `admitted`/`stopped` remove it. `released` and `indeterminate` describe first
 attempts, not parked depth. Within one process lifetime, parked depth is
@@ -1491,18 +1514,27 @@ a confirmed deferral.
 | --- | --- | --- | --- |
 | `station.chat.duration` | Primary-chat duration | `agent`, `plugin` | ms |
 | `station.tool.duration` | Matched call/result elapsed time from MetadataHandler **and** the external-engine bridge | `tool` when reported, `plugin` | ms |
-| `station.scheduler.job.duration` | Scheduler execution duration | no per-job label | ms |
+| `station.scheduler.job.duration` | Elapsed time of the same confirmed built-in executions as the run counter | `source`, `status` | ms |
 | `station.approval.duration` | Explicit registry settlement time | `action` | ms |
 | `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
 | `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
-| `station.json_store.write_bytes` | Bytes one durable JSON store write puts on disk. Only stores that name themselves record (currently the notification feeds); `previous` is the retained prior copy each durable write also rewrites | `store`: `notifications`, `principal-notifications`; `artifact`: `primary`, `previous` | By |
+| `station.json_store.write_bytes` | Bytes one durable JSON store write puts on disk. Only stores that name themselves record (currently the notification feeds and the notification dedupe tombstones); `previous` is the retained prior copy each durable write also rewrites | `store`: `notifications`, `notification-tombstones`, `principal-notifications`; `artifact`: `primary`, `previous` | By |
 
-The lag histogram only sees a stall that overlaps a timer wake, and it is
-exported only with an OTel endpoint. Independently of OTel, a window whose
-event-loop delay reached one second writes an `Event loop stalled` warning to
-the server log (`<STATION_HOME>/logs/server/`). The warning carries
-`maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
+The exported lag metric samples the wake of the 10-second reporting timer and
+requires an OTel endpoint. Independently of OTel, Node's native event-loop
+delay histogram samples at a nominal 100 ms cadence and resets at each
+10-second report. A window with a sampled maximum of one second or more writes
+an `Event loop stalled` warning to the server log (`<STATION_HOME>/logs/server/`).
+The warning carries `sampleResolutionMs` and the histogram's `maxDelayMs` and
+`p99DelayMs`, rounded to milliseconds. These values describe intervals between
+samples. Even when idle, intervals are typically around the sample cadence.
+Compared with 20 ms sampling, 100 ms sampling reduces idle timer wakeups and
+uses fewer observations per window. A block slightly shorter than one second
+can trigger a warning because its sample includes time before the block. Sample
+timing and window resets can also leave a block unreported.
+
+The warning also shows what the process did during `elapsedMs`:
 `cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
 `gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. Read them as
 leads. CPU time is the whole process's, across all of its threads, not only
@@ -1533,10 +1565,9 @@ runtime wiring supplies these map sizes:
 `station.tokens.context` is declared, but this audit found no current
 production recording call for it in the repository.
 `station.layout.operations` and `station.voice.duration` have no current
-declaration; the dashboard has no layout operations query until
-[#2751](https://github.com/kontourai/station/issues/2751) adds the instrument.
-Historical retained series or a dashboard query do not establish a current
-producer.
+declaration. The dashboard omits these unavailable series and declared
+instruments with no recording calls, such as prompt operations and context
+tokens. Historical retained series do not establish a current producer.
 
 <a id="token-field-fallback-pattern"></a>
 
@@ -1564,64 +1595,32 @@ See [chat finalization](../../src-server/routes/chat/chat-lifecycle.ts) and
 
 ## Grafana Dashboard
 
-The dashboard (`deployment/telemetry/dashboards/station.json`) contains 26 non-row panels plus five section rows. The following numbers are
-reading order, not Grafana JSON panel IDs:
+The [dashboard](../../deployment/telemetry/dashboards/station.json) states each
+panel's population in its description. The pinned Collector exports the
+histograms with `_milliseconds_bucket` and Prometheus counters with
+`_total`. Quantiles aggregate rates by `le` and any retained grouping labels
+before calculating the quantile.
 
-| # | Title | Type | Category |
-|---|-------|------|----------|
-| 1 | Chat Requests | stat | General |
-| 2 | Active Agents | stat | General |
-| 3 | MCP Connections | stat | General |
-| 4 | Errors | stat | General |
-| 5 | Estimated Cost | stat | General |
-| 6 | Chat p95 | stat | General |
-| 7 | Requests Over Time | timeseries | General |
-| 8 | Token Consumption | timeseries | General |
-| 9 | Requests by Agent | bargauge | General |
-| 10 | Tool Calls | bargauge | General |
-| 11 | Agent Operations | bargauge | CRUD Operations |
-| 12 | Project Operations | bargauge | CRUD Operations |
-| 13 | Plugin Activity | bargauge | Plugins |
-| 14 | Plugin Events Over Time | timeseries | Plugins |
-| 15 | Notifications | bargauge | Notifications & Scheduler |
-| 16 | Scheduler Jobs | bargauge | Notifications & Scheduler |
-| 17 | Scheduler Job Duration | timeseries | Notifications & Scheduler |
-| 18 | Provider Operations | bargauge | Providers & MCP |
-| 19 | MCP Lifecycle | bargauge | Providers & MCP |
-| 20 | Knowledge Operations | bargauge | Providers & MCP |
-| 21 | Tool Duration (p95) | timeseries | Performance |
-| 22 | Chat Duration Distribution | timeseries | Performance |
-| 23 | Context Overhead vs Input Tokens | timeseries | Performance |
-| 24 | Error Rate | timeseries | Performance |
-| 25 | Cost by Agent | bargauge | Performance |
-| 26 | Token Usage | stat | Performance |
+- Primary Chat panels select finalizations using the `agent` attribute.
+  Invocation routes produce separate `op` observations. Chat Route Errors
+  counts the outer route catch. Stream failures after the response opens
+  belong to the span status and do not all reach that catch.
+- Agent, Project and Provider panels split the `op` and `operation` families.
+  Notifications and Knowledge group by `op`. Overlapping route and service
+  observations can describe one operation.
+- Confirmed built-in scheduler executions and duration use the new source
+  label. Scheduler Management Requests uses the separate request counter.
+- Loaded Agents and Tracked MCP Server Entries show their respective map
+  cardinalities. The tool-call count covers MetadataHandler chunks. Tool
+  duration also includes matching external-engine call/result pairs.
+- Cost is a partial primary-chat estimate. Missing observations stay absent,
+  including for Chat Route Errors. An empty error series cannot prove an
+  error-free window.
 
-Current query limits matter when interpreting those panels:
-
-- The Context query has no current recording source as described above.
-  Notifications and Knowledge group by `operation`, but their producers use
-  `op`. Other mixed-label families need their populations separated.
-- Scheduler and chat request panels include operations beyond completed work.
-  Tool-call and tool-duration populations differ. Gauge titles do not change
-  the map-cardinality meanings above.
-- Chat p95 is calculated per histogram series without aggregating Agent/plugin
-  buckets into a global p95. Cost panels show partial estimates.
-- The Errors query has no `or vector(0)` fallback, so an unobserved series shows
-  no data rather than a zero. A zero is still not evidence that instrumentation
-  ran and observed no errors.
-
-[#2751](https://github.com/kontourai/station/issues/2751) owns the query/producer
-reconciliation. The Compose profile pins the Collector, Prometheus, Tempo,
-Grafana and PostgreSQL images by digest. The receiver and cloudflared images
-are operator-selected: Compose requires a value but does not enforce a digest,
-so select an exact source-built tag or digest as the
-[profile README](../../deployment/telemetry/README.md) describes. Published
-ports bind to loopback, and the profile requires private credential files with
-no default password. It is still a development and private-operator profile,
-not a qualified production deployment. One local start of the developer profile
-provisioned this dashboard, refused unauthenticated Grafana and OTLP requests,
-and carried a synthetic authenticated OTLP counter into Prometheus. It did not
-exercise Station's own export, traces in Tempo, or rendered panel values.
+The Compose profile pins the Collector, Prometheus, Tempo, Grafana and
+PostgreSQL images by digest. See the [profile README](../../deployment/telemetry/README.md)
+for private credential files, loopback ports, and operator-selected sources.
+The dashboard is a diagnostic view for private operators.
 
 ## Distributed Traces (Tempo)
 
@@ -1638,9 +1637,12 @@ That call neither forces it to be a root span nor makes it the active context.
 `MetadataHandler` adds tool events only when its monitoring emitter/context
 exist and an active span is available; the code does not establish that every
 such event belongs to the new chat span. Other engines have their own paths.
-A failed primary stream can currently be finalized as OK; an in-memory exporter
-probe reproduced that mismatch, tracked in
-[#2752](https://github.com/kontourai/station/issues/2752).
+The stream owner settles its span once after finalization. A thrown stream or
+finalization error is recorded as ERROR, with the exception on the source
+span. A terminal stream reason of `error` is also ERROR. A normally drained
+invocation is OK. Confirmed client cancellation and
+requests that never enter the agent remain unset. The Collector's trace
+projection keeps the status code and strips exception events and messages.
 
 The conditional event write looks like this:
 

@@ -1,0 +1,9 @@
+{
+  "revision": "22d5d7710bcb4463d8a201e29c704ddd6a092291",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Bounded fixture/typecheck delta review: native adapter conformance now selects the provider-qualified mock/mock-1 model actually advertised by its captured catalog, so existing lifecycle/interrupt/image/stream assertions reach their owners under strict validation. Cancellation spy receiver and isolated env are explicitly typed; the model-picker fixture supplies a complete connection contract and preserves required originalId. No product behavior or claimed delivery changed; historical/platform limits retained. Direct server-tests/UI typechecks and conformance/ACP/real-OpenCode/UI owner suites executed separately.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/useChatInput.engineModelGate.test.tsx"]},
+
+    {"path":"docs/guides/development.md","note":"Bounded fixture/typecheck delta review: native adapter conformance now selects the provider-qualified mock/mock-1 model actually advertised by its captured catalog, so existing lifecycle/interrupt/image/stream assertions reach their owners under strict validation. Cancellation spy receiver and isolated env are explicitly typed; the model-picker fixture supplies a complete connection contract and preserves required originalId. No product behavior or claimed delivery changed; historical/platform limits retained. Direct server-tests/UI typechecks and conformance/ACP/real-OpenCode/UI owner suites executed separately.","inputs":["docs/guides/development.md","src-server/providers/__tests__/acp-adapter.test.ts"]}
+  ]
+}

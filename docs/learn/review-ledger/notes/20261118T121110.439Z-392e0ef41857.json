@@ -1,0 +1,13 @@
+{
+  "revision": "b34a5565bad9e37b474ddad4a4a20fa816567ba4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared Agent picker in the ordinary fork draft. The draft initializes the source Agent, a resting pointer does not select a newly mounted row, and deliberate mouse motion or Arrow keys may select another Agent. The Chromium journey parked over a nonpreferred hit target and showed the pre-fix selection failure, then exercised deliberate motion, keyboard confirmation, lost-response retry with the same idempotency key, and a fork-ready child without an execution until first send. Native shells and live engines were not exercised.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/AgentPickerRow.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared Start composer and fork rows. Motion invokes the existing hover selection only for an unselected row; clicks, focus refs, keyboard choices, setup/recovery and authorization stay in their existing owners. Focused picker and fixture-backed Chromium evidence passed.","inputs":["src-ui/src/components/chat-start/AgentPickerRow.tsx"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed retained history, current child identity and replay/capture consumers. A newest read can report the child observed under its starting Session; a later accepted binding cannot be replaced by the displayed predecessor. Older cursor reads merge chronological rows without selecting a current child. The cached paint and authority partition remain separate from action authorization and durable outbox state. Executed reader, reconnect, semantic buffer and seven managed Chromium cases. No native or live provider qualification.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed retained history, current child identity and replay/capture consumers. A newest read can report the child observed under its starting Session; a later accepted binding cannot be replaced by the displayed predecessor. Older cursor reads merge chronological rows without selecting a current child. The cached paint and authority partition remain separate from action authorization and durable outbox state. Executed reader, reconnect, semantic buffer and seven managed Chromium cases. No native or live provider qualification.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

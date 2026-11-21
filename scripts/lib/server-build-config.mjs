@@ -13,11 +13,22 @@ export const STATION_SERVER_EXTERNALS = [
   // @koromix/koffi-<os>-<arch> package beside it, so it must stay a package.
   'koffi',
   '@anthropic-ai/claude-agent-sdk',
+  // The Copilot SDK engine (docs/decisions/copilot-sdk-engine.md). Its only
+  // koffi import is in the experimental in-process transport, which its
+  // client loads with a lazy `import()` Station never reaches. Inlined, that
+  // lazy module's `import koffi` becomes a static import at the top of the
+  // ESM bundle, so a packaged server off Windows (where koffi ships no
+  // loadable code) fails at startup. Kept external, the SDK loads from its
+  // package on the first Copilot SDK session and koffi is never imported.
+  '@github/copilot-sdk',
   // Flow resolves its Hachure schemas through require.resolve() from the
   // installed package. Bundling moves that lookup to Station's output and
   // bypasses Flow's package-local dependency tree.
   '@kontourai/flow',
-  // @kontourai/flow-agents' public entry re-exports loadJson/writeJson from
+  // @kontourai/flow-agents stays external so the boot-import check
+  // (server-static-imports.mjs) sees its specifiers. The server imports only
+  // its subpaths, never the root; the root also must not be inlined, because
+  // it re-exports loadJson/writeJson from
   // its cli/workflow-sidecar.js module, which runs its CLI main() guarded
   // by an import.meta.url === process.argv[1] real-path check. When this
   // module is inlined by esbuild's bundler, import.meta.url for the merged

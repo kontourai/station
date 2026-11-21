@@ -1,4 +1,5 @@
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstatSync, readdirSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
 import {
   type ProjectDocumentFiles,
@@ -343,6 +344,69 @@ function legacyNamespaceMetaFile(
 
 function legacyFlatMetaFile(dataDir: string, projectSlug: string): string {
   return join(dataDir, 'projects', projectSlug, 'documents', 'metadata.json');
+}
+
+function observeLocalDirectory(path: string, observe: () => boolean): boolean {
+  try {
+    const before = lstatSync(path);
+    if (!before.isDirectory() || !observe()) return false;
+    const after = lstatSync(path);
+    return (
+      after.isDirectory() &&
+      before.dev === after.dev &&
+      before.ino === after.ino
+    );
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (
+      code === 'ENOENT' ||
+      code === 'ENOTDIR' ||
+      code === 'ELOOP' ||
+      code === 'EACCES' ||
+      code === 'EPERM'
+    )
+      return false;
+    throw error;
+  }
+}
+
+/** A lightweight listing fact about local document metadata, without reading its bytes. */
+export function hasLocalKnowledgeMetadata(
+  dataDir: string,
+  projectSlug: string,
+): boolean {
+  const projectRoot = join(dataDir, 'projects', projectSlug);
+  const knowledgeRoot = dirname(
+    defaultKnowledgeStorageDir(
+      dataDir,
+      projectSlug,
+      DEFAULT_KNOWLEDGE_NAMESPACE,
+    ),
+  );
+  const documents = dirname(legacyFlatMetaFile(dataDir, projectSlug));
+  return observeLocalDirectory(dirname(projectRoot), () =>
+    observeLocalDirectory(
+      projectRoot,
+      () =>
+        observeLocalDirectory(knowledgeRoot, () =>
+          readdirSync(knowledgeRoot, { withFileTypes: true }).some((entry) => {
+            if (!entry.isDirectory()) return false;
+            const namespace = join(knowledgeRoot, entry.name);
+            return observeLocalDirectory(namespace, () =>
+              lstatSync(join(namespace, 'metadata.json')).isFile(),
+            );
+          }),
+        ) ||
+        observeLocalDirectory(documents, () =>
+          readdirSync(documents, { withFileTypes: true }).some(
+            (entry) =>
+              entry.isFile() &&
+              (entry.name === 'metadata.json' ||
+                /^metadata-.+\.json$/.test(entry.name)),
+          ),
+        ),
+    ),
+  );
 }
 
 function loadLegacyKnowledgeMeta(

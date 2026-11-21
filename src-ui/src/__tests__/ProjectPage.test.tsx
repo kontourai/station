@@ -26,6 +26,7 @@ const sdkMocks = vi.hoisted(() => ({
   project: undefined as ProjectConfig | undefined,
   memberProject: undefined as MemberProjectView | undefined,
   isMemberProject: false,
+  phone: false,
   credentialEvidence: null as RequestCredentialEvidence | null,
   credentialEvidenceCurrent: true,
   sharedTaskQuery: vi.fn(() => ({
@@ -158,7 +159,32 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
   };
 });
 
+vi.mock('../hooks/useIsMobile', async (original) => ({
+  ...(await original<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => sdkMocks.phone,
+}));
+vi.mock(
+  '../components/project-conversations/useProjectConversationIndex',
+  () => ({
+    useProjectConversationIndex: () => ({
+      channels: {
+        entries: [
+          {
+            kind: 'channel',
+            key: 'team',
+            channel: { channelId: 'team', name: 'team', isDefault: false },
+            unread: { unread: true, count: 2 },
+            working: false,
+          },
+        ],
+      },
+      tasks: { entries: [] },
+    }),
+  }),
+);
+
 vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ navigate: navigationMocks.navigate }),
   useNavigation: () => ({
     setLayout: navigationMocks.setLayout,
     setConversation: navigationMocks.setConversation,
@@ -206,6 +232,9 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
       isMemberProject: sdkMocks.isMemberProject,
     };
   }),
+}));
+
+vi.mock('../views/project-page/useMemberProjectSharedWork', () => ({
   useScopedMemberProjectSharedTasksQuery: sdkMocks.sharedTaskQuery,
 }));
 
@@ -420,6 +449,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     sdkMocks.project = projectFixture;
     sdkMocks.memberProject = undefined;
     sdkMocks.isMemberProject = false;
+    sdkMocks.phone = false;
     sdkMocks.credentialEvidence = null;
     sdkMocks.credentialEvidenceCurrent = true;
     authorityRef.current = {
@@ -478,6 +508,19 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(sdkMocks.operatorAgentsQuery).not.toHaveBeenCalled();
     expect(sdkMocks.operatorKnowledgeDocsQuery).not.toHaveBeenCalled();
     expect(sdkMocks.operatorConversationsQuery).not.toHaveBeenCalled();
+  });
+
+  test('a phone opens a shared Project onto its readable conversations', async () => {
+    selectCurrentNativeRelayAccount();
+    sdkMocks.isMemberProject = true;
+    sdkMocks.memberProject = memberProjectFixture;
+    sdkMocks.phone = true;
+
+    await renderProjectPage();
+
+    expect(screen.getByRole('heading', { name: 'Channels' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'team, 2 unread' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /New channel/ })).toBeNull();
   });
 
   test('a member sees the Project icon by the same rule as every surface: an uploaded image draws, a link does not', async () => {
@@ -746,9 +789,15 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
 
-    expect(
+    fireEvent.click(
       screen.getByRole('button', { name: /^Open Healthy pane$/ }),
-    ).toBeTruthy();
+    );
+    const picker = screen.getByRole('dialog', { name: 'Add workspace pane' });
+    expect(within(picker).getByRole('alert').textContent).toContain(
+      'Could not load layouts.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Add Layout' })).toBeNull();
+    expect(navigationMocks.navigate).not.toHaveBeenCalled();
   });
 
   test('opens a layout-bound pane through its Coding host, not another installed layout', async () => {

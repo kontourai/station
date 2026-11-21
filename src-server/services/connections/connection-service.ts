@@ -72,6 +72,7 @@ import {
 import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { builtInAcpEntries, builtInAcpEntryFor } from '../acp/engine-setup.js';
 import {
   type EngineProxyRoute,
   resolveEngineProxy,
@@ -224,6 +225,7 @@ class InventorySiblingAbort extends Error {
 
 /** What a runtime inventory read may start; both default to included. */
 interface RuntimeConnectionInspectionOptions {
+  signal?: AbortSignal;
   includeModelCatalog?: boolean;
   includeCommands?: boolean;
 }
@@ -1083,14 +1085,55 @@ export class ConnectionService {
     }
   }
 
-  async listConnections(): Promise<ConnectionConfig[]> {
-    const discoveryPromise = this.discoverModelConnections();
+  private readonly ordinaryObservations = new WeakMap<
+    ProviderAdapterShape,
+    Map<string, Set<{ signal: AbortSignal }>>
+  >();
+
+  private async observeOrdinaryAdapter<T>(
+    adapter: ProviderAdapterShape,
+    key: string,
+    signal: AbortSignal,
+    observe: () => Promise<T>,
+  ): Promise<T> {
+    throwIfAborted(signal);
+    let observations = this.ordinaryObservations.get(adapter);
+    if (!observations) {
+      observations = new Map();
+      this.ordinaryObservations.set(adapter, observations);
+    }
+    const inFlight =
+      observations.get(key) ?? new Set<{ signal: AbortSignal }>();
+    // An abandoned observation remains owned until the adapter settles.
+    if ([...inFlight].some((owner) => owner.signal.aborted)) {
+      throw new Error('A previous engine observation is still settling.');
+    }
+    const owner = { signal };
+    inFlight.add(owner);
+    observations.set(key, inFlight);
+    try {
+      return await observe();
+    } finally {
+      inFlight.delete(owner);
+      if (inFlight.size === 0) observations.delete(key);
+    }
+  }
+
+  async listConnections(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<ConnectionConfig[]> {
+    const discoveryPromise = this.discoverModelConnections({
+      signal: options.signal,
+    });
     const modelsPromise = discoveryPromise.then((discovery) =>
       discovery.sources.map((item) => item.connection),
     );
     const [models, runtimes] = await Promise.all([
       modelsPromise,
-      this.listRuntimeConnectionsForModels(modelsPromise),
+      this.listRuntimeConnectionsForModels(modelsPromise, {
+        ...options,
+        boundAdapterObservations: Boolean(options.signal),
+      }),
     ]);
     return [...models, ...runtimes];
   }
@@ -1109,11 +1152,11 @@ export class ConnectionService {
    * archive#3748: `failures` travels with the rows so a caller can never mistake
    * "could not read this" for "you have none of these".
    */
-  async listModelConnectionInventory(): Promise<{
+  async listModelConnectionInventory(signal?: AbortSignal): Promise<{
     connections: ConnectionConfig[];
     failures: ConnectionInventoryFailure[];
   }> {
-    const discovery = await this.discoverModelConnections();
+    const discovery = await this.discoverModelConnections({ signal });
     return {
       connections: discovery.sources
         .map((item) => item.connection)
@@ -1122,8 +1165,10 @@ export class ConnectionService {
     };
   }
 
-  async listModelConnections(): Promise<ConnectionConfig[]> {
-    return (await this.listModelConnectionInventory()).connections;
+  async listModelConnections(
+    signal?: AbortSignal,
+  ): Promise<ConnectionConfig[]> {
+    return (await this.listModelConnectionInventory(signal)).connections;
   }
 
   /**
@@ -1283,10 +1328,10 @@ export class ConnectionService {
     connections: AgentConnectionView[];
     failures: ConnectionInventoryFailure[];
   }> {
-    const inventoryPromise = this.listModelConnectionInventory();
+    const inventoryPromise = this.listModelConnectionInventory(options.signal);
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
-      options,
+      { ...options, boundAdapterObservations: Boolean(options.signal) },
     );
     return { connections, failures: (await inventoryPromise).failures };
   }
@@ -1320,6 +1365,7 @@ export class ConnectionService {
       id: EngineConnectionId;
       engineId: EngineId;
       type: string;
+      icon?: string;
     }>
   > {
     const acpConnections = await this.getACPConnections();
@@ -1331,6 +1377,7 @@ export class ConnectionService {
       id: EngineConnectionId;
       engineId: EngineId;
       type: string;
+      icon?: string;
     }> = [];
     for (const adapter of adapters) {
       // Per Adapter, never total: an Adapter whose identity cannot be read
@@ -1361,6 +1408,7 @@ export class ConnectionService {
       }
     }
     const nativeIds = nativeRuntimeConnectionIds(adapters);
+    const builtIns = builtInAcpEntries();
     for (const config of acpConnections) {
       // Parsed, never assumed: a config id that is not a clean identity has
       // no public connection, and must not abort its siblings' attribution.
@@ -1384,12 +1432,14 @@ export class ConnectionService {
       // The inspector's projection: an ACP-backed adapter claiming the
       // connection names the engine, otherwise ACP.
       const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
+      const icon = builtInAcpEntryFor(config, builtIns)?.icon;
       identities.push({
         id: identity.id,
         engineId: runtimeAdapter
           ? engineIdForAdapter(runtimeAdapter)
           : engineId('acp'),
         type: 'acp',
+        ...(icon && icon !== '🔌' ? { icon } : {}),
       });
     }
     return identities;
@@ -1410,14 +1460,18 @@ export class ConnectionService {
    * Canonical engine identity and navigable connection identity used by
    * readiness and other control-plane callers.
    */
-  async listEngineConnectionStates(): Promise<
+  async listEngineConnectionStates(signal?: AbortSignal): Promise<
     Array<{
       engineId: EngineId;
       engineConnectionId: EngineConnectionId;
       enabled: boolean;
     }>
   > {
-    const connections = await this.listRuntimeConnections();
+    const connections = await this.listRuntimeConnections({
+      signal,
+      includeModelCatalog: false,
+      includeCommands: false,
+    });
     return connections.map((connection) => {
       const rawEngineId = connection.config.engineId;
       if (typeof rawEngineId !== 'string') {
@@ -1438,10 +1492,17 @@ export class ConnectionService {
    * unregistered adapters, but still projects their clean public
    * EngineConnectionId paired with each Adapter's canonical EngineId.
    */
-  async listRuntimeConnectionCatalog(): Promise<AgentConnectionView[]> {
-    return this.listRuntimeConnectionsForModels(this.listModelConnections(), {
-      registryAuthoritative: false,
-    });
+  async listRuntimeConnectionCatalog(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    return this.listRuntimeConnectionsForModels(
+      this.listModelConnections(options.signal),
+      {
+        ...options,
+        registryAuthoritative: false,
+        boundAdapterObservations: Boolean(options.signal),
+      },
+    );
   }
 
   private async listRuntimeConnectionsForModels(
@@ -1459,17 +1520,21 @@ export class ConnectionService {
       allowBuiltInOnDiscoveryFailure?: boolean;
       abortOnFailure?: (error: unknown) => void;
       registryAuthoritative?: boolean;
+      boundAdapterObservations?: boolean;
     } = {},
   ): Promise<AgentConnectionView[]> {
-    const [appConfig, acpConnections, models] = await Promise.all([
-      options.appConfig ?? this.getAppConfig(),
-      options.acpConnections ?? this.getACPConnections(),
-      modelsInput,
-    ]);
+    const [appConfig, acpConnections, models] = await raceWithSignal(
+      Promise.all([
+        options.appConfig ?? this.getAppConfig(),
+        options.acpConnections ?? this.getACPConnections(),
+        modelsInput,
+      ]),
+      options.signal,
+    );
     const adapters = options.adapters ?? this.getProviderAdapters();
     const registry =
       this.agentRegistry && options.registryAuthoritative !== false
-        ? await this.agentRegistry.load()
+        ? await raceWithSignal(this.agentRegistry.load(), options.signal)
         : undefined;
     const inspector = createConnectionInspector({
       adapters: () => adapters,
@@ -1479,6 +1544,12 @@ export class ConnectionService {
       publicConnection: (engineIdentity) =>
         publicEngineConnection(adapters, registry, engineIdentity),
       onInspectionFailure: options.abortOnFailure,
+      ...(options.boundAdapterObservations
+        ? {
+            observeAdapter: (adapter, key, signal, observe) =>
+              this.observeOrdinaryAdapter(adapter, key, signal, observe),
+          }
+        : {}),
       now: () => Date.now(),
     });
     const inspection = await inspector.inspect({

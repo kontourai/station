@@ -29,6 +29,7 @@ const contentArea = vi.hoisted(() => ({
   props: null as null | { onExecutionModelSelect?: unknown },
 }));
 const viewSession = vi.hoisted(() => ({ current: null as unknown }));
+const preview = vi.hoisted(() => ({ settled: true }));
 
 vi.mock('../components/chat-dock/ChatDockContentArea', () => ({
   ChatDockContentArea: (props: { onExecutionModelSelect?: unknown }) => {
@@ -51,7 +52,11 @@ vi.mock('../contexts/useShowSurface', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://test.local',
+    authorityKey: 'host-authority',
+    isCurrent: () => true,
+  }),
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -187,7 +192,7 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
   }),
 }));
 vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
+  useChatDockActiveChatSync: () => ({ pendingChat: null }),
 }));
 vi.mock('../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,
@@ -203,6 +208,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
     useEngineConnectionsQuery: () => ({ data: [] }),
+    useFeaturePreviewsQuery: () => ({ data: preview.settled ? [] : undefined }),
     useConversationInventoryQuery: () => ({ data: [] }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
@@ -267,6 +273,7 @@ async function renderPane(active: ChatSession, waitForContent = true) {
 }
 
 beforeEach(() => {
+  preview.settled = true;
   window.localStorage.clear();
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
@@ -312,6 +319,13 @@ describe('ChatWorkspacePane engine-switch gate', () => {
   test('a conversation this caller may change is offered the engine switch', async () => {
     const props = await renderPane(session());
     expect(typeof props?.onExecutionModelSelect).toBe('function');
+  });
+
+  test('a writable conversation cannot switch engines before preview disposition is known', async () => {
+    preview.settled = false;
+    const props = await renderPane(session());
+    expect(props).not.toBeNull();
+    expect(props?.onExecutionModelSelect).toBeUndefined();
   });
 
   test('a conversation the server resolved as not continuable offers none', async () => {

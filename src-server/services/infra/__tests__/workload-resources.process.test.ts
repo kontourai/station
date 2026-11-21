@@ -168,7 +168,12 @@ describe.skipIf(!manager)('running server workload containment', () => {
       ['--user', 'stop', unit],
       { encoding: 'utf8', windowsHide: true, timeout: 15_000 },
     );
-    expect(stopped.status, stopped.stderr).toBe(0);
+    expect(
+      stopped.status,
+      [stopped.error?.message, stopped.signal, stopped.stderr]
+        .filter(Boolean)
+        .join('\n'),
+    ).toBe(0);
     if (runner && runner.exitCode === null) await once(runner, 'exit');
     for (const args of [
       ['stop', slice],
@@ -443,6 +448,14 @@ describe.skipIf(!manager)('running server workload containment', () => {
       expect(result.output).toContain(slice);
       expect(result.output).toContain('__PROOF_RESUMED__');
       await expect.poll(() => gone(result.pid)).toBe(true);
+      await expect
+        .poll(async () => {
+          const { workloads } = await request<{ workloads: Snapshot }>(
+            '/status',
+          );
+          return workloads.recent.map((scope) => scope.pid);
+        })
+        .toContain(result.pid);
     },
   );
 

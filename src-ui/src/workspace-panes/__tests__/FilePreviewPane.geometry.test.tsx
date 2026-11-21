@@ -42,7 +42,7 @@ vi.mock('@kontourai/station-sdk/workspace-file-preview', () => ({
       path: 'src/example.ts',
       status: 'ready',
       renderKind: 'source',
-      content: 'const a = 1;\nconst b = 2;\n',
+      content: `const message = '${'words in the source '.repeat(10)}';\nconst b = 2;\n`,
     },
   }),
   useProjectWorkspaceFileChangesQuery: () => ({
@@ -234,6 +234,50 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       expect(desktop.code.fontFamily).toBe(desktop.block.fontFamily);
       expect(desktop.code.fontFamily).not.toBe('monospace');
       expect(desktop.numberDecoration).toBe('none');
+    });
+
+    test('wrapped source at 390px keeps every continuation out of the line-number gutter', async () => {
+      const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      try {
+        const page = await context.newPage();
+        await page.setContent(
+          `<meta name="viewport" content="width=device-width"><style>${css}</style><div style="width:390px">${paneMarkup()}</div>`,
+        );
+        const line = page.locator(
+          '.workspace-file-preview__code [data-line="1"]',
+        );
+        const { gutterEnd, fragments } = await line.evaluate((node) => {
+          const gutter = node.querySelector('a')!;
+          const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+            acceptNode: (part) =>
+              gutter.contains(part) || !part.textContent?.trim()
+                ? NodeFilter.FILTER_REJECT
+                : NodeFilter.FILTER_ACCEPT,
+          });
+          const source = text.nextNode()!;
+          const range = document.createRange();
+          range.selectNodeContents(source);
+          return {
+            gutterEnd: gutter.getBoundingClientRect().right,
+            fragments: [...range.getClientRects()].map((rect) => ({
+              left: rect.left,
+              top: rect.top,
+            })),
+          };
+        });
+        expect(new Set(fragments.map(({ top }) => top)).size).toBeGreaterThan(
+          1,
+        );
+        expect(
+          Math.min(...fragments.map(({ left }) => left)),
+        ).toBeGreaterThanOrEqual(gutterEnd);
+      } finally {
+        await context.close();
+      }
     });
 
     test('at 390px with a coarse pointer every header control is a 44px target', async () => {

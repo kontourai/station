@@ -1,0 +1,7 @@
+{
+  "revision": "d5d8d44741cbd34cf3633f64b964eb55d9ef7d88",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the two workload-proof selector entries against the out-of-process fixture imports. The affected-test planner now selects the Linux containment suite for the PTY adapter and workload manager. Both cases failed at the missing suite before the entries and passed afterward.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

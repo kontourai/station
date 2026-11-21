@@ -1,0 +1,7 @@
+{
+  "revision": "f753be457d3138060de5591340e49559b212d9ad",
+
+  "notes": [
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Checked: the example's @kontourai/flow-agents pin moves 11.0.0 -> 11.2.0 (minor release adding subpaths; root exports unchanged). The README's description of reading the workspace sidecar and validating trust through the public root export still holds.","inputs":["examples/builder-delivery-viewer/README.md","examples/builder-delivery-viewer/package.json"]}
+  ]
+}

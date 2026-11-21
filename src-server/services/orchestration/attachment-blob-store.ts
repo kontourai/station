@@ -68,6 +68,7 @@ interface AttachmentBlobStoreOptions {
 }
 
 interface BlobFile {
+  ref: string;
   path: string;
   size: number;
   modifiedAt: number;
@@ -312,6 +313,52 @@ export class AttachmentBlobStore {
   }
 
   /**
+   * Admit an entire batch of room uploads, reclaiming only bytes the owner
+   * can prove have no binding. The caller holds one store-wide lock across
+   * admission, blob writes and binding publication.
+   */
+  prepareReferencedWrite(
+    incoming: ReadonlyMap<string, number>,
+    readReferences: () => ReadonlySet<string> | undefined,
+  ): boolean {
+    const files = this.listBlobs({ strict: true });
+    const stored = new Set(files.map(({ ref }) => ref));
+    let additionalBytes = 0;
+    for (const [ref, size] of incoming)
+      if (!stored.has(ref)) additionalBytes += size;
+    let projectedBytes =
+      files.reduce((total, file) => total + file.size, 0) + additionalBytes;
+    const now = this.now();
+    const today = Math.floor(now / DAY_MS);
+    if (
+      this.lastRetentionDay !== today ||
+      projectedBytes > this.retention.maxBytes
+    ) {
+      const references = readReferences();
+      if (references) {
+        const cutoff =
+          this.lastRetentionDay === today
+            ? -Infinity
+            : now - this.retention.maxAgeDays * DAY_MS;
+        this.lastRetentionDay = today;
+        files.sort((a, b) => a.modifiedAt - b.modifiedAt);
+        for (const file of files) {
+          if (
+            file.modifiedAt >= cutoff &&
+            projectedBytes <= this.retention.maxBytes
+          )
+            break;
+          if (!references.has(file.ref) && !incoming.has(file.ref))
+            projectedBytes -= this.remove(file);
+        }
+      }
+    }
+    // Legacy stores can already be over budget. Existing content still costs
+    // no new bytes and can be attached again.
+    return additionalBytes === 0 || projectedBytes <= this.retention.maxBytes;
+  }
+
+  /**
    * Age pass then size pass, oldest first — the same two axes and the same
    * order `RuntimeEventLog` and `ServerLogStore` already use. Runs at most
    * once a day, and only on a write, so an idle Station never walks the tree.
@@ -377,19 +424,46 @@ export class AttachmentBlobStore {
     }
   }
 
-  private listBlobs(): BlobFile[] {
-    if (!existsSync(this.rootDir)) return [];
+  private listBlobs(options?: { strict: boolean }): BlobFile[] {
+    if (options?.strict) {
+      try {
+        const root = lstatSync(this.rootDir);
+        if (!root.isDirectory())
+          throw new Error('Invalid attachment blob directory.');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
+      }
+    } else if (!existsSync(this.rootDir)) return [];
+    const shards = readdirSync(this.rootDir, { withFileTypes: true });
     const blobs: BlobFile[] = [];
-    for (const shard of readdirSync(this.rootDir, { withFileTypes: true })) {
-      if (!shard.isDirectory() || !/^[0-9a-f]{2}$/.test(shard.name)) continue;
+    for (const shard of shards) {
+      if (!/^[0-9a-f]{2}$/.test(shard.name)) continue;
+      if (!shard.isDirectory()) {
+        if (options?.strict) throw new Error('Invalid attachment blob shard.');
+        continue;
+      }
       const shardDir = join(this.rootDir, shard.name);
       for (const entry of readdirSync(shardDir, { withFileTypes: true })) {
-        if (!entry.isFile() || !/^[0-9a-f]{64}$/.test(entry.name)) continue;
+        if (!/^[0-9a-f]{64}$/.test(entry.name)) continue;
+        if (
+          !entry.isFile() ||
+          (options?.strict && !entry.name.startsWith(shard.name))
+        ) {
+          if (options?.strict) throw new Error('Invalid attachment blob file.');
+          continue;
+        }
         const path = join(shardDir, entry.name);
         try {
           const stats = statSync(path);
-          blobs.push({ path, size: stats.size, modifiedAt: stats.mtimeMs });
-        } catch {
+          blobs.push({
+            ref: `sha256-${entry.name}`,
+            path,
+            size: stats.size,
+            modifiedAt: stats.mtimeMs,
+          });
+        } catch (error) {
+          if (options?.strict) throw error;
           // A blob removed by a concurrent sweep is already reclaimed.
         }
       }

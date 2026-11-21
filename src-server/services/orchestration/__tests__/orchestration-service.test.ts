@@ -1211,6 +1211,96 @@ describe('OrchestrationService', () => {
     });
   });
 
+  test('inherited tool constraints refuse canonical session starts and recorded turns', async () => {
+    const delegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent',
+      rootAgentSlug: 'root',
+      toolAllowlistConstraints: [['github_*']],
+    };
+    const threadId = 'constrained-native';
+    const start = { threadId, provider: 'claude' as const };
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: { ...start, metadata: { delegation } },
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.startSession).not.toHaveBeenCalled();
+
+    await service.dispatch({ type: 'startSession', input: start });
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+
+    const recordedThreadId = 'recorded-constrained-native';
+    await claude.startSession({ ...start, threadId: recordedThreadId });
+    expect(claude.sessions.has(recordedThreadId)).toBe(true);
+    eventStore.appendEvent({
+      provider: 'claude',
+      threadId: recordedThreadId,
+      eventId: 'constrained-native-record',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      sessionId: recordedThreadId,
+      metadata: { delegation },
+    } as CanonicalRuntimeEvent);
+    expect(
+      service.firstStartedMetadataOfThread(recordedThreadId)?.delegation,
+    ).toEqual(delegation);
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: recordedThreadId, input: 'Continue the work' },
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test('credential recovery refuses a recorded inherited policy before stopping or replaying', async () => {
+    const adapter = new FakeAdapter('claude');
+    const recoveryService = new RawOrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      const threadId = 'constrained-credential-recovery';
+      await recoveryService.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId,
+        eventId: 'credential-inherited-policy-record',
+        createdAt: new Date().toISOString(),
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { delegation: { toolAllowlistConstraints: [[]] } },
+      } as CanonicalRuntimeEvent);
+
+      await expect(
+        recoveryService['credentialProfileRecovery'].restartRecoverySession({
+          threadId,
+          input: 'Continue after recovery',
+          recoveryCorrelationId: 'constrained-credential-recovery',
+          credentialProfileRef: 'credential-profile',
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({
+        cause: { code: 'delegation_lineage_unavailable' },
+        sessionTouched: false,
+      });
+      expect(adapter.startSession).toHaveBeenCalledTimes(1);
+      expect(adapter.stopSession).not.toHaveBeenCalled();
+      expect(adapter.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      await recoveryService.shutdown();
+    }
+  });
+
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
     await service.dispatch({
       type: 'startSession',
@@ -4426,7 +4516,10 @@ describe('OrchestrationService', () => {
   // presents the cursor deterministically dies with the CLI's
   // "No conversation found with session ID: <uuid>". The continuation must
   // take the transcript-seed fresh child instead.
-  test('#765 A1: a predecessor without engine persistence continues by transcript seed, never its cursor', async () => {
+  test.each([
+    ['a predecessor without engine persistence', false],
+    ['a deliberate Continue from history after a failed native reopen', true],
+  ] as const)('%s uses a fresh Session and transcript seed', async (_label, continueFromHistory) => {
     claude.startSession.mockImplementationOnce(async (input) => {
       const session: ProviderSession = {
         provider: 'claude' as const,
@@ -4436,7 +4529,7 @@ describe('OrchestrationService', () => {
         // The live adapter records the start posture on its ProviderSession
         // (claude-adapter.ts `startTrackedSession`); this is that exact
         // shape for a chat started before #765 forced persistence on.
-        persistSession: false,
+        persistSession: continueFromHistory,
         createdAt: '2026-08-29T00:00:00.000Z',
         updatedAt: '2026-08-29T00:00:00.000Z',
       };
@@ -4488,6 +4581,34 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-29T00:00:01.000Z',
     });
 
+    if (continueFromHistory) {
+      eventStore.appendEvent({
+        eventId: 'conversation-unpersisted-turn-completed',
+        provider: 'claude',
+        threadId: 'conversation-unpersisted',
+        turnId: 'unpersisted-turn',
+        method: 'turn.completed',
+        finishReason: 'stop',
+        sessionState: 'idle',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-29T00:00:01.100Z',
+      });
+    }
+
+    const boundary = continueFromHistory
+      ? await service.reserveConversationContextBoundary(
+          'conversation-unpersisted',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            policy: 'continue-from-history',
+            idempotencyKey: 'resume-by-transcript',
+            expectedCurrentSessionId: 'conversation-unpersisted',
+            actorId: 'owner-user',
+          },
+        )
+      : undefined;
     const next = await service.resolveConversationContinuation(
       'conversation-unpersisted',
       INTERNAL_SESSION_READ_SCOPE,
@@ -4498,6 +4619,7 @@ describe('OrchestrationService', () => {
       transcriptSeed: expect.stringContaining('first-turn-token coral-7'),
     });
     expect(next).not.toHaveProperty('resumeCursor');
+    if (boundary) expect(next.sessionId).toBe(boundary.successorSessionId);
   });
 
   // #765 A1: `dead` is the engine's own structured verdict that this binding
@@ -13178,7 +13300,7 @@ describe('OrchestrationService', () => {
         input: 'Be terse.\nHello',
         // Transcript-facing text stays the typed text alone.
         displayInput: 'Hello',
-        // Relay-only passthrough is preserved for the station-agent relay.
+        // Raw ambient context accompanies the composed text.
         ambientContext: 'Be terse.',
       }),
     );
@@ -15494,7 +15616,7 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('listSessionUsage is a loop over readSessionUsage, attributed and joinable (station#3245)', () => {
+  test('listSessionUsage is a loop over readSessionUsage, attributed and joinable (station#3245)', async () => {
     // The lifetime-analytics seam. It must add NOTHING to the fold — same
     // numbers as `readSessionUsage` — and must carry the conversation id and
     // agent slug, because those are what let the Profile attribute the usage
@@ -15541,9 +15663,9 @@ describe('OrchestrationService', () => {
       mk({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
     );
 
-    const listed = service
-      .listSessionUsage()
-      .filter((entry) => entry.threadId === thread);
+    const listed = (await service.listSessionUsage()).filter(
+      (entry) => entry.threadId === thread,
+    );
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({
       threadId: thread,
@@ -15561,7 +15683,7 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('listSessionUsage gives a hosted deployment nothing, not a cross-tenant total', () => {
+  test('listSessionUsage gives a hosted deployment nothing, not a cross-tenant total', async () => {
     // Its one consumer is `analytics/stats.json` — home-global, with no
     // per-user partition, served by a route that applies no tenant scope. In
     // hosted mode a "home-global lifetime total" would be one tenant's spend
@@ -15596,7 +15718,9 @@ describe('OrchestrationService', () => {
     // Same store, same events: personal mode DOES see it, so the empty
     // hosted answer below is the guard and not an empty fixture.
     expect(
-      service.listSessionUsage().some((entry) => entry.threadId === thread),
+      (await service.listSessionUsage()).some(
+        (entry) => entry.threadId === thread,
+      ),
     ).toBe(true);
 
     const hosted = new RawOrchestrationService({
@@ -15606,10 +15730,12 @@ describe('OrchestrationService', () => {
       requireTenantExecutionContext: () => true,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
-    expect(hosted.listSessionUsage(INTERNAL_SESSION_READ_SCOPE)).toEqual([]);
+    expect(await hosted.listSessionUsage(INTERNAL_SESSION_READ_SCOPE)).toEqual(
+      [],
+    );
   });
 
-  test('listSessionUsage retains measured facts without inventing unconfigured attribution', () => {
+  test('listSessionUsage retains measured facts without inventing unconfigured attribution', async () => {
     const thread = 'thread-list-usage-unconfigured';
     eventStore.upsertSession({
       provider: 'codex',
@@ -15627,9 +15753,9 @@ describe('OrchestrationService', () => {
       promptTokens: 5,
     });
 
-    const entry = service
-      .listSessionUsage()
-      .find((row) => row.threadId === thread);
+    const entry = (await service.listSessionUsage()).find(
+      (row) => row.threadId === thread,
+    );
     expect(entry).toMatchObject({
       threadId: thread,
       conversationId: thread,
@@ -17268,7 +17394,7 @@ describe('OrchestrationService', () => {
     });
 
     // The adapter receives the composed model input, typed display text,
-    // relay-only ambient context, and the server-owned launch plan.
+    // raw ambient context, and the server-owned launch plan.
     expect(claude.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-ambient',
@@ -22452,6 +22578,9 @@ describe('OrchestrationService', () => {
     const affinity = { kind: 'claude-config-home', ref: 'a'.repeat(64) };
     mkdirSync(projectRoot, { recursive: true });
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const aliasThreadId = 'external:claude:source-bound-child';
     eventStore.upsertSession({
       provider: 'claude',
@@ -22482,12 +22611,20 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-07-22T00:00:01.000Z',
     });
 
-    service.initialize();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const readInventory = vi.spyOn(eventStore, 'readSessions');
+    vi.spyOn(eventStore, 'deleteThread').mockImplementationOnce(() => {
+      throw new Error('fixture deletion failed');
+    });
+    await expect(service.listSessionReadModel()).rejects.toThrow(
+      'fixture deletion failed',
+    );
+    expect(eventStore.readSessionByThread(aliasThreadId)).toBeDefined();
 
+    readInventory.mockClear();
     expect(
       (await service.listSessionReadModel()).map((item) => item.threadId),
     ).not.toContain(aliasThreadId);
+    expect(readInventory).toHaveBeenCalledTimes(2);
     expect(
       eventStore.readSessions().map((item) => item.threadId),
     ).not.toContain(aliasThreadId);
@@ -22533,12 +22670,23 @@ describe('OrchestrationService', () => {
     service.initialize();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    const readInventory = vi.spyOn(eventStore, 'readSessions');
     expect(
       (await service.listSessionReadModel()).map((item) => item.threadId),
     ).toContain(aliasThreadId);
-    expect(eventStore.readSessions().map((item) => item.threadId)).toContain(
-      aliasThreadId,
-    );
+    expect(readInventory).toHaveBeenCalledTimes(1);
+
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'new-inventory-run',
+      status: 'ready',
+      createdAt: '2026-07-22T00:00:02.000Z',
+      updatedAt: '2026-07-22T00:00:02.000Z',
+    });
+    readInventory.mockClear();
+    const runs = await service.listAgentRuns();
+    expect(runs.map((run) => run.sessionId)).toContain('new-inventory-run');
+    expect(readInventory).toHaveBeenCalledTimes(1);
   });
 
   // archive#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
@@ -22807,7 +22955,7 @@ describe('OrchestrationService', () => {
 
     const first = service.dispatch(command);
     await vi.waitFor(() => expect(claude.startSession).toHaveBeenCalledOnce());
-    await expect(service.dispatch(command)).rejects.toThrow('already starting');
+    await expect(service.dispatch(command)).rejects.toThrow('The session is still starting.');
 
     const now = new Date().toISOString();
     pending.resolve({
@@ -23371,6 +23519,35 @@ describe('OrchestrationService', () => {
     await guardedService.shutdown();
   });
 
+  async function runScriptedSmoke(
+    input: Parameters<OrchestrationService['runConnectionSmoke']>[0],
+    advanceAfter: 'turn.completed' | 'turn.started' = 'turn.completed',
+  ) {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const published = deferred<void>();
+    const unsubscribe = eventBus.subscribe((frame) => {
+      if (frame.event !== 'orchestration:event') return;
+      const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
+      if (
+        event?.method === advanceAfter &&
+        event.threadId.startsWith(`station-smoke-${input.provider}-`)
+      ) {
+        published.resolve();
+      }
+    });
+    try {
+      const result = service.runConnectionSmoke(input);
+      await Promise.race([published.promise, result]);
+      await vi.advanceTimersByTimeAsync(
+        advanceAfter === 'turn.started' ? input.timeoutMs : 100,
+      );
+      return await result;
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
+    }
+  }
+
   test('completes one smoke turn and deletes its ephemeral session artifacts', async () => {
     claude.sendTurn.mockImplementationOnce(async (input) => {
       const turnId = 'claude-smoke-turn';
@@ -23389,7 +23566,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId };
     });
 
-    const result = await service.runConnectionSmoke({
+    const result = await runScriptedSmoke({
       connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
@@ -23446,7 +23623,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId };
     });
 
-    const result = await service.runConnectionSmoke({
+    const result = await runScriptedSmoke({
       connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
@@ -23498,14 +23675,10 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
-        // The assertion is about reasoning-only content classification, not a
-        // one-second latency SLA. The complete related corpus can delay this
-        // synthetic event loop on a two-core runner, so retain a bounded but
-        // non-racy operation window.
         timeoutMs: 5_000,
       }),
     ).resolves.toMatchObject({ ok: true });
@@ -23530,7 +23703,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23717,7 +23890,7 @@ describe('OrchestrationService', () => {
         return { threadId: input.threadId, turnId };
       });
 
-      const result = await service.runConnectionSmoke({
+      const result = await runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23766,7 +23939,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23804,7 +23977,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23845,7 +24018,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23882,7 +24055,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23929,7 +24102,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23953,13 +24126,16 @@ describe('OrchestrationService', () => {
       });
       return { threadId: input.threadId, turnId: 'silent-smoke-turn' };
     });
-    const result = await service.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+    const result = await runScriptedSmoke(
+      {
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 20,
+      },
+      'turn.started',
+    );
 
     expect(result).toMatchObject({ ok: false, reasonCode: 'timeout' });
     expect(claude.sessions.size).toBe(0);
@@ -29281,6 +29457,8 @@ describe('OrchestrationService', () => {
     > = {
       'session.started': 'non-fold',
       'session.configured': 'non-fold',
+      'session.approval-reviewer-observed': 'non-fold',
+      'session.engine-mode-observed': 'non-fold',
       'session.state-changed': 'non-fold',
       'session.stop-settled': 'non-fold',
       'session.cancellation-requested': 'non-fold',
@@ -30118,6 +30296,8 @@ describe('OrchestrationService', () => {
       ],
       hasMore: true,
       nextSequence: 2,
+      // #5077: the thread's MAX(sequence), not the page's last sequence.
+      highWaterSequence: 3,
     });
     await expect(
       service.readSessionEventPage(

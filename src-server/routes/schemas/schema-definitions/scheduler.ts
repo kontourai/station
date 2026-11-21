@@ -144,6 +144,11 @@ export const addJobSchema = z
     monitor: monitorSchema.optional(),
     target: automationTargetSchema.optional(),
     /**
+     * #5070: the Project (its id) each run is a Task in. Set only here: an
+     * edit cannot move a job to another Project.
+     */
+    projectId: z.string().min(1).max(200).optional(),
+    /**
      * A person approving an agent's job proposal (`propose_job`): the route
      * creates the job only when the body is exactly the proposed job, and
      * then records the proposal approved. Never passed to the scheduler.

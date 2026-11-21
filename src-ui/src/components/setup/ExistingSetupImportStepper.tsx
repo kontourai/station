@@ -16,6 +16,10 @@ import {
 } from '@kontourai/station-sdk/setup-imports-query';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  isStationReadAccessRefusal,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { formatBytes } from '../../utils/formatBytes';
 import { Button } from '../Button';
@@ -77,7 +81,7 @@ export function ExistingSetupImportStepper({
   sourceId = 'codex-prompts',
   compact = false,
 }: ExistingSetupImportStepperProps) {
-  const sources = useSetupImportSourcesQuery();
+  const sources = useSetupImportSourcesQuery(stationViewReadQueryOptions);
   const previewMutation = useCreateSetupImportPreviewMutation();
   const applyMutation = useApplySetupImportMutation();
   const reviewMutation = useReviewSetupImportTargetsMutation();
@@ -163,15 +167,26 @@ export function ExistingSetupImportStepper({
     );
   }
   if (sources.isError) {
+    const refusal = isStationReadAccessRefusal(sources.error)
+      ? sources.error
+      : undefined;
     return (
       <ErrorState
         variant="compact"
         title="Existing setup unavailable"
-        description={userFacingErrorMessage(sources.error)}
+        description={
+          refusal?.status === 403
+            ? 'Ask the Station operator for permission to import existing setup.'
+            : refusal
+              ? 'Sign in to this Station to check its existing setup.'
+              : userFacingErrorMessage(sources.error)
+        }
         action={
-          <Button variant="secondary" onClick={() => sources.refetch()}>
-            Retry setup check
-          </Button>
+          refusal ? undefined : (
+            <Button variant="secondary" onClick={() => sources.refetch()}>
+              Retry setup check
+            </Button>
+          )
         }
       />
     );

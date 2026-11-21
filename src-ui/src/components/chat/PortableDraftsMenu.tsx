@@ -14,6 +14,7 @@ import { composerDisplayValue } from './composer-mentions';
 
 interface PortableDraftsMenuProps {
   hideTrigger?: boolean;
+  textOnly?: boolean;
   quotes?: readonly DraftQuote[];
   input: string;
   attachments: FileAttachment[];
@@ -25,17 +26,28 @@ interface PortableDraftsMenuProps {
 export function PortableDraftsMenu({
   input,
   hideTrigger = false,
+  textOnly = false,
   quotes = [],
   attachments,
   open,
   onOpenChange,
   onRestore,
 }: PortableDraftsMenuProps) {
-  const drafts = useSyncExternalStore(
+  const savedDrafts = useSyncExternalStore(
     chatDraftsStore.subscribe,
     chatDraftsStore.getPortableSnapshot,
     chatDraftsStore.getPortableSnapshot,
   );
+  const drafts = textOnly
+    ? savedDrafts.filter(
+        (draft) =>
+          draft.text.trim() &&
+          !draft.attachments.length &&
+          !draft.quotes?.length &&
+          !draft.droppedImageNames.length &&
+          !draft.unreadableImageNames.length,
+      )
+    : savedDrafts;
   const nameId = useId();
   const [name, setName] = useState('');
   const [saved, setSaved] = useState(false);
@@ -121,7 +133,9 @@ export function PortableDraftsMenu({
             <p className="portable-drafts-menu__hint" role="status">
               {saved
                 ? 'Draft saved. Your current message is still in the composer.'
-                : 'Saves a copy of your message, attachments, and quoted context.'}
+                : textOnly
+                  ? 'Saves the text of this message.'
+                  : 'Saves a copy of your message, attachments, and quoted context.'}
             </p>
           </form>
           <h3 className="portable-drafts-menu__heading">Saved prompts</h3>

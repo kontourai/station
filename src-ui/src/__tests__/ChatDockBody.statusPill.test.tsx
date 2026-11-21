@@ -17,10 +17,26 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  fetchSessionEventWindowCapability: async () => true,
+  fetchOrchestrationConversationEventWindow: async (
+    conversationId: string,
+  ) => ({
+    protocolVersion: 1,
+    conversationId,
+    currentSessionId: 'pill-session',
+    watermark: 0,
+    hasMore: false,
+    events: [],
+    handoffs: [],
+    contextBoundaries: [],
+  }),
+}));
 
 const scheduled = vi.hoisted(() => ({ enabled: false }));
 vi.mock('../hooks/useAgentSchedule', () => ({
@@ -171,6 +187,7 @@ import {
   getApprovalClaims,
   OPEN_APPROVAL_QUEUE_EVENT,
 } from '../components/status/approvalReveal';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import type { ChatSession } from '../types';
 
@@ -235,10 +252,10 @@ function renderDock(session: ChatSession) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const dock = (current: ChatSession) => (
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
-        activeSession={session}
+        activeSession={current}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -250,8 +267,13 @@ function renderDock(session: ChatSession) {
         chatInput={buildChatInput() as any}
         setShowStatsPanel={vi.fn()}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(dock(session));
+  return {
+    ...view,
+    update: (current: ChatSession) => view.rerender(dock(current)),
+  };
 }
 
 afterEach(() => {
@@ -261,14 +283,34 @@ afterEach(() => {
 
 const pill = () => document.querySelector('[data-chat-status-pill]');
 
-test('the conversation body places armed check-backs in the composer activity slot', async () => {
+test('an armed check-back waits in Working details until the live turn ends', async () => {
   scheduled.enabled = true;
-  renderDock(buildSession({ conversationId: 'scheduled-conversation' }));
+  const id = 'scheduled-conversation';
+  const session = buildSession({
+    conversationId: id,
+    orchestrationSessionStarted: true,
+    orchestrationTurnOpen: true,
+    status: 'sending',
+    messages: [{ role: 'user', content: 'Check again later', timestamp: 1 }],
+  });
+  const working = renderDock(session);
+  const expand = await screen.findByRole('button', { name: 'Working' });
+  expect(screen.queryByText(/Checking back at/)).toBeNull();
+  fireEvent.click(expand);
+  expect(await screen.findByText(/Checking back at/)).toBeTruthy();
   expect(
-    await within(await screen.findByTestId('chat-input-area')).findByText(
-      /Checking back at/,
-    ),
+    screen.getByRole('button', { name: /Cancel check-back/ }),
   ).toBeTruthy();
+  fireEvent.click(expand);
+  expect(screen.queryByText(/Checking back at/)).toBeNull();
+  working.update(buildSession({ conversationId: id }));
+  const waiting = await screen.findByRole('button', { name: /^Waiting/ });
+  expect(waiting.textContent).toContain('Waiting');
+  expect(
+    waiting.querySelector('.chat-status-pill__clock')?.textContent,
+  ).toBeTruthy();
+  fireEvent.click(waiting);
+  expect(await screen.findByText(/Checking back at/)).toBeTruthy();
 });
 
 describe('ChatDockBody composer status pill', () => {
@@ -483,4 +525,76 @@ test('known window input outranks an older conservative approval hint', async ()
     </QueryClientProvider>,
   );
   await waitFor(() => expect(pill()?.textContent).toContain('Needs input'));
+});
+
+// Last in the file: these settled chats start the transcript reader, whose
+// failed reads (no server here) leave module state that later docks see.
+describe('ChatDockBody status pill after the turn', () => {
+  // The conversation's live tool record, in the partition its events land
+  // in: this chat has no Station, so its API base.
+  function toolRunningAfterTurn() {
+    backgroundTasksStore.ingest(
+      {
+        provider: 'claude',
+        threadId: 'pill-background',
+        createdAt: '2026-11-16T10:00:00.000Z',
+        method: 'tool.started',
+        toolCallId: 'bg-tool',
+        toolName: 'Bash',
+        arguments: { description: 'Run gate:for' },
+      } as never,
+      'http://localhost:3242',
+    );
+  }
+  const settledWithAgent = (runningChildWork?: number) =>
+    buildSession({
+      // Its own chat: the transcript reader keeps state per chat id.
+      id: 'pill-background',
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: false,
+      status: 'idle',
+      messages: [
+        { role: 'user', content: 'Go', timestamp: 1 },
+        { role: 'assistant', content: 'Started.', timestamp: 2 },
+      ],
+      backgroundTasks: [
+        { taskId: 'agent-1', backgrounded: true, description: 'Inventory' },
+      ],
+      ...(runningChildWork === undefined
+        ? {}
+        : {
+            conversationActivity: {
+              conversationId: 'pill-background',
+              asOfSequence: 3,
+              runningChildWork: { count: runningChildWork, producers: [] },
+            },
+          }),
+    } as Partial<ChatSession>);
+
+  test('after the turn, the pill counts the agents and tools the strip counts', async () => {
+    backgroundTasksStore.reset();
+    toolRunningAfterTurn();
+    // No Station activity record: the counts come from the chat alone.
+    renderDock(settledWithAgent());
+    try {
+      await waitFor(() =>
+        expect(pill()?.textContent).toContain('1 agent and 1 tool running'),
+      );
+    } finally {
+      backgroundTasksStore.reset();
+    }
+  });
+
+  test("with Station still at zero, the pill names the chat's own running agent", async () => {
+    backgroundTasksStore.reset();
+    renderDock(settledWithAgent(0));
+    try {
+      await waitFor(() =>
+        expect(pill()?.textContent).toContain('1 agent running'),
+      );
+      expect(pill()?.textContent).not.toContain('Waiting for background reply');
+    } finally {
+      backgroundTasksStore.reset();
+    }
+  });
 });

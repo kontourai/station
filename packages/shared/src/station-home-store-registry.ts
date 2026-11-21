@@ -73,6 +73,7 @@ export const STATION_HOME_ROOTS: Readonly<
   cache: 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
+  'conversation-inbox-hidden.json': 'state',
   'conversation-intent-summaries': 'state',
   'conversation-pull-request-links.json': 'state',
   'conversation-work-state.json': 'state',
@@ -102,6 +103,9 @@ export const STATION_HOME_ROOTS: Readonly<
   // Versioned, pinned downloads are re-acquirable; trials retain older pins.
   'media-tools': 'external',
   'notifications.json': 'state',
+  // #5052: dedupe memory of notifications retention removed; it travels
+  // with notifications.json so a pruned dismissal is not delivered again.
+  'notification-tombstones.json': 'state',
   'principal-notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
@@ -314,6 +318,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['authentication', 'outside-agent-oauth.sqlite'],
     ['security', 'project-membership.sqlite'],
     ['security', 'project-room-agent.sqlite'],
+    ['security', 'project-room-coordinator.sqlite'],
     ['security', 'project-rooms.sqlite'],
     ['security', 'native-surfaces.sqlite'],
     ['security', 'native-device-proof-replay.sqlite'],

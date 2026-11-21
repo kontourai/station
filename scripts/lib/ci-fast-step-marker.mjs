@@ -10,10 +10,13 @@
  * `verification-reporter.mjs` reads the marker as a boundary. An npm step's
  * own header still follows its marker and names the same script.
  */
+export const CI_FAST_PRELAUNCH_CAUSE_PATTERN =
+  /^ci:fast exceeded its [0-9]+-minute feedback budget before launching \S+$/;
+
 export const CI_FAST_STEP_MARKER_PATTERN = /^\[ci:fast\] step (\S+)$/;
 
 /** `npm run x` -> `x`; `node scripts/x.mjs --flag` -> `scripts/x.mjs`. */
-function ciFastStepId(command, args) {
+export function ciFastStepId(command, args) {
   if (command === 'npm' && args[0] === 'run' && args[1]) return args[1];
   return args.find((arg) => /\.[cm]?[jt]s$/.test(arg)) ?? command;
 }

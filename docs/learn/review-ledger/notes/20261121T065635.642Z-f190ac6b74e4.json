@@ -1,0 +1,7 @@
+{
+  "revision": "17f065b4e42697e346fe57c93cd24f210c42d7c8",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the getting-started guide’s swipe, snooze and dismissal claims against the mounted Inbox row and browser evidence. The cancellation case observes a visible but inaccessible rail during the drag and waits for it to close without opening a conversation. A local fault that left the rail open failed the assertion. The documented gesture and behavior still match.","inputs":["src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

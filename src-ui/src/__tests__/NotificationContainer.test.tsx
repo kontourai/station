@@ -149,6 +149,46 @@ describe('NotificationContainer', () => {
     expect(dismissToast).toHaveBeenCalledWith('tool-1');
   });
 
+  test('shows the chat attribution outside the diagnostic disclosure', () => {
+    notifications = [
+      {
+        id: 'chat-notice',
+        message: 'Review required',
+        timestamp: Date.now(),
+        dismissed: false,
+        metadata: {
+          attribution: 'from builder · Fix login',
+          detail: 'Review info',
+        },
+      },
+    ];
+    render(<NotificationContainer />);
+    expect(
+      screen.getByText('from builder · Fix login').closest('details'),
+    ).toBeNull();
+  });
+
+  test('a dismissed toast stays inert through its exit and then leaves the stack', () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<NotificationContainer />);
+      notifications = notifications.map((item) => ({
+        ...item,
+        dismissed: true,
+      }));
+      view.rerender(<NotificationContainer />);
+
+      const exiting = screen
+        .getByText('Dev Agent failed shell exec')
+        .closest('.toast-stack__item');
+      expect(exiting?.hasAttribute('inert')).toBe(true);
+      act(() => vi.advanceTimersByTime(400));
+      expect(screen.queryByText('Dev Agent failed shell exec')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('keeps diagnostics behind Details and exposes the conversation action as a button', () => {
     const onNavigate = vi.fn();
     notifications = [

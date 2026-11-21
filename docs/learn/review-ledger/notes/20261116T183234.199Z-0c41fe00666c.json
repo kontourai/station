@@ -1,0 +1,25 @@
+{
+  "revision": "74312d51503bb13f700b334c8d0cccfd7c11f9f5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Formatter-only change since the previous review (line wrapping of the composer popover clamp and the approval sheet width comment); no rule or value changed.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Formatter-only change since the previous review (line wrapping of the composer popover clamp and the approval sheet width comment); no rule or value changed.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Formatter-only change since the previous review (line wrapping of the composer popover clamp and the approval sheet width comment); no rule or value changed.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Formatter-only change since the previous review (line wrapping of the composer popover clamp and the approval sheet width comment); no rule or value changed.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Formatter-only change since the previous review (line wrapping of the composer popover clamp and the approval sheet width comment); no rule or value changed.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Formatter-only change since the previous review (line wrapping of the composer popover clamp and the approval sheet width comment); no rule or value changed.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Formatter-only change since the previous review (line wrapping of the status line JSX); no behavior or copy changed.","inputs":["src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Formatter-only change to the renamed Full access radio query.","inputs":["src-ui/src/__tests__/ChatInputArea.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Formatter-only change to the renamed Full access radio query.","inputs":["src-ui/src/__tests__/StartComposerParity.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Formatter-only change to the renamed Full access radio query.","inputs":["src-ui/src/__tests__/StartComposerParity.test.tsx"]}
+  ]
+}

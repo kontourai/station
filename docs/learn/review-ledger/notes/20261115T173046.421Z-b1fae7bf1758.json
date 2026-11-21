@@ -1,0 +1,27 @@
+{
+  "revision": "d5fd80def01f9e0138b3e3182c1da4a9166627cd",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"notification-delivery.md gained the opener's identity wait (verified observation for a same-origin connection); automation links still open as validated relative paths.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); composer, draft and send claims unaffected.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Opener bullet now says the active id comes from the saved connection or the verified authority observation and taps wait up to eight seconds for it; fcm-alert-channel.ts takes the shared nativeSessionReference (same fields and grammar) and drops an unused import.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/delivery/fcm-alert-channel.ts"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); pane relation claims unaffected.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); placement and surface deep-link claims unaffected.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); layout and touch-target rules unaffected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); no API call changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); no configuration added.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); no concept changed.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); getting-started steps unaffected.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock now gives the deep-link opening skeleton a class styled in ChatDockDeepLinkOpening.css (fills the reader; rendered at 390 and 1440); Board behavior unaffected.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

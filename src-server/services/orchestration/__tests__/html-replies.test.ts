@@ -97,6 +97,7 @@ test.each([
   ['Display title', 'mcp__station-control__html_render', true],
   ['Tool: attacker/html_render', undefined, false],
   ['html_render', undefined, false],
+  ['Render HTML', 'mcp_station-control_html_render', true],
 ] as const)(
   'ACP lifecycle %s / %s persists only a qualified publication reference',
   (title, name, allowed) => {
@@ -143,6 +144,10 @@ test.each([
           toolCallId: 'call',
           title,
           ...(name ? { name } : {}),
+          rawInput: {
+            html: `<main>${'x'.repeat(8_900)}</main>`,
+            height: 450,
+          },
         },
         ctx,
       );
@@ -153,9 +158,15 @@ test.each([
           status: 'completed',
           rawOutput: {
             content: [
-              { type: 'text', text: JSON.stringify({ htmlReply: reference }) },
+              {
+                type: 'text',
+                text: JSON.stringify({ success: true, htmlReply: reference }),
+              },
             ],
           },
+          ...(name === 'mcp_station-control_html_render'
+            ? { content: [] }
+            : {}),
         },
         ctx,
       );

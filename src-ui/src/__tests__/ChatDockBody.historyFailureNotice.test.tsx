@@ -272,6 +272,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       handoffs: [],
       contextBoundaries: [],
       settled: true,
+      revalidating: false,
       catchingUp: false,
       openTurnProjected: false,
     }));
@@ -768,5 +769,56 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     );
     expect(screen.queryByText(/Conversation resynced/)).toBeNull();
     expect(document.activeElement).toBe(document.body);
+  });
+
+  test('a cached paint still being re-read offers no approval answer until the read lands', async () => {
+    let revalidating = true;
+    vi.mocked(useActiveChatTranscript).mockImplementation(() => ({
+      ...transcriptStateMock.current,
+      error: undefined,
+      watermark: 1,
+      partialTurnStartEventIds: new Set<string>(),
+      loadTurn: vi.fn(async () => false),
+      handoffs: [],
+      contextBoundaries: [],
+      settled: true,
+      revalidating,
+      catchingUp: false,
+      openTurnProjected: false,
+    }));
+    transcriptStateMock.current.enabled = true;
+    transcriptStateMock.current.messages = [
+      { role: 'user', content: 'Delegate the tests', timestamp: 1 },
+    ];
+    // A request no row can answer: only the pending-approvals strip offers it.
+    transcriptStateMock.current.events = [
+      {
+        sequence: 1,
+        event: {
+          eventId: 'cached-request',
+          provider: 'claude',
+          threadId: 'thread-alpha',
+          method: 'request.opened',
+          requestId: 'req-cached',
+          requestType: 'approval',
+          title: 'Allow Bash',
+          payload: { toolName: 'Bash', toolCallId: 'sub-call', agentId: 'a1' },
+          createdAt: '2026-11-01T00:00:01.000Z',
+        },
+      },
+    ];
+    const session = buildSession({
+      conversationId: 'conversation-alpha',
+      orchestrationSessionStarted: true,
+    });
+    const view = renderDock(session);
+    await screen.findByText('Delegate the tests');
+    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+
+    revalidating = false;
+    view.rerenderSession({ ...session });
+    expect(
+      await screen.findByRole('button', { name: 'Allow Once' }),
+    ).toBeTruthy();
   });
 });

@@ -284,6 +284,7 @@ describe('Vitest resource manifest', () => {
   }, 70_000);
 
   it.each([
+    'packages/shared/src/__tests__/plugin-scaffold.test.ts',
     'scripts/__tests__/play-upload-retry.test.ts',
     'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
     'src-server/services/__tests__/html-reply-preview.process.test.ts',

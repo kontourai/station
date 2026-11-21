@@ -4,7 +4,13 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AgentPickerGroups } from '../components/chat-start/AgentPickerRow';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -70,6 +76,33 @@ function row(slug: string): HTMLElement {
 afterEach(cleanup);
 
 describe('Agent picker row presentation', () => {
+  test('shows the detected coding app mark and respects custom artwork', async () => {
+    const gemini: AgentData = {
+      slug: agentId('gemini-default'),
+      name: 'Gemini CLI',
+      source: 'acp',
+      engineId: 'acp',
+      execution: { agentConnectionId: engineConnectionId('gemini') },
+      provenance: {
+        origin: 'engine-detection',
+        engineId: 'gemini',
+        detectedAt: '2026-11-18T00:00:00Z',
+      },
+    };
+    const custom = { ...gemini, slug: agentId('gemini-custom'), icon: '★' };
+    renderRows([gemini, custom], () => ({
+      label: 'Default',
+      unavailable: false,
+    }));
+
+    await waitFor(() =>
+      expect(
+        row(gemini.slug).querySelector('[style*="/provider-icons/gemini.svg"]'),
+      ).toBeTruthy(),
+    );
+    expect(within(row(custom.slug)).getByText('★')).toBeTruthy();
+  });
+
   test('an engine named after the Agent shows only its qualifier', () => {
     renderRows([PROXIED_CLAUDE, REVIEWER_ON_PROXY], () => ({
       label: 'Opus',

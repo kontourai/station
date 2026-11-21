@@ -1,0 +1,7 @@
+{
+  "revision": "f753be457d3138060de5591340e49559b212d9ad",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Checked the pnpm-lock.yaml diff: every importer (root, contracts, sdk, examples/builder-delivery-viewer) moves @kontourai/flow-agents 11.0.0 -> 11.2.0, the 11.0.0 package and snapshot entries are gone, and console-server's optional peer snapshot follows; no other package changes version. The dependency, privacy and data-safety statements on this page are unchanged.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

@@ -506,6 +506,25 @@ describe('CommandPalette', () => {
     });
   });
 
+  test('identifies My knowledge store as personal and opens its Settings row', async () => {
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'my knowledge store' },
+    });
+
+    const command = await screen.findByRole('option', {
+      name: /Settings: My knowledge store/i,
+    });
+    expect(command.textContent).toContain('Managed by the Station operator.');
+    fireEvent.click(command);
+
+    expect(navigateMock).toHaveBeenCalledWith('/settings', {
+      view: 'knowledge',
+      highlight: 'personal-knowledge-store',
+    });
+  });
+
   test('searches message rows only after two characters and renders hostile excerpts as text', async () => {
     messageSearchMock = {
       matches: [
@@ -573,7 +592,6 @@ describe('CommandPalette', () => {
       const focus = vi.fn();
       const unregister = openChatsStore.registerNavigation({
         focus,
-        openCollection: vi.fn(),
       });
       fireEvent.click(chatRow!);
       expect(focus).toHaveBeenCalledWith({ sessionId: 'session-alpha' });
@@ -697,7 +715,6 @@ describe('CommandPalette', () => {
     const unregister = openChatsStore.registerNavigation({
       focus: focusLocal,
       focusRemote,
-      openCollection: vi.fn(),
     });
     await renderCommandPalette();
     open();
@@ -1394,7 +1411,7 @@ describe('CommandPalette active-option announcement', () => {
     ).toBe('true');
   });
 
-  test('with no results it points at nothing rather than a dangling id', async () => {
+  test('combobox references follow the result list as it closes and reopens', async () => {
     await renderCommandPalette();
     open();
     const input = screen.getByRole('combobox');
@@ -1402,8 +1419,19 @@ describe('CommandPalette active-option announcement', () => {
       target: { value: 'zzzznotacommandzzzz' },
     });
 
-    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    expect(input.getAttribute('aria-controls')).toBeNull();
     expect(input.getAttribute('aria-activedescendant')).toBeNull();
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    const listbox = screen.getByRole('listbox');
+    const activeOption = screen.getByRole('option', { selected: true });
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    expect(input.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(input.getAttribute('aria-activedescendant')).toBe(activeOption.id);
+    expect(listbox.contains(activeOption)).toBe(true);
   });
 });
 

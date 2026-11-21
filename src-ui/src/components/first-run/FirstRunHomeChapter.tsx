@@ -163,7 +163,6 @@ export function FirstRunHomeChapter({
 }: {
   intentFirst?: boolean;
 }) {
-  const explicitSetup = useRef(false);
   // #4519: under the managed limit the "Connect another device" exit is off.
   const pairingLimit = useManagedRemoteClientsLimit();
   const config = useConfig();
@@ -310,19 +309,14 @@ export function FirstRunHomeChapter({
     // wait is bounded by the query's own retry budget (~10s of 503s on a cold
     // boot, then an error, which answers as "nothing to disclose").
     if (!disclosureSettled) return;
-    if (intentFirst && !disclosureOutstanding) return;
+    if (intentFirst) return;
     autoOpened.current = true;
-    if (intentFirst) {
-      setSteps(['disclosure']);
-      setStep('disclosure');
-      setOpen(true);
-    } else openChapter();
+    openChapter();
   }, [
     offer.autoOpen,
     launcherWouldShow,
     configSettled,
     intentFirst,
-    disclosureOutstanding,
     systemStatusUnconfirmed,
     disclosureSettled,
     progress.deferred,
@@ -506,7 +500,6 @@ export function FirstRunHomeChapter({
     <>
       <FirstRunHomeCard
         onOpen={() => {
-          explicitSetup.current = true;
           openChapter();
         }}
       />
@@ -546,10 +539,6 @@ export function FirstRunHomeChapter({
                 dismissNoticeRef={disclosureDismissRef}
                 initialChoiceRef={disclosureChoiceRef}
                 onAdvance={() => {
-                  if (intentFirst && !explicitSetup.current) {
-                    defer();
-                    return;
-                  }
                   firstRunStore.enterChapter('engines');
                   setStep('engines');
                 }}

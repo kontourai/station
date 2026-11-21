@@ -138,17 +138,25 @@ describe('BackgroundTasksSheet', () => {
     renderSheet({ running: [], finished: [] });
     expect(screen.getByText('Nothing to show')).not.toBeNull();
     expect(
-      screen.getByText('Recent tasks only. Remote tasks are in Activity.'),
+      screen.getByText('Recent tasks only.', {
+        selector: 'footer',
+        exact: true,
+      }),
     ).not.toBeNull();
   });
 
-  test('renders a Running section with a count and the Activity disclosure', () => {
+  test('renders a Running section with a count and the recent-tasks disclosure', () => {
     renderSheet({
       running: [runningEntry(), runningEntry({ id: 'call-3' })],
       finished: [],
     });
     expect(screen.getByText('Running (2)')).not.toBeNull();
-    expect(screen.getByText(/Remote tasks are in Activity\./)).not.toBeNull();
+    expect(
+      screen.getByText('Recent tasks only.', {
+        selector: 'footer',
+        exact: true,
+      }),
+    ).not.toBeNull();
     expect(
       screen.queryByText('Remote delegations appear on the Sessions page.'),
     ).toBeNull();
@@ -178,7 +186,9 @@ describe('BackgroundTasksSheet', () => {
 
     fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
-    expect(screen.getByText('Completed')).not.toBeNull();
+    // An agent card's completed turn reads as child-work rows do: the run
+    // finished, which is not a claim that the work succeeded.
+    expect(screen.getByText('Run finished')).not.toBeNull();
   });
 
   // station#1558: an entry whose session ended before its tool reported must

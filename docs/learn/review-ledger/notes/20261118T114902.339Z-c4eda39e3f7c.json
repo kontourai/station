@@ -1,0 +1,57 @@
+{
+  "revision": "af77143e05e1fb413d793672c430fa396d2c4ef6",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Checked the interruption window in the adapter conformance fixture. Untagged text is dropped while a cancelled prompt remains unresolved and resumed once only the successor owns output.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the notification dispatcher with a settled Codex Stop followed by abort and cancelled completion. Only the Stop reaches notification scheduling.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/turn-completion-notifications.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed ACP prompt and mapper ownership. Message and reasoning updates require an attributable active turn. The mapper withholds them during cancelled-prompt settlement when the source may be ambiguous. Native steering, cancellation transport, and extension-error enrichment keep their documented contracts.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed ACP prompt and mapper ownership. Message and reasoning updates require an attributable active turn. The mapper withholds them during cancelled-prompt settlement when the source may be ambiguous. Native steering, cancellation transport, and extension-error enrichment keep their documented contracts.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed ACP prompt and mapper ownership. Message and reasoning updates require an attributable active turn. The mapper withholds them during cancelled-prompt settlement when the source may be ambiguous. Native steering, cancellation transport, and extension-error enrichment keep their documented contracts.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed ACP prompt and mapper ownership. Message and reasoning updates require an attributable active turn. The mapper withholds them during cancelled-prompt settlement when the source may be ambiguous. Native steering, cancellation transport, and extension-error enrichment keep their documented contracts.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the SDK stream mapper. Stop suppresses frames for its exact turn and a stale named stop receipt cannot close its successor. Provider-initiated replies still open with their own identity.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the SDK stream mapper. Stop suppresses frames for its exact turn and a stale named stop receipt cannot close its successor. Provider-initiated replies still open with their own identity.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed the SDK stream mapper. Stop suppresses frames for its exact turn and a stale named stop receipt cannot close its successor. Provider-initiated replies still open with their own identity.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the SDK stream mapper. Stop suppresses frames for its exact turn and a stale named stop receipt cannot close its successor. Provider-initiated replies still open with their own identity.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the SDK stream mapper. Stop suppresses frames for its exact turn and a stale named stop receipt cannot close its successor. Provider-initiated replies still open with their own identity.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the SDK turn ledger and callers. Stopped identity is bounded, and a named buffered reply or receipt cannot replace an active successor. Queue admission, provider follow-up markers and the result-settlement boundary retain their documented behavior.","inputs":["src-server/providers/adapters/claude-sdk-turns.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed Codex terminal and output intake. The adapter distinguishes a completed Stop from ordinary native turn identification and drops late content and terminal publications for that stopped turn. It still reads the engine cursor when the settling turn owns it.","inputs":["src-server/providers/adapters/codex-adapter-notifications.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the Codex interrupt RPC and terminal publication. The exact Stop is marked once before its abort is published. A later engine report cannot reset successor status or output. Concurrent send admission and provider configuration retain their documented behavior.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the notification consumer and settled-stop retention. A duplicate terminal during the existing Stop retention window cannot schedule a finish after Stop. Normal completion episodes and the native notification routing contracts are unchanged.","inputs":["src-server/services/orchestration/turn-completion-notifications.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the new reply-output section. It describes core prompt text and reasoning attribution during cancellation, separate from the vendor extension error rules.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the updated Stop disposition against the listener. A duplicate exact-turn terminal is suppressed within the existing retention window. Normal alert holds and delivery are unchanged.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

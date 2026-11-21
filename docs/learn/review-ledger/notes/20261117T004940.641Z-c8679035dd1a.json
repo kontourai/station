@@ -1,0 +1,7 @@
+{
+  "revision": "e94e61016756929bf46b9fbf65d5a93254bc7144",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Updated the setup-card sentence against ChatSetupHelper (shown when no Agent can start or the menu pick cannot; reason, prerequisites and sign-in under Details) and the NewChatModal and Home gates.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/chat-start/ChatSetupHelper.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

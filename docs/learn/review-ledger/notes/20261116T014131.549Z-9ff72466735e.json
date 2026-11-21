@@ -1,0 +1,149 @@
+{
+  "revision": "cee3065461630b71a1e8cdc135ed888a28f75574",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the updated handoff section against cee3065461: encoded-byte bounds and the 768 KB sender refusal (encodeImportRequest), paired-Station-only import named from the Device record (importCaller), saved-count receipt (importReply), envelope-4xx-as-definite and the 409 source-read refusal in peer-chat-routes.ts; each is covered by a test that fails when its fix is reverted.","inputs":["docs/reference/api.md","packages/contracts/src/peer-chat.ts","src-server/routes/chat/conversations.ts","src-server/routes/environments/peer-chat-routes.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the corrected claim against cee3065461: import accepts only an authenticated delegation Device at the operate tier and names it from the Device record; the seed quotes each carried line; copied rows carry importedFrom; transcript views show them as ordinary rows. The statement that pairing lets a Station author earlier history is the residual risk.","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/peer-chat.ts","src-server/routes/environments/peer-chat-routes.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the corrected section against conversations.ts import, buildForkTranscript imported mode and createConversationForkContext: paired-only, credential-named sender, quoted seed with sender omissions disclosed, importedFrom on rows shown as ordinary rows.","inputs":["docs/design/chat-composer.md","packages/contracts/src/peer-chat.ts","src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"cee3065461 adds only the importCaller composition (delegation Device from the authenticated principal, named from its Device record) and drops sourceStation; no other route or authority composition changed. Citing pages about peer admission and the tunnel were rechecked; others describe unrelated behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/api.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"cee3065461 removes self-claimed source environmentId/stationName from the import request, drops shortenedMessages from the receipt, makes bounds encoded bytes and adds the 768 KB request ceiling; tunnel shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"cee3065461: source-read failures answer 409 before any peer contact, the encoded request is refused over its ceiling, any envelope 4xx is definite, and the receipt is the receiver's saved counts. Tunnel handling unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"cee3065461: source-read failures answer 409 before any peer contact, the encoded request is refused over its ceiling, any envelope 4xx is definite, and the receipt is the receiver's saved counts. Tunnel handling unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"cee3065461: source-read failures answer 409 before any peer contact, the encoded request is refused over its ceiling, any envelope 4xx is definite, and the receipt is the receiver's saved counts. Tunnel handling unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"cee3065461: source-read failures answer 409 before any peer contact, the encoded request is refused over its ceiling, any envelope 4xx is definite, and the receipt is the receiver's saved counts. Tunnel handling unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"cee3065461: source-read failures answer 409 before any peer contact, the encoded request is refused over its ceiling, any envelope 4xx is definite, and the receipt is the receiver's saved counts. Tunnel handling unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"cee3065461: source-read failures answer 409 before any peer contact, the encoded request is refused over its ceiling, any envelope 4xx is definite, and the receipt is the receiver's saved counts. Tunnel handling unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"cee3065461 adds the imported option (sender-named title, quoted seed with upstream omissions, importedFrom on copied rows) and corrects the stored-bodies comment; local fork behavior unchanged (fork tests pass).","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"cee3065461 adds the imported option (sender-named title, quoted seed with upstream omissions, importedFrom on copied rows) and corrects the stored-bodies comment; local fork behavior unchanged (fork tests pass).","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"cee3065461 adds the imported option (sender-named title, quoted seed with upstream omissions, importedFrom on copied rows) and corrects the stored-bodies comment; local fork behavior unchanged (fork tests pass).","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Only the paired-Station handoff section changed; citing pages refer to unrelated sections.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the paired-Station handoff section changed; citing pages refer to unrelated sections.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"cee3065461 restricts the import to an authenticated paired Station, takes provenance from it, passes sender omissions to the seed and answers with saved counts; fork and other routes unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"cee3065461 restricts the import to an authenticated paired Station, takes provenance from it, passes sender omissions to the seed and answers with saved counts; fork and other routes unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Only the owner-device bullet's handoff sentence changed; citing pages refer to other sections.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Adds optional importedFrom metadata; existing fields unchanged.","inputs":["packages/shared/src/conversation-message.ts"]}
+  ]
+}

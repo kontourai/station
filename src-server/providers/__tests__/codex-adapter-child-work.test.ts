@@ -20,6 +20,7 @@ import {
   codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
+  refreshCodexChildSteerControls,
   SETTLED_AWAITING_OWN_TERMINAL_MAX,
 } from '../adapters/codex-adapter-child-work.js';
 import {
@@ -353,9 +354,26 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     // #2486 review: the control is offered the moment a target exists.
     expect(child(before.events).controls).toEqual({
       stop: 'provider-task-stop',
-      steer: { turnId: '00000000-0000-7000-8000-000000000005' },
+      steer: { turnId: '00000000-0000-7000-8000-000000000005', images: true },
     });
 
+    before.record.childModelAcceptsImages = () => false;
+    refreshCodexChildSteerControls({
+      record: before.record,
+      nowIso: () => new Date().toISOString(),
+      publish: (event) => before.events.push(event),
+    });
+    expect(child(before.events).controls?.steer).toEqual({
+      turnId: '00000000-0000-7000-8000-000000000005',
+    });
+    expect(
+      codexChildSteerTarget(
+        before.record,
+        CHILD,
+        '00000000-0000-7000-8000-000000000005',
+        true,
+      ),
+    ).toBe('unsupported');
     const after = replayCodexCapture(capture, { limit: childDone + 1 });
     // Settled (cancelled): nothing may target it for a stop any more.
     expect(child(after.events).status).toBe('cancelled');

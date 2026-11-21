@@ -1,0 +1,15 @@
+{
+  "revision": "1238662d6aa502c6700759ec62f7a1f82644b28b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Review-round follow-up: the opencode model-resolution case now also checks the real OpenCodeAdapter declaration at the start, resume and turn gates through resolveModelLaunchPlan. No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review-round follow-up: the opencode model-resolution case now also checks the real OpenCodeAdapter declaration at the start, resume and turn gates through resolveModelLaunchPlan. No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Review-round follow-up: the opencode model-resolution case now also checks the real OpenCodeAdapter declaration at the start, resume and turn gates through resolveModelLaunchPlan. No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review-round follow-up: the opencode model-resolution case now also checks the real OpenCodeAdapter declaration at the start, resume and turn gates through resolveModelLaunchPlan. No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Review-round follow-up: the opencode model-resolution case now also checks the real OpenCodeAdapter declaration at the start, resume and turn gates through resolveModelLaunchPlan. No claim cited by this page changed.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]}
+  ]
+}

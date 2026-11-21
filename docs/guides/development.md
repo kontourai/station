@@ -310,6 +310,7 @@ environment variables before starting the service:
 | `STATION_WORKLOAD_CPU_PERCENT` | Logical CPUs × `75` | Combined CPU quota; `100` is one core |
 | `STATION_WORKLOAD_TASKS_MAX` | `512` | Per-scope processes and threads |
 | `STATION_WORKLOAD_TOTAL_TASKS_MAX` | `2048` | Combined processes and threads |
+| `STATION_WORKLOAD_PRESSURE_PERCENT` | `85` | Share of a scope's memory limit (50–99) at which Station reports it near the limit |
 
 The per-scope default grows with the host: a 16 GiB host has an 8 GiB total
 and about 4.8 GiB per engine, while an 8 GiB host keeps the earlier 3 GiB. One
@@ -451,6 +452,76 @@ decides which), and keeps systemd's own `systemdResult` (`success` under
 stop, or `last-poll` when systemd had already collected the scope (a terminal
 whose shell exited on hangup, since only engine scopes have holders): then a
 kill in the scope's final second can be missing.
+
+The same poll logs every rise in a running scope's count at once, as "A
+process in a workload scope was killed for memory", for every engine and
+command scope, whether or not an engine adapter listens and whether or not
+the engine survived: the kernel can kill several processes, the engine last,
+between two polls. The line names the scope, its Session, the count and the
+new kills, and its three largest remaining processes (`largestRemaining`,
+read from `cgroup.procs` and each pid's `/proc/<pid>/status` `Name` and
+`VmRSS`, at most 512 processes and 500 ms, or omitted). The killed process
+is already gone, so when the scope was near its limit beforehand the line
+also carries that earlier snapshot (`largestAtPressure`), which normally
+names the culprit. `GET /api/system/workload` keeps the latest snapshot as
+`lastOomKillProcesses`. The `station.workload.scope.oom_kills` metric counts
+each kill once, `source: live` when a poll saw it and `close` when only the
+close-time read did.
+
+A scope is near its limit when its working set, `memory.current` less
+`memory.stat` `inactive_file`, reaches `STATION_WORKLOAD_PRESSURE_PERCENT` of
+its `memory.max`. Station then logs "A workload scope is near its memory
+limit" once, with the three largest processes and the `memory.events` `max`
+count, and logs at info once the working set falls 5 points below the
+threshold; nothing in between. A rising `memory.events` `max` alone is not
+pressure: it also counts routine page-cache reclaim at the limit, which a
+scope that reads many files hits continually. While the scope is near its
+limit, `GET /api/system/workload` and `/api/system/resource-posture` list its
+`pressure`, and the engine's own `workload_status` read returns it with the
+largest processes. The
+`station.workload.scope.memory_pressure` metric counts `enter` and `exit`
+transitions.
+
+Station also tells the engine whose scope it is (#5113). Entering pressure,
+leaving it, and a kill announced while the engine lives each become one short
+notice, such as "This session's memory is at 91% of its 7.0 GiB limit;
+largest: fallow 5.1 GiB. Stop or serialize memory-heavy commands before the
+kernel kills one." It names only kernel command names (`comm`, sanitized),
+sizes and counts, at most 360 characters. The transcript shows it at once as a
+`runtime.warning` (`workload-memory-pressure`,
+`workload-memory-pressure-cleared` or `workload-command-oom-killed`). When the
+engine sees it depends on the adapter:
+
+- **Claude**: with the result of its next tool call, as the
+  `additionalContext` of Station's `PostToolUse` or `PostToolUseFailure` hook,
+  which Claude Code adds as a system reminder. When no tool runs first, it
+  arrives with the next prompt (`UserPromptSubmit`). A tool call in a subagent
+  delivers it to that subagent.
+- **Codex**: through a `turn/steer` into the running turn, which Codex reads at
+  its next model request. With no turn running, or a steer refused, it arrives
+  as an extra text item of the next `turn/start`.
+
+Undelivered notices are coalesced. Entering and leaving pressure before the
+engine hears of either says nothing, and kills add up into one notice. A
+notice still undelivered after 10 minutes is dropped, and none is delivered
+after the session ends. `station.engine.workload_notices` counts each one by
+`provider_family`, `kind` and `outcome`.
+
+Each poll also puts an engine's commands ahead of the engine for the OOM
+killer. Station does not start those commands (the engine does, inside its
+scope), and an unprivileged process cannot lower an `oom_score_adj` below the
+value it inherited (that takes `CAP_SYS_RESOURCE`). So instead it raises every
+other process in an engine scope, apart from the holder, to the engine's
+`oom_score_adj` plus 300 (at most 1000), and never lowers one. In a scope OOM
+the kernel adds `oom_score_adj` thousandths of `memory.max` to a process's
+size, so a command is chosen before the engine unless the engine is larger
+than it by more than 30% of the limit. A process the engine forks keeps the
+engine's score until the next poll (up to a second), and its own children
+inherit the raised one. When the engine runs behind a launcher process (a
+shim that starts the real engine as its child), the launcher is the one
+protected. A refused write is logged once and that scope is not retried.
+`OOMPolicy=continue` deliberately leaves `memory.oom.group` off: a group kill
+would end the engine along with the command.
 
 Codex reports both cases. A kill while Codex runs publishes a live warning
 (`workload-command-oom-killed`, naming the budget) and a transcript marker
@@ -766,6 +837,16 @@ separate two-minute bound — the earlier `node-pty` compile measurement was abo
 handset. Re-measure the current graph and host rather than treating it as a
 present build-time guarantee.
 
+An interrupted install retains `.station-dependency-install` with its receipt
+and any incomplete `node_modules` tree. A retry refuses while that guard
+exists. Recover the checkout only when you control it and have confirmed that
+the installer and its child processes stopped. Preserve any incomplete tree
+in an owned inspection directory while the guard still holds. Move the
+failed guard to the same directory last, then run `npm run dependencies:ci`
+to install and verify a fresh tree. Use a fresh sibling checkout when the
+original install's state is uncertain.
+
+
 ## Project Structure
 
 See [Repository layout](repository-layout.md) for directory ownership, naming,
@@ -941,10 +1022,24 @@ gh api repos/kontourai/station/rules/branches/main
   cover native inputs only; a change confined to the rest of `src-ui/` or
   the bundled packages gets its iOS build from the main push, and a red one
   opens a `Main pipeline red: PR: iOS build` tracker.
+- **Push once per fix round.** Every push restarts the PR's checks and
+  cancels the run in progress. On 2026-11-16 one branch pushed 8 heads a
+  median of about 9 minutes apart: a newer push cancelled all eight of its
+  `PR: CI` runs, and the branch's workflows used 607 runner-minutes in
+  total.
 - **Arm auto-merge; do not merge by hand.**
   `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
   PR: a green PR that nobody armed sits forever, which is the usual reason a
   ready PR has not landed.
+- **With `STATION_PR_HEAVY_CHECKS=when-armed`, arming starts the heavy
+  checks.** An unarmed push then runs only the cheap part of `PR: CI`, and
+  `Source verification policy` stays pending with "heavy checks run once
+  armed" until the run that arming starts (`PR armed`) passes on that head;
+  a push to an armed PR runs everything. Arm at your final push as before. For
+  a full run before arming, add the `full-checks` label and push or use
+  **Re-run all jobs** (**Re-run failed jobs** repeats the old decision).
+  Unset or `every-push` (the default), every push runs everything. See
+  [heavy checks when armed](testing.md#heavy-checks-when-armed).
 - **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
   the strategy, and `gh pr merge --squash` is refused with `The merge strategy
   for main is set by the merge queue`. The `pull_request` rule's
@@ -1010,6 +1105,22 @@ host-coordinated lanes consume shared CPU and mutable-output leases.
 [host heavy-check slot](testing.md#host-heavy-check-slots) shared by every
 worktree, so concurrent runs from several agents serialize instead of sharing
 one memory limit. Let them wait rather than working around the queue.
+
+To check a branch's committed changes with Veritas readiness, go through
+Station's wrapper:
+
+```bash
+node scripts/run-veritas-readiness.mjs --changed-from origin/main --changed-to HEAD
+```
+
+Veritas diffs `--changed-from A --changed-to B` as the two-point range `A..B`.
+Once `origin/main` moves past the branch's base, that range includes files
+from newer `main` that the worktree doesn't have, and readiness fails with
+`ENOENT`. The wrapper replaces a `--changed-from` ref that is not an ancestor
+of `--changed-to` with their `git merge-base` (the `A...B` base) and passes an
+ancestor such as an explicit base SHA through unchanged. Calling
+`npx --no @kontourai/veritas readiness --changed-from origin/main` directly
+skips that step, so pass `$(git merge-base origin/main HEAD)` there instead.
 
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,

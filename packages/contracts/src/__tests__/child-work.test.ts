@@ -61,7 +61,10 @@ function fold(...deltas: ChildWorkDelta[]): ChildWorkRegistryState {
 
 test('steer controls are bounded and cannot survive settlement or an omitted snapshot', () => {
   const key = item('child', {
-    controls: { stop: 'provider-task-stop', steer: { turnId: 'turn' } },
+    controls: {
+      stop: 'provider-task-stop',
+      steer: { turnId: 'turn', images: true },
+    },
   });
   const running = fold(snapshot(key));
   expect(childWorkForReporter(running, REPORTER)[0].controls).toEqual(

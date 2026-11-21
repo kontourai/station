@@ -1,0 +1,9 @@
+{
+  "revision": "93b71142022deef3119a3c68ef1c702040a65659",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Fix round 1 only edits the pull request feedback entry (head review current/waiting fields, preview-gated reviewEachHead, refusal codes and helper); citing pages make no claim about it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Fix round 1 only edits the pull request feedback entry (head review current/waiting fields, preview-gated reviewEachHead, refusal codes and helper); citing pages make no claim about it.","inputs":["docs/reference/api.md"]}
+  ]
+}

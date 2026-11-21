@@ -22,7 +22,9 @@ rewrites. See [configuration and logging](config.md#logging).
 
 The trusted `STATION_WORKLOAD_*` settings configure managed Linux service
 resource limits. See [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
-for defaults, platform support and refusal behavior. The two memory budgets
+for defaults, platform support and refusal behavior, including
+`STATION_WORKLOAD_PRESSURE_PERCENT`, the share of a scope's memory limit at
+which Station reports it near the limit. The two memory budgets
 override the matching saved Station setting.
 
 | Variable | Default | Description | Source |
@@ -65,7 +67,7 @@ override the matching saved Station setting.
 |----------|---------|-------------|--------|
 | `DO_NOT_TRACK` | _(none)_ | Any value except empty or `0` forces every product publisher Off, overriding saved consent. OTLP diagnostics retain their separate configuration. | `src-server/domain/telemetry-configuration.ts` |
 | `STATION_TELEMETRY_TIER` | `lite` | `off`, `lite`, or `full` policy default for absent Kontour/operator choices; plugin publishers remain Off until explicitly chosen; `full` is capped at Lite and never grants consent. Reports reason `environment`. Lite sends independently per publisher after notice. The legacy Full acknowledgement covers operator only; author Full requires its separate destination-bound receipt. | `src-server/domain/telemetry-configuration.ts` |
-| `STATION_AUTHOR_TELEMETRY_ENDPOINT` | empty | Public build-time input from the owner-gated repository Actions variable in official release producers. Empty means no author sink and leaves the independent author sender inert. Source execution ignores the runtime value; builds reject non-official contexts and invalid HTTPS URLs. See [official build activation](../guides/release-rings.md#author-telemetry-in-official-builds). | `esbuild.config.mjs`, `src-server/domain/telemetry-build-constants.ts` |
+| `STATION_AUTHOR_TELEMETRY_ENDPOINT` | empty | Public build-time input from the owner-gated repository Actions variable in official release producers. An empty value leaves the author sender inactive. A `/v1/lite/` destination accepts anonymous counts and fixed-choice feedback. Source execution ignores the runtime value. See [official build activation](../guides/release-rings.md#author-telemetry-in-official-builds). | `esbuild.config.mjs`, `src-server/domain/telemetry-configuration.ts` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(none)_ | OTLP HTTP collector base URL; Station appends `/v1/traces` and `/v1/metrics`. Used when no saved collector address exists; without either address, this SDK/export path stays inactive. Local monitoring and direct product usage telemetry are separate. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
 | `OTEL_SERVICE_NAME` | `station` | Service name reported in traces and metrics | `src-server/telemetry.ts` |
 | `STATION_OTEL_API_KEY` | _(none)_ | Optional `x-api-key` for the environment collector. A saved collector address or key reference suppresses this environment key. Never used for product observations. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
@@ -112,12 +114,13 @@ on `station.console.emissions` and logged once per outage.
 
 - [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_LOG_REPEAT_LIMIT`, `STATION_LOG_REPEAT_WINDOW_SECONDS`, `STATION_LOG_FILE_MAX_BYTES`, `STATION_LOG_FILE_GENERATIONS`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
 - [Monitoring history](../guides/monitoring.md#environment-variables): `STATION_EVENT_LOG_RETENTION_DAYS` and `STATION_EVENT_LOG_MAX_BYTES`.
+- [Notification retention](config.md#notification-retention): `STATION_NOTIFICATION_RETENTION_DAYS`.
 - [Native recovery](../user/native-recovery.md#check-the-local-diagnosis): `STATION_DESKTOP_LOG_LEVEL` and the shell's separate logs.
 - [Conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station): `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT` select the folders Station reads Claude Code, Codex, Grok and OpenCode history from, instead of `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and OpenCode's `XDG_DATA_HOME` data folder and their defaults ([details](session-api.md), [OpenCode source](../../src-server/providers/sessions/opencode-session-source.ts)); a Codex root also replaces the other Codex homes Station configures. `STATION_EXTERNAL_ACP_SESSIONS=1` also lists the sessions ACP engines report, without their messages ([source](../../src-server/services/acp/acp-session-listing.ts)).
 - [Engines from the public registry](../guides/connections.md#engines-from-the-public-registry): `STATION_PUBLIC_AGENT_REGISTRY` set to `off`, `0`, `false` or `no` (any case) stops Station downloading and listing the public agent registry ([source](../../src-server/services/acp/public-agent-registry.ts)).
 - [Integrations from MCP subregistries](../guides/connections.md#integrations-from-mcp-subregistries): `STATION_MCP_CURATED_REGISTRY` set to `off`, `0`, `false` or `no` (any case) withdraws Station's curated MCP servers; `STATION_MCP_SUBREGISTRY_URL` adds one https subregistry whose entries are unqualified; `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES` set to `on`, `1`, `true` or `yes` lets catalog entries use loopback and private network endpoints ([source](../../src-server/providers/registries/mcp-subregistry-provider.ts)).
 - [Testing](../guides/testing.md): test prerequisites, fixture paths, transfer baselines, and verification timeouts.
-- [Code-health audits](../guides/testing.md#repository-wide-code-health): `STATION_FALLOW_CACHE_DIR` selects the disk-backed directory that holds each fallow audit's private base checkout, instead of `$XDG_CACHE_HOME/station/fallow` or `~/.cache/station/fallow` ([source](../../scripts/lib/fallow-base-cache.mjs)).
+- [Code-health audits](../guides/testing.md#repository-wide-code-health): `STATION_FALLOW_CACHE_DIR` selects the disk-backed directory that holds each fallow audit's private base checkout, instead of `$XDG_CACHE_HOME/station/fallow` or `~/.cache/station/fallow` ([source](../../scripts/lib/fallow-base-cache.mjs)). `STATION_FALLOW_MEMORY_MAX_MIB` sets each fallow child's [memory budget](../guides/code-quality.md#memory-budget) in MiB (default 5120, at least 1024), enforced by a capped systemd user scope where one can start ([source](../../scripts/lib/fallow-memory-bound.mjs)).
 - [Deployment authentication](../guides/deployment-authentication.md) and [Web Push](../guides/web-push-notifications.md): deployment-specific identity and notification setup.
 
 Launchers also set process identity, bound ports, and short-lived credentials for

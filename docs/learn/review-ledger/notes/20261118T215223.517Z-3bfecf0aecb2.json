@@ -1,0 +1,29 @@
+{
+  "revision": "7fd0edc0e9914d5b4def067e251b003718513d8e",
+
+  "notes": [
+    {"path":"README.md","note":"The referenced CLI targeting and credential guidance still applies to the two new Board verbs, which use the existing core dispatch and target configuration. Published package availability was not exercised.","inputs":["README.md","docs/reference/cli.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"The CLI registration and help delta adds Board verbs. The documented playbooks and prompts migration command paths remain as recorded.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/cli.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Board routes use the existing core target path. Both verbs are allowed by the distribution guard. Checkpoint routing and the Work Board's revision and linked-work observations are outside this delta.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md","packages/cli/src/commands/core.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The CLI dispatch change adds Board verbs to core dispatch. Triage registration, flags and report-mode handling continue through their existing branch.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"The new Board commands are registered in Core Workspace. Plugin build and install dispatch and help retain their existing authoring commands.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/cli.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Only Board verbs entered the core dispatch list. Plugin scaffold, local-path admission, preview and install still use the documented plugin dispatch.","inputs":["docs/guides/build-your-first-plugin.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The CLI reference gains Board examples under existing Station and credential selection. The external MCP setup workflow and its distinct pairing and tool-grant checks use the same existing guidance.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The Board dispatch addition leaves lifecycle, diagnostic and remote client routes described in the guide on their existing handlers.","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"The new core verbs do not enter the recovery dispatch, and doctor, service status and home reset retain their existing command routing.","inputs":["docs/user/native-recovery.md","packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checkpoint commands still dispatch to their existing handler. The parity inventory records local-host history and person-owned restore; this delta adds no checkpoint command or tool.","inputs":["docs/user/workspace-checkpoints.md","packages/cli/src/cli.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"The two new Board verbs use core dispatch. The starter still uses plugin preview and install and the same registry and local Station selection paths.","inputs":["examples/getting-started-starter/README.md","packages/cli/src/cli.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed both Board registrations against the command reference and existing published-client admission. The README still points at the canonical reference and preserves the checkout-launcher distinction.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/core.ts","packages/cli/src/help.ts"]}
+  ]
+}

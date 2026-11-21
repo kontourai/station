@@ -1,0 +1,7 @@
+{
+  "revision": "dd2cf1b61b08a76cfe30784b231b5f850d25aea0",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Checked the plugin guide's layout and renderer evidence. The added assertion covers a code-owned File Preview renderer when its catalog entry is coming soon. Plugin placement and renderer selection fixtures are unchanged.","inputs":["src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx"]}
+  ]
+}

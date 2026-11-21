@@ -176,7 +176,7 @@ every other route. These rules make it a region rather than a special case
   - **The page is seen, not covered.** A page open — a landing in `main`
     through `showSurface` or the model's open, which both go through `commit`
     in `RegionModelContext` — restores any maximized dock region on every
-    device: a maximized dock owns the whole phone viewport,
+    device: a maximized dock fills the phone workspace below its app toolbar,
     and on a desktop a maximized side region hides `.main-content` while a
     maximized bottom region takes its row. The dock stays open beside or
     below the page, and the reader's maximize memory (`lastDockMaximized`,
@@ -968,13 +968,40 @@ child registry and completion notices are scoped to the Station connection;
 a foreign Station with the same reported child IDs cannot replace a notice.
 Missing snapshot evidence leaves an outcome unknown.
 
-Result text identifies its recorded source: returned result, provider summary,
-child message or provider error. Older text keeps unknown provenance. A later
+Expanded result text identifies its recorded source: returned result, provider
+summary, child message or provider error. The compact preview labels
+provider summaries, child messages and provider errors when their source
+is recorded. Expansion also discloses unknown provenance on older text. A later
 structured tool return from the same Station and child corrects an existing
 completion notice in place without another announcement. A transcript handle
 alone does not prove a returned result. These rules qualify the dated
 “complete list” wording above; transcript cards can still represent loaded
 spawns beyond the live registry's bounded history.
+
+**Agents pane layout and scope amendment (2026-11-16).** The scopes are
+**This chat** and **All chats**, the glossary's word for a conversation.
+All chats is a superset of every chat's own scope: besides the session read
+model's delegates and the child-work registry, it lists every chat's
+tool-call and delegated-task cards from the background-tasks store, grouped
+by chat. Every row reaches its group through one resolver; a subagent's
+reporting session follows the store's reporter-to-chat binding, so a chat
+stays one group after it closes. The current chat's group leads, a group's
+title (a heading) opens the chat by its durable id, and the group shows the
+project only as the open chat's display name, never a session row's slug.
+Collapsed groups are a per-device convenience. The store holds what this
+window has seen, so when tool calls are listed the pane notes that they are
+listed from when the window opened; finished tool calls of a closed chat
+are dropped as before. The global finished bound trims only delegates,
+because the registry already bounds engine subagents. Section headings count
+agents, commands, monitors and tools by name; a Bash call that leaves a
+background command is counted once, as that command. `TaskRow` and
+`ChildWorkRow` share one sentence-case status pill (`WorkStatusPill`) with
+one tone per status. An agent card's completed turn reads **Run finished**
+like a child-work row, and **Completed** is kept for a tool call that
+reported success. A row's
+text keeps at least 22rem; actions that do not fit beside it wrap to their
+own line below (flex wrap, no at-rule), which qualifies the 2026-10-14
+“actions beside each row” wording above.
 
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
@@ -1038,6 +1065,11 @@ resolved by `RegionPaneHost` from the SDK's metadata LISTS
 and reading no record, so the host chunk gains no layout renderer. Until the
 list resolves, and for an id the list no longer carries, the tab shows the
 prefix fallback ("Board" / "Layout").
+
+The trusted plugin pane host uses
+[`PluginWorkspacePaneSDKBoundary`](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx)
+for its Layout navigation context. Clearing its active tab removes the saved
+state and cancels pending hash restoration before a switch or remount.
 
 **Which kinds render.** The renderer (`LayoutWorkspacePane`, lazy) is
 `PersonalBoardView`'s: the one `LayoutRenderer` through the one
@@ -1135,35 +1167,17 @@ admission-aware — can complete that path from the dock. A choice: for a NON-pl
 project layout, a launcher bound to the layout's project through
 `resolveLayoutLaunchAgent(…, boundProjectSlug, projectAgentFilter)` would
 have worked, and wiring it remains a legitimate later option this record does
-not close. What was not available to copy is `LayoutView`'s own tail:
-`handleLaunchPrompt` ends `setDockState(true)` — which reveals Chat and
-selects its tab in the region holding it (`syncRegionArrangementFromDock`'s
-`openChat`) — then `setActiveChat(null)`, so nothing selects the session it
-just created (`useChatDockActiveChatSync` returns on a null `activeChat`);
-that is `LayoutView`'s own latent defect, filed as #2194. The canonical
-pattern that DOES select — `createChatSession → setActiveChat(sessionId) →
-setDockState(true)` in `useActiveChatSessionLifecycle.ts`'s `useLaunchChat`
-and `useChatDockActions.ts` — was what a wired launcher would have copied. A
-Board has no project at all, so it could not have been wired either way, and
-one rule now covers both families.
+not close. A Board has no Project context for choosing a launch Agent.
 
-**A flag, not a derivation.** Every host without a launcher is exactly a host
-passing no `onLaunchPrompt`, so `LayoutRenderer` could derive
-`canLaunch = onLaunchPrompt !== undefined` and cover every host with no prop
-and no precedence rule (#2171 review L1). It was weighed and not taken,
-because it would change what two hosts this change leaves alone render:
-`WorkspacePaneRouteView` and `ProjectLayoutRenderer`'s synthetic single-tab
-layouts pass no launcher and carry pane-DESCRIPTOR `actions`, and whether a
-descriptor's `prompt` action should ever be launchable from a route-bound
-pane is an open decision (#2195). The flag is opt-in so that decision is
-made per host, on purpose; #2195 may replace the flag with the derivation,
-and the SDK header keeps its prop either way.
-
-**What this does not reach.** `LayoutView` passes a real launcher and never
-declares `false`. `WorkspacePaneRouteView` and `ProjectLayoutRenderer`'s two
-synthetic single-tab layouts pass nothing and still render a descriptor's
-`prompt` action with a no-op launcher — the same defect, deliberately left to
-#2195 rather than fixed by side effect here.
+**Prompt launches in the route hosts (#2194, #2195).** For an authored
+Project Layout, `LayoutView` selects the new Chat before opening the dock
+and sending the prompt. Plugin Layout actions continue through the live
+contribution checks described above. Direct Workspace Pane routes and the
+Workspace Pane rendered within a Project Layout have navigation and link
+actions. Their descriptor prompts require a host launcher, so these panes
+omit those controls. `LayoutRenderer` derives header availability from the
+effective launcher. An explicit `canLaunchPrompts={false}` also disables
+launching for the header and pane, even if the host supplies a handler.
 
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the
@@ -1946,8 +1960,10 @@ per conversation.** Below the fold nothing above changes.
   44px boxes on a pointer that cannot hover, since the side panel opens by
   width alone. A pull request review inside the pane fences its own
   changed-files diff from the head, so the head always speaks for the Diff
-  pane. File Preview's head is left for the per-file Changes rework in
-  flight to build on.
+  pane. File Preview's Changes view uses these same tools. In the File view,
+  wrapped continuations align with the code column beside the line numbers.
+  Local and provider diff comments show relative time, with the original
+  instant in a tooltip.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge
@@ -2050,7 +2066,9 @@ routing occurs only after the reader's focus guard accepts the destination.
 
 The Inbox and reader stay mounted while switching between them, preserving
 list position, the search, and unsent composer text. Collapse and reopen retain
-the selected view. A new conversation URL reveals its reader. A covered reader
+the selected view. A collapsed chat retains its title and actions. Activating
+a chat command in the collapsed header reveals the dock. A new conversation
+URL reveals its reader. A covered reader
 does not count as viewed and cannot take composer focus. A hidden New chat
 draft releases its Back-history entry until it is shown again.
 

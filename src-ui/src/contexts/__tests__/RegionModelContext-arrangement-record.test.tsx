@@ -169,6 +169,23 @@ afterEach(() => {
 });
 
 describe('RegionModelProvider reads the regionArrangement record at mount', () => {
+  test('a plain Home launch starts with the saved Devices pane collapsed', async () => {
+    seedEnvelope({
+      regionArrangement: activityRightRecord({
+        right: {
+          visible: true,
+          size: 517,
+          occupant: { kind: 'surface', id: 'device' },
+          maximized: false,
+        },
+      }),
+    });
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.right.occupant).toBe('device'));
+    expect(model?.regions.right.visible).toBe(false);
+    expect(model?.regions.right.size).toBe(517);
+  });
+
   test('a record with Activity in right mounts with Activity in right (the reload case)', async () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/');

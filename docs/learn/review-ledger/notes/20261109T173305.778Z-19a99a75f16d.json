@@ -1,0 +1,7 @@
+{
+  "revision": "a07dee5a5b8dd34e7d1818f81a985eb601449dbb",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Its only dependency on approval-posture-server-ordered.md is the link at the unattended-approval inputs (AppConfig.defaultApprovalMode applied at every session start). The changed text is the Seatbelt confined temp-directory placement, read hiding of the short stn-<uid> roots, and reaping. It does not touch approval modes, defaultApprovalMode or session-start ordering, so the cited claim and link still hold. No prose change.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

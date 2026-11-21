@@ -23,7 +23,8 @@ Station, Defaults, and This-device scopes up front; provider, developer-service,
 and computer setup has one canonical home in Connections; host detection is
 clearly labeled as describing the Station host; Agent defaults remain behind
 progressive disclosure; and keyboard shortcuts use the versioned device-settings
-record. Slice 3 (epic #1269) then shipped the full scope-driven section rewrite
+record. The [keyboard shortcuts editor](../guides/keyboard-shortcuts.md) explains
+registered conditions and shares key normalization with dispatch. Slice 3 (epic #1269) then shipped the full scope-driven section rewrite
 described below: `/settings` is now three registry-driven scope sections
 (Station / Defaults / This device) with a persistence-tier caption each; the
 previously hidden Station fields (`approvalGuardian`, `defaultMaxTurns`,
@@ -351,12 +352,12 @@ authority and withdraw cached success during refresh or failure. The
 own these contracts and evidence limits.
 
 ### S2. Defaults — workspace-wide fallbacks that entities override
-Default model, default region, default system prompt, template variables — the
-current "Agent defaults" section, kept distinct from S1 because these are not
-controls *for Station*; they are the bottom of an override chain
-(default → project → agent → per-invocation `modelOptions`). Each field renders
-with its **effective-value chain** so the region trap (global vs agent vs
-`AWS_REGION`) becomes visible instead of silent.
+The default model and region participate in the effective-value chain, from
+Station defaults through Project, Agent, and per-invocation model options.
+Station composes Default Agent Instructions ahead of an authored Agent’s
+prompt and uses them in place of the built-in Station prompt. It expands
+template variables when building those prompts. External engines use the
+authored Agent prompt through their own delivery channel.
 
 ### S3. Device — this browser/client
 Theme, accent color, chat font size, voice STT/TTS providers, feature toggles
@@ -429,7 +430,9 @@ shortcut and the command palette. The Appearance page owns the mode (System, the
 default, which follows the device, or Light or Dark), density, motion, the
 color theme, its flavor and its accent, and the signed-in person's own
 [custom appearance](../decisions/custom-appearance.md) (a palette and CSS
-stored per person on the Station, which agents may only propose); Settings'
+stored per person on the Station, which agents may only propose, plus the
+preview-gated [Appearance studio](../user/appearance.md#appearance-studio)
+visual settings, bundled backgrounds, saved themes and portable theme files); Settings'
 Appearance topic keeps the mode
 toggle, the phone-only haptics row, the terminal screen reader mode row, and
 Theme and Accent color rows that link to the page. The footer replaces its
@@ -503,6 +506,11 @@ overridable set from its shape would present them as Station settings the
 moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
 name the two sides spell differently; neither side is being renamed, because
 a rename on either is a stored-data migration.
+
+The Project brief and model fields (`goal`, `instructions`,
+`coordinatorEffort`, `taskProviderId`, `taskModel`, `taskEffort`; #5062, #5068)
+are likewise Project fields, edited in Project settings → Brief and Models and
+effort behind the `project-coordination` preview, never Station overrides.
 
 A Project's new-chat selections (`defaultModelSelection`,
 `defaultApprovalMode`, `defaultApprovalModeSelection`;
@@ -697,12 +705,14 @@ Epic #2144 slice 3 gives every generic registry row a status strip
 (`src-ui/src/views/settings/SettingRowStatus.tsx`): a scope badge naming the
 document that owns the value — **Station**, **This device**, or **Project**
 when `GET /config/app?project=<slug>` reported the project as its source — the
-unchanged provenance chip beside it, and a trigger opening an on-demand
+operator environment chip when applicable, and a trigger opening an on-demand
 inheritance list (`SettingInheritanceLayers.tsx`, loaded through
 `LazyBoundary`). That list shows the layers a value resolves through, project
 override first and built-in default last, with exactly one marked "in effect"
 — derived from the provenance entry the server computed, never re-derived by
-comparing raw values. A row the selected project overrides also offers **Reset
+comparing raw values. Built-in defaults and stored values are visible in those
+details without adding a per-row provenance chip. A row the selected project
+overrides also offers **Reset
 to inherited**, which sends `null` on `PUT /api/projects/:slug` (the route's
 own spelling for dropping an override) rather than omitting the field. It is
 withheld in two cases: a `required` setting has nothing to fall back to, and

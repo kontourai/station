@@ -2691,6 +2691,8 @@ const outcomeSummarySchema = z.object({
 test('consented canonical terminal outcomes flow export→commit→query over more than 500 turns, owner/tenant scoped and content-free', async () => {
   const storage = await privateUsageFixture();
   try {
+    // Export uses the observation time recorded by EventStore on append.
+    vi.useFakeTimers({ now, toFake: ['Date'] });
     const h = await fixture({
       operationalConsent: 'terminal-outcomes/v1',
       now: Date.now(),
@@ -2834,6 +2836,7 @@ test('consented canonical terminal outcomes flow export→commit→query over mo
       (await h.outcomes({ from: day, to: day, groupBy: 'engine' })).status,
     ).toBe(403);
   } finally {
+    vi.useRealTimers();
     await storage.close();
   }
 });
@@ -2841,6 +2844,8 @@ test('consented canonical terminal outcomes flow export→commit→query over mo
 test('a usage-only grant exports no terminal facts and its private copy refuses outcome queries', async () => {
   const storage = await privateUsageFixture();
   try {
+    // Export uses the observation time recorded by EventStore on append.
+    vi.useFakeTimers({ now, toFake: ['Date'] });
     const h = await fixture({ now: Date.now(), target: storage.target });
     const day = new Date().toISOString().slice(0, 10);
     const thread = seedOperationalThread(h, 'legacy-ops', 'claude');
@@ -2889,6 +2894,7 @@ test('a usage-only grant exports no terminal facts and its private copy refuses 
       error: { code: 'private_usage_operational_consent_required' },
     });
   } finally {
+    vi.useRealTimers();
     await storage.close();
   }
 });

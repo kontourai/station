@@ -1,0 +1,11 @@
+{
+  "revision": "670da729c038ff20b749afe76684ef62beef4df3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the pending list and context card under the bound Station lease. A receipt remains scoped to its conversation and live authority, and the list retains Retry when the last admission is the only observed row.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Checked the pending list and context card under the bound Station lease. A receipt remains scoped to its conversation and live authority, and the list retains Retry when the last admission is the only observed row.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the pending list and context card under the bound Station lease. A receipt remains scoped to its conversation and live authority, and the list retains Retry when the last admission is the only observed row.","inputs":["src-ui/src/hooks/useConversationInbox.ts"]}
+  ]
+}

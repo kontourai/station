@@ -74,6 +74,11 @@ jobs:
       rolling_manifest_url: ${{ steps.locations.outputs.rolling_manifest_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Abort a stalled fetch so checkout's bounded retries can run before
+        # the job deadline. Every attempt still fetches the exact event SHA.
+        env:
+          GIT_HTTP_LOW_SPEED_LIMIT: '1'
+          GIT_HTTP_LOW_SPEED_TIME: '60'
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -87,10 +92,9 @@ jobs:
           EXPECTED_PRODUCT_BASE: ${{ inputs.marketing_version }}
         run: |
           set -euo pipefail
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[][] | {tag_name, draft, prerelease}]' > "$RUNNER_TEMP/published-product-releases.json"
           expected=()
           if [ -n "$EXPECTED_PRODUCT_BASE" ]; then expected=(--expected-base "$EXPECTED_PRODUCT_BASE"); fi
-          node scripts/nightly-release-base.mjs --package-json package.json --release-history "$RUNNER_TEMP/published-product-releases.json" "${expected[@]}"
+          node scripts/nightly-release-base.mjs --package-json package.json --repository "$GITHUB_REPOSITORY" "${expected[@]}"
       - id: identity
         name: Bind the source SHA and derive the Nightly version
         env:

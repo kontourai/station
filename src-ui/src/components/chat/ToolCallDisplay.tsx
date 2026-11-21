@@ -55,6 +55,10 @@ import { useApprovalSheet } from './ApprovalSheetContext';
 import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
+  appearanceProposalResult,
+  isAppearanceProposalCall,
+} from './appearance-proposal-result';
+import {
   boundedToolResultText,
   fullToolResultText,
 } from './bounded-tool-result';
@@ -79,13 +83,19 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
+import type { ToolCallLike } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 import {
   type ApprovalContentGate,
   useApprovalContent,
 } from './useApprovalContent';
+import { useCallWithObservedRunning } from './useObservedRunningToolCalls';
 
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+const loadAppearanceProposalCard = () =>
+  import('./AppearanceProposalCard').then((module) => ({
+    default: module.AppearanceProposalCard,
+  }));
 
 import './ToolCallDetails.css';
 import './StationToolGlyph.css';
@@ -117,6 +127,7 @@ export interface ToolCallData {
   stationControlRefusal?: StationControlRefusalView;
   /** A Claude Code Artifact publish's page; see `claude-artifact-link.ts`. */
   claudeArtifact?: unknown;
+  appearanceProposal?: unknown;
   state?: string;
   progressMessage?: string;
   /** When the call started (ISO), for a running row's elapsed time. */
@@ -166,6 +177,7 @@ interface ToolCallDisplayProps {
    */
   onApprove?: ToolApprovalHandler;
   showDetails?: boolean;
+  sessionId?: string;
 }
 
 const KIND_GLYPH: Record<
@@ -1317,6 +1329,40 @@ function ToolCallDisplayComponent(
   // A Claude Code Artifact publish reads as the page it published. Any other
   // Artifact action, a failure, or a link that does not check out keeps the
   // ordinary row with its raw result.
+  if (isAppearanceProposalCall(props.toolCall)) {
+    return (
+      <LoadFullContent
+        threadId={props.toolCall.contentThreadId}
+        value={{ output: props.toolCall.output ?? props.toolCall.result }}
+      >
+        {(full) => {
+          const proposal = appearanceProposalResult(
+            full
+              ? { ...props.toolCall, result: undefined, output: full.output }
+              : props.toolCall,
+          );
+          return (
+            <>
+              <ToolCallRow {...props} />
+              {proposal && (
+                <LazyBoundary
+                  key={proposal.id}
+                  load={loadAppearanceProposalCard}
+                  pending={
+                    <SkeletonBlock
+                      label="Loading appearance proposal"
+                      count={1}
+                    />
+                  }
+                  componentProps={{ proposal, sessionId: props.sessionId }}
+                />
+              )}
+            </>
+          );
+        }}
+      </LoadFullContent>
+    );
+  }
   const artifact = claudeArtifactLinkOf(props.toolCall);
   if (artifact) return <ClaudeArtifactCard link={artifact} />;
   return hasStationControlCallRow(props.toolCall) &&
@@ -1401,10 +1447,20 @@ function rememberToggle(key: string, expanded: boolean): void {
 export const ToolCallDisplay = memo(function ToolCallDisplay(
   props: ToolCallDisplayProps,
 ) {
+  // A call still running in the background reads as running, as its tool
+  // batch and the Agents pane read it, not as "No result recorded".
+  // ToolCallData is the narrower view of the same transcript part.
+  const toolCall = useCallWithObservedRunning(
+    props.toolCall as ToolCallLike,
+  ) as ToolCallData;
   return (
-    <TranscriptAppTools calls={[props.toolCall]}>
+    <TranscriptAppTools calls={[toolCall]}>
       {(appTools) => (
-        <ToolCallDisplayComponent {...props} appTools={appTools} />
+        <ToolCallDisplayComponent
+          {...props}
+          toolCall={toolCall}
+          appTools={appTools}
+        />
       )}
     </TranscriptAppTools>
   );

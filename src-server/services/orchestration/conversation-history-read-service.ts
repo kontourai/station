@@ -1,9 +1,11 @@
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import type {
   ConversationListItem,
   ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import type { ConversationHistoryCursor, EventStore } from './event-store.js';
@@ -51,6 +53,7 @@ export class ConversationHistoryReadService {
         typeof buildOrchestrationSessionSummary
       >[0]['readDurabilityProfile'];
       eventStore: EventStore;
+      ownerUserIdsFor?: (authority: SessionReadAuthority) => readonly string[];
       canReadSession: (
         threadId: string,
         authority: SessionReadAuthority,
@@ -98,8 +101,13 @@ export class ConversationHistoryReadService {
     if (input.authority.mode === 'hosted' && !tenantId) {
       return { records: [], hasMore: false };
     }
+    const ownerUserIds =
+      input.authority.mode === 'personal'
+        ? this.options.ownerUserIdsFor?.(input.authority)
+        : undefined;
     const page = this.options.eventStore.listConversationHistoryPage({
       ownerUserId: input.authority.userId,
+      ...(ownerUserIds ? { ownerUserIds } : {}),
       ...(tenantId ? { tenantId } : {}),
       ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
       ...(input.authority.mode === 'hosted' ? { requireBound: true } : {}),
@@ -119,12 +127,12 @@ export class ConversationHistoryReadService {
     };
   }
 
-  list(input: {
+  async list(input: {
     authority: SessionReadAuthority;
     limit: number;
     cursor?: string;
     agentSlug?: string;
-  }): ConversationHistoryPage {
+  }): Promise<ConversationHistoryPage> {
     const page = this.readPage(input);
     const observedAt = new Date().toISOString();
     const ownedWorkByThread = this.options.eventStore.ownedSessionActivities(
@@ -135,86 +143,105 @@ export class ConversationHistoryReadService {
       this.options.eventStore.readConversationExecutionProviders(
         page.records.map((record) => record.conversationId),
       );
-    const sessionItems = page.records.flatMap(
-      (record): ConversationListItem[] => {
-        const persisted = this.options.hydratePersistedSession(record.threadId);
-        const loaded = this.options.loadedSessionForThread(record.threadId);
-        if (!persisted && !loaded) return [];
-        const events = this.options.eventStore.listRecentEventsByThread(
+    // #5092: admit the runtime home once per request, and only if some row
+    // asks; per row, each summary repeated the admission filesystem walk.
+    // Never kept across requests (the #5050 reader pattern).
+    let stationHome: string | undefined;
+    const readStationHome = () => (stationHome ??= resolveHomeDir());
+    const sessionItems: Array<{
+      threadId: string;
+      item: ConversationListItem;
+    }> = [];
+    for (const record of page.records) {
+      // A page can contain many independently expensive synchronous event folds.
+      await yieldToEventLoop();
+      if (!this.options.canReadSession(record.threadId, input.authority))
+        continue;
+      const persisted = this.options.eventStore.readSessionByThread(
+        record.threadId,
+      );
+      const loaded = this.options.loadedSessionForThread(record.threadId);
+      if (!persisted && !loaded) continue;
+      const events = this.options.eventStore.listRecentEventsByThread(
+        record.threadId,
+        1_000,
+      );
+      const summary = buildOrchestrationSessionSummary({
+        readOwnedWork: (threadId) => ownedWorkByThread.get(threadId),
+        readDurabilityProfile: this.options.readDurabilityProfile,
+        persisted,
+        loaded,
+        events: events.map((event) => event.payload),
+        eventCount: this.options.eventStore.countEventsByThread(
           record.threadId,
-          1_000,
-        );
-        const summary = buildOrchestrationSessionSummary({
-          readOwnedWork: (threadId) => ownedWorkByThread.get(threadId),
-          readDurabilityProfile: this.options.readDurabilityProfile,
-          persisted,
-          loaded,
-          events: events.map((event) => event.payload),
-          eventCount: this.options.eventStore.countEventsByThread(
-            record.threadId,
-          ),
-          answerability: this.options.observeAnswerability(
-            record.threadId,
-            (loaded ?? persisted)?.provider,
-            observedAt,
-          ),
+        ),
+        readStationHome,
+        answerability: this.options.observeAnswerability(
+          record.threadId,
+          (loaded ?? persisted)?.provider,
+          observedAt,
+        ),
+      });
+      const delegationTitle = derivedConversationTitle(
+        summary.delegation?.title,
+      );
+      const item: ConversationListItem = {
+        id: record.conversationId,
+        source: 'runtime',
+        // A personal pre-agent record is authorized before it reaches this
+        // projection; Station is its explicit compatibility presentation.
+        agentSlug: publicAgentIdFromRuntimeKey(record.agentSlug ?? 'station'),
+        title: delegationTitle ?? record.title,
+        // #4266: where the title came from, so a client can tell a
+        // generated or start-supplied title from a prompt-derived one.
+        ...(delegationTitle
+          ? { titleSource: 'provider' as const }
+          : record.titleSource
+            ? { titleSource: record.titleSource }
+            : {}),
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        messageCount: record.messageCount,
+        mutable: false,
+        answerability: summary.answerability,
+        controlMode: summary.controlMode,
+        provider: summary.provider,
+      };
+      const model =
+        summary.reportedModel ?? summary.effectiveModel ?? summary.model;
+      if (model) item.model = model;
+      const acceptedModel =
+        this.options.eventStore.readLatestAcceptedConversationModel({
+          conversationId: item.id,
+          environmentId: record.environmentId,
         });
-        const delegationTitle = derivedConversationTitle(
-          summary.delegation?.title,
-        );
-        const item: ConversationListItem = {
-          id: record.conversationId,
-          source: 'runtime',
-          // A personal pre-agent record is authorized before it reaches this
-          // projection; Station is its explicit compatibility presentation.
-          agentSlug: publicAgentIdFromRuntimeKey(record.agentSlug ?? 'station'),
-          title: delegationTitle ?? record.title,
-          // #4266: where the title came from, so a client can tell a
-          // generated or start-supplied title from a prompt-derived one.
-          ...(delegationTitle
-            ? { titleSource: 'provider' as const }
-            : record.titleSource
-              ? { titleSource: record.titleSource }
-              : {}),
-          createdAt: record.createdAt,
-          updatedAt: record.updatedAt,
-          messageCount: record.messageCount,
-          mutable: false,
-          answerability: summary.answerability,
-          controlMode: summary.controlMode,
-          provider: summary.provider,
-        };
-        const model =
-          summary.reportedModel ?? summary.effectiveModel ?? summary.model;
-        if (model) item.model = model;
-        const acceptedModel =
-          this.options.eventStore.readLatestAcceptedConversationModel({
-            conversationId: item.id,
-            environmentId: record.environmentId,
-          });
-        if (acceptedModel) item.acceptedModel = acceptedModel;
-        if (record.environmentId) item.environmentId = record.environmentId;
-        if (summary.projectSlug) item.projectSlug = summary.projectSlug;
-        if (summary.lifecycleState)
-          item.lifecycleState = summary.lifecycleState;
-        if (summary.lifecycleChangedAt)
-          item.lifecycleChangedAt = summary.lifecycleChangedAt;
-        const ran = executionProviders.get(record.conversationId);
-        if (ran?.length) item.executionProviders = ran;
-        if (summary.pendingReview !== undefined)
-          item.pendingReview = summary.pendingReview;
-        const activity = this.options.readConversationActivity?.(
-          record.conversationId,
-        );
-        if (activity) {
-          item.activity = activity;
-          item.hasActiveTurn = activity.openTurn !== undefined;
-        } else if (summary.hasActiveTurn !== undefined)
-          item.hasActiveTurn = summary.hasActiveTurn;
-        return [item];
-      },
+      if (acceptedModel) item.acceptedModel = acceptedModel;
+      if (record.environmentId) item.environmentId = record.environmentId;
+      if (summary.projectSlug) item.projectSlug = summary.projectSlug;
+      if (summary.lifecycleState) item.lifecycleState = summary.lifecycleState;
+      if (summary.lifecycleChangedAt)
+        item.lifecycleChangedAt = summary.lifecycleChangedAt;
+      const ran = executionProviders.get(record.conversationId);
+      if (ran?.length) item.executionProviders = ran;
+      if (summary.pendingReview !== undefined)
+        item.pendingReview = summary.pendingReview;
+      const activity = this.options.readConversationActivity?.(
+        record.conversationId,
+      );
+      if (activity) {
+        item.activity = activity;
+        item.hasActiveTurn = activity.openTurn !== undefined;
+      } else if (summary.hasActiveTurn !== undefined)
+        item.hasActiveTurn = summary.hasActiveTurn;
+      sessionItems.push({ threadId: record.threadId, item });
+    }
+    const items = deduplicateConversationItems(
+      sessionItems
+        .filter(({ threadId }) =>
+          this.options.canReadSession(threadId, input.authority),
+        )
+        .map(({ item }) => item),
     );
-    const items = deduplicateConversationItems(sessionItems);
     return {
       items,
       hasMore: page.hasMore,

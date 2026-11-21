@@ -753,7 +753,10 @@ for (const [label, viewport] of [
     );
     // A person taps the option's row (its label); choosing full access
     // swaps the list for its confirmation.
-    await sheet.getByText('Never ask (full access)', { exact: true }).click();
+    await sheet
+      .getByRole('radiogroup')
+      .getByText('Full access', { exact: true })
+      .click();
     await sheet.getByRole('button', { name: 'Enable full access' }).click();
     await expect(sheet).toBeHidden();
     await expect(

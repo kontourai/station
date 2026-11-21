@@ -1,0 +1,7 @@
+{
+  "revision": "9a287e04e4f1456b0209812af93227727484b720",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Landing bullet for STATION_PR_HEAVY_CHECKS checked against the decision script, run-name PR armed and the policy pending description; full-checks label exists in labels.json.","inputs":["docs/guides/development.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

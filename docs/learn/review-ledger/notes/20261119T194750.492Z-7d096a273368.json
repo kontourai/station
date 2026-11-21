@@ -1,0 +1,487 @@
+{
+  "revision": "cef39570d3e62ea99fab434bc6761ad256ff25b7",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the ACP request callback and OpenCode launch split. Request-mode approval leaves native allow and deny rules in force.","inputs":["docs/conformance/tool-policy-delivery.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts","src-server/runtime/bootstrap/station-runtime.ts","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the cited ACP and SDK documentation updates. The published scope remains the standard permission callback and the host-advertised capability.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the host-advertised approval request mode, old-host picker refusal and collapsed phone reasoning on live and settled rows.","inputs":["docs/design/chat-composer.md","packages/contracts/src/engine-capability-matrix.ts","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked ordinary ACP approval requests, the OpenCode launch floor, and first-turn appearance proposal handoff against their owners. This is source and fixture evidence.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the cited ACP and SDK documentation updates. The published scope remains the standard permission callback and the host-advertised capability.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the optional ACP connection request-mode field against the host inventory and older-host fallback.","inputs":["docs/reference/sdk.md","packages/contracts/src/engine-capability-matrix.ts","src-server/routes/orchestration/orchestration.ts","src-server/tools/station-control-shared.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the cited ACP and SDK documentation updates. The published scope remains the standard permission callback and the host-advertised capability.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"README.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the distinction between OpenCode launch policy, standard ACP request answering, and unavailable approval controls. The other engine capability and identity claims retain their existing evidence.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the mutation lock and pre-rename currentness check for scoped appearance proposals. Existing callers without a check use the same write path.","inputs":["packages/shared/src/json-file-storage.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked adapter coverage for ordinary one-time ACP approval options, a plan-exit prompt, and returning to Ask in the same process.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked that ordinary ACP permission requests use the recorded chat posture and that engine mode, plan-exit and required approval decisions use their existing rules.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that the connection inventory reports support for the standard ACP request policy without changing installation receipts.","inputs":["src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the local appearance delegation opt-in against caller-derived lineage, eligible owner and target validation. Other delegation scopes and orchestration routes use their existing permissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Checked in-process caller projection of the scoped first-turn appearance grant. Runtime startup, pairing, plugin installation and existing device capture evidence are unaffected by this source delta.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked that the appearance-only field comes from live server records and is unavailable on bearer-exposed credentials and externally leased caller bindings.","inputs":["src-server/runtime/mcp/station-control-caller.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed runtime composition of the two scoped appearance routes and ACP visual publication. No change to the cited pairing, browser, operator access, SSE route or historical capture mechanism.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed request-mode ACP support under the existing recorded approval, managed ceiling and confinement rules.","inputs":["src-server/services/orchestration/approval-posture.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed request-mode ACP support under the existing recorded approval, managed ceiling and confinement rules.","inputs":["src-server/services/orchestration/approval-posture.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed request-mode ACP support under the existing recorded approval, managed ceiling and confinement rules.","inputs":["src-server/services/orchestration/approval-posture.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed request-mode ACP support under the existing recorded approval, managed ceiling and confinement rules.","inputs":["src-server/services/orchestration/approval-posture.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed request-mode ACP support under the existing recorded approval, managed ceiling and confinement rules.","inputs":["src-server/services/orchestration/approval-posture.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the child reply attribution and terminal wording against the existing result ownership and delivery lifecycle. The reported turn outcome does not certify the requested effect.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the child reply attribution and terminal wording against the existing result ownership and delivery lifecycle. The reported turn outcome does not certify the requested effect.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the child reply attribution and terminal wording against the existing result ownership and delivery lifecycle. The reported turn outcome does not certify the requested effect.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked qualified visual references, ACP publication echoes and bounded history projection. Conversation read authorization and EventStore ownership stay with their existing routes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked first delegated-turn appearance scope, terminal retirement, and ACP page publication inside the canonical event append. Existing request projection, approval and captured media claims keep their prior evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked explicit local appearance delegation, rejection of remote placement, the first-send grant window and the current dispatch key. Existing remote and portable behavior uses its own admission.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the optional local appearance proposal argument and verified that ordinary delegation calls keep their existing tool contract.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the optional local appearance proposal argument and verified that ordinary delegation calls keep their existing tool contract.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the optional local appearance proposal argument and verified that ordinary delegation calls keep their existing tool contract.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the optional local appearance proposal argument and verified that ordinary delegation calls keep their existing tool contract.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the optional local appearance proposal argument and verified that ordinary delegation calls keep their existing tool contract.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the optional local appearance proposal argument and verified that ordinary delegation calls keep their existing tool contract.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the appearance-only role against the two personal appearance routes. The grant supplies no session owner identity or other tool authority.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked that the caller appearance field describes only a scoped local proposal grant and leaves ordinary principal derivation unchanged.","inputs":["src-server/tools/station-control-shared.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked that the caller appearance field describes only a scoped local proposal grant and leaves ordinary principal derivation unchanged.","inputs":["src-server/tools/station-control-shared.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked that the caller appearance field describes only a scoped local proposal grant and leaves ordinary principal derivation unchanged.","inputs":["src-server/tools/station-control-shared.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked the phone disclosure default through the live transcript renderer.","inputs":["src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the old-host fallback and existing composer mode boundary when an ACP inventory entry is missing.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the old-host fallback and existing composer mode boundary when an ACP inventory entry is missing.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the phone reasoning default against the shared live reasoning renderer.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the phone reasoning default against the shared live reasoning renderer.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the phone reasoning default against the shared live reasoning renderer.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked closed-by-default phone rendering and the shared disclosure that retains an explicit reader choice.","inputs":["src-ui/src/components/chat/ReasoningSection.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the phone reasoning disclosure in projected rows and the existing visual reply mount.","inputs":["src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the phone reasoning disclosure in projected rows and the existing visual reply mount.","inputs":["src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked Station tool identity, visual reply placement and work folds on either side of an artifact.","inputs":["src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the host capability witness, shared request-mode copy and existing native controls.","inputs":["src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked approval defaults use verified ACP connection support and preserve the existing approval authority.","inputs":["src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx"]}
+  ]
+}

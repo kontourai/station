@@ -29,6 +29,7 @@
  */
 
 import {
+  type AgentDelegationContext,
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
@@ -60,6 +61,7 @@ import {
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { stationEnablesClaudeToolSearch } from '../../runtime/agents/claude-tool-search.js';
+import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
 import {
   composeStationInstructions,
@@ -71,6 +73,7 @@ import { builtinStationApiServerId } from '../../runtime/bootstrap/station-contr
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { markCanonicalStationDocsDelivery } from '../../tools/station-docs-binding.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
 import { ToolLibraryRefusal } from '../plugins/tool-library-service.js';
@@ -107,8 +110,18 @@ interface SessionAgentResolverOptions {
    * no `stationInstructions`.
    */
   stationInstructionsEnabled?: () => boolean;
-  /** HTTP progressive tool disclosure is on (adds the family-loading line). */
-  progressiveToolsEnabled?: () => boolean;
+  /**
+   * #2376 slice 3: `CodexAdapter.toolFamiliesAdmitted` (the
+   * `codex-tool-families` preview and a qualified Codex version). Asked only
+   * for a new Codex Session on the header-token path; when it answers true
+   * the adapter mints that Session's credential at the family index, and the
+   * instructions carry the family-loading line. Claude and ACP engines never
+   * get families.
+   */
+  codexToolFamiliesAdmitted?: (
+    threadId: string,
+    eligible?: boolean,
+  ) => Promise<boolean>;
   /** The `codex-bound-browser-device-tools` preview (Codex browser/device tools). */
   codexBoundToolsEnabled?: () => boolean;
 }
@@ -312,14 +325,14 @@ class ToolApprovalDeliveryError extends Error {}
  * would duplicate into the thread). Claude's append is per-process, so it is
  * re-attached on resume.
  */
-function resolveStationInstructions(args: {
+async function resolveStationInstructions(args: {
   options: SessionAgentResolverOptions;
   input: ProviderSessionStartInput;
   definition: ResolvedAgentDefinition;
   report: SessionCapabilityDeliveryMetadata;
   authoredPrompt: string | undefined;
   spec: AgentSpec;
-}): void {
+}): Promise<void> {
   const { options, input, definition, report, authoredPrompt, spec } = args;
   if (options.stationInstructionsEnabled?.() !== true) return;
   const control = definition.toolServers?.find(
@@ -354,22 +367,42 @@ function resolveStationInstructions(args: {
   // Device tools are bound-only, so they are in `controlTools` exactly when
   // the session's station-control is `bound` (Claude, or Codex's bound
   // catalog), narrowed by the same allow/disable lists.
+  const delegation = input.metadata?.delegation as
+    | AgentDelegationContext
+    | undefined;
   const composed = composeStationInstructions({
     controlTools,
     browser: browserAllowed && (provider === 'claude' || boundChannel),
     devices: controlTools.has('device_open'),
-    delegated: Boolean(input.metadata?.delegation),
+    delegated: Boolean(delegation),
+    canDelegateFromChild:
+      delegation?.mode === 'isolated-child' &&
+      delegation.depth < delegation.maxDepth &&
+      isDelegatedToolAllowed({
+        delegation,
+        toolName: 'station-control_delegate_task',
+        toolNameMapping: new Map(),
+      }),
     harness,
     // Only when Station itself turns tool search on: under the harness
     // default, Claude Code decides and names the tools it defers.
     toolSearch:
       provider === 'claude' &&
       stationEnablesClaudeToolSearch(spec.tools?.mcpLoading),
-    // Family loading exists only on HTTP station-control. A `bound` session
-    // (Claude's in-process server, Codex's bound catalog) is served without
-    // disclosure, so it is never told to load families.
+    // Family loading exists only for Codex on HTTP station-control, as the
+    // adapter admits it. A `bound` session (Claude's in-process server,
+    // Codex's bound catalog) is served without disclosure, and a resumed
+    // thread is told nothing here (it returns below before any stamp).
+    // A bound Codex start still asks, as ineligible, so the adapter holds a
+    // no for it whatever the previews do before the start.
     progressiveFamilies:
-      assurance !== 'bound' && options.progressiveToolsEnabled?.() === true,
+      provider === 'codex' &&
+      input.resumeCursor === undefined &&
+      (await options.codexToolFamiliesAdmitted?.(
+        input.threadId,
+        assurance !== 'bound',
+      )) === true &&
+      assurance !== 'bound',
   });
   if (!composed) return;
   const base = {
@@ -425,7 +458,7 @@ export function createSessionAgentResolver(
       if (
         expectedFingerprint !== undefined &&
         (!authored ||
-          agentDefinitionFingerprint(authored) !== expectedFingerprint)
+          agentDefinitionFingerprint(authored, slug) !== expectedFingerprint)
       ) {
         throw new Error(
           'The selected Agent definition changed before execution; select it again',
@@ -626,6 +659,14 @@ export function createSessionAgentResolver(
                   return { ok: false, reason: 'secret-boundary-env' };
                 }
               }
+              if (
+                !captured &&
+                input.provider === 'claude' &&
+                authoredToolServers.length ===
+                  BUILTIN_STATION_AGENT_MCP_SERVER_IDS.length
+              ) {
+                markCanonicalStationDocsDelivery(definition, toolDef, authored);
+              }
               return {
                 ok: true,
                 value: {
@@ -785,7 +826,7 @@ export function createSessionAgentResolver(
         }
       }
 
-      resolveStationInstructions({
+      await resolveStationInstructions({
         options,
         input,
         definition,

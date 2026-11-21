@@ -1,4 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationInboxQueuedReceipt } from '@kontourai/station-contracts/orchestration';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
@@ -85,8 +86,11 @@ async function foregroundRequest(input: ForegroundInput) {
   // No approval posture rides the options (#2436): the server applies the
   // conversation's recorded pick, else the Agent's and this Station's
   // defaults at a session start, whatever path sends the turn.
+  const requestedMode = input.requestedProviderOptions?.mode;
   const modelOptions = defaultRequested
-    ? undefined
+    ? typeof requestedMode === 'string'
+      ? { mode: requestedMode }
+      : undefined
     : (input.requestedProviderOptions ?? input.providerOptions);
   const requestedModel = defaultRequested ? undefined : resolved.modelId;
   const attachments = input.attachments ?? [];
@@ -256,6 +260,19 @@ export async function dispatchForeground(input: ForegroundInput) {
   return sendExecutionMessage(input.apiBase, body, options);
 }
 
+function matchesQueuedReceipt(
+  input: ForegroundInput,
+  { conversationId, clientTurnId, entry }: ConversationInboxQueuedReceipt,
+) {
+  return (
+    !!entry &&
+    conversationId === input.conversationId &&
+    clientTurnId === input.clientTurnId &&
+    entry.conversationId === conversationId &&
+    entry.clientTurnId === clientTurnId
+  );
+}
+
 export async function dispatchPossiblyQueuedForeground(input: ForegroundInput) {
   const { body, options } = await foregroundRequest(input);
   input.onRequest?.();
@@ -269,12 +286,11 @@ export async function dispatchPossiblyQueuedForeground(input: ForegroundInput) {
   } catch (error) {
     if (error instanceof ForegroundMessageQueuedError) {
       if (
-        error.receipt.clientTurnId === input.clientTurnId &&
-        error.receipt.conversationId === input.conversationId &&
+        matchesQueuedReceipt(input, error.receipt) &&
         error.receipt.entry.message === input.message
       )
         return error.receipt;
-      throw new Error('Station did not confirm this message identity.');
+      throw new TypeError('Station did not confirm this message identity.');
     }
     throw error;
   }
@@ -290,7 +306,7 @@ export async function dispatchQueuedForeground(input: ForegroundInput) {
       'Apply the pending approval choice before queuing a follow-up.',
     );
   input.onRequest?.();
-  return queueExecutionMessage(
+  const result = await queueExecutionMessage(
     input.apiBase,
     {
       ...body,
@@ -299,4 +315,7 @@ export async function dispatchQueuedForeground(input: ForegroundInput) {
     },
     options,
   );
+  if (result.outcome === 'queued' && !matchesQueuedReceipt(input, result))
+    throw new TypeError('Station did not confirm this message identity.');
+  return result;
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked packages/sdk/package.json: only the @kontourai/flow-agents pin moves 11.0.0 -> 11.2.0; the SDK API this page documents is unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/package.json"]}
+  ]
+}

@@ -269,7 +269,7 @@ vi.mock('../views/home/useInboxWorkItems', async (importOriginal) => {
 });
 
 vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
+  useChatDockActiveChatSync: () => ({ pendingChat: null }),
 }));
 
 vi.mock('../components/chat/ShareIntakeController', () => ({

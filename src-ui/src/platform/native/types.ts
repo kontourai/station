@@ -164,6 +164,8 @@ export interface NativeAgentActivityLaunchRoute {
   stationId: string;
   sessionId: string;
   projectSlug?: string;
+  /** An alert tap's record (never a card's), so opening it reads it. */
+  notificationId?: string;
 }
 
 /** Exactly what a Station returned from native-push registration. */

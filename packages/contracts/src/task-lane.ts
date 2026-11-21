@@ -94,15 +94,17 @@ export interface TaskPullRequestFact extends PullRequestLinkIdentity {
         readiness?: PullRequestMergeReadiness;
         mergeability: PullRequest['mergeability'];
         sourceBranch?: string;
+        /** Armed or queued to merge; absent when not observed. */
+        landing?: PullRequest['landing'];
         /** The head commit the provider reported, when it did. */
         headSha?: string;
       }
     | { state: 'unavailable' | 'unsupported'; reason: string };
   /**
    * Its agent feedback, only for a reader of the chat that gets it and only
-   * while the `pull-request-agent-feedback` preview is on. It never moves a
-   * Task: it adds a note to the card, and only when `headSha` is the head
-   * the provider reported.
+   * while the `pull-request-agent-feedback` preview is on. Delivery adds a
+   * note; an enabled Station review also holds Ready to merge until the
+   * current head has a completed review without required findings.
    */
   feedback?: TaskPullRequestFeedbackFact;
 }
@@ -115,9 +117,18 @@ export interface TaskPullRequestFact extends PullRequestLinkIdentity {
  * one whose run is doing it.
  */
 export interface TaskPullRequestFeedbackFact {
-  state: 'watching' | 'waiting-on-checks' | 'sent' | 'fixing' | 'paused';
+  state:
+    | 'watching'
+    | 'waiting-on-checks'
+    | 'sent'
+    | 'fixing'
+    | 'paused'
+    | 'reviewing'
+    | 'reviewed'
+    | 'review-needed';
   /** The head this is about. */
-  headSha: string;
+  headSha?: string;
+  reviewEachHead?: true;
   /** `sent`: when it went. */
   at?: string;
 }
@@ -158,12 +169,15 @@ export type TaskLaneRung =
   | 'checksNotPassing'
   | 'draft'
   | 'awaitingReview'
+  | 'stationReviewNeeded'
+  | 'stationReviewPending'
   | 'repoBlocked'
   | 'behind'
   | 'readyToMerge'
   | 'prOpen'
   | 'prUnknown'
   | 'markedBlocked'
+  | 'fixAttemptsUsed'
   | 'markedReview'
   | 'runUnknown'
   | 'elsewhere'
@@ -279,6 +293,8 @@ const OPEN_PULL_REQUEST_RUNGS = [
   'conflict',
   'checksNotPassing',
   'draft',
+  'stationReviewNeeded',
+  'stationReviewPending',
   'awaitingReview',
   'repoBlocked',
   'behind',
@@ -291,6 +307,7 @@ type OpenPullRequestRung = (typeof OPEN_PULL_REQUEST_RUNGS)[number];
 
 function openPullRequestRung(fact: CurrentFact): OpenPullRequestRung {
   const { status } = fact;
+  const review = feedbackOnHead(fact)?.state;
   if (status.reviewDecision === 'changes_requested') return 'changesRequested';
   if (
     status.mergeability === 'conflicting' ||
@@ -299,6 +316,15 @@ function openPullRequestRung(fact: CurrentFact): OpenPullRequestRung {
     return 'conflict';
   if (status.readiness === 'checks-not-passing') return 'checksNotPassing';
   if (status.draft === true || status.readiness === 'draft') return 'draft';
+  if (review === 'review-needed') return 'stationReviewNeeded';
+  if (
+    review === 'reviewing' ||
+    (fact.feedback?.reviewEachHead &&
+      (!status.headSha ||
+        !fact.feedback.headSha ||
+        fact.feedback.headSha !== status.headSha))
+  )
+    return 'stationReviewPending';
   if (status.readiness === 'blocked')
     return status.reviewDecision === 'review_required'
       ? 'awaitingReview'
@@ -315,6 +341,8 @@ const OPEN_RUNG_WORDS: Record<OpenPullRequestRung, string> = {
   conflict: 'Conflicts with base',
   checksNotPassing: 'Checks not passing',
   draft: 'Draft PR',
+  stationReviewNeeded: 'Station review needs you',
+  stationReviewPending: 'Station review pending',
   awaitingReview: 'Waiting for review',
   repoBlocked: 'Blocked by repository rules',
   behind: 'Behind base',
@@ -327,6 +355,8 @@ const OPEN_RUNG_TONES: Record<OpenPullRequestRung, TaskLaneTone> = {
   conflict: 'caution',
   checksNotPassing: 'caution',
   draft: 'neutral',
+  stationReviewNeeded: 'caution',
+  stationReviewPending: 'neutral',
   awaitingReview: 'neutral',
   repoBlocked: 'neutral',
   behind: 'neutral',
@@ -561,6 +591,22 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     };
   }
 
+  // 4a. Station blocked the Task (#5066): a watched pull request used every
+  // fix attempt and these checks still fail.
+  if (task.status === 'blocked' && task.pullRequestWatchHold)
+    return {
+      ...base,
+      placement: lane('needs_you'),
+      rung: 'fixAttemptsUsed',
+      tone: 'attention',
+      word: 'Fix attempts used',
+      detail: task.pullRequestWatchHold.checks.join(', ') || undefined,
+      reason: `${task.pullRequestWatchHold.pullRequest}: checks still fail after every fix attempt.`,
+      statusGlyph: glyph,
+      factTime: task.pullRequestWatchHold.at,
+      nextAction: openTask,
+      certainty: 'observed',
+    };
   // 4b. A person or agent marked the Task blocked: a recorded decision that
   // no pull request state outranks (a clean PR does not unblock a Task).
   if (task.status === 'blocked')

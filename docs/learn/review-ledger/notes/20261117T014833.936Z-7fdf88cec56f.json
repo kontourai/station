@@ -1,0 +1,7 @@
+{
+  "revision": "8a3f115aff55313e24953eac023f931d7d92d03e",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Only the cap test's suite source changed; the narrow-diff demo description still holds.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

@@ -60,6 +60,8 @@ import {
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
+  HEAVY_CHECKS_DEFERRED_RUN,
+  HEAVY_CHECKS_RAN_RUN,
   isOptionalChromiumCacheRestore,
   MERGE_INTEGRATION_DECISION_STEP,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
@@ -68,7 +70,11 @@ import {
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { FAST_CHECKS_PROVISIONAL_STEP } from './source-verification-policy.mjs';
+import {
+  FAST_CHECKS_PROVISIONAL_STEP,
+  HEAVY_DEFERRED_STEP,
+  HEAVY_RAN_STEP,
+} from './source-verification-policy.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -86,6 +92,7 @@ const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'macos-15',
   'macos-15-intel',
   'macos-26',
+  'xcode-27',
 ]);
 
 /** `null` when actionlint is not on PATH. */
@@ -367,11 +374,11 @@ const FORK_SMOKE_JOB = Object.freeze({
   file: '.github/workflows/ci.yml',
   jobId: 'fork-smoke',
 });
-const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
-const FORK_SMOKE_CONDITION = `\${{ always() && !cancelled() && needs.${ACTIONLINT_ARTIFACT_JOB}.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}`;
+const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
+const FORK_SMOKE_CONDITION = `\${{ always() && !cancelled() && needs.${ACTIONLINT_ARTIFACT_JOB}.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository }}`;
 // #2176: the whole-tree source scans run for same-repository pull requests
 // only. A fork candidate never reaches it (fork-smoke owns forks).
-const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
 const MERGE_GROUP = 'merge_group';
 const MERGE_GROUP_TYPES = ['checks_requested'];
@@ -380,9 +387,11 @@ const CI_ROUTER_PR_TARGET_TYPES = [
   'synchronize',
   'reopened',
   'edited',
+  // STATION_PR_HEAVY_CHECKS=when-armed runs the heavy checks on arming.
+  'auto_merge_enabled',
 ];
 const UI_BUNDLE_DELTA_JOB = 'ui-bundle-delta';
-const UI_BUNDLE_DELTA_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const UI_BUNDLE_DELTA_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const UI_BUNDLE_DELTA_STEP = Object.freeze({
   name: 'Report UI entry bundle delta',
   run: 'node scripts/ui-bundle-delta-report.mjs',
@@ -1785,7 +1794,7 @@ function isExactDeliveryPlanner(job) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-      'e9763b295569cab447701851796ed15eb8740e9c6048cdf38f30e5c8bae01ee5'
+      '176ac964b2aae028f8c7e4e07f3a43479318674e7407ab11bae79a2c8887b46e'
   );
 }
 
@@ -2672,7 +2681,7 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   run: `set -euo pipefail
 if [[ ! -x /bin/zsh ]]; then
   bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
-  curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \\
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --retry 2 --retry-max-time 40 \\
     "https://raw.githubusercontent.com/\${BOOTSTRAP_SOURCE_REPOSITORY}/\${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \\
     --output "$bootstrap"
   printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
@@ -2767,7 +2776,11 @@ function fastChecksShardingFindings(file, jobs) {
   if (shard) {
     if (
       shard.if !== FAST_CHECKS_SHARD_IF ||
-      !needsExactly(shard, [FAST_CHECKS_PLAN_JOB, ACTIONLINT_ARTIFACT_JOB])
+      !needsExactly(shard, [
+        'pr-admission',
+        FAST_CHECKS_PLAN_JOB,
+        ACTIONLINT_ARTIFACT_JOB,
+      ])
     )
       finding(
         FAST_CHECKS_SHARD_JOB,
@@ -2833,6 +2846,8 @@ function fastChecksShardingFindings(file, jobs) {
           name: FAST_CHECKS_PROVISIONAL_STEP,
           run: FAST_CHECKS_PROVISIONAL_RUN,
         },
+        { name: HEAVY_DEFERRED_STEP, run: HEAVY_CHECKS_DEFERRED_RUN },
+        { name: HEAVY_RAN_STEP, run: HEAVY_CHECKS_RAN_RUN },
       ],
     );
   }
@@ -2851,7 +2866,7 @@ function isExactPrAdmission(job) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    '9a67126c86c49e020d11e540eb8581fd277bbfac26fe3ca29d3ddf5da70e386b'
+    '94ee62ca3fabd4d8b5b9e784de24e5e9a342e37dd1d1eb70ac0244869328d323'
   );
 }
 
@@ -2872,7 +2887,7 @@ function isExactActionlintArtifactProducer(job) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    'de55ba5faf941153b0b494580d7b2bf653165becbbd3488ada16bb84b1ec0805'
+    'a196af019371800fd200274758c681aa4c6024d83ecdb7712b439b1c7a207fc3'
   );
 }
 
@@ -2888,7 +2903,10 @@ function actionlintArtifactFindings(file, jobs) {
       'actionlint-artifact must retain its exact reviewed no-checkout producer: fixed pinned archive, digest check, run- and attempt-scoped upload',
     );
   const consumers = [
-    [FAST_CHECKS_SHARD_JOB, [FAST_CHECKS_PLAN_JOB, ACTIONLINT_ARTIFACT_JOB]],
+    [
+      FAST_CHECKS_SHARD_JOB,
+      ['pr-admission', FAST_CHECKS_PLAN_JOB, ACTIONLINT_ARTIFACT_JOB],
+    ],
     [
       FAST_CHECKS_STATICS_JOB,
       ['classify', 'pr-admission', ACTIONLINT_ARTIFACT_JOB],
@@ -2917,7 +2935,7 @@ function isExactSourcePolicyCall(job) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(job)))
       .digest('hex') ===
-    '42a0b27e5e912470a42f2f005a69b7018f801ff57107efa9ccfc1fdbfc8bf5da'
+    'c3924e2de65bdb7325e9111176df50ce40ad47371a70bdfcfd3a51d02a948963'
   );
 }
 
@@ -2941,7 +2959,7 @@ function primaryCiRouterFindings(file, document) {
   );
   if (
     document['run-name'] !==
-    "${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}"
+    "${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || github.event_name == 'pull_request_target' && github.event.action == 'auto_merge_enabled' && 'PR armed' || 'Source verification' }}"
   )
     findings.push({
       file,
@@ -3042,7 +3060,7 @@ function primaryCiRouterFindings(file, document) {
     createHash('sha256')
       .update(JSON.stringify(canonicalValue(deliveryJobs)))
       .digest('hex') !==
-    'ba16500b9e9c4a343fc28ab82da8901a26ae0f4a659e1592b7170a3ae0012ec4'
+    'fc7adea30a4fccfe32411c99373f4a5ab58d8e0ed2a034daf25e0688a2fadfe2'
   )
     findings.push({
       file,
@@ -3094,7 +3112,7 @@ function primaryCiRouterFindings(file, document) {
   const title = jobs['pr-title'];
   const expectedTitle = {
     name: 'PR title status publisher',
-    if: "${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
+    if: "${{ github.event_name == 'pull_request_target' && github.event.action != 'auto_merge_enabled' || github.event_name == 'merge_group' }}",
     permissions: {
       contents: 'read',
       'pull-requests': 'read',
@@ -3359,7 +3377,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      '1ad1ad73dacfb7c8501e6e62de9ffdb746e39e16ca8232c9f9c8c6113a222271'
+      '19ed3be46fd6a2be35e807415bc91a1b938c6586f777363369b7389466d8f473'
       ? []
       : [
           {
@@ -3375,7 +3393,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      '05fec52d933b88495b6e4e61eb57912a67574e7a3b2d9f9013e70bbf2a01b3c0'
+      '47bddcf6fb7e31956dd3f83a3c2d0aacad9696c37c66fb102191f6d18f02a9e0'
       ? []
       : [
           {
@@ -3865,7 +3883,6 @@ const PR_SOURCE_FIFO_GROUPS = {
 export function legacyActionlintSources(workflows) {
   const expected = {
     '.github/workflows/delivery-validation.yml': 'station-background-compute',
-    '.github/workflows/hosted-capacity-probe.yml': 'station-background-compute',
     '.github/workflows/full-regression.yml': BACKGROUND_QUALIFICATION_GROUP,
   };
   return workflows.map(({ file, document }) => {

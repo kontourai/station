@@ -96,6 +96,7 @@ async function composedOptions(configLoader: ConfigLoader) {
       claudeAdapter: fakeAdapter('claude'),
       codexAdapter: fakeAdapter('codex'),
       museAdapter: fakeAdapter('muse'),
+      copilotSdkAdapter: fakeAdapter('copilot-sdk'),
       bedrockAdapter: fakeAdapter('bedrock'),
       ollamaAdapter: fakeAdapter('ollama'),
       activeAgents: new Map(),

@@ -1,0 +1,9 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"Adds useProjectLifecycleMutation and useProjectDeletionPreviewQuery; existing project hooks unchanged.","inputs":["packages/sdk/src/query-domains/workspaceProjects.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds useProjectLifecycleMutation and useProjectDeletionPreviewQuery; existing project hooks unchanged.","inputs":["packages/sdk/src/query-domains/workspaceProjects.ts"]}
+  ]
+}

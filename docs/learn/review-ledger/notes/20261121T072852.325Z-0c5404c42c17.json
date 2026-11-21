@@ -1,0 +1,23 @@
+{
+  "revision": "98a03c7ce4c6ec6085e88efef3bfc881e86c1850",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Project navigation, composer and Starter Work entry points, the Task board and list, and the cited capture images. Project supplies Tasks visibility to the mounted section so hidden linked-work reads pause. The existing routes, visible Task controls and local backlog still match the citing guides. The Project start captures stay historical and the saved Backlog capture shows local Task data.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the guided Starter title and draft, New Task handoff, and visible board and list against the existing section. Linked work refreshes when Tasks reopens with stale data. The mounted section preserves the draft and selected row, and the dedicated Tasks layout retains its active default.","inputs":["src-ui/src/views/project-page/ProjectTasksSection.tsx"]}
+  ]
+}

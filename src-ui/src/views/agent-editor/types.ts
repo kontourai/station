@@ -1,5 +1,6 @@
 import type {
   AgentDelegationPolicy,
+  AgentGuardrails,
   AgentTools,
   SlashCommand,
 } from '@kontourai/station-contracts/agent';
@@ -17,12 +18,7 @@ export interface AgentFormData {
   prompt: string;
   modelId: string;
   region: string;
-  guardrails: {
-    maxTokens?: number;
-    temperature?: number;
-    topP?: number;
-    maxSteps?: number;
-  } | null;
+  guardrails: AgentGuardrails | null;
   maxSteps: string;
   /**
    * Every contract tool field, all present. Deriving this instead of listing

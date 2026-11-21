@@ -1,3 +1,4 @@
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import {
   type ReactNode,
   useCallback,
@@ -15,6 +16,10 @@ import { useStationOutlivesApp } from '../../hooks/useStationOutlivesApp';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import {
+  namedBackgroundWork,
+  useChatBackgroundWork,
+} from '../chat/BackgroundTaskActivity';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
@@ -53,6 +58,8 @@ function ReportUnavailable({ onUnavailable }: { onUnavailable: () => void }) {
  */
 export function useChatStatusPill({
   activeSession,
+  sessionSummary,
+  stopControl,
   streamStatus,
   turnLive,
   enabled,
@@ -62,8 +69,13 @@ export function useChatStatusPill({
   onResync,
   onRecoveryFocus,
   catchingUp = false,
+  apiBase,
 }: {
   activeSession: ChatSession;
+  sessionSummary?: OrchestrationSessionSummary | null;
+  stopControl?: ReactNode;
+  /** The Station whose live tool record counts this chat's running tools. */
+  apiBase?: string;
   /** The stream is replaying missed events (`useStreamCatchingUp`). */
   catchingUp?: boolean;
   streamStatus: ChatStreamStatus | undefined;
@@ -78,7 +90,7 @@ export function useChatStatusPill({
   onResync?: () => void;
   /** Focus the recovered composer without changing its write permission. */
   onRecoveryFocus?: () => boolean;
-}): { pill: ReactNode; statusInPill: boolean } {
+}): { pill: ReactNode; statusInPill: boolean; stopInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
   );
@@ -134,6 +146,13 @@ export function useChatStatusPill({
   ).length;
   const approvalCount = pendingApprovals.length - inputCount;
   const stationOutlivesApp = useStationOutlivesApp();
+  const backgroundWork = namedBackgroundWork(
+    useChatBackgroundWork(
+      activeSession.id,
+      apiBase,
+      activeSession.backgroundTasks,
+    ),
+  );
   const input: ChatStatusInput = {
     observationUnavailable,
     resyncPending,
@@ -152,6 +171,8 @@ export function useChatStatusPill({
     sendAwaitingTurnStart: activeSession.sendAwaitingTurnStart,
     stationHasSend: activeSession.pendingSendStationHasIt,
     stationOutlivesApp,
+    // The same work the chat's background strip counts.
+    ...(backgroundWork ? { backgroundWork } : {}),
   };
   useEffect(() => {
     if (enabled) void loadChatStatusPillView().catch(() => undefined);
@@ -217,9 +238,10 @@ export function useChatStatusPill({
     next.current = 0;
   }, [requestKey]);
 
-  if (!enabled) return { pill: null, statusInPill: false };
+  if (!enabled) return { pill: null, statusInPill: false, stopInPill: false };
   return {
     statusInPill: view !== 'unavailable',
+    stopInPill: !!stopControl && view === 'mounted',
     pill: (
       <LazyBoundary
         key={activeSession.id}
@@ -229,6 +251,8 @@ export function useChatStatusPill({
         unavailable={() => <ReportUnavailable onUnavailable={onUnavailable} />}
         componentProps={{
           input,
+          sessionSummary,
+          stopControl,
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
           onResync,

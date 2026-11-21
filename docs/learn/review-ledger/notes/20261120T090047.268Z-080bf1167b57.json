@@ -1,0 +1,7 @@
+{
+  "revision": "66cbb12f77dcdc6dd210fb1d114ecad5f955fda1",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Rechecked the search-before-ready browser proof after making the request hold compatible with the scripts type libraries. It holds the real manifest while entering the query and releases the response even if page navigation or input fails.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts"]}
+  ]
+}

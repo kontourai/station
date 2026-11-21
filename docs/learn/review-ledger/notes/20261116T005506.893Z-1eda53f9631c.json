@@ -1,0 +1,13 @@
+{
+  "revision": "ef76f5c07b255bbf885de6c10b48a7f95b514255",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta adds AdoptSessionError.code and the continueWhileSourceActive option to adoptOrchestrationSession; existing failure-class and retry semantics described by citing pages are unchanged.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Delta adds AdoptSessionError.code and the continueWhileSourceActive option to adoptOrchestrationSession; existing failure-class and retry semantics described by citing pages are unchanged.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta adds AdoptSessionError.code and the continueWhileSourceActive option to adoptOrchestrationSession; existing failure-class and retry semantics described by citing pages are unchanged.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta adds AdoptSessionError.code and the continueWhileSourceActive option to adoptOrchestrationSession; existing failure-class and retry semantics described by citing pages are unchanged.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

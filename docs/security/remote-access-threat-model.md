@@ -441,7 +441,24 @@ The voice listener still accepts its direct-loopback business path without
 the remote first-frame credential check. Browser-shaped upgrades
 must present an allowed Station Origin, while non-browser local clients have
 no Origin requirement. This retained local path is distinct from protected HTTP
-authorization and is not a paired-Device scope boundary.
+authorization and is not a paired-Device scope boundary. Since #2377 slice D a
+session's Station tools act only for a person. A loopback upgrade carrying the
+local UI's HttpOnly device session cookie authenticates with it (parsed and
+verified as the HTTP boundary does), and only on loopback, where `verifyClient`
+has already held a browser-shaped upgrade to an allowed Station Origin, so
+another site's page cannot ride the browser's ambient cookie. A cookie that
+fails verification is audited and counted against the peer's failure budget,
+and a peer over that budget is refused (4429) before its cookie is verified,
+as an auth frame is. A client holding
+a bearer credential presents it in the auth frame (a loopback one asks with
+`?authenticate=1`). Either way the session's tools act for the person the
+credential resolves to. A credential that verifies but names no person (an
+account-bound device or token), and a session with no credential, keep speech
+with no Station tools; only a credential that fails verification is refused.
+Accepted: a session's tools act with that person's full authority, not the
+presenting device's pairing scope, as an agent session's do. Known gap: the
+desktop app's voice has speech but no Station tools until its Rust host opens
+the voice socket with its own operator credential.
 
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or
@@ -1313,7 +1330,31 @@ on the host (`ui-bootstrap`):
   [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
   so the owner can chat on a paired Station from a phone. The bridge's own
   allowlist and agent-origin refusal still apply, and the receiver still
-  checks the saved peer grant. Every other peer-family write (adding,
+  checks the saved peer grant. The exact leaf
+  `POST /api/environments/peers/:id/conversation-handoffs`
+  (`isPeerConversationHandoff`) is admitted the same way: it sends history the
+  caller can already read here to the paired Station under the saved peer
+  grant. On that Station, `POST /agents/:slug/conversation-imports` accepts only
+  an authenticated delegation Device (another Station's grant at the operate
+  tier) and names the sender by the Device name it requested at pairing, which
+  this Station's operator approved, never from the body. The imported rows are
+  the sender's claim and carry `importedFrom`. Every seed built from them (the
+  first turn, later Agent/engine handoffs, successor Sessions) and the target
+  Agent's memory copy quote each line, including after a shortening cut, so
+  none can pose as a turn. Conversation summaries (`POST
+  /agents/:slug/conversations/:id/summary`) read the copied rows too and quote
+  them the same way; context-compaction summaries read runtime events, which
+  never include them. `read_conversation` returns `importedFrom` with each such
+  row. A row the sender itself imported keeps its origin ("Laptop, via Studio
+  Mac"): only the last hop is verified (this Station's own pairing record);
+  earlier hops are the sender's claim. Origins and titles are cleaned of
+  controls, terminal escapes, bidi embedding/override/isolate controls and
+  invisible fillers; joiners, variation selectors, weak direction marks and
+  emoji tag sequences stay, so real names in any script survive. A label left
+  blank, or holding only joiners or marks, is refused, and any length bound cuts
+  whole graphemes from the earlier hops, never the verified last one. Transcript views show
+  them as ordinary user and assistant rows. Pairing a Station therefore
+  lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
 
@@ -2350,9 +2391,12 @@ machine", and the difference is the residue, stated without softening:
   per-boot `STATION_UI_BOOTSTRAP_TOKEN`). Spawned PTYs and generic engine
   subprocesses do **not** inherit those keys: `childProcessEnvironment()` /
   `scrubBootInternalSecrets()` delete them at every production spawn/PTY
-  seam. The one child that still receives the internal token is the built-in
-  `station-control` MCP server, via `withStationControlRuntimeEnv` after the
-  scrub, because that child is Station's own loopback API client.
+  seam. Since #2377 slice D no child receives it, the built-in
+  `station-control` MCP server included: Station's own engine and
+  in-process Claude serve station-control in-process as the session's
+  verified caller, and `withStationControlRuntimeEnv` strips the token from
+  every child. A holder of the bare token is refused by the station-control
+  authority guard on every route except the CLI readiness probes.
 - **Accepted boundary (UX audit D6).** A paired principal with
   `terminal:operate` (or agent execution) runs as the Station OS user. That
   principal can read `<STATION_HOME>/logs/server/` from disk even when the

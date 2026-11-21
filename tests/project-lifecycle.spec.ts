@@ -237,6 +237,16 @@ async function seedProjectRoutes(page: Page) {
       return;
     }
 
+    if (path === '/api/projects/run-locations' && method === 'GET') {
+      await route.fulfill(json({ success: true, data: {} }));
+      return;
+    }
+
+    if (path === '/api/projects/creation-requests' && method === 'GET') {
+      await route.fulfill(json({ success: true, data: { available: false } }));
+      return;
+    }
+
     if (path === '/api/projects/layouts/available') {
       await route.fulfill(json({ success: true, data: [] }));
       return;
@@ -380,24 +390,70 @@ test('project header path suggestions dismiss before an outside navigation actio
   await expect(options).toHaveCount(0);
 });
 
-async function fillStable(page: Page, selector: string, value: string) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const locator = page.locator(selector).first();
-    try {
-      await locator.fill(value, { timeout: 1000 });
-      if ((await locator.inputValue().catch(() => '')) === value) {
-        return;
-      }
-    } catch {}
-    await locator.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
-  }
-
-  throw new Error(`Failed to fill stable input: ${selector}`);
-}
-
 test.describe('Project lifecycle', () => {
   test.beforeEach(async ({ page }) => {
     await seedProjectRoutes(page);
+  });
+
+  test('the compact Project form returns to the same Home draft', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 360, height: 480 });
+    let creations = 0;
+    let blockCatalog = true;
+    await page.route('**/api/projects', async (route) => {
+      const method = route.request().method();
+      if (method === 'POST') creations += 1;
+      if (method === 'GET' && creations && blockCatalog) {
+        await route.fulfill(json({ success: true, data: [] }));
+        return;
+      }
+      await route.fallback();
+    });
+    await page.goto('/');
+    const draft = page.getByRole('form', { name: 'Start work' });
+    const prompt = draft.getByRole('textbox', {
+      name: 'What would you like done?',
+    });
+    await prompt.fill('Keep this first message');
+    await draft.locator('input[type="file"]').setInputFiles({
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Draft notes'),
+    });
+    const chooseProject = async () => {
+      await draft.getByRole('button', { name: 'Project: No project' }).click();
+      await page
+        .getByRole('dialog', { name: 'Choose project' })
+        .getByRole('button', { name: 'Create project' })
+        .click();
+    };
+
+    await chooseProject();
+    const dialog = page.getByRole('dialog', { name: 'New Project' });
+    await expect(
+      dialog.getByRole('radio', { name: /^Blank workspace/ }),
+    ).toBeChecked();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(prompt).toHaveValue('Keep this first message');
+
+    await chooseProject();
+    await dialog.getByPlaceholder('My Project').fill('Draft Project');
+    const create = dialog.getByRole('button', { name: 'Create', exact: true });
+    await expect(create).toBeInViewport({ ratio: 1 });
+    await create.click();
+    const select = dialog.getByRole('button', { name: 'Select Project' });
+    await expect(select).toBeEnabled();
+    blockCatalog = false;
+    await select.click();
+    await expect(dialog).toHaveCount(0);
+    expect(creations).toBe(1);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      draft.getByRole('button', { name: 'Project: Draft Project' }),
+    ).toBeVisible();
+    await expect(prompt).toHaveValue('Keep this first message');
+    await expect(draft.getByText('notes.txt', { exact: true })).toBeVisible();
   });
 
   test('Git recommendation applies one canonical starter request before landing the project', async ({
@@ -432,8 +488,15 @@ test.describe('Project lifecycle', () => {
       );
     });
 
-    await page.goto('/projects/new');
-    await fillStable(page, 'input[placeholder="My Project"]', 'Git Project');
+    await page.goto('/');
+    await page.locator('[data-new-project-trigger]').click();
+    await expect(page).toHaveURL(/\/projects\/new$/);
+    const dialog = page.getByRole('dialog', { name: 'New Project' });
+    await dialog
+      .getByRole('textbox', { name: 'Project name' })
+      .fill('Git Project');
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page.getByPlaceholder('~/code/my-project').fill('/tmp/git-project/');
 
     await expect(
@@ -446,7 +509,7 @@ test.describe('Project lifecycle', () => {
     await expect
       .poll(() => applyBodies)
       .toEqual([{ layoutId: 'builtin:coding' }]);
-    await expect(page).toHaveURL(/\/projects\/git-project$/);
+    await expect(page).toHaveURL(/\/projects\/git-project\/layouts\/coding$/);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
   });

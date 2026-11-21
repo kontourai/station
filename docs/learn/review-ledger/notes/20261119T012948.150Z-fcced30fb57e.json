@@ -1,0 +1,13 @@
+{
+  "revision": "524dcb9d3df3cb45ed534ead327f204364b4377f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the New Terminal picker against the shared Dialog contract and existing picker and launch coverage. The responsive inventory now records the standard dialog the component uses.","inputs":["docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the New Terminal picker against the shared Dialog contract and existing picker and launch coverage. The responsive inventory now records the standard dialog the component uses.","inputs":["docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the New Terminal picker against the shared Dialog contract and existing picker and launch coverage. The responsive inventory now records the standard dialog the component uses.","inputs":["docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the New Terminal picker against the shared Dialog contract and existing picker and launch coverage. The responsive inventory now records the standard dialog the component uses.","inputs":["docs/ui/responsive-surfaces.json"]}
+  ]
+}

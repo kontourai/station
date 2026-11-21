@@ -1,0 +1,23 @@
+{
+  "revision": "5ba2105f8fe34b25609070603fc7fde899278eda",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the Home test against the built-in Home slot and work-row owners. The coarse-pointer fixture opens Details through the row and verifies its snooze choices.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The compact row exposes separated accessible names, the loading composer yields Stop to the mounted activity control, and a phone answer opens Basis through its details sheet. The project-switching journey checks the floating Inbox compose action.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/MessageBubble.basisChipFit.test.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/views/home/__tests__/HomeSurface.test.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/design/motion.md","note":"The status rail can wrap a long status without reducing title space. Swipe, reduced-motion and row-entry transitions still use their existing owners.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the Home slot evidence. The updated touch assertions and query fixtures exercise row Details without changing slot resolution or plugin distribution.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The connection-manager phone test now opens the real manager from the persistent toolbar after maximizing. The published coverage is still an isolated Chromium UI journey.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-modal.spec.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"HomeView tests continue to mount the built-in surface and exercise its rows. The query fixture for touch Details does not change required-slot or plugin behavior.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Clarified the collapsed-dock New chat placement. The phone geometry tests exercise the trailing extent and actions buttons, the floating Inbox compose action and the distinct title and status columns.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Updated the inventory drill-down description for the shipped header. The five affected pr-smoke journeys passed against an isolated Station, including all three project-switcher widths.","inputs":["docs/testing/browser-smoke.md","tests/connect-modal.spec.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the compact row clock, project label, subagent identity, on-demand Details and New chat entries. A missing reported model is omitted and the current project keeps its catalog name.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

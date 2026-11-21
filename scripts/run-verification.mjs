@@ -8,6 +8,7 @@ import {
   verificationStatus,
 } from './lib/verification-coordinator.mjs';
 import { projectHostPressureForStatus } from './lib/verification-host-pressure.mjs';
+import { classifyTerminal } from './lib/verification-receipt.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import {
   failedTestFilesFromCapture,
@@ -15,6 +16,7 @@ import {
   sweepVerificationArtifactOrphans,
   VERIFICATION_ARTIFACT_RETENTION_POLICY,
 } from './lib/verification-reporter.mjs';
+import { VERIFICATION_RECEIPT_ROOT } from './lib/verification-request-identity.mjs';
 import {
   redactVerificationSubmissionError,
   submitVerification,
@@ -367,6 +369,27 @@ function diagnosticFailedTestFiles(result) {
 }
 
 function tailFallback(bounded, stdoutTail) {
+  const {
+    firstCausalExcerpt,
+    causeStream,
+    infrastructureCause,
+    diagnosticExcerpts,
+  } = bounded.summary ?? {};
+  const excerptFields = {
+    // The excerpt retains its attribution alongside it in the fallback.
+    ...(typeof firstCausalExcerpt === 'string'
+      ? {
+          firstCausalExcerpt,
+          ...(causeStream ? { causeStream } : {}),
+          ...(typeof infrastructureCause === 'string'
+            ? { infrastructureCause }
+            : {}),
+        }
+      : {}),
+    ...(typeof diagnosticExcerpts?.[0] === 'string'
+      ? { diagnosticExcerpts: [diagnosticExcerpts[0]] }
+      : {}),
+  };
   const buildEnvelope = (tail, { withExcerpt }) => ({
     disposition: bounded.disposition,
     request: bounded.request,
@@ -375,36 +398,13 @@ function tailFallback(bounded, stdoutTail) {
       counts: bounded.summary?.counts,
       cleanup: bounded.summary?.cleanup,
       passed: bounded.summary?.passed,
-      // Carried through truncation for the same reason as the file list below
-      // it, and ahead of it: this is the sentence that says WHAT broke, and
-      // dropping it is what made a red hosted nightly annotate itself "no
-      // causal excerpt; read the artifact" while the FAIL line sat in its own
-      // capture (station#1471). It is a single bounded line — the summary's
-      // own byte budget already capped it — so it costs the tail very little.
-      ...(withExcerpt && typeof bounded.summary?.firstCausalExcerpt === 'string'
-        ? {
-            firstCausalExcerpt: bounded.summary.firstCausalExcerpt,
-            // The caveat travels with the excerpt or not at all: carrying the
-            // excerpt while dropping the note that says it was picked off an
-            // unattributed stream would state a stronger claim than the run
-            // supports, exactly the trade the reporter refuses at its own cap.
-            ...(bounded.summary?.causeStream
-              ? { causeStream: bounded.summary.causeStream }
-              : {}),
-            // station#1827: the same rule for the positive marker. This
-            // repeats the excerpt's own bytes, which is the one place in this
-            // envelope that costs the tail something real (at most
-            // DECLARED_CAUSE_BYTE_CAP, against an 8 KiB cap that the tail
-            // then shrinks to fit). It is still the right trade for exactly
-            // the reason the caveat above is: an excerpt carried without the
-            // field that says how it was selected reads as a scanned guess,
-            // and a truncated document is where a reader is least able to go
-            // look for themselves.
-            ...(typeof bounded.summary?.infrastructureCause === 'string'
-              ? { infrastructureCause: bounded.summary.infrastructureCause }
-              : {}),
-          }
+      ...(bounded.summary?.indeterminate === true
+        ? { indeterminate: true }
         : {}),
+      ...(typeof bounded.summary?.failingStep === 'string'
+        ? { failingStep: bounded.summary.failingStep }
+        : {}),
+      ...(withExcerpt ? excerptFields : {}),
       // Carried through truncation: a capped list of file names is small, and
       // it is the field that says where to look. Dropping it here would
       // reproduce #1139 for exactly the largest, least readable failures.
@@ -451,7 +451,10 @@ function tailFallback(bounded, stdoutTail) {
 
 export function renderBounded(result) {
   const bounded = boundedControlResult(result);
-  const stdoutTail = diagnosticStdoutTail(result);
+  const admissionStopped = typeof bounded?.summary?.phaseAdmission === 'string';
+  const stdoutTail = admissionStopped
+    ? undefined
+    : diagnosticStdoutTail(result);
   const productLawObservationTimeoutMs =
     result?.receipt?.provenance?.before?.productLawObservationTimeoutMs;
   if (Number.isFinite(productLawObservationTimeoutMs))
@@ -461,7 +464,9 @@ export function renderBounded(result) {
     };
   // Before the tail, and separately from it: the tail is what gets trimmed
   // when the envelope is over cap, and this is the part a reader needs first.
-  const failedTestFiles = diagnosticFailedTestFiles(result);
+  const failedTestFiles = admissionStopped
+    ? undefined
+    : diagnosticFailedTestFiles(result);
   if (failedTestFiles)
     bounded.summary = {
       ...bounded.summary,
@@ -472,11 +477,15 @@ export function renderBounded(result) {
       ...bounded.summary,
       failedCheckRedactedStdoutTail: stdoutTail,
     };
-  const rendered = JSON.stringify(bounded, null, 2);
+  const rendered = JSON.stringify(bounded ?? null, null, 2);
   if (Buffer.byteLength(rendered) <= CONTROL_OUTPUT_CAP) return rendered;
-  if (stdoutTail) return tailFallback(bounded, stdoutTail);
-  if (Array.isArray(bounded?.jobs))
-    return JSON.stringify(
+  if (stdoutTail) {
+    const withTail = tailFallback(bounded, stdoutTail);
+    if (Buffer.byteLength(withTail) <= CONTROL_OUTPUT_CAP) return withTail;
+  }
+  if (result?.receipt) return compactReceiptResult(result, bounded);
+  if (Array.isArray(bounded?.jobs)) {
+    const compactStatus = JSON.stringify(
       {
         ...bounded,
         jobs: bounded.jobs.slice(0, 4),
@@ -488,7 +497,96 @@ export function renderBounded(result) {
       null,
       2,
     );
+    if (Buffer.byteLength(compactStatus) <= CONTROL_OUTPUT_CAP)
+      return compactStatus;
+  }
   return JSON.stringify({ truncated: true }, null, 2);
+}
+
+function compactReceiptResult(result, bounded) {
+  const { terminal, counts, cleanup } = result.receipt;
+  const { key, laneId } = bounded.request;
+  const requestKey = /^[0-9a-f]{64}$/.test(typeof key === 'string' ? key : '')
+    ? key
+    : undefined;
+  const disposition = ['executed', 'joined', 'reused', 'forced'].includes(
+    result.disposition,
+  )
+    ? result.disposition
+    : undefined;
+  const phaseAdmission = bounded.summary?.phaseAdmission;
+  const controlCounts = boundedReceiptCounts(counts);
+  return JSON.stringify(
+    {
+      disposition,
+      request: {
+        key: requestKey,
+        laneId: /^[a-z0-9-]{1,64}$/.test(
+          typeof laneId === 'string' ? laneId : '',
+        )
+          ? laneId
+          : undefined,
+      },
+      canonicalReceipt:
+        requestKey && disposition && disposition !== 'forced'
+          ? `${VERIFICATION_RECEIPT_ROOT}/${requestKey}.canonical.json`
+          : undefined,
+      summary: {
+        ...compactTerminal(terminal, controlCounts, cleanup),
+        counts: controlCounts,
+        cleanup: {
+          status: ['passed', 'failed', 'not_required'].includes(cleanup?.status)
+            ? cleanup.status
+            : undefined,
+          survivingOwnedChildren: Number.isSafeInteger(
+            cleanup?.survivingOwnedChildren,
+          )
+            ? cleanup.survivingOwnedChildren
+            : undefined,
+        },
+        phaseAdmission:
+          typeof phaseAdmission === 'string'
+            ? redactVerificationOutput(phaseAdmission).slice(0, 512)
+            : undefined,
+      },
+      omittedDetails: ['artifacts', 'other diagnostics'],
+      truncated: true,
+    },
+    null,
+    2,
+  );
+}
+
+function compactTerminal(terminal, counts, cleanup) {
+  try {
+    const classified = classifyTerminal({
+      status: terminal?.status,
+      exitCode: terminal?.exitCode,
+      // The compact projection can carry an explicit receipt verdict. A
+      // completed status and passing counts alone do not establish stability.
+      provenanceStable:
+        terminal?.passed === true && terminal.indeterminate !== true,
+      cleanupStatus: cleanup?.status,
+      survivingOwnedChildren: cleanup?.survivingOwnedChildren ?? null,
+      counts,
+    });
+    return {
+      terminal: classified.status,
+      passed:
+        terminal.passed === false ? false : classified.passed || undefined,
+      indeterminate: terminal.indeterminate === true || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function boundedReceiptCounts(counts) {
+  return Object.fromEntries(
+    ['executed', 'passed', 'failed', 'infrastructureErrors']
+      .filter((key) => Number.isSafeInteger(counts?.[key]) && counts[key] >= 0)
+      .map((key) => [key, counts[key]]),
+  );
 }
 
 function usage() {

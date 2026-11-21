@@ -1,0 +1,7 @@
+{
+  "revision": "6889a55dd262c70e46ab18574170341fc6f62213",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Moved the five Library rows below the working-configuration PUT row and added that the routes answer 404 feature_preview_disabled while the preview is off, while a personal Station still advertises projectLibrary like pullRequestFeedback and projectSchedules (hosted withdraws it). Checked against station-capability-flags.ts and project-library-routes.ts.","inputs":["docs/reference/api.md"]}
+  ]
+}

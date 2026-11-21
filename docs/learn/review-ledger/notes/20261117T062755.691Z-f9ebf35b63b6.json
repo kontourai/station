@@ -1,0 +1,17 @@
+{
+  "revision": "2a2225ead6e004c37bdfdebf5cca910933ee0905",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Cited page gained only an added Project Library section or table rows in this PR; no section, row or claim this page relies on changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Cited page gained only an added Project Library section or table rows in this PR; no section, row or claim this page relies on changed.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Cited page gained only an added Project Library section or table rows in this PR; no section, row or claim this page relies on changed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Cited page gained only an added Project Library section or table rows in this PR; no section, row or claim this page relies on changed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Cited page gained only an added Project Library section or table rows in this PR; no section, row or claim this page relies on changed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Cited page gained only an added Project Library section or table rows in this PR; no section, row or claim this page relies on changed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

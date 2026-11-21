@@ -252,20 +252,21 @@ describe('ChatInputArea: Stop beside the hidden Send', () => {
 describe('ChatInputArea: Agent chip identity', () => {
   test('the route is its own part of the chip and stays in the accessible name', () => {
     renderComposer({
-      agentLabel: 'Codex',
-      agentRoute: 'via model-proxy (home-server · Claude + Codex)',
+      agentLabel: 'Codex · via model-proxy (home-server · Claude + Codex)',
+      agentRoute: 'model-proxy (home-server · Claude + Codex)',
       onOpenAgentHandoff: vi.fn(),
       turnInFlight: false,
     });
     fireEvent.click(screen.getByTestId('run-setup-trigger'));
     const chip = screen.getByRole('button', { name: /^Agent: / });
     expect(chip.getAttribute('aria-label')).toBe(
-      'Agent: Codex · via model-proxy (home-server · Claude + Codex). Change Agent',
+      'Agent: Codex. Connection: model-proxy (home-server · Claude + Codex). Change Agent',
     );
+    expect(chip.querySelector('.composer-choice__icon svg')).toBeTruthy();
     const name = chip.querySelector('.chat-input__agent-name');
     expect(name?.firstChild?.textContent).toBe('Codex');
     expect(chip.querySelector('.chat-input__agent-route')?.textContent).toBe(
-      ' · via model-proxy (home-server · Claude + Codex)',
+      ' · Connection: model-proxy (home-server · Claude + Codex)',
     );
   });
 });

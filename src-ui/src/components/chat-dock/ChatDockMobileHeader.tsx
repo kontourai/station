@@ -1,5 +1,6 @@
 import type {
   MouseEvent as ReactMouseEvent,
+  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -7,20 +8,31 @@ import { useContext, useId, useRef, useState } from 'react';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
+  ArrowLeftGlyph,
   ExpandGlyph,
-  InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
   RestoreGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
-import { useChildChatTrail } from './ChildChatNavigationContext';
+import {
+  useChildChatTrail,
+  useCurrentChildChat,
+} from './ChildChatNavigationContext';
 import '../NewChatAction.css';
 import './ChatDockHeader.css';
 import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { MobileDockHeaderLeadingContext } from './MobileDockHeaderLeading';
 import { MobileSheetPending } from './MobileSheetPending';
+import { useMobileDockHeaderMotion } from './useMobileDockHeaderMotion';
+
+const chatActionsSurface = { id: 'chat-actions', label: 'Chat actions' };
+
+const loadChildActions = () =>
+  import('./ChildChatActionsSheet').then((module) => ({
+    default: module.ChildChatActionsSheet,
+  }));
 
 const loadChatDockMobileOverflowSheet = () =>
   import('./ChatDockMobileOverflowSheet').then((module) => ({
@@ -31,7 +43,8 @@ export interface ChatDockMobileOverflowActions {
   onTurnIntoTask?: () => void;
   turnIntoTaskLabel?: string;
   onOpenConversation: () => void;
-  onToggleHistory: () => void;
+  onOpenInbox?: () => void;
+  onBrowseConversations?: () => void;
   onOpenChatSettings: () => void;
   onOpenConversationHistory?: () => void;
   /**
@@ -121,6 +134,7 @@ export interface ChatDockMobileExtentToggle {
 }
 
 interface ChatDockMobileHeaderProps {
+  inboxToolsHostRef?: (node: HTMLDivElement | null) => void;
   inboxActive?: boolean;
   /**
    * #4404 (A44): whether there is a chat to go back to. Without one the bar
@@ -130,6 +144,7 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  reportedStart?: ReactNode;
   routeLabel?: string;
   stationName?: string;
   sessionProjectMismatchLabel?: string | null;
@@ -151,10 +166,12 @@ interface ChatDockMobileHeaderProps {
 /** Project and conversation context stay directly operable; secondary actions use the sheet. */
 export function ChatDockMobileHeader({
   inboxActive = false,
+  inboxToolsHostRef,
   hasConversation = true,
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  reportedStart,
   routeLabel,
   stationName,
   sessionProjectMismatchLabel,
@@ -172,13 +189,25 @@ export function ChatDockMobileHeader({
   onNewChat,
   overflow,
 }: ChatDockMobileHeaderProps) {
-  const childTrail = useChildChatTrail();
+  const motion = useMobileDockHeaderMotion(
+    dockToggle?.state === 'collapsed'
+      ? 'collapsed'
+      : extentToggle?.maximized
+        ? 'full'
+        : 'open',
+  );
+  const currentChild = useCurrentChildChat();
+  const trail = useChildChatTrail();
+  const childTrail = !inboxActive && trail;
   const hostLeading = useContext(MobileDockHeaderLeadingContext);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
-  const collapsedExtent =
-    dockToggle?.state === 'collapsed' ? extentToggle : null;
+  const collapsed = dockToggle?.state === 'collapsed';
+  const collapsedInbox =
+    collapsed && (inboxActive || !(hasConversation || childTrail));
+  const resumeChat = collapsed && !collapsedInbox;
+  const Identity = resumeChat && !childTrail ? 'button' : 'div';
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
   // or have unread replies — the sheet's Chats row is where they are — so it
@@ -196,6 +225,7 @@ export function ChatDockMobileHeader({
       className={`chat-dock__header chat-dock__mobile-header${childTrail ? ' chat-dock__mobile-header--child' : ''}`}
       onPointerDown={onDragPointerDown}
       onClickCapture={onDragClickCapture}
+      ref={motion.headerRef}
       data-dock-drag-surface=""
       data-testid="chat-dock-mobile-header"
     >
@@ -212,7 +242,22 @@ export function ChatDockMobileHeader({
           >
             <MenuGlyph />
           </button>
-        ) : dockToggle && !collapsedExtent ? (
+        ) : !inboxActive &&
+          hasConversation &&
+          !childTrail &&
+          (!collapsed || extentToggle) ? (
+          <Button
+            ref={inboxTriggerRef}
+            variant="ghost"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
+            aria-label="Inbox"
+            title="Back to Inbox"
+            data-no-dock-drag=""
+            onClick={onToggleInbox}
+          >
+            <ArrowLeftGlyph />
+          </Button>
+        ) : dockToggle && !(collapsed && extentToggle) && !childTrail ? (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
@@ -229,75 +274,72 @@ export function ChatDockMobileHeader({
             <ArrowDownGlyph />
           </button>
         ) : null}
-        {hasConversation || childTrail || showConnection ? (
-          <button
-            ref={chatActionsTriggerRef}
-            type="button"
-            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={isOverflowOpen}
-            aria-label="Chat actions"
-            aria-describedby={
-              activitySummary ? activityDescriptionId : undefined
-            }
-            title={
-              activitySummary ? `Chat actions — ${activitySummary}` : undefined
-            }
-            data-no-dock-drag=""
-            onClick={() => setIsOverflowOpen((open) => !open)}
-          >
-            <span aria-hidden="true">⋯</span>
-            {activitySummary && (
-              <>
-                <span
-                  className="chat-dock__mobile-activity-dot"
-                  aria-hidden="true"
-                />
-                <span id={activityDescriptionId} className="sr-only">
-                  {activitySummary}
-                </span>
-              </>
-            )}
-          </button>
-        ) : null}
       </div>
 
-      <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
-        {hasConversation || !inboxActive ? (
-          <Button
-            ref={inboxTriggerRef}
-            variant="ghost"
-            className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-            aria-label={inboxActive ? 'Back to chat' : 'Inbox'}
-            title={inboxActive ? 'Back to chat' : 'Inbox'}
-            aria-pressed={inboxActive}
-            data-no-dock-drag=""
-            onClick={onToggleInbox}
-          >
-            <InboxGlyph />
-          </Button>
-        ) : null}
+      <Identity
+        className="chat-dock__mobile-identity"
+        data-dock-drag-passthrough=""
+        {...(Identity === 'button'
+          ? {
+              type: 'button' as const,
+              onClick: dockToggle?.onExpand,
+              'aria-label': `Open chat: ${sessionTitle}`,
+            }
+          : {})}
+        onClickCapture={
+          resumeChat && childTrail ? dockToggle?.onExpand : undefined
+        }
+      >
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
             title={inboxActive ? undefined : sessionTitle}
           >
-            {inboxActive ? 'Inbox' : (childTrail ?? sessionTitle)}
+            {collapsedInbox ? (
+              <button
+                type="button"
+                className="chat-dock__open-inbox-label"
+                ref={inboxTriggerRef}
+                data-no-dock-drag=""
+                onClick={() => {
+                  motion.capture();
+                  onToggleInbox();
+                }}
+              >
+                Inbox
+              </button>
+            ) : inboxActive ? (
+              'Inbox'
+            ) : (
+              (childTrail ?? sessionTitle)
+            )}
           </span>
           {!inboxActive && agentIdentity && ' '}
-          {!inboxActive && (agentIdentity || stationName) && (
-            <span className="chat-dock__mobile-eyebrow">
-              {stationName && `Via ${stationName}`}
-              {stationName && agentIdentity && ' · '}
-              {agentIdentity?.name}
-              {!stationName && routeLabel && ` · via ${routeLabel}`}
-              {sessionProjectMismatchLabel &&
-                ` · ${sessionProjectMismatchLabel}`}
-            </span>
-          )}
+          {!collapsedInbox &&
+            !inboxActive &&
+            (agentIdentity || stationName) && (
+              <span className="chat-dock__mobile-eyebrow">
+                {!childTrail && reportedStart}
+                {stationName && `Via ${stationName}`}
+                {stationName && agentIdentity && ' · '}
+                {agentIdentity?.name}
+                {!stationName &&
+                  routeLabel &&
+                  !agentIdentity?.name.includes(routeLabel) &&
+                  ` · ${routeLabel}`}
+                {sessionProjectMismatchLabel &&
+                  ` · ${sessionProjectMismatchLabel}`}
+              </span>
+            )}
         </span>
-      </div>
+      </Identity>
       <div className="chat-dock__mobile-actions">
+        {inboxActive && !collapsed && (
+          <div
+            className="chat-dock__mobile-inbox-tools"
+            ref={inboxToolsHostRef}
+          />
+        )}
         {extentToggle && (
           <button
             type="button"
@@ -309,25 +351,73 @@ export function ChatDockMobileHeader({
               extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
             }
             data-no-dock-drag=""
-            onClick={extentToggle.onToggle}
+            onClick={() => {
+              motion.capture();
+              extentToggle.onToggle();
+            }}
           >
             {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
           </button>
         )}
-        <button
-          type="button"
-          className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"
-          aria-label="New chat"
-          title="New chat"
-          data-no-dock-drag=""
-          onClick={onNewChat}
-        >
-          <NewChatGlyph />
-        </button>
+        {collapsedInbox && (
+          <button
+            type="button"
+            className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"
+            aria-label="New chat"
+            title="New chat"
+            data-no-dock-drag=""
+            onClick={onNewChat}
+          >
+            <NewChatGlyph />
+          </button>
+        )}
+        {!inboxActive &&
+          !collapsedInbox &&
+          (hasConversation || childTrail || showConnection ? (
+            <button
+              ref={chatActionsTriggerRef}
+              type="button"
+              className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+              aria-haspopup="dialog"
+              aria-expanded={isOverflowOpen}
+              aria-label={chatActionsSurface.label}
+              aria-describedby={
+                activitySummary ? activityDescriptionId : undefined
+              }
+              title={
+                activitySummary
+                  ? `Chat actions — ${activitySummary}`
+                  : undefined
+              }
+              data-no-dock-drag=""
+              onClick={() => {
+                if (collapsed) dockToggle.onExpand();
+                setIsOverflowOpen((open) => !open);
+              }}
+            >
+              <span aria-hidden="true">⋯</span>
+              {activitySummary && (
+                <>
+                  <span
+                    className="chat-dock__mobile-activity-dot"
+                    aria-hidden="true"
+                  />
+                  <span id={activityDescriptionId} className="sr-only">
+                    {activitySummary}
+                  </span>
+                </>
+              )}
+            </button>
+          ) : null)}
       </div>
-      {isOverflowOpen && (
+      {isOverflowOpen && currentChild && !inboxActive ? (
         <LazyBoundary
-          load={loadChatDockMobileOverflowSheet}
+          key={JSON.stringify([
+            currentChild.connection.requestScope?.authorityKey,
+            currentChild.threadId,
+            currentChild.childId,
+          ])}
+          load={loadChildActions}
           pending={
             <MobileSheetPending
               label="Chat actions"
@@ -336,14 +426,36 @@ export function ChatDockMobileHeader({
             />
           }
           componentProps={{
-            overflow,
-            projectScope,
-            showConnection,
+            entry: currentChild,
+            trigger: chatActionsTriggerRef.current,
+            fullscreen: !!extentToggle?.maximized,
             onNewChat,
-            returnFocusTarget: chatActionsTriggerRef.current,
+            onInbox: onToggleInbox,
             onClose: () => setIsOverflowOpen(false),
           }}
         />
+      ) : (
+        isOverflowOpen && (
+          <LazyBoundary
+            load={loadChatDockMobileOverflowSheet}
+            surface={chatActionsSurface}
+            pending={
+              <MobileSheetPending
+                label={chatActionsSurface.label}
+                onClose={() => setIsOverflowOpen(false)}
+                returnFocusTarget={chatActionsTriggerRef.current}
+              />
+            }
+            componentProps={{
+              overflow,
+              projectScope,
+              showConnection,
+              onNewChat,
+              returnFocusTarget: chatActionsTriggerRef.current,
+              onClose: () => setIsOverflowOpen(false),
+            }}
+          />
+        )
       )}
     </div>
   );

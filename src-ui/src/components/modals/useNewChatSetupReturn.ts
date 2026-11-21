@@ -35,6 +35,7 @@ export function useNewChatSetupReturn({
   revalidate,
   workflowLabel = 'New Chat',
   readyToResume = false,
+  collapseDockForSetup = false,
   allowedPaths,
 }: {
   authority: NewChatSetupAuthority;
@@ -48,6 +49,7 @@ export function useNewChatSetupReturn({
   revalidate: () => Promise<unknown>;
   workflowLabel?: string;
   readyToResume?: boolean;
+  collapseDockForSetup?: boolean;
   allowedPaths?: readonly string[];
 }) {
   const isMobile = useIsMobile();
@@ -211,7 +213,10 @@ export function useNewChatSetupReturn({
             prepare: async () => true,
             signal: journey.controller.signal,
           },
-          { maximize: null, ...(isMobile ? { dock: null } : {}) },
+          {
+            maximize: null,
+            ...(isMobile || collapseDockForSetup ? { dock: null } : {}),
+          },
         )
         .then((committed) => {
           if (current.current !== journey) return;
@@ -234,7 +239,16 @@ export function useNewChatSetupReturn({
           }
         });
     }
-  }, [authority, cancel, id, journey, resume, workflowLabel, isMobile]);
+  }, [
+    authority,
+    cancel,
+    collapseDockForSetup,
+    id,
+    journey,
+    resume,
+    workflowLabel,
+    isMobile,
+  ]);
 
   useEffect(() => {
     const unsubscribe = navigationStore.subscribe(() => {

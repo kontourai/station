@@ -1,0 +1,9 @@
+{
+  "revision": "ccdfe42f0f3c896cb89ab73fad712f127e2a1d40",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Caution copy now reads as two sentences (no em dash); starter-work and pane-relationships claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Caution copy now reads as two sentences (no em dash); starter-work and pane-relationships claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

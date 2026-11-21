@@ -1,0 +1,11 @@
+{
+  "revision": "da8ef109ecd0ba2c1591ef4b6cb9f5a31b57961b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked desktop call rows and the OpenCode child-card regression at their shared renderer. Desktop turns without child cards keep the original per-run grouping, and settled activity still folds around anchored child cards on both layouts.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the shared renderer. The narrower desktop grouping retains the established handling of separately rendered artifacts, UI blocks and MCP app previews.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the mounted transcript cases. Mobile still keeps pending grants accessible and desktop grouping preserves existing tool rows when no child card anchors the turn.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"]}
+  ]
+}

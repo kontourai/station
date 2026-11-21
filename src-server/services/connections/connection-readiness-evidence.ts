@@ -12,6 +12,7 @@ import { hasRequiredMissing } from './connection-service-helpers.js';
 import type { StoredConnectionSmokeResult } from './connection-smoke-evidence-store.js';
 
 const CATALOG_FRESH_MS = 5 * 60 * 1000;
+type ReadinessCopy = Pick<ConnectionReadinessEvidence, 'summary' | 'action'>;
 
 function isAgentConnection(
   connection: ConnectionConfig,
@@ -39,9 +40,7 @@ function baseLevel(connection: ConnectionConfig): ConnectionEvidenceLevel {
   return 'prerequisite-ready';
 }
 
-function baseCopy(
-  level: ConnectionEvidenceLevel,
-): Pick<ConnectionReadinessEvidence, 'summary' | 'action'> {
+function baseCopy(level: ConnectionEvidenceLevel): ReadinessCopy {
   switch (level) {
     case 'smoke-passed':
       return { summary: 'A bounded chat smoke completed successfully.' };
@@ -64,15 +63,71 @@ function baseCopy(
   }
 }
 
+function modelCheckCopy(
+  enabled: boolean,
+  level: ConnectionEvidenceLevel,
+  check: ConnectionCheckEvidence | null,
+): ReadinessCopy {
+  if (!enabled) return { summary: 'This model connection is disabled.' };
+  if (level === 'discovered') {
+    return {
+      summary:
+        'Complete the required setup before testing this model connection.',
+    };
+  }
+  if (check?.status === 'passed') {
+    return { summary: 'The provider answered the last connection check.' };
+  }
+  return {
+    summary: 'Station has not checked these saved model settings.',
+    action: 'Choose Test connection to check the saved settings.',
+  };
+}
+
+function checkCopy(
+  check: ConnectionCheckEvidence | null,
+): ReadinessCopy | null {
+  switch (check?.status) {
+    case 'failed':
+      return {
+        summary:
+          check.reason ??
+          'The last connection test was refused by the provider.',
+        action: 'Correct this connection’s settings, then test it again.',
+      };
+    case 'unreachable':
+      return {
+        summary: check.reason ?? 'Station could not reach this provider.',
+        action: check.retrying
+          ? 'Station is still retrying. Test the connection if it does not recover.'
+          : 'Check the endpoint address and that the provider is running, then test it again.',
+      };
+    case 'catalog-unavailable':
+      return {
+        summary:
+          check.reason ?? 'The provider answered but offers no model catalog.',
+        action: 'Choose Test connection to check the saved default model.',
+      };
+    default:
+      return null;
+  }
+}
+
 function smokeEvidence(
   result: StoredConnectionSmokeResult | null,
   now: Date,
+  offerSmoke: boolean,
 ): ConnectionSmokeEvidence {
   if (!result) {
     return {
       status: 'not-tested',
       freshness: 'unknown',
-      action: 'Run the explicit one-turn dogfood smoke when you are ready.',
+      ...(offerSmoke
+        ? {
+            action:
+              'Run the explicit one-turn dogfood smoke when you are ready.',
+          }
+        : {}),
       turnLimit: 1,
     };
   }
@@ -87,7 +142,7 @@ function smokeEvidence(
     durationMs: result.durationMs,
     ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
     ...(result.reason ? { reason: result.reason } : {}),
-    ...(result.action ? { action: result.action } : {}),
+    ...(offerSmoke && result.action ? { action: result.action } : {}),
     turnLimit: 1,
   };
 }
@@ -134,7 +189,8 @@ export function deriveConnectionReadinessEvidence(
   now = new Date(),
   check: ConnectionCheckEvidence | null = null,
 ): ConnectionReadinessEvidence {
-  const smoke = smokeEvidence(result, now);
+  const offerSmoke = isAgentConnection(connection);
+  const smoke = smokeEvidence(result, now, offerSmoke);
   const base = baseLevel(connection);
   // Delta2 review H3: a fresh passed smoke outranks a check receipt — it is a
   // complete chat turn, the strongest evidence there is — but only a receipt
@@ -155,37 +211,17 @@ export function deriveConnectionReadinessEvidence(
   // these settings".
   const spokenCheck = level === 'smoke-passed' ? null : check;
   const copy =
-    smoke.status === 'failed' && smoke.freshness === 'fresh'
+    offerSmoke && smoke.status === 'failed' && smoke.freshness === 'fresh'
       ? {
           summary: smoke.reason ?? 'The latest bounded chat smoke failed.',
           action:
             smoke.action ??
             'Open this connection, resolve the reported failure, and smoke it again.',
         }
-      : spokenCheck?.status === 'failed'
-        ? {
-            summary:
-              spokenCheck.reason ??
-              'The last connection test was refused by the provider.',
-            action: 'Correct this connection’s settings, then test it again.',
-          }
-        : spokenCheck?.status === 'unreachable'
-          ? {
-              summary:
-                spokenCheck.reason ?? 'Station could not reach this provider.',
-              action: spokenCheck.retrying
-                ? 'Station is still retrying. Test the connection if it does not recover.'
-                : 'Check the endpoint address and that the provider is running, then test it again.',
-            }
-          : spokenCheck?.status === 'catalog-unavailable'
-            ? {
-                summary:
-                  spokenCheck.reason ??
-                  'The provider answered but offers no model catalog.',
-                action:
-                  'Run Test Connection, or start a chat, to prove this connection can run work.',
-              }
-            : baseCopy(level);
+      : (checkCopy(spokenCheck) ??
+        (offerSmoke || level === 'smoke-passed'
+          ? baseCopy(level)
+          : modelCheckCopy(connection.enabled, level, spokenCheck)));
   const catalogFetchedAt = isAgentConnection(connection)
     ? connection.runtimeCatalog?.fetchedAt
     : null;

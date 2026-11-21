@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isAbsolute } from 'node:path';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type {
   InputRequestContent,
@@ -38,6 +39,7 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
+import { canonicalPathThroughExistingAncestor } from '../../utils/path-containment.js';
 import {
   type ProviderChildSteerResult,
   type ProviderInterruptTurnResult,
@@ -667,12 +669,35 @@ function museGoalState(value: unknown): MuseServeGoalState {
   return { known: true, goal: { objective, status } };
 }
 
+function assertMuseResumeBinding(
+  session: Record<string, unknown>,
+  sessionId: string,
+  cwd: string | undefined,
+): void {
+  if (readString(session.sessionId) !== sessionId)
+    throw new MuseServeResumeRefusedError(
+      'Muse resumed a different session than the one this conversation ran in.',
+    );
+  const workspace = readString(session.workspaceRoot);
+  if (
+    cwd &&
+    workspace &&
+    (!isAbsolute(workspace) ||
+      canonicalPathThroughExistingAncestor(cwd) !==
+        canonicalPathThroughExistingAncestor(workspace))
+  )
+    throw new MuseServeUnavailableError(
+      'Muse resumed this session in a different workspace from the one Station assigned.',
+    );
+}
+
 export class MuseServeSession {
   private host?: ServeHost;
   private hostEpoch = 0;
   private museSessionIdValue?: string;
   private plan: MuseServeApprovalPlan = museServeApprovalPlan(undefined);
   private model?: string;
+  private workspaceCwd?: string;
   private stopped = false;
   private stopHost?: ServeHost;
   private reportedSandboxValue?: MuseServeReportedSandbox;
@@ -755,6 +780,7 @@ export class MuseServeSession {
    * ({@link MuseSandboxUnavailableError}) before any session is started.
    */
   async start(input: MuseServeStartInput): Promise<MuseServeStarted> {
+    this.workspaceCwd = input.cwd;
     const plan = museServeApprovalPlan(input.approvalMode);
     const host = await this.openHost({ disableSandbox: plan.disableSandbox });
     if (host.sandbox.unavailable && planReliesOnSandbox(plan)) {
@@ -856,15 +882,10 @@ export class MuseServeSession {
     }
     const session =
       isRecord(result) && isRecord(result.session) ? result.session : {};
-    if (readString(session.sessionId) !== sessionId) {
-      await this.closeHost();
-      throw new MuseServeResumeRefusedError(
-        'Muse resumed a different session than the one this conversation ran in.',
-      );
-    }
-    this.museSessionIdValue = sessionId;
-    this.plan = plan;
     try {
+      assertMuseResumeBinding(session, sessionId, this.workspaceCwd);
+      this.museSessionIdValue = sessionId;
+      this.plan = plan;
       const mode = isRecord(session.approvalMode)
         ? readString(session.approvalMode.mode)
         : undefined;
@@ -1662,6 +1683,7 @@ export class MuseServeSession {
       );
       const session =
         isRecord(resumed) && isRecord(resumed.session) ? resumed.session : {};
+      assertMuseResumeBinding(session, sessionId, this.workspaceCwd);
       const mode = isRecord(session.approvalMode)
         ? readString(session.approvalMode.mode)
         : undefined;

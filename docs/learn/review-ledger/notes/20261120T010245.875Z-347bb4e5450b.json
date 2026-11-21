@@ -1,0 +1,11 @@
+{
+  "revision": "a0a27502b8b302277bdc6380c53353b91a97183e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The two fixture cases now use a Date-only frozen clock for real EventStore observation time and the requested UTC day. Verified consent, pagination, owner and tenant scope and content-free export assertions remain in place. No production API behavior or trust contract changed.","inputs":["src-server/routes/operations/__tests__/source-credential-delivery.test.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"The two fixture cases now use a Date-only frozen clock for real EventStore observation time and the requested UTC day. Verified consent, pagination, owner and tenant scope and content-free export assertions remain in place. No production API behavior or trust contract changed.","inputs":["src-server/routes/operations/__tests__/source-credential-delivery.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The two fixture cases now use a Date-only frozen clock for real EventStore observation time and the requested UTC day. Verified consent, pagination, owner and tenant scope and content-free export assertions remain in place. No production API behavior or trust contract changed.","inputs":["src-server/routes/operations/__tests__/source-credential-delivery.test.ts"]}
+  ]
+}

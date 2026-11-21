@@ -309,6 +309,13 @@ export class FileMemoryAdapter implements StorageAdapter {
     return this.conversations.updateConversation(id, updater);
   }
 
+  deleteOwnedConversation(
+    id: string,
+    canDelete: (current: Conversation) => boolean,
+  ): Promise<boolean> {
+    return this.conversations.deleteOwnedConversation(id, canDelete);
+  }
+
   async deleteConversation(id: string): Promise<void> {
     const conversation = await this.getConversation(id);
     if (!conversation) {

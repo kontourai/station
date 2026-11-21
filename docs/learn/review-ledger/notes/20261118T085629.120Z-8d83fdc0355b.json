@@ -1,0 +1,13 @@
+{
+  "revision": "615723f74566f5bc79749bffe9346856ce66243f",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The desktop approval journey now waits for the unavailable status response and the enabled check button before advancing the fixture to settled. Existing assertions for uncertainty, button geometry and final settlement remain in place.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The route-local shared-work reader now describes changed or unavailable Station access in plain language. The scope captured for reads and the publication rechecks remain unchanged.","inputs":["docs/guides/connections.md","src-ui/src/views/project-page/useMemberProjectSharedWork.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The route-local shared-work reader now describes changed or unavailable Station access in plain language. The scope captured for reads and the publication rechecks remain unchanged.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/useMemberProjectSharedWork.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The desktop approval journey now waits for the unavailable status response and the enabled check button before advancing the fixture to settled. Existing assertions for uncertainty, button geometry and final settlement remain in place.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

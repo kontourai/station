@@ -1,3 +1,17 @@
+.project-tasks-section--list.page-section {
+  overflow: clip;
+}
+
+.project-tasks-section--list .project-page__task-list {
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+}
+
+.project-tasks-section--list .list-refresh__status {
+  margin-block-start: auto;
+}
+
 .project-tasks-section .project-tasks-section__list-layout {
   grid-template-columns: minmax(0, 1fr);
 }

@@ -1,4 +1,5 @@
 import { DEFAULT_GUARDRAILS } from '@kontourai/station-contracts/agent';
+import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { useModelConnectionsQuery } from '@kontourai/station-sdk';
 import { InfoTip } from '../../components/InfoTip';
@@ -53,16 +54,19 @@ export function AgentEditorModelSection({
   isPlugin,
   isLocked,
   modelChoices,
+  maxStepsError,
 }: Pick<
   AgentEditorFormProps,
   'form' | 'setForm' | 'appConfig' | 'locked' | 'isPlugin' | 'isLocked'
 > & {
   modelChoices: Array<{ id: string; name: string }>;
+  maxStepsError?: string;
 }) {
   const { data: modelConnections = [] } = useModelConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
   const disabled = locked || !!(isPlugin && isLocked);
+  const builtin = isStationAgentIdentity(form.slug);
   // archive#3747: the inventory route is LLM-capable by contract; enabled is
   // the only question left for this list to ask.
   const modelConnectionOptions = modelConnections.filter(
@@ -270,19 +274,29 @@ export function AgentEditorModelSection({
             Steps per turn
           </label>
           <InfoTip label="Steps per turn">
-            How many tool steps one turn may take before it stops.
+            Limits model steps per VoltAgent turn. Strands and external engines
+            use their own limits.
           </InfoTip>
         </div>
         <input
           id="ae-maxsteps"
           type="number"
-          min="0"
+          aria-invalid={!!maxStepsError}
+          aria-describedby={maxStepsError ? 'ae-maxsteps-error' : undefined}
+          min="1"
           max="100"
+          step="1"
           className="editor-input"
           name="maxSteps"
           value={form.maxSteps}
-          placeholder="0 (unlimited)"
-          disabled={disabled}
+          placeholder={
+            appConfig?.runtime === 'strands'
+              ? 'Unavailable on Strands'
+              : builtin
+                ? 'Set in Agent runs settings'
+                : 'Use fallback'
+          }
+          disabled={disabled || builtin || appConfig?.runtime === 'strands'}
           onChange={(event) =>
             setForm((current) => ({
               ...current,
@@ -290,6 +304,11 @@ export function AgentEditorModelSection({
             }))
           }
         />
+        {maxStepsError && (
+          <span id="ae-maxsteps-error" className="editor-error">
+            {maxStepsError}
+          </span>
+        )}
       </div>
     </>
   );

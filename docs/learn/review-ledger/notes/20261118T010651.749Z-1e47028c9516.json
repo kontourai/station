@@ -1,0 +1,11 @@
+{
+  "revision": "1879bd6a10b2347f72400746f1126dc9ff8bf82f",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the notification disclosure delta against apns-alert-channel.ts nativeSessionReference and composeApnsAlertPlaintext plus the Android alert channel. The inventory now preserves the Android/iOS sealed tap reference already documented by #5004; Android alone supports retraction. Generated privacy-policy and Play disclosure must match. README and concepts retain their qualified data-flow overview and links. Local privacy contract passes; no real push, store approval, or public-site publication is claimed.","inputs":["src-server/services/privacy-inventory.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed the notification disclosure delta against apns-alert-channel.ts nativeSessionReference and composeApnsAlertPlaintext plus the Android alert channel. The inventory now preserves the Android/iOS sealed tap reference already documented by #5004; Android alone supports retraction. Generated privacy-policy and Play disclosure must match. README and concepts retain their qualified data-flow overview and links. Local privacy contract passes; no real push, store approval, or public-site publication is claimed.","inputs":["src-server/services/privacy-inventory.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the notification disclosure delta against apns-alert-channel.ts nativeSessionReference and composeApnsAlertPlaintext plus the Android alert channel. The inventory now preserves the Android/iOS sealed tap reference already documented by #5004; Android alone supports retraction. Generated privacy-policy and Play disclosure must match. README and concepts retain their qualified data-flow overview and links. Local privacy contract passes; no real push, store approval, or public-site publication is claimed.","inputs":["src-server/services/privacy-inventory.ts"]}
+  ]
+}

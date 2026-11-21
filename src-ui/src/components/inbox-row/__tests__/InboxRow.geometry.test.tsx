@@ -121,7 +121,11 @@ const ITEMS: HomeWorkItem[] = [
     environmentLabel: 'a-remote-machine-name-long-enough-to-truncate-in-a-rail',
   }),
   item({ id: 'running', lifecycleLabel: 'Running' }),
-  item({ id: 'idle', environmentLabel: 'home-media' }),
+  item({
+    id: 'idle',
+    environmentLabel: 'home-media',
+    receivedAgentMessage: true,
+  }),
   item({
     id: 'failed',
     lifecycleLabel: 'Failed',
@@ -290,22 +294,32 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
               toolbar.x + toolbar.width,
             );
             const row = pg.locator('.inbox-row--card').first();
-            await row.hover();
-            // The actions take over the time slot, on the headline.
-            const slotLine = (await row
-              .locator('.inbox-row__headline')
+            const clock = (await row
+              .locator('.inbox-row__status-column')
               .boundingBox())!;
+            const title = (await row
+              .locator('.inbox-row__title')
+              .boundingBox())!;
+            expect(title.x + title.width).toBeLessThanOrEqual(clock.x);
+            await row.hover();
             for (const action of await row
               .locator('.inbox-row__actions button')
               .all()) {
               const box = (await action.boundingBox())!;
-              expect(
-                Math.abs(
-                  box.y + box.height / 2 - (slotLine.y + slotLine.height / 2),
-                ),
-              ).toBeLessThanOrEqual(0.5);
+              const hittable = await action.evaluate((el) => {
+                const r = el.getBoundingClientRect();
+                return el.contains(
+                  document.elementFromPoint(
+                    r.x + r.width / 2,
+                    r.y + r.height / 2,
+                  ),
+                );
+              });
+              expect(hittable).toBe(true);
+              expect(box.y + box.height).toBeGreaterThan(clock.y);
             }
           }
+          await pg.mouse.move(width - 1, 1);
           await pg.screenshot({
             path: resolve(artifacts, `inbox-${width}-${theme}.png`),
             animations: 'disabled',
@@ -348,7 +362,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             onRestoreDock: vi.fn(),
             isDockMaximized: false,
             onOpenConversation: vi.fn(),
-            onToggleHistory: vi.fn(),
             onOpenChatSettings: vi.fn(),
             onOpenProject: null,
             openProjectName: null,
@@ -400,7 +413,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
               overflow: document.body.scrollWidth > innerWidth,
             };
           });
-          expect(order.actions).toBeLessThan(order.extent);
+          expect(order.extent).toBeLessThan(order.actions);
           expect(order.sameLine).toBe(true);
           expect(order.overflow).toBe(false);
           const stationBorder = await pg
@@ -569,6 +582,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       await settle(pg);
       const rows = pg.locator('[data-testid="inbox-row"]');
       expect(await rows.count()).toBe(ITEMS.length);
+      const running = pg.locator('[data-row-key="running"]');
+      expect(await running.locator('.inbox-row__elapsed').count()).toBe(1);
+      expect(await running.locator('.inbox-row__time').count()).toBe(0);
       const measure = (index: number) =>
         rows.nth(index).evaluate((row) => {
           const box = (selector: string) => {
@@ -580,7 +596,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             height: row.getBoundingClientRect().height,
             top: row.getBoundingClientRect().top,
             title: box('.inbox-row__title'),
-            meta: box('.inbox-row__meta-text'),
+            meta: box('.inbox-row__project-line'),
             status: box('[data-testid="inbox-row-status"]'),
             actionsOpacity: actions ? getComputedStyle(actions).opacity : null,
           };
@@ -609,8 +625,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
-  test("a project accent changes no row's height, in the panel or the phone sheet", async () => {
-    const accents = new Map([['station', 'var(--event-tool-call)']]);
+  test('both Inbox hosts paint the project accent without changing row height', async () => {
+    const accent = 'rgb(20, 100, 180)';
+    const accents = new Map([['station', accent]]);
     const cases = [
       {
         label: 'panel',
@@ -627,10 +644,8 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     ];
     for (const { label, plain, painted, viewport } of cases) {
       // The fixture must contain what it claims to compare.
-      expect(plain, label).not.toContain('inbox-row__project-accent');
-      if (label === 'panel')
-        expect(painted).toContain('inbox-row__project-accent');
-      else expect(painted).not.toContain('inbox-row__project-accent');
+      expect(plain).toContain('project-icon--initials');
+      expect(painted).toContain('inbox-row__project-accent');
       const pg = await browser.newPage({ viewport });
       try {
         const measure = async (markup: string) => {
@@ -644,27 +659,28 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         };
         const plainHeights = await measure(plain);
         const paintedHeights = await measure(painted);
-        if (label === 'panel') {
-          const swatch = await pg
-            .locator('.inbox-row__project-accent')
-            .first()
-            .boundingBox();
-          expect(swatch?.width, 'panel swatch drawn').toBeGreaterThan(0);
-        } else {
-          const line = pg.locator('.inbox-row__project-context').first();
-          expect(await line.locator('svg').count()).toBe(1);
-          const mark = await line.locator('svg').boundingBox();
-          const name = await line.locator('.inbox-row__project').boundingBox();
-          expect(mark!.width).toBeGreaterThan(0);
-          expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
-          expect(
-            Math.abs(
-              mark!.y -
-                (await pg.locator('.inbox-row__title').first().boundingBox())!
-                  .y,
-            ),
-          ).toBeLessThanOrEqual(2);
-        }
+        const line = pg.locator(
+          '[data-row-key="running"] .inbox-row__project-line',
+        );
+        const initials = line.locator(
+          '.inbox-row__project-accent.project-icon--initials',
+        );
+        const shadow = await initials.evaluate(
+          (element) => getComputedStyle(element).boxShadow,
+        );
+        expect(shadow).toContain(accent);
+        expect(shadow).toContain('inset');
+        const mark = await initials.boundingBox();
+        const name = await line.locator('.inbox-row__project').boundingBox();
+        const agent = await line.locator('.inbox-row__agent').boundingBox();
+        expect(name!.width).toBeGreaterThan(0);
+        expect(agent!.width).toBeGreaterThan(0);
+        expect(name!.x + name!.width).toBeLessThanOrEqual(agent!.x);
+        expect(mark!.width).toBe(16);
+        expect(mark!.x + mark!.width).toBeLessThanOrEqual(name!.x);
+        expect(
+          Math.abs(mark!.y + mark!.height / 2 - name!.y - name!.height / 2),
+        ).toBeLessThan(2);
         expect(plainHeights.length, label).toBe(ITEMS.length);
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -717,24 +733,16 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           .locator('.inbox-row__project-accent.project-icon--icon')
           .first()
           .boundingBox();
-        expect(icon?.width, `${label} icon width`).toBe(
-          label === 'sheet' ? 24 : 12,
-        );
-        expect(icon?.height, `${label} icon height`).toBe(
-          label === 'sheet' ? 24 : 12,
-        );
+        expect(icon?.width, `${label} icon width`).toBe(16);
+        expect(icon?.height, `${label} icon height`).toBe(16);
         if (label === 'sheet') {
-          const line = pg.locator('.inbox-row__project-context').first();
-          expect(await line.locator('svg').count()).toBe(0);
+          const line = pg.locator('.inbox-row__project-line').first();
+          expect(await line.locator('.project-icon--icon').count()).toBe(1);
           const name = await line.locator('.inbox-row__project').boundingBox();
           expect(icon!.x + icon!.width).toBeLessThanOrEqual(name!.x);
           expect(
-            Math.abs(
-              icon!.y -
-                (await pg.locator('.inbox-row__title').first().boundingBox())!
-                  .y,
-            ),
-          ).toBeLessThanOrEqual(2);
+            Math.abs(icon!.y + icon!.height / 2 - name!.y - name!.height / 2),
+          ).toBeLessThan(2);
         }
         expect(paintedHeights, `${label} row heights`).toEqual(plainHeights);
       } finally {
@@ -998,138 +1006,39 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     [390, 200],
     [320, 160],
   ])(
-    'phone cards at %ipx: one unobscured 44px Details target and a two-line title of at least %ipx',
+    'phone rows at %ipx keep a full-width touch target and at least %ipx for the title',
     async (width, minimumTitleWidth) => {
-      const markup = sheetMarkup();
       const pg = await browser.newPage({
         viewport: { width, height: 844 },
         hasTouch: true,
         isMobile: true,
       });
       try {
-        await pg.setContent(page(markup));
+        await pg.setContent(page(sheetMarkup()));
         await settle(pg);
         const rows = pg.locator('.mobile-inbox__list .inbox-row--touch');
         expect(await rows.count()).toBe(ITEMS.length);
-        for (let index = 0; index < ITEMS.length; index += 1) {
-          const row = rows.nth(index);
+        for (const row of await rows.all()) {
           await row.scrollIntoViewIfNeeded();
-          const measured = await row.evaluate((element) => {
-            const box = element.getBoundingClientRect();
-            const title = element.querySelector('.inbox-row__title');
-            if (!title) throw new Error('missing title');
-            const titleBox = title.getBoundingClientRect();
-            const titleStyle = getComputedStyle(title);
-            const actions = [...element.querySelectorAll('.inbox-row__action')];
-            const textBoxes = [
-              '.inbox-row__meta',
-              '.inbox-row__title',
-              '.inbox-row__status',
-              '.inbox-row__slim-status',
-              '.inbox-row__slim-word',
-              '.inbox-row__project-context',
-              '.inbox-row__chips',
-            ].flatMap((selector) => {
-              const text = element.querySelector(selector);
-              if (!text) return [];
-              const rect = text.getBoundingClientRect();
-              const style = getComputedStyle(text);
-              return [
-                {
-                  selector,
-                  left: rect.left + Number.parseFloat(style.paddingLeft),
-                  right: rect.right - Number.parseFloat(style.paddingRight),
-                  top: rect.top,
-                  bottom: rect.bottom,
-                },
-              ];
-            });
-            return {
-              key: element.getAttribute('data-row-key'),
-              row: {
-                left: box.left,
-                right: box.right,
-                top: box.top,
-                bottom: box.bottom,
-              },
-              title: {
-                width:
-                  titleBox.width -
-                  Number.parseFloat(titleStyle.paddingLeft) -
-                  Number.parseFloat(titleStyle.paddingRight),
-                height: titleBox.height,
-                fontSize: Number.parseFloat(titleStyle.fontSize),
-                lineHeight: Number.parseFloat(titleStyle.lineHeight),
-              },
-              targets: actions.map((action) => {
-                const rect = action.getBoundingClientRect();
-                const hits = [
-                  [rect.left + rect.width / 2, rect.top + 1],
-                  [rect.left + rect.width / 2, rect.bottom - 1],
-                  [rect.left + 1, rect.top + rect.height / 2],
-                  [rect.right - 1, rect.top + rect.height / 2],
-                  [rect.left + rect.width / 2, rect.top + rect.height / 2],
-                ].map(
-                  ([x, y]) =>
-                    document
-                      .elementFromPoint(x, y)
-                      ?.closest('.inbox-row__action') === action,
-                );
-                return {
-                  label: action.getAttribute('aria-label'),
-                  width: rect.width,
-                  height: rect.height,
-                  left: rect.left,
-                  right: rect.right,
-                  top: rect.top,
-                  bottom: rect.bottom,
-                  hits,
-                  overlaps: textBoxes
-                    .filter(
-                      (text) =>
-                        text.left < rect.right - 0.5 &&
-                        text.right > rect.left + 0.5 &&
-                        text.top < rect.bottom - 0.5 &&
-                        text.bottom > rect.top + 0.5,
-                    )
-                    .map((text) => text.selector),
-                };
-              }),
-            };
-          });
+          const open = row.locator('.inbox-row__open');
+          const rect = (await open.boundingBox())!;
+          const title = (await row.locator('.inbox-row__title').boundingBox())!;
+          const clock = (await row
+            .locator('.inbox-row__status-column')
+            .boundingBox())!;
+          expect(rect.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(rect.x + rect.width).toBeLessThanOrEqual(width);
+          expect(title.width).toBeGreaterThanOrEqual(minimumTitleWidth);
+          expect(title.x + title.width).toBeLessThanOrEqual(clock.x);
           expect(
-            measured.targets,
-            `${measured.key} has one Details action`,
-          ).toHaveLength(1);
-          expect(
-            measured.row.right,
-            `${measured.key} right edge`,
-          ).toBeLessThanOrEqual(width);
-          expect(
-            measured.title.width,
-            `${measured.key} readable title width`,
-          ).toBeGreaterThanOrEqual(minimumTitleWidth);
-          expect(measured.title.fontSize).toBe(14);
-          expect(measured.title.height).toBeLessThanOrEqual(
-            measured.title.lineHeight * 2 + 1,
-          );
-          for (const target of measured.targets) {
-            expect(target.label).toMatch(/^Details for /);
-            expect(target.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-            expect(target.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-            expect(target.left).toBeGreaterThanOrEqual(measured.row.left);
-            expect(target.right).toBeLessThanOrEqual(measured.row.right);
-            expect(target.top).toBeGreaterThanOrEqual(measured.row.top);
-            expect(target.bottom).toBeLessThanOrEqual(measured.row.bottom);
-            expect(
-              target.hits,
-              `${measured.key} Details target hit testing`,
-            ).toEqual([true, true, true, true, true]);
-            expect(
-              target.overlaps,
-              `${measured.key} Details target covers text`,
-            ).toEqual([]);
-          }
+            await open.evaluate((el) => {
+              const r = el.getBoundingClientRect();
+              return [r.left + 4, r.right - 4].every((x) =>
+                el.contains(document.elementFromPoint(x, r.top + r.height / 2)),
+              );
+            }),
+          ).toBe(true);
+          expect(await row.locator('.inbox-row__action').count()).toBe(0);
         }
       } finally {
         await pg.close();
@@ -1139,7 +1048,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
 
   // #4266: on a phone the second line read [mark] … "No project" from the
   // middle of the row, and the engine's name was a 1px clipped label.
-  test('a phone row names its engine in words and keeps the project beside it', async () => {
+  test('a phone row keeps its project context directly before the engine mark and name', async () => {
     seed();
     const { unmount } = render(
       <MobileInboxPanel
@@ -1185,17 +1094,16 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           return {
             row: box('.inbox-row__open'),
             marks: box('.identity-marks'),
-            engine: box('.inbox-row__meta-text'),
-            engineText: row.querySelector('.inbox-row__meta-text')!.textContent,
+            engine: box('.inbox-row__agent'),
+            engineText: row.querySelector('.inbox-row__agent')!.textContent,
             project: box('.inbox-row__project'),
           };
         });
       expect(line.engineText).toBe('Codex');
       expect(line.engine.width).toBeGreaterThan(20);
       expect(line.engine.left).toBeGreaterThanOrEqual(line.marks.right);
-      expect(line.project.left).toBeGreaterThanOrEqual(line.engine.right);
-      // Beside the engine, not from the row's midpoint.
-      expect(line.project.left - line.engine.right).toBeLessThan(40);
+      expect(line.marks.left).toBeGreaterThanOrEqual(line.project.right);
+      expect(line.marks.left - line.project.right).toBeLessThan(40);
       expect(line.project.left).toBeLessThan(
         line.row.left + line.row.width / 2,
       );

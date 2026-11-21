@@ -146,8 +146,8 @@ dispatch adopts. Every git command (and repository open) the provisioning
 service runs has a deadline, five minutes by default, after which it is
 stopped and refused, so one hung command cannot hold either queue.
 
-**Finishing.** A Session exit never finalizes a Task-owned worktree. Moving the
-Task to `done` (by status change, a board or repair action, or close-on-merge)
+**Finishing.** A Task must reach a terminal status to authorize finalization of
+its worktree. Moving the Task to `done` (by status change, a board or repair action, or close-on-merge)
 or `canceled` finalizes it after the transition; the status answer never
 waits on git. `canceled` takes the failure branch, so `preserveOnFailure`
 (default true) keeps it. Otherwise, with `cleanupOnCompletion` (default
@@ -159,6 +159,11 @@ lost:
 - the branch has no commit that no remote-tracking ref or other local branch
   reaches. A squash merge leaves the branch's own commits off the base, so
   "merged" is not the test; being pushed is.
+
+When a running turn prevents finalization, a later turn or Session exit can
+retry the deferred work. Startup also retries it after the orphan-engine sweep
+settles. The runtime stops admitting these retries during shutdown and waits
+for any that already started before stopping orchestration.
 
 When any of these fails the worktree and branch are kept and the reason is
 recorded and shown on the opened Task (`taskWorktree.kept`: `policy`,

@@ -12,7 +12,10 @@ import {
   type RetainedNarrativeProcessProjection,
 } from '@kontourai/flow-agents/narrative-retained-codecs';
 import { STATION_FLOW_AGENTS_PROJECT_NARRATIVE_OWNER } from '@kontourai/station-contracts/answer-narrative-binding';
-import { loadFlowAgentsRoot } from './load-flow-agents.js';
+import {
+  loadNarrativeRetainedProcessProjection,
+  loadNarrativeRetainedReader,
+} from './load-flow-agents.js';
 
 export type ConfiguredNarrativeOwner = {
   ownerId: typeof STATION_FLOW_AGENTS_PROJECT_NARRATIVE_OWNER;
@@ -128,8 +131,11 @@ export class FlowAgentsRetainedNarrativeOwner
       return { state: 'restricted', observedAt };
     const ref = decodeGroundedNarrativeRef(input.narrativeRef);
     if (!ref) return { state: 'unsupported-version', observedAt };
-    const { projectRetainedNarrativeProcess, readGroundedNarrative } =
-      await loadFlowAgentsRoot();
+    const [{ readGroundedNarrative }, { projectRetainedNarrativeProcess }] =
+      await Promise.all([
+        loadNarrativeRetainedReader(),
+        loadNarrativeRetainedProcessProjection(),
+      ]);
     const retained = await readGroundedNarrative({
       scope: { narrativeDir: input.owner.narrativeDir },
       ref,

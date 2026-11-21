@@ -66,6 +66,10 @@ export function parseAttentionRequestInspection(
       provider: data.provider,
       title: data.title,
       ...(data.body ? { body: data.body as string } : {}),
+      ...(typeof data.guardianReason === 'string' &&
+      data.guardianReason.length <= 512
+        ? { guardianReason: data.guardianReason }
+        : {}),
       openedAt: data.openedAt,
       answerability,
       canRespond: data.canRespond,

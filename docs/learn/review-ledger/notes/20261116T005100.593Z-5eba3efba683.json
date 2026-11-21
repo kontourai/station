@@ -1,0 +1,7 @@
+{
+  "revision": "7c25611c349d0272fa13c22c7086f1d6a558bb46",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added attachedSourceActivity (active/quiet/idle, five-minute window, transcript-only evidence, no process probe), the adoptSession continueWhileSourceActive override and 409 continuation_source_active refusal, and the Starter Work/SDK code carriage; checked against attached-source-activity.ts, attached-session-adoption.ts, the commands route mapping and starter-session-owner.ts.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/attached-session-adoption.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

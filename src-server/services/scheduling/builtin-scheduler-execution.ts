@@ -344,8 +344,7 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() => schedulerJobRuns.add(1, { status: 'success' }));
-    observe(() => schedulerJobDuration.record(durationSecs * 1000));
+    recordSettledJob('success', durationSecs);
     observe(() =>
       broadcast({
         event: 'job.completed',
@@ -399,8 +398,8 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() => schedulerJobRuns.add(1, { status: 'error' }));
-    observe(() => schedulerJobDuration.record(durationSecs * 1000));
+    if (error instanceof SchedulerTurnFailedError)
+      recordSettledJob('error', durationSecs);
     await announceSchedulerJobFailure({
       job: job.name,
       id,
@@ -668,6 +667,13 @@ class SchedulerIndeterminateInvocationError extends Error {
     super(message);
     this.name = 'SchedulerIndeterminateInvocationError';
   }
+}
+
+/** Count only confirmed executions whose terminal receipt this process applied. */
+function recordSettledJob(status: 'success' | 'error', durationSecs: number) {
+  const attributes = { source: 'built-in', status };
+  observe(() => schedulerJobRuns.add(1, attributes));
+  observe(() => schedulerJobDuration.record(durationSecs * 1000, attributes));
 }
 
 function observe(effect: () => void): void {

@@ -1,0 +1,11 @@
+{
+  "revision": "722abf4e49f1507d2b52eb02b94f3d5fb65f59e1",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Rechecked the copilot-sdk-engine preview row after its decision link became the absolute GitHub URL that Pages requires (docs:public:hygiene); the row's claims are unchanged and still match the station-runtime bind and adapter gate.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked against the settings.md change (copilot-sdk-engine row link made absolute): it references neither that row nor its link; accurate.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked against the settings.md change (copilot-sdk-engine row link made absolute): the guide's table and hygiene instructions are unchanged and still accurate.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
+  ]
+}

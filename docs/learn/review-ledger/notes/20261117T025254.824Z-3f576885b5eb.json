@@ -1,0 +1,9 @@
+{
+  "revision": "721507c8d06d859579642d51ef1e3792acb9d1d5",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Only the pull request agent feedback route list changed (C2b's by-pull-request read merged beside Project defaults); terminal and integration guidance citing api.md is unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the pull request agent feedback route list changed (C2b's by-pull-request read merged beside Project defaults); terminal and integration guidance citing api.md is unaffected.","inputs":["docs/reference/api.md"]}
+  ]
+}

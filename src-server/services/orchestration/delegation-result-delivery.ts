@@ -1206,7 +1206,7 @@ const FOLD_METHODS = new Set([
 ]);
 
 const OUTCOME_WORDS: Record<DelegationResultOutcome, string> = {
-  completed: 'completed',
+  completed: 'finished its turn',
   interrupted: 'was interrupted when Station restarted, before it finished',
   aborted: 'was stopped',
   error: 'failed',
@@ -1879,6 +1879,7 @@ export class DelegationResultDelivery {
     const sender: ClientOriginSender = {
       kind: 'delegation-result',
       sessionId: row.childSessionId,
+      ...(owner.childAgent ? { agent: owner.childAgent } : {}),
       requestKey: row.deliveryId,
     };
     const ports: SessionMessageDeliveryPorts = {

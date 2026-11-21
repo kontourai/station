@@ -1,0 +1,13 @@
+{
+  "revision": "a58f3073d5c60f049d920811d17a4178f70c4548",
+
+  "notes": [
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"#5066: the fixture SDK gains a useSetProjectPullRequestWatchMutation stub for the new Pull requests section. Checked: the invitation before/after captures render the access and invitation flow, which does not reach that section, so they still depict current behaviour.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"#5066: the fixture SDK gains a useSetProjectPullRequestWatchMutation stub for the new Pull requests section. Checked: the invitation before/after captures render the access and invitation flow, which does not reach that section, so they still depict current behaviour.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"#5066: the fixture SDK gains a useSetProjectPullRequestWatchMutation stub for the new Pull requests section. Checked: the invitation before/after captures render the access and invitation flow, which does not reach that section, so they still depict current behaviour.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"#5066: the fixture SDK gains a useSetProjectPullRequestWatchMutation stub for the new Pull requests section. Checked: the invitation before/after captures render the access and invitation flow, which does not reach that section, so they still depict current behaviour.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]}
+  ]
+}

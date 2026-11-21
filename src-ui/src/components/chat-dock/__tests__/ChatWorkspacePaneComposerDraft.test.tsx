@@ -854,9 +854,7 @@ test('a phone opens its dock at the inbox without adding a modal layer', async (
   const inbox = await screen.findByRole('region', { name: 'Inbox' });
   expect(inbox.closest('.chat-dock__workspace')).not.toBeNull();
   expect(screen.queryByRole('dialog', { name: 'Chats and tasks' })).toBeNull();
-  expect(
-    screen.getByRole('button', { name: 'Pulse chat, pulse' }),
-  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Pulse chat\b/ })).toBeTruthy();
 });
 
 test('returning to the inbox keeps the reader mounted and preserves its unsent text', async () => {
@@ -1424,7 +1422,7 @@ test('a real failed history open stays at Inbox instead of falling back to the i
   act(addSavedConversation);
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
   const saved = await screen.findByRole('button', {
-    name: 'Saved conversation, pulse',
+    name: /^Saved conversation\b/,
   });
   fireEvent.click(saved);
   await act(async () => {});
@@ -1604,7 +1602,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
     act(addSavedConversation);
     fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Saved conversation, pulse' }),
+      await screen.findByRole('button', { name: /^Saved conversation\b/ }),
     );
     expect(finishOpen).toBeDefined();
     if (next === 'same-loading-chat') {
@@ -1629,7 +1627,7 @@ test.each(['another-chat', 'new-chat', 'same-loading-chat'] as const)(
       act(() => openChatsStore.focus({ sessionId: 'late-saved-tab' }));
     } else if (next === 'another-chat')
       fireEvent.click(
-        screen.getByRole('button', { name: 'Later conversation, pulse' }),
+        screen.getByRole('button', { name: /^Later conversation\b/ }),
       );
     else act(() => dispatchNewChatIntent({}));
     if (next === 'another-chat')

@@ -248,6 +248,18 @@ export const FALLOW_BASELINE_FILES = Object.freeze([
 ]);
 
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
+  ...[
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts',
+    ],
+    reason:
+      'shared execution schema changes can add dispatch posture fields outside the bounded importer set (#3335)',
+  })),
   {
     // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
     // matrix is imported by `contracts/agent.ts`, `config.ts` and `tool.ts`,
@@ -261,6 +273,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
       'packages/contracts/src/__tests__/agent-capability-profile.test.ts',
       'src-server/providers/__tests__/child-work-conformance.test.ts',
+      'src-server/providers/__tests__/engine-durability-profile.test.ts',
       'src-server/providers/__tests__/engine-image-input-declaration.test.ts',
       'src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts',
       'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
@@ -269,9 +282,8 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx',
     ],
     reason:
-      'engine capability declarations: own-behaviour suites; the import ' +
-      'graph is too broad for the fast lane, so consumers run in the ' +
-      'main/release full qualification (#2458)',
+      'engine capability declarations and adapter parity; the full consumer ' +
+      'graph runs in main/release full qualification (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
@@ -616,6 +628,94 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  {
+    pattern: 'tests/gallery-screen-sources.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/gallery-screen-coverage.test.ts'],
+    reason: 'the Gallery source module reads this JSON at runtime',
+  },
+  ...[
+    'src-ui/src/pages/AppearancePage.tsx',
+    'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/appearance-page-keyboard.test.ts'],
+    reason:
+      'the keyboard fixture bundles AppearancePage from a string outside the import graph',
+  })),
+  ...[
+    'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+    'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/check-required-tests-ran.test.ts'],
+    reason:
+      'the profile audit collects kernel test registrations through a child process',
+  })),
+  ...[
+    'src-ui/src/views/ProjectSettingsView.tsx',
+    'src-ui/src/views/project-settings/**',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/project-settings.browser.test.tsx'],
+    reason:
+      'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
+  })),
+  ...[
+    'src-ui/src/components/refresh/ListRefresh.css',
+    'src-ui/src/components/refresh/ListRefresh.tsx',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/inbox-swipe.browser.test.tsx'],
+    reason:
+      'the Inbox browser fixture loads refresh styles and bundles the component outside the import graph',
+  })),
+  ...[
+    'src-server/adapters/node-pty-adapter.ts',
+    'src-server/services/infra/workload-resources.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    reason:
+      'the workload proof launches a separate fixture server that imports these runtime owners',
+  })),
+  ...[
+    'docs/learn/atlas.js',
+    'docs/learn/index.html',
+    'scripts/lib/learning-markdown.mjs',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/learning-atlas.browser.test.ts'],
+    reason:
+      'the Atlas browser fixture serves these runtime assets and generates the search data across a dynamic renderer boundary',
+  })),
+  {
+    pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+    reason:
+      'the non-reference host guard executes this Playwright spec through a child process',
+  },
+  ...[
+    'docs/reference/play-data-safety.md',
+    'docs/privacy-policy.md',
+    'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-server/services/__tests__/privacy-inventory.test.ts'],
+    reason: 'privacy inventory tests compare generated artifacts read by path',
+  })),
   // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
   // reaches them only through that CLI as a child process, which the import
   // graph cannot see. (The vectors test imports them directly.)

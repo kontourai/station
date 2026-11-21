@@ -254,6 +254,20 @@ describe('agents view utils', () => {
     });
   });
 
+  test('validates whole-number step caps and clears an authored cap explicitly', () => {
+    const form = { ...createEmptyAgentForm(), slug: 'writer' };
+    for (const maxSteps of ['0', '1.5', '101']) {
+      expect(validateAgentForm({ ...form, maxSteps }, false).maxSteps).toBe(
+        'Enter a whole number from 1 to 100.',
+      );
+    }
+    expect(buildAgentPayload({ ...form, maxSteps: '8' }).maxSteps).toBe(8);
+    expect(
+      buildAgentPayload(form, { previousMaxSteps: '8' }).maxSteps,
+    ).toBeNull();
+    expect(buildAgentPayload(form).maxSteps).toBeUndefined();
+  });
+
   test('buildAgentPayload strips empty fields and preserves runtime settings', () => {
     expect(
       buildAgentPayload({
@@ -508,8 +522,6 @@ describe('agents view utils', () => {
     });
   });
 
-  // #2613: the editor has no control for `unattendedAutoApprove` yet (#2658),
-  // so a save must write back exactly what it loaded and never invent the key.
   test('load then save keeps an unattended opt-in exactly', () => {
     const form = formFromAgent({
       slug: 'nightly',

@@ -1,3 +1,5 @@
+import { stationControlToolName } from './station-control-refusal.js';
+
 /**
  * Custom appearance: a person's own palette and CSS, stored per person and
  * proposed by agents for the person to preview and keep
@@ -49,6 +51,18 @@ export interface CustomAppearanceModePalette {
   accent?: string;
 }
 
+export interface CustomAppearanceVisual {
+  background?: {
+    dataUrl: string;
+    size: 'cover' | 'contain' | 'tile';
+    position: 'center' | 'top' | 'bottom' | 'left' | 'right';
+    dim: number;
+  };
+  panelOpacity?: number;
+  radius?: number;
+  fontSize?: number;
+}
+
 export interface CustomAppearance {
   version: 1;
   /** What the person sees it called. */
@@ -56,6 +70,44 @@ export interface CustomAppearance {
   palette: Partial<Record<AppearanceMode, CustomAppearanceModePalette>>;
   /** Applied after Station's own styles. Empty for a palette-only appearance. */
   css: string;
+  visual?: CustomAppearanceVisual;
+}
+
+export const CUSTOM_APPEARANCE_IMAGE_MAX_BYTES = 1024 * 1024;
+export const CUSTOM_APPEARANCE_IMAGE_MAX_DIMENSION = 4096;
+export const CUSTOM_APPEARANCE_THEME_PACK_MAX_BYTES = 1536 * 1024;
+export const CUSTOM_APPEARANCE_LIBRARY_MAX_ENTRIES = 24;
+
+export interface CustomAppearanceThemePack {
+  format: 'station-appearance';
+  version: 1;
+  appearance: CustomAppearance;
+}
+
+export interface CustomAppearanceLibraryEntry {
+  id: string;
+  name: string;
+  appearance: CustomAppearance;
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface CustomAppearanceLibraryDocument {
+  revision: string;
+  themes: CustomAppearanceLibraryEntry[];
+}
+export interface CustomAppearanceLibrarySaveInput {
+  revision: string;
+  id?: string;
+  appearance: CustomAppearance;
+  name?: string;
+  favorite?: boolean;
+}
+export interface CustomAppearanceLibraryUpdateInput {
+  revision: string;
+  id: string;
+  name?: string;
+  favorite?: boolean;
 }
 
 export const CUSTOM_APPEARANCE_CSS_MAX_LENGTH = 50_000;
@@ -66,11 +118,100 @@ export const CUSTOM_APPEARANCE_SAFE_VALUE = 'safe';
 /** How long a preview stays before it reverts on its own. */
 export const CUSTOM_APPEARANCE_PREVIEW_SECONDS = 20;
 
+export interface CustomAppearanceProposalReference {
+  id: string;
+  name: string;
+  sourceSessionId: string;
+}
+
+export function appearanceProposalReferenceView(
+  value: unknown,
+): CustomAppearanceProposalReference | undefined {
+  if (
+    !isPlainObject(value) ||
+    typeof value.id !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(value.id) ||
+    typeof value.name !== 'string' ||
+    !value.name.trim() ||
+    value.name.length > CUSTOM_APPEARANCE_NAME_MAX_LENGTH ||
+    hasControlCharacters(value.name) ||
+    typeof value.sourceSessionId !== 'string' ||
+    !value.sourceSessionId.trim() ||
+    value.sourceSessionId.length > 256 ||
+    hasControlCharacters(value.sourceSessionId)
+  )
+    return undefined;
+  return {
+    id: value.id,
+    name: value.name,
+    sourceSessionId: value.sourceSessionId,
+  };
+}
+
+/** Read the authoritative successful proposal envelope before history excerpts cut it. */
+export function parseAppearanceProposalReference(
+  toolName: string | undefined,
+  output: unknown,
+): CustomAppearanceProposalReference | undefined {
+  if (stationControlToolName(toolName) !== 'propose_appearance')
+    return undefined;
+  const object = (input: unknown): Record<string, unknown> | undefined => {
+    if (typeof input === 'string') {
+      if (input.length > 4 * 1024 * 1024) return undefined;
+      try {
+        input = JSON.parse(input);
+      } catch {
+        return undefined;
+      }
+    }
+    return isPlainObject(input) ? input : undefined;
+  };
+  let body = object(output);
+  if (body?.isError === true) return undefined;
+  if (Array.isArray(body?.content)) {
+    if (body.content.length !== 1) return undefined;
+    const block = object(body.content[0]);
+    if (block?.type !== 'text') return undefined;
+    body = object(block.text);
+  }
+  if (body?.success !== true || body.state !== 'proposed') return undefined;
+  const proposal = object(object(body.data)?.proposal);
+  if (!proposal || typeof proposal.proposedAt !== 'string') return undefined;
+  const appearance = parseCustomAppearance(proposal.appearance);
+  if (!appearance.ok) return undefined;
+  return appearanceProposalReferenceView({
+    id: proposal.id,
+    name: appearance.value.name,
+    sourceSessionId: proposal.sourceSessionId,
+  });
+}
+
+/** A retained reference is meaningful only on its successful originating Session event. */
+export function appearanceProposalReferenceOfEvent(event: {
+  toolName?: string;
+  output?: unknown;
+  appearanceProposal?: unknown;
+  status?: unknown;
+  threadId: string;
+}): CustomAppearanceProposalReference | undefined {
+  if (
+    stationControlToolName(event.toolName) !== 'propose_appearance' ||
+    event.status !== 'success'
+  )
+    return undefined;
+  const reference =
+    parseAppearanceProposalReference(event.toolName, event.output) ??
+    appearanceProposalReferenceView(event.appearanceProposal);
+  return reference?.sourceSessionId === event.threadId ? reference : undefined;
+}
+
 export interface CustomAppearanceProposal {
   /** Server-computed digest of `appearance`; a render report names it. */
   id: string;
   appearance: CustomAppearance;
   proposedAt: string;
+  /** Verified runtime caller Session; never accepted from proposal arguments. */
+  sourceSessionId?: string;
 }
 
 /** What the person's browser saw when it previewed a proposal. */
@@ -426,6 +567,256 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   (Object.getPrototypeOf(value) === Object.prototype ||
     Object.getPrototypeOf(value) === null);
 
+/** Bounded raster headers, read without fetching or decoding compressed pixels. */
+export function isCustomAppearanceRasterDataUrl(
+  input: unknown,
+): input is string {
+  if (
+    typeof input !== 'string' ||
+    input.length > Math.ceil(CUSTOM_APPEARANCE_IMAGE_MAX_BYTES / 3) * 4 + 40
+  )
+    return false;
+  const match =
+    /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input);
+  if (!match) return false;
+  const encoded = match[2]!;
+  if (encoded.length % 4 !== 0) return false;
+  const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  const length = (encoded.length / 4) * 3 - padding;
+  if (length === 0 || length > CUSTOM_APPEARANCE_IMAGE_MAX_BYTES) return false;
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  // Refuse noncanonical padding bits rather than accepting multiple byte spellings.
+  if (
+    padding &&
+    (alphabet.indexOf(encoded[encoded.length - padding - 1]!) &
+      (padding === 2 ? 15 : 3)) !==
+      0
+  )
+    return false;
+  const bytes = Uint8Array.from(atob(encoded), (character) =>
+    character.charCodeAt(0),
+  );
+  const view = new DataView(bytes.buffer);
+  const ascii = (offset: number, count: number) =>
+    String.fromCharCode(...bytes.subarray(offset, offset + count));
+  let width = 0;
+  let height = 0;
+  if (match[1] === 'png') {
+    if (
+      length < 45 ||
+      ascii(0, 8) !== '\x89PNG\r\n\x1a\n' ||
+      view.getUint32(8) !== 13 ||
+      ascii(12, 4) !== 'IHDR'
+    )
+      return false;
+    width = view.getUint32(16);
+    height = view.getUint32(20);
+    let offset = 8;
+    let image = false;
+    let end = false;
+    while (offset + 12 <= length) {
+      const size = view.getUint32(offset);
+      if (size > length - offset - 12) return false;
+      const type = ascii(offset + 4, 4);
+      if (type === 'acTL') return false;
+      if (type === 'IDAT' && size > 0) image = true;
+      offset += size + 12;
+      if (type === 'IEND') {
+        end = size === 0 && offset === length;
+        break;
+      }
+    }
+    if (!image || !end) return false;
+  } else if (match[1] === 'jpeg') {
+    if (
+      length < 12 ||
+      bytes[0] !== 255 ||
+      bytes[1] !== 216 ||
+      bytes[length - 2] !== 255 ||
+      bytes[length - 1] !== 217
+    )
+      return false;
+    let offset = 2;
+    let scan = false;
+    let ended = false;
+    while (offset < length) {
+      if (bytes[offset++] !== 255) {
+        if (!scan) return false;
+        continue;
+      }
+      while (offset < length && bytes[offset] === 255) offset++;
+      if (offset >= length) return false;
+      const marker = bytes[offset++]!;
+      if (marker === 0 || (marker >= 208 && marker <= 215)) {
+        if (!scan) return false;
+        continue;
+      }
+      if (marker === 217) {
+        ended = offset === length;
+        break;
+      }
+      if (offset + 2 > length) return false;
+      const size = view.getUint16(offset);
+      if (size < 2 || offset + size > length) return false;
+      if ([192, 193, 194].includes(marker)) {
+        if (size < 8 || width !== 0) return false;
+        height = view.getUint16(offset + 3);
+        width = view.getUint16(offset + 5);
+      } else if (
+        [195, 197, 198, 199, 201, 202, 203, 205, 206, 207].includes(marker)
+      )
+        return false;
+      if (marker === 218 && width === 0) return false;
+      scan = marker === 218;
+      offset += size;
+    }
+    if (!ended) return false;
+  } else {
+    if (
+      length < 25 ||
+      ascii(0, 4) !== 'RIFF' ||
+      ascii(8, 4) !== 'WEBP' ||
+      view.getUint32(4, true) + 8 !== length
+    )
+      return false;
+    let offset = 12;
+    let payload = false;
+    let payloadWidth = 0;
+    let payloadHeight = 0;
+    while (offset + 8 <= length) {
+      const chunkSize = view.getUint32(offset + 4, true);
+      const chunkType = ascii(offset, 4);
+      if (
+        chunkSize > length - offset - 8 ||
+        chunkType === 'ANIM' ||
+        chunkType === 'ANMF'
+      )
+        return false;
+      if (chunkType === 'VP8 ' || chunkType === 'VP8L') {
+        if (payload) return false;
+        payload = true;
+        if (chunkType === 'VP8 ') {
+          if (chunkSize < 10 || ascii(offset + 11, 3) !== '\x9d\x01\x2a')
+            return false;
+          payloadWidth = view.getUint16(offset + 14, true) & 0x3fff;
+          payloadHeight = view.getUint16(offset + 16, true) & 0x3fff;
+        } else {
+          if (chunkSize < 5 || bytes[offset + 8] !== 47) return false;
+          const bits = view.getUint32(offset + 9, true);
+          payloadWidth = 1 + (bits & 0x3fff);
+          payloadHeight = 1 + ((bits >>> 14) & 0x3fff);
+        }
+      }
+      offset += 8 + chunkSize + (chunkSize % 2);
+    }
+    if (!payload || offset !== length) return false;
+    const type = ascii(12, 4);
+    const size = view.getUint32(16, true);
+    if (size > length - 20) return false;
+    if (type === 'VP8X') {
+      if (size !== 10 || length < 30 || (bytes[20]! & 2) !== 0) return false;
+      width = 1 + bytes[24]! + (bytes[25]! << 8) + (bytes[26]! << 16);
+      height = 1 + bytes[27]! + (bytes[28]! << 8) + (bytes[29]! << 16);
+    } else if (type === 'VP8L') {
+      if (size < 5 || bytes[20] !== 47) return false;
+      const bits = view.getUint32(21, true);
+      width = 1 + (bits & 0x3fff);
+      height = 1 + ((bits >>> 14) & 0x3fff);
+    } else if (type === 'VP8 ') {
+      if (size < 10 || ascii(23, 3) !== '\x9d\x01\x2a') return false;
+      width = view.getUint16(26, true) & 0x3fff;
+      height = view.getUint16(28, true) & 0x3fff;
+    } else return false;
+    if (width !== payloadWidth || height !== payloadHeight) return false;
+  }
+  return (
+    width > 0 &&
+    height > 0 &&
+    width <= CUSTOM_APPEARANCE_IMAGE_MAX_DIMENSION &&
+    height <= CUSTOM_APPEARANCE_IMAGE_MAX_DIMENSION &&
+    width * height <= 16_000_000
+  );
+}
+
+function parseVisual(
+  input: unknown,
+  shape: (message: string) => void,
+): CustomAppearanceVisual | undefined {
+  if (input === undefined) return undefined;
+  if (!isPlainObject(input)) {
+    shape('visual is an object.');
+    return undefined;
+  }
+  const visual: CustomAppearanceVisual = {};
+  for (const key of Object.keys(input))
+    if (!['background', 'panelOpacity', 'radius', 'fontSize'].includes(key))
+      shape(`Unknown visual field ${key.slice(0, 40)}.`);
+  for (const [key, min, max] of [
+    ['panelOpacity', 0.5, 1],
+    ['radius', 0, 24],
+    ['fontSize', 12, 20],
+  ] as const) {
+    const value = input[key];
+    if (value === undefined) continue;
+    if (
+      typeof value !== 'number' ||
+      !Number.isFinite(value) ||
+      value < min ||
+      value > max
+    )
+      shape(`visual.${key} must be ${min} to ${max}.`);
+    else visual[key] = value;
+  }
+  if (input.background !== undefined) {
+    const raw = input.background;
+    if (!isPlainObject(raw)) shape('visual.background is an object.');
+    else {
+      for (const key of Object.keys(raw))
+        if (!['dataUrl', 'size', 'position', 'dim'].includes(key))
+          shape(`Unknown background field ${key.slice(0, 40)}.`);
+      if (!isCustomAppearanceRasterDataUrl(raw.dataUrl))
+        shape(
+          'Background must be a PNG, JPEG or WebP base64 data URL, at most 1 MiB, 4096 pixels per side and 16 million pixels; animation is not supported.',
+        );
+      if (!['cover', 'contain', 'tile'].includes(raw.size as string))
+        shape('Background size must be cover, contain or tile.');
+      if (
+        !['center', 'top', 'bottom', 'left', 'right'].includes(
+          raw.position as string,
+        )
+      )
+        shape('Background position is not supported.');
+      if (
+        typeof raw.dim !== 'number' ||
+        !Number.isFinite(raw.dim) ||
+        raw.dim < 0 ||
+        raw.dim > 1
+      )
+        shape('Background dim must be 0 to 1.');
+      if (
+        typeof raw.dataUrl === 'string' &&
+        (raw.size === 'cover' ||
+          raw.size === 'contain' ||
+          raw.size === 'tile') &&
+        (raw.position === 'center' ||
+          raw.position === 'top' ||
+          raw.position === 'bottom' ||
+          raw.position === 'left' ||
+          raw.position === 'right') &&
+        typeof raw.dim === 'number'
+      )
+        visual.background = {
+          dataUrl: raw.dataUrl,
+          size: raw.size,
+          position: raw.position,
+          dim: raw.dim,
+        };
+    }
+  }
+  return visual;
+}
+
 /**
  * Parse an appearance from untrusted JSON: shape, name, hex colours, known
  * roles and the CSS text check. Contrast is rated separately
@@ -444,7 +835,7 @@ export function parseCustomAppearance(
     return { ok: false, violations };
   }
   for (const key of Object.keys(input))
-    if (!['version', 'name', 'palette', 'css'].includes(key))
+    if (!['version', 'name', 'palette', 'css', 'visual'].includes(key))
       shape(`Unknown field ${key.slice(0, 40)}.`);
   if (input.version !== 1) shape('version must be 1.');
   const name = input.name;
@@ -517,6 +908,7 @@ export function parseCustomAppearance(
       }
       if (out.roles || out.accent) palette[mode as AppearanceMode] = out;
     }
+  const visual = parseVisual(input.visual, shape);
   if (violations.length > 0) return { ok: false, violations };
   return {
     ok: true,
@@ -525,8 +917,75 @@ export function parseCustomAppearance(
       name: (name as string).trim(),
       palette,
       css: css as string,
+      ...(visual === undefined ? {} : { visual }),
     },
   };
+}
+
+/** Portable packs carry appearance bytes only, never owner or proposal state. */
+export function createCustomAppearanceThemePack(
+  appearance: CustomAppearance,
+): CustomAppearanceThemePack {
+  const parsed = parseCustomAppearance(appearance);
+  if (!parsed.ok)
+    throw new Error(parsed.violations.map((v) => v.message).join(' '));
+  const pack: CustomAppearanceThemePack = {
+    format: 'station-appearance',
+    version: 1,
+    appearance: parsed.value,
+  };
+  if (
+    new TextEncoder().encode(JSON.stringify(pack)).length >
+    CUSTOM_APPEARANCE_THEME_PACK_MAX_BYTES
+  )
+    throw new Error('Theme pack is too large.');
+  return pack;
+}
+
+export function parseCustomAppearanceThemePack(
+  input: unknown,
+):
+  | { ok: true; value: CustomAppearanceThemePack }
+  | { ok: false; violations: CustomAppearanceViolation[] } {
+  const invalid = (message: string) => ({
+    ok: false as const,
+    violations: [{ kind: 'invalid-shape' as const, message }],
+  });
+  if (typeof input === 'string') {
+    if (
+      input.length > CUSTOM_APPEARANCE_THEME_PACK_MAX_BYTES ||
+      new TextEncoder().encode(input).length >
+        CUSTOM_APPEARANCE_THEME_PACK_MAX_BYTES
+    )
+      return invalid('Theme pack is too large.');
+    try {
+      input = JSON.parse(input);
+    } catch {
+      return invalid('Theme pack must be valid JSON.');
+    }
+  }
+  if (
+    !isPlainObject(input) ||
+    input.format !== 'station-appearance' ||
+    input.version !== 1 ||
+    Object.keys(input).some(
+      (key) => !['format', 'version', 'appearance'].includes(key),
+    )
+  )
+    return invalid('Unsupported theme pack format, version or fields.');
+  const parsed = parseCustomAppearance(input.appearance);
+  if (!parsed.ok) return parsed;
+  const pack: CustomAppearanceThemePack = {
+    format: 'station-appearance',
+    version: 1,
+    appearance: parsed.value,
+  };
+  if (
+    new TextEncoder().encode(JSON.stringify(pack)).length >
+    CUSTOM_APPEARANCE_THEME_PACK_MAX_BYTES
+  )
+    return invalid('Theme pack is too large.');
+  return { ok: true, value: pack };
 }
 
 export type ContrastRatio = (a: string, b: string) => number;

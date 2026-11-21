@@ -12,6 +12,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -21,7 +22,10 @@ import {
   configuredVitestEnvironment,
   vitestEnvironmentSuites,
 } from '../lib/dependency-change-scan.mjs';
-import { prepareChangedSelection } from '../run-changed-verification.mjs';
+import {
+  planChangedVerificationShards,
+  prepareChangedSelection,
+} from '../run-changed-verification.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
   dependencyChangeEdges,
@@ -70,6 +74,112 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
     .filter((reason: string) =>
       /dependency .*\(#3149\)|import this changed dependency/.test(reason),
     );
+
+describe('dispatch-scope contract dependencies (#3335)', () => {
+  const guard =
+    'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts';
+
+  test.each([
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ])('retains the posture guard when only %s changes', (path) => {
+    for (const hosted of [false, true]) {
+      const result = select([path], head, hosted);
+      expect(executed(result)).toContain(guard);
+      expect(result.selection.lanes).toContainEqual(
+        expect.objectContaining({ id: 'ci-fast' }),
+      );
+    }
+  });
+
+  test('an unrelated high-fanout contract keeps the guard out of its explicit selection', () => {
+    const result = select(['packages/contracts/src/agent.ts']);
+    expect(executed(result)).not.toContain(guard);
+    expect(result.selection.lanes).toContainEqual(
+      expect.objectContaining({ id: 'ci-fast' }),
+    );
+  });
+});
+
+describe('Nightly regressions outside the import graph', () => {
+  test.each([
+    [
+      'packages/contracts/src/engine-capability-matrix.ts',
+      'src-server/providers/__tests__/engine-durability-profile.test.ts',
+    ],
+    [
+      'tests/gallery-screen-sources.json',
+      'scripts/__tests__/gallery-screen-coverage.test.ts',
+    ],
+    [
+      'src-ui/src/pages/AppearancePage.tsx',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-ui/src/views/project-settings/OverviewNotificationsSection.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'docs/reference/play-data-safety.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'docs/privacy-policy.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.css',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/components/refresh/ListRefresh.tsx',
+      'src-ui/src/__tests__/inbox-swipe.browser.test.tsx',
+    ],
+    [
+      'src-server/adapters/node-pty-adapter.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    [
+      'src-server/services/infra/workload-resources.ts',
+      'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+    ],
+    ['docs/learn/atlas.js', 'scripts/__tests__/learning-atlas.browser.test.ts'],
+    [
+      'docs/learn/index.html',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
+    [
+      'scripts/lib/learning-markdown.mjs',
+      'scripts/__tests__/learning-atlas.browser.test.ts',
+    ],
+    [
+      'tests/interactive-workspace-performance-bridge.spec.ts',
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+  ])('%s selects its executable contract %s', (path, suite) => {
+    expect(executed(select([path], head, true))).toContain(suite);
+  });
+});
 
 describe('#3200: a sibling dependency bump selects the suites importing it', () => {
   const FLOW_AGENTS = '@kontourai/flow-agents';
@@ -337,6 +447,109 @@ describe('#4935, #4999: a new Station home root and the dev-home seed', () => {
       'packages/shared/src/station-home-store-registry.ts',
     ]);
     expect(executed(result)).toContain(SEED);
+  });
+});
+
+describe('#5010: an escalated diff runs the suites near its escalated files', () => {
+  // #5010 changed thirteen modules under packages/shared and packages/contracts
+  // and reached main with these suites failing (main qualification run
+  // 43925029422). Each imports a changed shared module directly, or through
+  // one module, and the escalation skipped related discovery for both.
+  const NEAR_IMPORTERS = [
+    // packages/shared/src/product-telemetry.ts, one edge away
+    'src-server/services/__tests__/usage-telemetry-service.test.ts',
+    // packages/shared/src/prebuilt-archive.ts, one edge away
+    'scripts/__tests__/accepted-release-parity.test.ts',
+    // packages/shared/src/prebuilt-archive.ts, two edges away
+    'src-server/routes/system/__tests__/archive-update-routes.test.ts',
+  ];
+
+  // Real related discovery (a Vitest child). Its timeout derives from this
+  // deadline (less a 30 s reserve), so a loaded host waits up to 510 s
+  // instead of failing at the 60 s floor, inside the test's own 600 s. On a
+  // host at load 50, the #5010 discovery alone took over 190 s.
+  const PLAN_TEST_TIMEOUT_MS = 600_000;
+  const makeTempDir = trackTempDirs();
+  const hostedPlan = (paths: readonly string[], planRoot = root) =>
+    planChangedVerificationShards('HEAD', {
+      root: planRoot,
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [...paths] }),
+      headSha: 'c'.repeat(40),
+      discoveryDeadlineAt: Date.now() + PLAN_TEST_TIMEOUT_MS - 60_000,
+      ...(planRoot === root ? {} : { assertDependencyProvenance: () => ({}) }),
+    });
+
+  test(
+    'the hosted plan runs them, and still defers ci-fast for every escalated path',
+    async () => {
+      const plan = await hostedPlan(incidents['5010'].paths);
+      const files = plan.groups.flatMap(
+        (group: { files: string[] }) => group.files,
+      );
+      expect(files).toEqual(expect.arrayContaining(NEAR_IMPORTERS));
+      const ciFast = plan.deferredLanes.find(
+        (lane: { id: string }) => lane.id === 'ci-fast',
+      );
+      expect(ciFast?.reasons).toEqual(
+        expect.arrayContaining([
+          'escalation: packages/shared/src/prebuilt-archive.ts',
+          'escalation: packages/shared/src/product-telemetry.ts',
+        ]),
+      );
+      expect(plan.escalatedImporters?.paths).toContainEqual(
+        expect.objectContaining({
+          path: 'packages/shared/src/prebuilt-archive.ts',
+          disposition: 'selected',
+          depth: 2,
+        }),
+      );
+      // Vite reports real paths; a seed named under a symlinked root must
+      // still match them (it silently matched fewer when compared as given).
+      const seed = 'packages/shared/src/product-telemetry.ts';
+      const linked = join(makeTempDir('incident-symlinked-root-'), 'station');
+      symlinkSync(root, linked);
+      const entryFor = (planned: typeof plan) =>
+        planned.escalatedImporters?.paths.find(
+          (candidate: { path: string }) => candidate.path === seed,
+        );
+      const direct = entryFor(plan);
+      expect(direct).toMatchObject({ disposition: 'selected' });
+      expect(entryFor(await hostedPlan([seed], linked))).toEqual(direct);
+    },
+    2 * PLAN_TEST_TIMEOUT_MS,
+  );
+
+  test('the selection itself, and so the local profile, does not change', () => {
+    const local = select(incidents['5010'].paths);
+    expect(local.executionSelection).not.toHaveProperty('escalatedSeeds');
+    expect(local.selection).not.toHaveProperty('escalationPaths');
+    for (const suite of NEAR_IMPORTERS)
+      expect(executed(local)).not.toContain(suite);
+    const hosted = select(incidents['5010'].paths, undefined, true);
+    expect(hosted.executionSelection.escalatedSeeds).toEqual(
+      expect.arrayContaining([
+        'packages/shared/src/prebuilt-archive.ts',
+        'packages/shared/src/product-telemetry.ts',
+      ]),
+    );
+    // A workflow has no importer graph to query.
+    expect(hosted.executionSelection.escalatedSeeds).not.toContain(
+      '.github/workflows/release.yml',
+    );
+  });
+
+  test('#4904 deleted an escalated module: it is named absent, not queried', () => {
+    const DELETED = 'packages/contracts/src/workspace-activity-pane.ts';
+    expect(incidents['4904'].paths).toContain(DELETED);
+    expect(existsSync(join(root, DELETED))).toBe(false);
+    const hosted = select(incidents['4904'].paths, undefined, true);
+    expect(hosted.executionSelection.escalatedSeeds).not.toContain(DELETED);
+    expect(hosted.executionSelection.escalatedUnqueried).toContainEqual({
+      path: DELETED,
+      disposition: 'absent',
+      depth: null,
+      suites: 0,
+    });
   });
 });
 

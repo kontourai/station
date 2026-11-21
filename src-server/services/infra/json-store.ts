@@ -58,6 +58,7 @@ export type JsonStoreAtomicWriteDurability = 'crash-safe' | 'tear-safe';
  */
 export type JsonFileStoreMetricName =
   | 'notifications'
+  | 'notification-tombstones'
   | 'principal-notifications';
 
 export interface JsonFileStoreOptions {

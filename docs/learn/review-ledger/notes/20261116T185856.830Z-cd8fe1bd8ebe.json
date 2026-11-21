@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Added station.notification.retention_pruned row and notification-tombstones json_store store value; checked against metrics.ts and json-store.ts.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

@@ -544,7 +544,7 @@ export interface ProviderAdapterShape {
     threadId: string,
     turnId?: string,
   ): Promise<ProviderInterruptTurnResult>;
-  /** Present only when the adapter has a real additive-input channel for a running turn. */
+  /** Adds input to a running turn through native steering or a declared interrupting fallback. */
   steerTurn?(threadId: string, input: string, turnId: string): Promise<void>;
   /**
    * Whether this session can take a steer, for an adapter whose sessions
@@ -554,12 +554,16 @@ export interface ProviderAdapterShape {
    * declares steering can.
    */
   canSteerTurn?(threadId: string): boolean;
+  /** Observed transport fidelity for one live session. */
+  sessionDurability?(threadId: string): ProviderDurabilityProfile | undefined;
+  readonly childSteerImages?: true;
   /** Targets an observed child turn owned by this session, never the parent. */
   steerChildWork?(
     threadId: string,
     childId: string,
     turnId: string,
     input: string,
+    images?: import('@kontourai/station-contracts/chat-attachment').ChatAttachmentInput[],
   ): Promise<ProviderChildSteerResult>;
   /**
    * A child this adapter reports running still takes a steer after the turn

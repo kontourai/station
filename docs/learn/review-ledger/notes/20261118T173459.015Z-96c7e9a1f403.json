@@ -1,0 +1,7 @@
+{
+  "revision": "b0c739190c3634b7f8e977725ba39910dd7809b2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared start toolbar in the Home and New Chat callers. Chromium verified Start stays at the trailing edge when wrapped at 320 and 390 pixels and stays on the tools row at 1440 pixels. Inspected 390 and 1440 captures in both themes. The existing submit-key cases passed. Native layout was not exercised.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}

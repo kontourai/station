@@ -1,0 +1,241 @@
+{
+  "revision": "21aa51a34c958975a338efe4c822401640b6bdbc",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Updated after review: a preview change applies to new and resumed Sessions and a family credential keeps disclosure for its life (route kill switch removed); the version answer stands 60 s and a failed probe 30 s; resolver and start share one admission per start, narrowing only when the preview is switched off in between. Checked against station-control-mcp-token.ts, station-control-mcp-route.ts, codex-tool-families.ts and codex-adapter.ts.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md","src-server/providers/adapters/codex-tool-families.ts","src-server/routes/mcp/station-control-mcp-route.ts","src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Replaced the claim that switching codex-tool-families off gives running Sessions every tool: a change now applies to new and resumed Sessions only. Checked against the route and token module.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Review fixes: per-start shared admission (toolFamiliesAdmitted(threadId) / takeToolFamilyAdmission) and the redundant boundCatalog term dropped. No citing page's claim about delivery, custody or resume changed.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Version answer now cached for 60 s and failures for 30 s instead of keyed on the launcher file; agent-efficiency.md states this.","inputs":["src-server/providers/adapters/codex-tool-families.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Removed the progressiveToolsEnabled route option: disclosure now follows only how the credential was minted. Checked the threat-model and efficiency claims citing this route; authentication, loopback and caller checks are unchanged.","inputs":["src-server/routes/mcp/station-control-mcp-route.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Removed the progressiveToolsEnabled route option: disclosure now follows only how the credential was minted. Checked the threat-model and efficiency claims citing this route; authentication, loopback and caller checks are unchanged.","inputs":["src-server/routes/mcp/station-control-mcp-route.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"stationControlDisclosureForToken no longer takes an enabled switch; a family credential keeps disclosure while it is live. Channels, assurance, TTL and revocation unchanged; checked the citing pages.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"stationControlDisclosureForToken no longer takes an enabled switch; a family credential keeps disclosure while it is live. Channels, assurance, TTL and revocation unchanged; checked the citing pages.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"stationControlDisclosureForToken no longer takes an enabled switch; a family credential keeps disclosure while it is live. Channels, assurance, TTL and revocation unchanged; checked the citing pages.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"stationControlDisclosureForToken no longer takes an enabled switch; a family credential keeps disclosure while it is live. Channels, assurance, TTL and revocation unchanged; checked the citing pages.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Removed the route kill-switch wiring, passed the thread id to the admission and corrected the preview description. No citing page's claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only the codexToolFamiliesAdmitted signature gained a thread id. No citing claim depends on it.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Only the unused progressiveToolsEnabled context field and its forwarding were removed. No route claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The admission question now carries the Session's thread id so the start reuses its answer; the families-line conditions are unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"The admission question now carries the Session's thread id so the start reuses its answer; the families-line conditions are unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"The admission question now carries the Session's thread id so the start reuses its answer; the families-line conditions are unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The admission question now carries the Session's thread id so the start reuses its answer; the families-line conditions are unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The admission question now carries the Session's thread id so the start reuses its answer; the families-line conditions are unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Test-only: the tool-family case now shows a running Session keeps its families after a switch-off and stops its Sessions on failure; the citing page's claims are unchanged.","inputs":["src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Only the codex-tool-families row's switch-off sentence changed; pages citing the settings reference make no claim about it.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Only the codex-tool-families row's switch-off sentence changed; pages citing the settings reference make no claim about it.","inputs":["docs/user/settings.md"]}
+  ]
+}

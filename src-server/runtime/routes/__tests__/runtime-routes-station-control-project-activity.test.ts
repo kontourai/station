@@ -24,8 +24,10 @@
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { runCli } from '../../../../packages/cli/src/cli.js';
 import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -33,6 +35,7 @@ import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { createConversationForkContext } from '../../../services/orchestration/conversation-fork-context.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -147,7 +150,11 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
   });
 
   async function setup(
-    options: { filler?: number; nativeSearch?: boolean } = {},
+    options: {
+      filler?: number;
+      nativeSearch?: boolean;
+      operatorCurrent?: () => boolean;
+    } = {},
   ) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-project-activity-');
@@ -581,7 +588,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL &&
+          (options.operatorCurrent?.() ?? true),
         verifyOperatorCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
@@ -615,6 +623,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     // The requests the tools send to Station's own routes: a refusal made by
     // a tool's own schema never sends one.
     const routeRequests: string[] = [];
+    const workSearchStatuses: number[] = [];
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
@@ -623,7 +632,13 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         /\/api\/orchestration\/session-activity/.test(url)
       )
         routeRequests.push(new URL(url).pathname);
-      return realFetch(input, init);
+      const response = await realFetch(input, init);
+      if (
+        url.startsWith(base) &&
+        new URL(url).pathname === '/api/conversations/work/search'
+      )
+        workSearchStatuses.push(response.status);
+      return response;
     });
 
     const mcp = createStationControlMcpServer();
@@ -740,6 +755,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     }
 
     return {
+      base,
+      home,
       personRequest,
       store,
       memory: context.memoryAdapters.get('default')!,
@@ -748,6 +765,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       asTool,
       rawRequest,
       routeRequests,
+      workSearchStatuses,
       appendTurn: writeTurn,
       startSession,
       at,
@@ -791,31 +809,99 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     );
 
     test(
-      'bounds admitted metadata scans and still returns indexed hits beyond the scan window',
+      'marks the 2,001st admitted metadata candidate partial and keeps a native-only hit',
       async () => {
-        const { tool, startSession, p1 } = await setup();
-        for (let n = 0; n < 2_001; n += 1)
-          startSession(`scan-${n}`, A, p1, {
-            metadata: { delegationTitle: 'Unrelated metadata' },
-          });
-        const result = await tool(bearer('a-caller'), 'search_conversations', {
-          query: 'zephyrquartz',
+        const { tool, startSession, appendTurn, p1, orchestration } =
+          await setup();
+        const agent = 'scan-agent';
+        const metadata = { agentSlug: agent };
+        startSession('scan-indexed-anchor', A, p1, { metadata });
+        appendTurn('scan-indexed-anchor', 0, {
+          prompt: 'exactbudgetneedle',
+          end: 'completed',
         });
-        expect(result.isError, JSON.stringify(result.body)).toBe(false);
-        expect(result.body.data).toMatchObject({
-          state: 'partial',
-          results: [expect.objectContaining({ conversationId: 'a-anchor' })],
-          incompleteSources: expect.arrayContaining([
-            {
-              source: 'station.conversations',
-              state: 'partial',
-              reason: 'metadata-scan-limit',
+        for (let n = 0; n < 2_000; n += 1)
+          startSession(`scan-exact-${n}`, A, p1, { metadata });
+        const count = async () =>
+          (
+            await orchestration.listSessionReadModel(
+              sessionReadAuthorityFromRequest(A, undefined, undefined),
+              { purpose: 'work-search' },
+            )
+          ).filter((row) => row.assignedAgentSlug === agent).length;
+        const search = () =>
+          tool(bearer('a-caller'), 'search_conversations', {
+            query: 'exactbudgetneedle',
+            agent,
+          });
+        expect(await count()).toBe(2_001); // 2,000 metadata candidates and one indexed hit.
+        expect(await search()).toMatchObject({
+          isError: false,
+          body: {
+            data: {
+              state: 'available',
+              results: [
+                expect.objectContaining({
+                  conversationId: 'scan-indexed-anchor',
+                }),
+              ],
+              incompleteSources: [],
             },
-          ]),
+          },
+        });
+        startSession('scan-exact-overflow', A, p1, { metadata });
+        expect(await count()).toBe(2_002);
+        expect(await search()).toMatchObject({
+          isError: false,
+          body: {
+            data: {
+              state: 'partial',
+              results: [
+                expect.objectContaining({
+                  conversationId: 'scan-indexed-anchor',
+                }),
+              ],
+              incompleteSources: [
+                {
+                  source: 'station.conversations',
+                  state: 'partial',
+                  reason: 'metadata-scan-limit',
+                },
+              ],
+            },
+          },
         });
       },
       scaleLivenessMs(90_000),
     );
+
+    test('reports an ordinary file transcript reader error as a sanitized HTTP 503', async () => {
+      const { asTool, memory, workSearchStatuses } = await setup();
+      const id = 'file-reader-error';
+      await memory.createConversation({
+        id,
+        userId: A,
+        resourceId: 'default',
+        title: 'private fixture transcript',
+        metadata: { projectSlug: 'project-1' },
+      });
+      const realGetConversation = memory.getConversation.bind(memory);
+      const failed = vi
+        .spyOn(memory, 'getConversation')
+        .mockImplementation(async (conversationId) => {
+          if (conversationId === id)
+            throw new Error('fixture private disk error');
+          return realGetConversation(conversationId);
+        });
+      expect(
+        await asTool(
+          bound('a-caller'),
+          '/api/conversations/work/search?query=private+fixture',
+        ),
+      ).toEqual({ success: false, error: 'Search unavailable' });
+      expect(failed).toHaveBeenCalledWith(id);
+      expect(workSearchStatuses).toEqual([503]);
+    });
 
     test('skips an unreadable file lineage without losing readable indexed matches', async () => {
       const { tool, memory, store, startSession, p1, at } = await setup();
@@ -941,6 +1027,257 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         expect.objectContaining({ conversationId: 'empty-file' }),
       ]);
     });
+
+    test('searches as the CLI person through the authenticated route', async () => {
+      const { base, rawRequest } = await setup();
+      const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const cli = (query: string, ...flags: string[]) =>
+        runCli([
+          'conversation',
+          'search',
+          query,
+          ...flags,
+          `--api-base=${base}`,
+          `--credential=${OPERATOR_CREDENTIAL}`,
+        ]);
+      try {
+        await cli('zephyrquartz', '--project=project-1');
+        expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+          results: [
+            expect.objectContaining({
+              conversationId: 'a-anchor',
+              projectSlug: 'project-1',
+            }),
+          ],
+        });
+        await cli('CAROL-SECRET');
+        expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+          results: [],
+        });
+        expect(
+          await rawRequest('/api/conversations/work/search?query=zephyrquartz'),
+        ).toMatchObject({
+          status: 403,
+          body: { code: 'station_control_caller_required' },
+        });
+      } finally {
+        output.mockRestore();
+      }
+    });
+
+    test('CLI deletes only the person’s owned saved conversation from the matching Agent', async () => {
+      const { base, memory } = await setup();
+      for (const [id, userId] of [
+        ['mine', A],
+        ['a-anchor', A],
+        ['foreign', CAROL],
+        ['legacy', 'old-os-alias'],
+      ] as const) {
+        await memory.createConversation({
+          id,
+          userId,
+          resourceId: 'default',
+          title: id,
+          metadata: {},
+        });
+      }
+      const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const remove = (agent: string, id: string, ...flags: string[]) =>
+        runCli([
+          'conversation',
+          'delete',
+          agent,
+          id,
+          ...flags,
+          `--api-base=${base}`,
+          `--credential=${OPERATOR_CREDENTIAL}`,
+        ]);
+      try {
+        await expect(remove('station', 'mine')).rejects.toThrow(
+          'requires --confirm',
+        );
+        await expect(memory.getConversation('mine')).resolves.toMatchObject({
+          userId: A,
+        });
+        for (const [agent, id] of [
+          ['assistant', 'mine'],
+          ['station', 'foreign'],
+          ['station', 'legacy'],
+        ] as const) {
+          await expect(remove(agent, id, '--confirm')).rejects.toMatchObject({
+            status: 404,
+            code: 'owned_conversation_not_found',
+          });
+        }
+        await expect(
+          remove('station', 'a-anchor', '--confirm'),
+        ).rejects.toMatchObject({
+          status: 409,
+        });
+        await expect(memory.getConversation('a-anchor')).resolves.toMatchObject(
+          { userId: A },
+        );
+        await remove('station', 'mine', '--confirm');
+        expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+          success: true,
+        });
+        await expect(memory.getConversation('mine')).resolves.toBeNull();
+        await expect(memory.getConversation('foreign')).resolves.toMatchObject({
+          userId: CAROL,
+        });
+        await expect(memory.getConversation('legacy')).resolves.toMatchObject({
+          userId: 'old-os-alias',
+        });
+      } finally {
+        output.mockRestore();
+      }
+    });
+
+    test('CLI owned delete refuses authority lost during an asynchronous ownership read', async () => {
+      let current = true;
+      const { base, memory } = await setup({ operatorCurrent: () => current });
+      await memory.createConversation({
+        id: 'revoke-during-read',
+        userId: A,
+        resourceId: 'default',
+        title: 'Keep this conversation',
+        metadata: {},
+      });
+      const get = memory.getConversation.bind(memory);
+      const expected = await get('revoke-during-read');
+      let reads = 0;
+      const lookup = vi
+        .spyOn(memory, 'getConversation')
+        .mockImplementation(async (id) => {
+          const stored = await get(id);
+          if (id === 'revoke-during-read' && ++reads === 2) current = false;
+          return stored;
+        });
+      try {
+        await expect(
+          runCli([
+            'conversation',
+            'delete',
+            'station',
+            'revoke-during-read',
+            '--confirm',
+            `--api-base=${base}`,
+            `--credential=${OPERATOR_CREDENTIAL}`,
+          ]),
+        ).rejects.toMatchObject({
+          status: 404,
+          code: 'owned_conversation_not_found',
+        });
+        expect(reads).toBe(2);
+        await expect(get('revoke-during-read')).resolves.toEqual(expected);
+      } finally {
+        lookup.mockRestore();
+      }
+    });
+
+    test('CLI owned delete refuses a different owner recorded after the adapter cached the conversation', async () => {
+      const { base, home, memory } = await setup();
+      const row = {
+        id: 'owner-changed',
+        resourceId: 'default',
+        title: 'Saved',
+        metadata: {},
+      };
+      await memory.createConversation({ ...row, userId: A });
+      const writer = new FileMemoryAdapter({ projectHomeDir: home });
+      await writer.createConversation({ ...row, userId: CAROL });
+      await expect(memory.getConversation(row.id)).resolves.toMatchObject({
+        userId: A,
+      });
+
+      await expect(
+        runCli([
+          'conversation',
+          'delete',
+          'station',
+          row.id,
+          '--confirm',
+          `--api-base=${base}`,
+          `--credential=${OPERATOR_CREDENTIAL}`,
+        ]),
+      ).rejects.toMatchObject({
+        status: 404,
+        code: 'owned_conversation_not_found',
+      });
+      const fresh = new FileMemoryAdapter({ projectHomeDir: home });
+      await expect(fresh.getConversation(row.id)).resolves.toMatchObject({
+        userId: CAROL,
+      });
+    });
+
+    test.each([false, true])(
+      'CLI owned fork delete reports the actual retirement boundary (already committed: %s)',
+      async (afterRetirement) => {
+        let current = true;
+        const { base, memory, store, orchestration, at } = await setup({
+          operatorCurrent: () => current,
+        });
+        const id = 'revoke-fork';
+        const snapshot = createConversationForkContext({
+          forkEventId: 'revoke-fork-event',
+          sourceConversationId: 'a-anchor',
+          sourceSessionId: 'a-anchor',
+          sourceAgent: 'codex-agent',
+          targetConversationId: id,
+          targetAgent: 'station',
+          ownerUserId: A,
+          branchPointTurnId: 'revoke-fork-turn',
+          sourceTitle: 'Source',
+          createdAt: at(),
+          messages: [],
+        });
+        store.reserveConversationForkContext(snapshot);
+        await memory.createConversation({
+          id,
+          userId: A,
+          resourceId: 'default',
+          title: snapshot.title,
+          metadata: {},
+        });
+        const before = await memory.getConversation(id);
+        const retire =
+          orchestration.deleteUnstartedConversationForkContext.bind(
+            orchestration,
+          );
+        const boundary = vi
+          .spyOn(orchestration, 'deleteUnstartedConversationForkContext')
+          .mockImplementationOnce(async (...args) => {
+            if (!afterRetirement) current = false;
+            const result = await retire(...args);
+            if (afterRetirement) current = false;
+            return result;
+          });
+        try {
+          await expect(
+            runCli([
+              'conversation',
+              'delete',
+              'station',
+              id,
+              '--confirm',
+              `--api-base=${base}`,
+              `--credential=${OPERATOR_CREDENTIAL}`,
+            ]),
+          ).rejects.toMatchObject(
+            afterRetirement
+              ? { status: 409, code: 'owned_conversation_deletion_incomplete' }
+              : { status: 404, code: 'owned_conversation_not_found' },
+          );
+          expect(boundary).toHaveBeenCalledOnce();
+          expect(store.conversationForkContextReference(id)?.state).toBe(
+            afterRetirement ? 'deleted' : 'prepared',
+          );
+          await expect(memory.getConversation(id)).resolves.toEqual(before);
+        } finally {
+          boundary.mockRestore();
+        }
+      },
+    );
 
     test('searches title and content, misses, filters agent/project, bounds results and preserves read authorization', async () => {
       const { tool, asTool, startSession, p1, memory } = await setup();

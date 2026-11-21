@@ -14,6 +14,7 @@ import type {
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
+import { evaluateFlowGate } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -698,20 +699,16 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
  * already acknowledged; Open did not, and that asymmetry was the bug.
  */
 describe('AttentionCard — opening acknowledges (#3203)', () => {
-  test('opening a failed session acknowledges it, then navigates', async () => {
+  test('opening a failed session navigates in the app, then acknowledges it', async () => {
     renderCard(baseFailure());
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-    // The navigation is deferred until the ack resolves — otherwise the
-    // destination's own `/api/attention` read races the write it depends on.
-    expect(navigate).not.toHaveBeenCalled();
-    await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(
-        '/?surface=activity&session=thread-boom',
-      ),
+    // In-app navigation unloads nothing, so opening does not wait for the ack.
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=thread-boom',
     );
+    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
   });
 
   test('a failing acknowledgement still opens the session', async () => {
@@ -727,7 +724,7 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     );
   });
 
-  test('an approval row still opens with the plain anchor and acknowledges nothing', () => {
+  test('an approval row opens in the app and acknowledges nothing', () => {
     // Only `session-failed` is acknowledgeable; the projection ignores an ack
     // recorded against any other kind, so recording one here would be a write
     // that changes nothing while claiming the row was seen.
@@ -736,7 +733,7 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     screen.getByRole('link', { name: 'Open session' }).click();
 
     expect(acknowledgeAsync).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith('/projects/demo?chat=thread-1');
   });
 });
 
@@ -931,6 +928,26 @@ describe('AttentionCard — Flow gate cards and the device Flow preview', () => 
     ]),
   );
 
+  test('explains an explicitly reopened run using the evaluation response', async () => {
+    vi.mocked(evaluateFlowGate).mockResolvedValueOnce({
+      reopened: {
+        gateId: 'verify',
+        verdict: 'route-back',
+        missing: ['merge-readiness'],
+      },
+    });
+    renderCard(blocked);
+    fireEvent.click(screen.getByRole('button', { name: 'Re-evaluate' }));
+    expect(
+      await screen.findByText(
+        'The completed run reopened after verify returned route-back.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Evidence still needed for merge-readiness.'),
+    ).toBeTruthy();
+  });
+
   test.each(cases)(
     '$item.kind: with the Flow preview off, offers no flow console link but keeps the card and its action',
     ({ item, action }) => {
@@ -1020,7 +1037,7 @@ describe('AttentionCard — pull request feedback needs you', () => {
     );
     expect(
       [...(actions?.children ?? [])].map((element) => element.textContent),
-    ).toEqual(['Send again', 'Open pull request', 'Turn off auto-fix']);
+    ).toEqual(['Send again', 'Open pull request', 'Turn off agent feedback']);
     expect(screen.getByText('Agent feedback')).toBeTruthy();
     expect(screen.getByText('#42 still failing after 3 rounds')).toBeTruthy();
     const send = screen.getByRole('button', { name: 'Send again' });
@@ -1058,14 +1075,14 @@ describe('AttentionCard — pull request feedback needs you', () => {
       '/projects/p?chat=session-a&dock=open',
     );
     expect(open.className).toContain('notice-action--primary');
-    expect(buttons()).toContain('Turn off auto-fix');
+    expect(buttons()).toContain('Turn off agent feedback');
   });
 
   test('Turn off turns this pull request off in its own chat', async () => {
     renderCard(feedbackItem());
     await act(async () =>
       fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off auto-fix' }),
+        screen.getByRole('button', { name: 'Turn off agent feedback' }),
       ),
     );
     expect(feedbackSdk.turnOff).toHaveBeenCalledWith(
@@ -1081,7 +1098,7 @@ describe('AttentionCard — pull request feedback needs you', () => {
     renderCard(feedbackItem({ viewerMayChange: false }));
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
     expect(
-      screen.queryByRole('button', { name: 'Turn off auto-fix' }),
+      screen.queryByRole('button', { name: 'Turn off agent feedback' }),
     ).toBeNull();
     expect(screen.getByTestId('attention-pr-feedback-remedy').textContent).toBe(
       "Change this from the chat on this Station's owner device.",

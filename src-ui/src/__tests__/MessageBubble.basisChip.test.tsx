@@ -205,11 +205,14 @@ describe('MessageBubble answer Basis chip', () => {
 
     const chip = await screen.findByRole('button', { name: CHIP });
     // In the answer's own footer, beside (never inside) the hover-revealed
-    // action row: no menu or dialog to open first (#926 amendment).
+    // action row: no menu or dialog to open first (#926 amendment). It comes
+    // first in the DOM, so keyboard focus reaches the visible chip before
+    // the hidden row; the Chromium check below proves it is drawn last.
     expect(chip.parentElement?.classList.contains('turn-footer__bar')).toBe(
       true,
     );
     expect(chip.closest('.turn-footer__actions')).toBeNull();
+    expect(chip.previousElementSibling).toBeNull();
     expect(
       chip.nextElementSibling?.classList.contains('turn-footer__actions'),
     ).toBe(true);
@@ -354,6 +357,9 @@ describe('MessageBubble answer Basis chip', () => {
       });
       try {
         renderTranscript([answer('turn-7')]);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Answer details and actions' }),
+        );
         fireEvent.click(await screen.findByRole('button', { name: CHIP }));
 
         const occurrence = renderHook(() =>
@@ -378,6 +384,9 @@ describe('MessageBubble answer Basis chip', () => {
       mocks.realLauncher = true;
       renderTranscript([answer('turn-7')]);
 
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Answer details and actions' }),
+      );
       fireEvent.click(await screen.findByRole('button', { name: CHIP }));
 
       const dialog = await screen.findByRole('dialog', { name: 'Basis' });
@@ -393,14 +402,20 @@ describe('MessageBubble answer Basis chip', () => {
       });
     });
 
-    it('sits in the answer meta row beside copy, one tap from the answer', async () => {
+    it('opens the exact answer from its details sheet', async () => {
       mocks.isMobile = true;
-      const { container } = renderTranscript([answer('turn-7')]);
+      renderTranscript([answer('turn-7')]);
 
-      const chip = await screen.findByRole('button', { name: CHIP });
-      expect(container.querySelector('.message-meta')?.contains(chip)).toBe(
-        true,
+      expect(screen.queryByRole('button', { name: CHIP })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Answer details and actions' }),
       );
+      const chip = await screen.findByRole('button', { name: CHIP });
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Answer details and actions' }),
+        ).getByRole('button', { name: CHIP }),
+      ).toBe(chip);
       fireEvent.click(chip);
       expectOpenedBasisFor('turn-7', chip);
     });
@@ -468,6 +483,7 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
             '.turn-footer__actions',
           )!;
           const box = chip.getBoundingClientRect();
+          const rowBox = row.getBoundingClientRect();
           const hit = document.elementFromPoint(
             box.x + box.width / 2,
             box.y + box.height / 2,
@@ -477,6 +493,8 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
             rowVisible: row.checkVisibility({ opacityProperty: true }),
             hitIsChip: hit === chip,
             height: Math.round(box.height),
+            // Drawn at the bar's end, past the hidden row's reserved space.
+            drawnAfterRow: box.left >= rowBox.right,
           };
         });
         expect(result).toEqual({
@@ -484,6 +502,7 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
           rowVisible: false,
           hitIsChip: true,
           height: 28,
+          drawnAfterRow: true,
         });
       } finally {
         await page.close();

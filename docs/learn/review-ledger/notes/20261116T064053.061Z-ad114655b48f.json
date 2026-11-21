@@ -1,0 +1,7 @@
+{
+  "revision": "1097c1750295e637eb412d77b2aed8c8eef12755",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The still-running caution now sits as a row under the origin at the top of the content area, not in the title bar's action slot, and focus returns to Continue in Station on Not now or a failed Continue anyway; checked against AttachedSessionDetail.tsx, the header-slot placement test and the 1440/390 renders.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

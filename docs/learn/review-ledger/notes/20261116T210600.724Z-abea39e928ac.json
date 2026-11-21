@@ -1,0 +1,9 @@
+{
+  "revision": "b94889a678d4cc312280ac4d58fa922cdd6e5e35",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md gained a projectId paragraph in the scheduler create route section; the terminal and integration claims citing api.md are in other sections and are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md gained a projectId paragraph in the scheduler create route section; the terminal and integration claims citing api.md are in other sections and are unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -10,9 +10,9 @@ import {
   sessionFailureCause,
 } from '../../utils/attention';
 import {
-  acknowledgeThenOpen,
   isPlainLeftClick,
   navigateToAttentionTarget,
+  openThenAcknowledge,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
 import {
@@ -38,6 +38,7 @@ export function AttentionHistoryItem({
   isDismissPending,
   onAction,
   onClose,
+  beforeAcknowledge,
   onDismiss,
   context = [],
   feedback,
@@ -48,6 +49,7 @@ export function AttentionHistoryItem({
   isDismissPending: boolean;
   onAction: (notificationId: string, actionId: string) => void;
   onClose: () => void;
+  beforeAcknowledge?: () => void;
   onDismiss: (notificationId: string) => void;
   /** Station · Project · Chat · Agent · Engine, from `useInboxContext`. */
   context?: readonly InboxContextPart[];
@@ -90,7 +92,10 @@ export function AttentionHistoryItem({
               id: 'dismiss',
               label: ACKNOWLEDGE_ATTENTION_ACTION.label,
               disabled: acknowledge.isPending,
-              onSelect: () => acknowledge.mutate(item.id),
+              onSelect: () => {
+                beforeAcknowledge?.();
+                acknowledge.mutate(item.id);
+              },
             },
           ]
         : [];
@@ -225,7 +230,7 @@ function FailedSessionOpenLink({
         onClose();
         if (!isPlainLeftClick(event)) return;
         event.preventDefault();
-        void acknowledgeThenOpen({
+        void openThenAcknowledge({
           acknowledge: () => mutation.mutateAsync(item.id),
           navigate: () => navigateToAttentionTarget(href),
         });

@@ -307,6 +307,21 @@ function plan(body) {
         },
       ],
     });
+  // Reasoning before the reply, as a reasoning model streams it
+  // (`reasoning_content`): OpenCode numbers reasoning and text parts apart.
+  if (user.includes('DO_THINK_SLOW'))
+    return {
+      kind: 'text',
+      reasoning: ['Thinking ', 'it ', 'over.'],
+      chunks: Array.from({ length: 20 }, (_, i) => `t${i} `),
+      delay: 150,
+    };
+  if (user.includes('DO_THINK'))
+    return {
+      kind: 'text',
+      reasoning: ['Thinking ', 'it ', 'over.'],
+      chunks: ['thought ', 'reply'],
+    };
   if (user.includes('DO_SLOW'))
     return {
       kind: 'text',
@@ -377,7 +392,13 @@ function startMockModel() {
                 },
               ],
             }
-          : { role: 'assistant', content: p.chunks.join('') };
+          : {
+              role: 'assistant',
+              content: p.chunks.join(''),
+              ...(p.reasoning
+                ? { reasoning_content: p.reasoning.join('') }
+                : {}),
+            };
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -450,6 +471,19 @@ function startMockModel() {
         choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
       });
     } else {
+      for (const chunk of p.reasoning ?? []) {
+        if (aborted) return;
+        send({
+          ...base,
+          choices: [
+            {
+              index: 0,
+              delta: { reasoning_content: chunk },
+              finish_reason: null,
+            },
+          ],
+        });
+      }
       for (const chunk of p.chunks) {
         if (aborted) return;
         send({
@@ -1533,6 +1567,53 @@ S['plan-deny'] = async (rec) => {
 // is 50), then the reads a reconnect makes, newest first, following each
 // page's `cursor.next` to the start. Their shape (`data`, `cursor.previous`,
 // `cursor.next`) is what the replay pages a synthesized history with.
+// A reply after reasoning: both parts of the one assistant message are
+// `ordinal: 0`, since OpenCode numbers each kind of part on its own.
+S.reasoning = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'reasoning');
+  await rec.api('POST', `/api/session/${s}/prompt`, { text: 'DO_THINK now' });
+  await A.waitFor(is('session.execution.succeeded', s));
+  const history = await rec.api('GET', `/api/session/${s}/message?order=asc`);
+  const assistant = (history.json?.data ?? []).find(
+    (m) => m.type === 'assistant',
+  );
+  const started = A.events
+    .filter(
+      (e) =>
+        e.data?.sessionID === s &&
+        (e.type === 'session.reasoning.started' ||
+          e.type === 'session.text.started'),
+    )
+    .map((e) => `${e.type}#${e.data.ordinal}`);
+  rec.finding(
+    `reasoning: assistant content ${JSON.stringify((assistant?.content ?? []).map((part) => part.type))}; live parts ${started.join(', ')}`,
+  );
+};
+
+// The feed drops while a reply that followed reasoning streams: history read
+// on reconnect lists the reasoning part before the text it must complete.
+S['reasoning-reconnect'] = async (rec) => {
+  const A = await rec.tap('A');
+  const s = await createSession(rec, 'reasoning-reconnect');
+  await rec.api('POST', `/api/session/${s}/prompt`, {
+    text: 'DO_THINK_SLOW stream',
+  });
+  await A.waitFor(is('session.text.delta', s));
+  await sleep(800);
+  A.close();
+  await sleep(2000);
+  const B = await rec.tap('B');
+  await rec.api('GET', '/api/session/active');
+  await rec.api('GET', `/api/session/${s}/message?order=asc`);
+  await rec.api('GET', `/api/session/${s}/permission`);
+  await rec.api('GET', `/api/session/${s}/form`);
+  await rec.api('GET', `/api/session/${s}/inbox`);
+  await B.waitFor(is('session.execution.succeeded', s), 30_000);
+  await rec.api('GET', `/api/session/${s}`);
+  await rec.api('GET', `/api/session/${s}/message?order=asc`);
+};
+
 S.history = async (rec) => {
   const A = await rec.tap('A');
   const s = await createSession(rec, 'history');
@@ -1857,6 +1938,8 @@ const ORDER = [
   'move-denied',
   'subagent-gap',
   'move-gap',
+  'reasoning',
+  'reasoning-reconnect',
 ];
 // Captured separately, with `--config plain --only plan-deny`.
 const PLAIN_ONLY = new Set(['plan-deny']);

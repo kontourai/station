@@ -45,7 +45,7 @@ export function registerAppearanceTools(server: StationControlToolRegistry) {
   );
   server.tool(
     'propose_appearance',
-    'Propose a custom appearance for the person: a name, an optional palette per mode (dark, light) and optional CSS. Requires get_appearance’s revision. You cannot see the result, and nothing changes until the person previews it at /appearance and keeps it. Propose small changes, ask the person to preview, then read get_appearance for the render report. Never claim it was applied.',
+    'Propose a custom appearance for the person: a name, an optional palette per mode (dark, light) and optional CSS. Requires get_appearance’s revision. You cannot see the result, and nothing changes until the person previews it in chat or at /appearance and keeps it. Propose small changes, ask the person to preview, then read get_appearance for the render report. Never claim it was applied.',
     {
       revision: z.string().min(1),
       name: z.string().min(1).max(CUSTOM_APPEARANCE_NAME_MAX_LENGTH),
@@ -54,8 +54,25 @@ export function registerAppearanceTools(server: StationControlToolRegistry) {
         .strict()
         .optional(),
       css: z.string().max(CUSTOM_APPEARANCE_CSS_MAX_LENGTH).optional(),
+      visual: z
+        .object({
+          background: z
+            .object({
+              dataUrl: z.string(),
+              size: z.enum(['cover', 'contain', 'tile']),
+              position: z.enum(['center', 'top', 'bottom', 'left', 'right']),
+              dim: z.number().min(0).max(1),
+            })
+            .strict()
+            .optional(),
+          panelOpacity: z.number().min(0.5).max(1).optional(),
+          radius: z.number().min(0).max(24).optional(),
+          fontSize: z.number().min(12).max(20).optional(),
+        })
+        .strict()
+        .optional(),
     },
-    async ({ revision, name, palette, css }) => {
+    async ({ revision, name, palette, css, visual }) => {
       const result = await toToolEnvelope(
         proposeCustomAppearance(
           resolveControlApiBase(),
@@ -67,6 +84,7 @@ export function registerAppearanceTools(server: StationControlToolRegistry) {
               // The route parses roles against the contract; this is its input.
               palette: (palette ?? {}) as CustomAppearance['palette'],
               css: css ?? '',
+              ...(visual ? { visual } : {}),
             },
           },
           controlRequestOptions(),

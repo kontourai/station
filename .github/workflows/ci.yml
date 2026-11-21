@@ -1,5 +1,5 @@
 name: "PR: CI"
-run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}
+run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || github.event_name == 'pull_request_target' && github.event.action == 'auto_merge_enabled' && 'PR armed' || 'Source verification' }}
 on:
   push:
     branches: [main]
@@ -7,7 +7,11 @@ on:
   # with a self-hosted job before these conditions are evaluated.
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, edited]
+    # `auto_merge_enabled` (run-name `PR armed`) runs the heavy checks only
+    # when vars.STATION_PR_HEAVY_CHECKS is `when-armed`; otherwise every job
+    # skips and the source policy ignores the run
+    # (scripts/pr-heavy-checks-decision.mjs).
+    types: [opened, synchronize, reopened, edited, auto_merge_enabled]
   # Merge queue evaluates the synthesized latest-main candidate rather than
   # asking each contributor to chase a moving main branch locally.
   merge_group:
@@ -92,14 +96,21 @@ jobs:
   # the newest attempt, so that supersedes the deferred verdict.
   pr-admission:
     name: PR source admission
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
+      # The heavy-check decision reads the head's Source verification policy
+      # status when the pull request is armed (commits/{sha}/status), which
+      # GitHub lists under "Commit statuses" read.
+      statuses: read
     outputs:
       admitted: ${{ steps.admit.outputs.admitted }}
+      # Only an explicit `false` defers the heavy checks; an empty output (this
+      # job skipped, failed or not started) runs them.
+      heavy: ${{ steps.heavy.outputs.heavy }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -114,6 +125,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/pr-source-admission.mjs
+      # Trusted base code, no candidate checkout. Prints its reason; any
+      # failure decides heavy.
+      - id: heavy
+        name: Decide whether the heavy checks run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATION_PR_HEAVY_CHECKS: ${{ vars.STATION_PR_HEAVY_CHECKS }}
+        run: node scripts/pr-heavy-checks-decision.mjs
 
   # #4748: the pinned actionlint archive used to be fetched from GitHub's
   # release CDN by every consumer, and a 504 there failed merge-queue shards
@@ -130,7 +149,7 @@ jobs:
   actionlint-artifact:
     name: Pinned actionlint artifact
     needs: [classify, pr-admission]
-    if: ${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository)) }}
+    if: ${{ always() && !cancelled() && ((needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')) || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository)) }}
     permissions:
       contents: read
     runs-on: ubuntu-24.04
@@ -200,12 +219,12 @@ jobs:
     needs: [classify, pr-admission]
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
       # Head sha in the identity for the same reason as fast-checks (#1445).
-      group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
+      group: ci-fast-plan-${{ github.event_name }}${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-24.04
     # The legacy path below runs the whole ci:fast lane here, so the fence
@@ -352,7 +371,7 @@ jobs:
 
   fast-checks-shard:
     name: fast-checks shard ${{ matrix.shard }}
-    needs: [fast-checks-plan, actionlint-artifact]
+    needs: [pr-admission, fast-checks-plan, actionlint-artifact]
     # The status function is load-bearing (#2709 re-land). Without one,
     # GitHub prefixes success(), which is false when ANY ancestor did not
     # succeed -- and `classify` is skipped on every pull_request_target, so
@@ -365,7 +384,8 @@ jobs:
     # under GitHub's job-status semantics for every event. The pinned actionlint
     # artifact must also have succeeded (#4748): a shard never falls back to
     # fetching the archive itself.
-    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}
+    # Deferred only on an explicit `heavy=false` (STATION_PR_HEAVY_CHECKS).
+    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}
     permissions:
       contents: read
     concurrency:
@@ -487,15 +507,14 @@ jobs:
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 15
 
-      # Same provisioning as full-regression: the selection can include
-      # tests that exec zsh (ops/nightly/macos-build-only-cleanup.test.mjs),
-      # and ubuntu-22.04 ships without it.
+      # Use the exact slice's Linux fixture inventory. Older candidate
+      # slicers omit requires-zsh and keep the previous preflight.
       # Transient apt mirror or DNS failures (`Temporary failure resolving
       # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
       # and 30 seconds of backoff inside the five-minute step bound. The last
       # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
-        if: ${{ steps.slice.outputs.empty == 'false' }}
+        if: ${{ steps.slice.outputs.empty == 'false' && steps.slice.outputs.requires-zsh != 'false' }}
         timeout-minutes: 5
         env:
           BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
@@ -504,7 +523,7 @@ jobs:
           set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
             bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
-            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --retry 2 --retry-max-time 40 \
               "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
@@ -592,7 +611,7 @@ jobs:
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
     # The pinned actionlint artifact must have succeeded (#4748); statics never
     # falls back to fetching the archive itself.
-    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && needs.actionlint-artifact.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -732,11 +751,14 @@ jobs:
         run: npm run performance:workspace:smoke
 
       # Keep critical browser journeys inside the existing required check.
+      # Heavy: skipped only on an explicit pr-admission `heavy=false`
+      # (STATION_PR_HEAVY_CHECKS=when-armed, unarmed pull request).
       # The separate manual diagnostic below depends on full-regression and
       # cannot supply pre-merge evidence when that manual job is skipped.
       # Its clean instance startup runs build:ui, including the candidate bundle
       # budget, before serving that same fresh build. Do not build it twice.
       - name: Verify critical browser journeys before merge
+        if: ${{ needs.pr-admission.outputs.heavy != 'false' }}
         env:
           STATION_UI_BUNDLE_BUDGET: enforce
           VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE: '0'
@@ -773,7 +795,7 @@ jobs:
 
   fast-checks:
     name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'fast-checks (metadata only)' || 'fast-checks' }}
-    needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
+    needs: [classify, pr-admission, fast-checks-plan, fast-checks-shard, fast-checks-statics]
     # Source execution aggregate; the trusted source-policy reconciler owns
     # admission independently of metadata-only check-suite replacement.
     # `always()` without `!cancelled()`, deliberately: a
@@ -782,7 +804,7 @@ jobs:
     # Running on cancellation instead fails it on the cancelled parts. The
     # event clause matches the part jobs', so pushes that are not heavy and
     # fork pull requests (fork-smoke) skip it exactly as before (#2709).
-    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -792,7 +814,7 @@ jobs:
       # request (#1445): without it, runs for one PR at different heads share
       # a group and `cancel-in-progress` resolves the collision by arrival
       # order, which is not commit recency.
-      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
+      group: ci-fast-${{ github.event_name }}${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -816,7 +838,7 @@ jobs:
           LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
           case "$LEGACY" in
             false)
-              echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or (.["fast-checks-plan"].outputs.empty == "true" and .["fast-checks-shard"].result == "skipped"))' > /dev/null
+              echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or ((.["fast-checks-plan"].outputs.empty == "true" or .["pr-admission"].outputs.heavy == "false") and .["fast-checks-shard"].result == "skipped"))' > /dev/null
               ;;
             true)
               echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
@@ -848,7 +870,7 @@ jobs:
           path: ${{ runner.temp }}/fast-checks-plan
 
       - name: Download fast-checks shard receipts
-        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.fast-checks-plan.outputs.empty != 'true' }}
+        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: fast-checks-receipt-*-${{ github.run_id }}-*
@@ -858,7 +880,7 @@ jobs:
       # a shard that ran anything but its own slice fails the check.
       - name: Verify fast-checks shard receipts
         id: verify
-        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' }}
+        if: ${{ needs.fast-checks-plan.outputs.legacy != 'true' && needs.pr-admission.outputs.heavy != 'false' }}
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"
@@ -870,6 +892,19 @@ jobs:
         if: ${{ steps.verify.outputs.provisional == 'true' }}
         run: echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"
 
+      # The source policy reads these two step names and conclusions from the
+      # jobs API: a head whose newest run deferred the heavy checks is
+      # reported pending, never verified (scripts/source-verification-policy.mjs).
+      # The deferral marker also runs after a failure, so a failed cheap-only
+      # run cannot take a verified head's success away.
+      - name: Record heavy checks deferred until armed
+        if: ${{ always() && needs.pr-admission.outputs.heavy == 'false' }}
+        run: echo "heavy checks deferred (STATION_PR_HEAVY_CHECKS=when-armed); they run once the pull request is armed"
+
+      - name: Record heavy checks ran
+        if: ${{ needs.pr-admission.outputs.heavy != 'false' }}
+        run: echo "heavy checks ran on this head"
+
   # Merge groups publish in-run too: the post-run workflow_run reconcile
   # waited for a runner after the whole run and was often the last required
   # context. That reconcile stays the recovery publisher; both read the same
@@ -879,7 +914,7 @@ jobs:
   source-policy:
     name: Publish source admission
     needs: [fast-checks, fork-smoke]
-    if: ${{ always() && (github.event_name == 'merge_group' && !cancelled() || github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base)) }}
+    if: ${{ always() && (github.event_name == 'merge_group' && !cancelled() || github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed')) }}
     permissions: { contents: read, actions: read, statuses: write }
     uses: ./.github/workflows/source-verification-policy.yml
     with:
@@ -887,8 +922,8 @@ jobs:
 
   delivery-plan:
     name: Plan affected delivery checks
-    needs: [fast-checks, fork-smoke, source-policy, repo-scans, ui-bundle-delta, pr-title]
-    if: ${{ always() && !cancelled() && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    needs: [pr-admission, fast-checks, fork-smoke, source-policy, repo-scans, ui-bundle-delta, pr-title]
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && (needs.fast-checks.result == 'success' || needs.fork-smoke.result == 'success') && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions: { contents: read, pull-requests: read }
@@ -934,7 +969,7 @@ jobs:
     # This check run is diagnostic. The required context is a mutable commit
     # status so a corrected title can replace failure on the same source head.
     name: PR title status publisher
-    if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'pull_request_target' && github.event.action != 'auto_merge_enabled' || github.event_name == 'merge_group' }}
     permissions:
       contents: read
       pull-requests: read
@@ -1011,7 +1046,9 @@ jobs:
     # minutes. Not a required check. The script scopes itself first (a PR
     # that touches no UI build input ends in seconds) and exits zero once
     # started, naming the reason in a notice when it cannot measure.
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    # Heavy: under STATION_PR_HEAVY_CHECKS=when-armed it waits for arming.
+    needs: pr-admission
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
@@ -1050,7 +1087,7 @@ jobs:
     # ephemeral hosted runner, never to the persistent self-hosted fleet. The
     # trusted actionlint-artifact job (no checkout, no candidate code) must
     # have succeeded (#4748); fork-smoke never fetches the archive itself.
-    if: ${{ always() && !cancelled() && needs.actionlint-artifact.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
+    if: ${{ always() && !cancelled() && needs.actionlint-artifact.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
     runs-on: ubuntu-24.04
@@ -1213,7 +1250,10 @@ jobs:
     # verdict: a red here is feedback that does not block landing. The merge
     # queue runs only a bounded selection, not these suites, so a violation
     # that lands is caught next by post-landing full qualification.
-    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}
+    # Cheap under STATION_PR_HEAVY_CHECKS: every push runs it (about 4 runner-
+    # minutes), because nothing before landing would run it otherwise, and an
+    # arming run skips it since the head's push run already scanned.
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:

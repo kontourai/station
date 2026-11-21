@@ -1,0 +1,61 @@
+{
+  "revision": "ef76f5c07b255bbf885de6c10b48a7f95b514255",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Delta is one re-export (AdoptionSourceActiveError) and passing command.continueWhileSourceActive into adoption.adopt; checked each citing page's claims about the service and none describe adoptSession arguments or adoption refusals beyond what session-api.md now states.","inputs":["src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

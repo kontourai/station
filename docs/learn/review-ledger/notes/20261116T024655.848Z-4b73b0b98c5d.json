@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added the same-key join, existing-continuation retry and read-model assertions; the module map's description of this route evidence is unchanged.","inputs":["src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts"]}
+  ]
+}

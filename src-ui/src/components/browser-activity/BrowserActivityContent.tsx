@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import type { BrowserActivityScope } from '../chat/BrowserActivityContext';
 import { classifyToolCallRun } from '../chat/tool-call-groups';
 import { isToolCallAwaitingApproval } from '../chat/tool-call-labels';
 import type { ToolCallLike, ToolCallRun } from '../chat/tool-call-runs';
+import { useRunWithObservedRunningCalls } from '../chat/useObservedRunningToolCalls';
 import { InlineBrowserActivity } from './InlineBrowserActivity';
 
 export default function BrowserActivityContent({
@@ -20,10 +21,16 @@ export default function BrowserActivityContent({
   summaryCalls: ToolCallLike[];
   renderRow: (index: number) => ReactNode;
 }) {
-  const group = classifyToolCallRun({
-    ...run,
-    calls: summaryCalls.map((part, index) => ({ part, index })),
-  });
+  const summaryRun = useMemo(
+    () => ({
+      ...run,
+      calls: summaryCalls.map((part, index) => ({ part, index })),
+    }),
+    [run, summaryCalls],
+  );
+  // A call still running in the background is counted as running, not as
+  // "no result", exactly as the tool batch counts it.
+  const group = classifyToolCallRun(useRunWithObservedRunningCalls(summaryRun));
   const outcomes = [
     group.failedCount > 0 ? `${group.failedCount} failed` : null,
     group.unresolvedCount > 0

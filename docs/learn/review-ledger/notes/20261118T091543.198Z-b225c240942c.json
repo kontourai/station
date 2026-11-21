@@ -1,0 +1,53 @@
+{
+  "revision": "7a21d2eef72c1a0d4c6d519b42aebddf2f441100",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed D4 against the authorized Project conversation index, the attention route and real approval owner. The sidebar counts the Projection's pending facts per Project and mounts the existing channel and Task-room list in the collapsed rail. Ordinary Project activation, row reorder, and member routing retain their current owners.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ProjectSidebar.test.tsx","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Traced shell and navigation declarations through the sidebar. The badge reads the authorized Station projection with an authority-keyed cache and omits the count until that scope is current. Project and Board navigation, ordering and drawer focus retain their owners.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Traced shell and navigation declarations through the sidebar. The badge reads the authorized Station projection with an authority-keyed cache and omits the count until that scope is current. Project and Board navigation, ordering and drawer focus retain their owners.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Traced shell and navigation declarations through the sidebar. The badge reads the authorized Station projection with an authority-keyed cache and omits the count until that scope is current. Project and Board navigation, ordering and drawer focus retain their owners.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Traced shell and navigation declarations through the sidebar. The badge reads the authorized Station projection with an authority-keyed cache and omits the count until that scope is current. Project and Board navigation, ordering and drawer focus retain their owners.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Traced shell and navigation declarations through the sidebar. The badge reads the authorized Station projection with an authority-keyed cache and omits the count until that scope is current. Project and Board navigation, ordering and drawer focus retain their owners.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Traced shell and navigation declarations through the sidebar. The badge reads the authorized Station projection with an authority-keyed cache and omits the count until that scope is current. Project and Board navigation, ordering and drawer focus retain their owners.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed expanded views, collapsed rail and mobile drawer. Both lists reuse the Project-conversation caller. The rail button names the Project and its attention state, and the moved view chips retain their keyboard and navigation contracts after loading.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed expanded views, collapsed rail and mobile drawer. Both lists reuse the Project-conversation caller. The rail button names the Project and its attention state, and the moved view chips retain their keyboard and navigation contracts after loading.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Inspected collapsed rail, expanded map and 390px drawer renders. The caution badge is distinct from live work, keeps its accessible wording, and leaves the rail target usable. The mobile drawer capture also records four pre-existing background overlaps per theme.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.css"]},
+
+    {"path":"docs/design/placement.md","note":"The historical eager entry-weight measurement now has a current note explaining that layout chips load only when views open. Its own menu and ownership remain unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Traced the exact live orchestration request and its authority-filtered Session to the Project slug. Generic notification metadata is not the Project source. Browser coverage invokes the existing approval notification action and observes the Project count disappear when the request resolves.","inputs":["src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Traced the exact live orchestration request and its authority-filtered Session to the Project slug. Generic notification metadata is not the Project source. Browser coverage invokes the existing approval notification action and observes the Project count disappear when the request resolves.","inputs":["src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced the exact live orchestration request and its authority-filtered Session to the Project slug. Generic notification metadata is not the Project source. Browser coverage invokes the existing approval notification action and observes the Project count disappear when the request resolves.","inputs":["src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The optional Project fixture uses the real notification and attention routes, approval provider, event bus and durable request store with a controlled engine. Existing no-Project inspector cases preserve their original setup. The fixture does not establish hosted or external-provider qualification.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The optional Project fixture uses the real notification and attention routes, approval provider, event bus and durable request store with a controlled engine. Existing no-Project inspector cases preserve their original setup. The fixture does not establish hosted or external-provider qualification.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The optional Project fixture uses the real notification and attention routes, approval provider, event bus and durable request store with a controlled engine. Existing no-Project inspector cases preserve their original setup. The fixture does not establish hosted or external-provider qualification.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The optional Project fixture uses the real notification and attention routes, approval provider, event bus and durable request store with a controlled engine. Existing no-Project inspector cases preserve their original setup. The fixture does not establish hosted or external-provider qualification.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The optional Project fixture uses the real notification and attention routes, approval provider, event bus and durable request store with a controlled engine. Existing no-Project inspector cases preserve their original setup. The fixture does not establish hosted or external-provider qualification.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the six new Project sidebar scenes. They use the current rail and phone drawer, with both themes and a known server-shaped pending item. Four existing navigation scenes remain covered. Inherited mobile background overlap findings are recorded only on the new drawer screens.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the six new Project sidebar scenes. They use the current rail and phone drawer, with both themes and a known server-shaped pending item. Four existing navigation scenes remain covered. Inherited mobile background overlap findings are recorded only on the new drawer screens.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the six new Project sidebar scenes. They use the current rail and phone drawer, with both themes and a known server-shaped pending item. Four existing navigation scenes remain covered. Inherited mobile background overlap findings are recorded only on the new drawer screens.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The existing expanded and collapsed sidebar tests now locate the labelled Project control with its appended visible initials. Their Project view and focus claims are unchanged.","inputs":["src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"The Project row's existing Board/keyboard checks wait for the real on-demand chip list and locate the collapsed button with its initials. The route, click and Escape assertions still exercise the same owner.","inputs":["src-ui/src/__tests__/ProjectSidebarRow.test.tsx"]}
+  ]
+}

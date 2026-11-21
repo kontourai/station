@@ -193,6 +193,38 @@ describe('handleNotificationDeliveredToast (station#1100 review fix, HIGH)', () 
 describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', () => {
   beforeEach(() => show.mockReset());
 
+  test('a silent envelope stays out of toast and sound while an audible delivery still presents', async () => {
+    playDeliveredNotificationSound.mockClear();
+    const envelope = {
+      v: 1,
+      source: { kind: 'system', subsystem: 'fixture' },
+      audience: { kind: 'owner' },
+      urgency: 'failed',
+      target: { kind: 'session', sessionId: 'another-session' },
+    };
+    handleNotificationDeliveredToast({
+      id: 'silent-history-1',
+      category: 'agent-failed',
+      title: 'Silent record',
+      metadata: { envelope: { ...envelope, interrupt: 'silent' } },
+    });
+    handleNotificationDeliveredToast({
+      id: 'audible-history-1',
+      category: 'agent-failed',
+      title: 'Other chat failed',
+      metadata: { envelope: { ...envelope, interrupt: 'default' } },
+    });
+    await vi.waitFor(() => {
+      expect(show.mock.calls.map(([title]) => title)).toContain(
+        'Other chat failed',
+      );
+    });
+    expect(show.mock.calls.map(([title]) => title)).toEqual([
+      'Other chat failed',
+    ]);
+    expect(playDeliveredNotificationSound).toHaveBeenCalledTimes(1);
+  });
+
   test('adds the agent attribution and an Open action', async () => {
     handleNotificationDeliveredToast({
       id: 'n-1',
@@ -200,6 +232,7 @@ describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', (
       title: 'Tests pass on fix-login',
       body: 'All green.',
       metadata: {
+        chatTitle: 'Fix login',
         envelope: {
           v: 1,
           source: {
@@ -222,7 +255,7 @@ describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', (
     expect(actions?.map((action: { label: string }) => action.label)).toEqual([
       'Open',
     ]);
-    expect(metadata.detail).toBe('from builder · session session-1');
+    expect(metadata.attribution).toBe('from builder · Fix login');
   });
 });
 

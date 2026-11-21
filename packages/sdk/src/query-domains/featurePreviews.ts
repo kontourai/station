@@ -1,5 +1,5 @@
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { type ApiRequestScope, authenticatedFetch } from '../client/http';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -16,9 +16,13 @@ export interface FeaturePreview {
 
 export async function fetchFeaturePreviews(
   apiBase?: string,
+  requestScope?: ApiRequestScope,
 ): Promise<FeaturePreview[]> {
   const base = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(`${base}/api/feature-previews`);
+  const response = await authenticatedFetch(
+    `${base}/api/feature-previews`,
+    requestScope ? { requestScope } : undefined,
+  );
   const result = (await response.json()) as {
     success: boolean;
     data?: FeaturePreview[];
@@ -57,10 +61,15 @@ export async function updateFeaturePreview(
 export function useFeaturePreviewsQuery(
   apiBase?: string,
   config?: QueryConfig<FeaturePreview[]>,
+  requestScope?: ApiRequestScope,
 ) {
   return useApiQuery(
-    ['feature-previews', apiBase ?? 'default'],
-    () => fetchFeaturePreviews(apiBase),
+    [
+      'feature-previews',
+      apiBase ?? 'default',
+      ...(requestScope ? [requestScope.authorityKey] : []),
+    ],
+    () => fetchFeaturePreviews(apiBase, requestScope),
     config,
   );
 }

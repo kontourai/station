@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the optional findOpenPullRequestsByHead read; existing provider members unchanged; contracts.md documents it.","inputs":["packages/contracts/src/pull-request-provider.ts"]}
+  ]
+}

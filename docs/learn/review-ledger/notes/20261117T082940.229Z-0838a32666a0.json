@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the Project memory routes, the usage projectSlug filter and project grouping, and the Project brief in ambient context; checked against project-memory-routes.ts, project-memory-tool-routes.ts, analytics.ts and orchestration first-turn composition.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -69,26 +69,47 @@ describe('a busy follow-up holds its files (followUpAttachments)', () => {
   test('a staged file is bound to the held entry and sent with it; its stage is spent', async () => {
     const world = station({ queuedFiles: true, stagedAttachments: true });
     await world.busy();
-    const prepared = world.staging.prepare(
-      { principalId: OWNER },
-      {
-        clientAttachmentId: 'chip-1',
+    const owner = { principalId: OWNER };
+    const stage = (clientAttachmentId: string) => {
+      const prepared = world.staging.prepare(owner, {
+        clientAttachmentId,
         kind: NOTE.kind,
         name: NOTE.name,
         mimeType: NOTE.mimeType,
         size: NOTE.size,
-      },
-    );
-    const reference = world.staging.upload(
-      prepared.stageId,
-      prepared.uploadGrant,
-      NOTE.dataUrl,
-    );
+      });
+      return world.staging.upload(
+        prepared.stageId,
+        prepared.uploadGrant,
+        NOTE.dataUrl,
+      );
+    };
+    const reference = stage('chip-1');
     const queued = await world.send('staged-file', 'and this one', {
       whenBusy: 'queue',
       attachmentRefs: [reference],
     });
     expect(queued.status, await queued.clone().text()).toBe(202);
+    const replay = await world.send('staged-file', 'and this one', {
+      whenBusy: 'queue',
+      attachmentRefs: [reference],
+    });
+    expect(replay.status, await replay.clone().text()).toBe(202);
+    expect(await replay.json()).toMatchObject({
+      data: { entry: { clientTurnId: 'staged-file', state: 'queued' } },
+    });
+    const replacement = stage('same-content-new-chip');
+    const conflict = await world.send('staged-file', 'and this one', {
+      whenBusy: 'queue',
+      attachmentRefs: [replacement],
+    });
+    expect(conflict.status, await conflict.clone().text()).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(world.staging.reconcile(owner, [replacement.stageId])).toMatchObject(
+      [{ state: 'complete', reference: replacement }],
+    );
     // Accepted for the held entry: the same chips cannot start another turn.
     const reused = await world.send('other-key', 'again', {
       whenBusy: 'queue',
@@ -98,6 +119,38 @@ describe('a busy follow-up holds its files (followUpAttachments)', () => {
     expect((await entries(world)).map((entry) => entry.clientTurnId)).toEqual([
       'staged-file',
     ]);
+    const cancelledRef = stage('cancelled-chip');
+    expect(
+      (
+        await world.send('cancelled-file', 'do not send this', {
+          whenBusy: 'queue',
+          attachmentRefs: [cancelledRef],
+        })
+      ).status,
+    ).toBe(202);
+    expect((await world.cancel('cancelled-file')).status).toBe(200);
+    const cancelledRetry = await world.send(
+      'cancelled-file',
+      'do not send this',
+      {
+        whenBusy: 'queue',
+        attachmentRefs: [replacement],
+      },
+    );
+    expect(cancelledRetry.status, await cancelledRetry.clone().text()).toBe(
+      409,
+    );
+    expect(await cancelledRetry.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(
+      world.staging.bindAndHydrate(
+        owner,
+        [replacement],
+        { threadId: CONVERSATION, clientTurnId: 'fresh-key' },
+        { inspectOnly: true },
+      ),
+    ).toEqual([NOTE]);
 
     world.adapter.holdTurns = false;
     world.adapter.complete();
@@ -105,6 +158,15 @@ describe('a busy follow-up holds its files (followUpAttachments)', () => {
       expect(world.prompts()).toEqual(['read the file', 'and this one']),
     );
     expect(world.adapter.turns.at(-1)?.attachments).toEqual([NOTE]);
+    await eventually(async () =>
+      expect(await world.lookup('staged-file')).toBe('started'),
+    );
+    const placedReplay = await world.send('staged-file', 'and this one', {
+      whenBusy: 'queue',
+      attachmentRefs: [reference],
+    });
+    expect(placedReplay.status, await placedReplay.clone().text()).toBe(200);
+    expect(world.prompts()).toEqual(['read the file', 'and this one']);
   });
 
   test('a file gone from the blob store refuses the entry; the message is never sent without it', async () => {
@@ -133,6 +195,49 @@ describe('a busy follow-up holds its files (followUpAttachments)', () => {
         reasonCode: 'attachment_unavailable',
       }),
     );
+    expect(world.prompts()).toEqual(['read the file']);
+  });
+
+  test('a staged retry cannot acknowledge an older queued entry with no submission proof', async () => {
+    const world = station({ queuedFiles: true, stagedAttachments: true });
+    await world.busy();
+    const clientTurnId = 'legacy-queued';
+    const message = 'review this';
+    expect(
+      world.inbox.submit({
+        conversationId: CONVERSATION,
+        clientTurnId,
+        payload: { message, actor: { userId: OWNER } },
+      }),
+    ).toMatchObject({ outcome: 'queued' });
+    const owner = { principalId: OWNER };
+    const prepared = world.staging.prepare(owner, {
+      clientAttachmentId: 'new-chip',
+      kind: NOTE.kind,
+      name: NOTE.name,
+      mimeType: NOTE.mimeType,
+      size: NOTE.size,
+    });
+    const reference = world.staging.upload(
+      prepared.stageId,
+      prepared.uploadGrant,
+      NOTE.dataUrl,
+    );
+    const retry = await world.send(clientTurnId, message, {
+      attachmentRefs: [reference],
+    });
+    expect(retry.status, await retry.clone().text()).toBe(409);
+    expect(await retry.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(
+      world.staging.bindAndHydrate(
+        owner,
+        [reference],
+        { threadId: CONVERSATION, clientTurnId: 'other-key' },
+        { inspectOnly: true },
+      ),
+    ).toEqual([NOTE]);
     expect(world.prompts()).toEqual(['read the file']);
   });
 

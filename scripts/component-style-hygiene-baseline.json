@@ -2224,10 +2224,10 @@
       "legacy-token:--space-8": 2,
       "legacy-token:--border-primary": 16,
       "legacy-token:--bg-secondary": 6,
-      "legacy-token:--accent-primary": 12,
+      "legacy-token:--accent-primary": 11,
       "legacy-token:--font-mono": 4,
       "legacy-token:--text-primary": 8,
-      "legacy-token:--text-muted": 14,
+      "legacy-token:--text-muted": 13,
       "legacy-token:--text-secondary": 2,
       "legacy-token:--bg-tertiary": 4,
       "legacy-token:--border-secondary": 1,
@@ -2240,7 +2240,6 @@
       "legacy-token:--text-lg": 1,
       "legacy-token:--text-md": 1,
       "legacy-token:--text-on-accent": 2,
-      "legacy-token:--text-xs": 1,
       "legacy-token:--bg-selected": 1,
       "legacy-token:--error-text": 1
     },
@@ -2637,12 +2636,8 @@
       "legacy-token:--shadow-md": 1
     },
     "src-ui/src/workspace-panes/device/DeviceSetupWizard.css": {
-      "legacy-token:--space-3": 3,
-      "legacy-token:--space-2": 9,
-      "legacy-token:--border-primary": 4,
-      "legacy-token:--radius-2": 3,
-      "legacy-token:--space-1": 4,
-      "legacy-token:--accent-primary": 1,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--radius-2": 2,
       "legacy-token:--text-secondary": 1,
       "legacy-token:--text-primary": 1,
       "legacy-token:--success-border": 1
@@ -2653,14 +2648,10 @@
     "src-ui/src/workspace-panes/device/DeviceToolsDrawer.css": {
       "legacy-token:--bg-primary": 1,
       "legacy-token:--border-primary": 3,
-      "legacy-token:--space-2": 7,
-      "legacy-token:--space-3": 2,
-      "legacy-token:--space-4": 2,
       "legacy-token:--accent-danger": 1,
       "legacy-token:--text-primary": 2,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--radius-md": 1,
-      "legacy-token:--space-1": 1,
       "legacy-token:--font-mono": 1,
       "legacy-token:--shadow-lg": 1
     },

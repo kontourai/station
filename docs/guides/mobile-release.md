@@ -234,6 +234,17 @@ and their separate profiles. The owning
 sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
 a bare `tauri ios init` plus `ios build` does not reproduce it.
 
+Nightly and Release share the signing job on GitHub's `xcode-27` runner,
+with Xcode 27.1 selected explicitly. The job requires iOS SDK 27 or later
+before building and checks the exported app's `DTSDKName` before staging
+the IPA. Apple announced this minimum for App Store Connect uploads
+starting in April 2027.
+The separate TestFlight upload job uses the same hosted runner pool and
+consumes the audited IPA retained by the build job.
+The Rust setup includes `llvm-tools`: the pinned `swift-rs` uses its
+`llvm-objcopy` to export Swift `@_cdecl` bridges on Xcode 27. Without it,
+Tauri and plugin entry points can remain undefined at link time.
+
 For a separately authorized local archive, preserve that channel's preparation
 and validate the exported bytes. The profile checker accepts `--station`, not
 `--profile`. From the repository root after unpacking the IPA into an owned

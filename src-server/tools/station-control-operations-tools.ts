@@ -1,4 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { AUTOMATION_OPERATOR_SURFACE } from '@kontourai/station-contracts/automation';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
@@ -11,6 +12,7 @@ import {
   createJob,
   deleteJob,
   disableJob,
+  discoverDelegationOptions,
   enableJob,
   fetchAchievements,
   fetchUsage,
@@ -19,6 +21,10 @@ import {
   getReviewRequestStatus,
   getSchedulerStats,
   getSchedulerStatus,
+  listAutomationDeliveries,
+  listAutomationEpisodes,
+  listAutomationRules,
+  listAutomationSources,
   listJobs,
   listProjectLayouts,
   listReviewReceipts,
@@ -46,7 +52,6 @@ import {
   continueDelegatedTask,
   delegateTask,
   discoverDelegationEnvironments,
-  discoverDelegationOptions,
   executeExecutionTargetMessage,
   interruptDelegatedTask,
   listDelegatedTasks,
@@ -166,6 +171,10 @@ const delegationContextSchema = z.object({
   rootAgentSlug: z.string().transform(agentId),
   rootConversationId: z.string().optional(),
   allowedTools: z.array(z.string()).optional(),
+  toolAllowlistConstraints: z
+    .array(z.array(z.string().min(1).max(256)).max(256))
+    .max(64)
+    .optional(),
   blockedTools: z.array(z.string()).optional(),
   denyApprovals: z.boolean().optional(),
 });
@@ -351,6 +360,62 @@ export function registerOperationsTools(
             controlApiBase(),
             projectSlug,
             receiptId,
+            controlRequestOptions(),
+          ),
+        ),
+      ),
+  );
+
+  // #4513: Automation reads only. Every Automation mutation's `mcp` is null
+  // in the contract: an agent can never create, widen, enable or retry its
+  // own triggers.
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE['list-sources'].mcp!,
+    'List Automation event sources (webhook secrets are never returned)',
+    {},
+    async () =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationSources(controlApiBase(), controlRequestOptions()),
+        ),
+      ),
+  );
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE['list-rules'].mcp!,
+    'List Automation rules with the configuration fingerprint',
+    {},
+    async () =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationRules(controlApiBase(), controlRequestOptions()),
+        ),
+      ),
+  );
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE.deliveries.mcp!,
+    'List recent Automation deliveries with their outcome and reason',
+    { limit: z.number().int().min(1).max(200).optional() },
+    async ({ limit }) =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationDeliveries(
+            controlApiBase(),
+            limit === undefined ? {} : { limit },
+            controlRequestOptions(),
+          ),
+        ),
+      ),
+  );
+  server.tool(
+    AUTOMATION_OPERATOR_SURFACE.episodes.mcp!,
+    'List open, exhausted and indeterminate Automation episodes',
+    { limit: z.number().int().min(1).max(200).optional() },
+    async ({ limit }) =>
+      jsonToolResult(
+        await toOperationsEnvelope(
+          listAutomationEpisodes(
+            controlApiBase(),
+            limit === undefined ? {} : { limit },
             controlRequestOptions(),
           ),
         ),
@@ -705,10 +770,7 @@ export function registerOperationsTools(
     'send_message',
     'Send a message to an Agent through the canonical Environment + Agent execution target (non-blocking, returns conversation and resolution receipt). A new conversation that names no projectSlug or projectPath on this Station starts in your own Project, when it has a working folder; an agent may start or steer Sessions only in its own Project (or, from the global space, only there).',
     {
-      agent: z
-        .string()
-        .min(1)
-        .describe('Agent ID resolved by the selected Station'),
+      agent: z.string().min(1).describe('Agent ID on that Station'),
       environmentId: z
         .string()
         .min(1)
@@ -721,7 +783,7 @@ export function registerOperationsTools(
         .min(1)
         .optional()
         .describe(
-          'Project slug on the selected Station environment; omit with projectPath to start a new conversation in your own Project',
+          'Project slug on that Station; omit with projectPath to start a new conversation in your own Project',
         ),
       projectPath: z
         .string()
@@ -736,9 +798,7 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .max(200)
-        .describe(
-          'Stable key for this message; reuse it with identical input on retry.',
-        ),
+        .describe('Reuse this key only for an identical retry.'),
       conversationId: z
         .string()
         .optional()
@@ -817,7 +877,7 @@ export function registerOperationsTools(
 
   server.tool(
     'list_delegation_environments',
-    'List the current Station and saved SSH Stations available for delegation without connecting them or exposing credentials, paths, hosts, usernames, or tunnel details',
+    'List Stations for delegation without connecting or revealing connection details.',
     {},
     // #2795: its failures are MCP errors in the delegation family's one shape.
     async () => delegationToolResult(() => discoverDelegationEnvironments()),
@@ -825,35 +885,37 @@ export function registerOperationsTools(
 
   server.tool(
     'list_delegation_targets',
-    'List secret-free Agents that can accept delegated work, including readiness, models, and control capabilities. Selecting a saved SSH environment may reconnect its verified Station binding.',
+    'List Agent readiness, models, and controls. Selecting a saved SSH Station may reconnect it.',
     {
       environmentId: z
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Verified Station environment ID; omit to inspect the current environment',
-        ),
+        .describe('Environment ID. Omit for this Station.'),
       projectSlug: z
         .string()
         .min(1)
         .optional()
-        .describe('Project slug on the selected Station environment'),
+        .describe('Project slug on that Station'),
       projectPath: z
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Verified project path; inferred for a saved SSH environment when omitted',
-        ),
+        .describe('Project path. Saved SSH can infer it.'),
     },
     async (input) =>
-      delegationToolResult(() => discoverDelegationOptions(input)),
+      delegationToolResult(() =>
+        discoverDelegationOptions(
+          controlApiBase(),
+          input,
+          controlRequestOptions(),
+        ),
+      ),
   );
 
   server.toolWithSchema(
     'create_ssh_environment',
-    "Register a new SSH-managed Station environment for later delegation — stores an OpenSSH-alias-backed profile via SshEnvironmentService without connecting it or exchanging any credentials. Returns the profile's `id`, which is NOT the verified `environmentId` used by list_delegation_environments/delegate_task (that is only assigned once connect_ssh_environment successfully verifies the remote Station). `hostAlias` is an OpenSSH alias, hostname, or IP; registering it stores a profile and nothing more. It does NOT make the host reachable: connect_ssh_environment verifies the presented host key against the operator's own ~/.ssh/known_hosts and fails closed on a host they have never confirmed, so a profile for an arbitrary host cannot become an outbound session without the operator having recorded that host key themselves. Mirrors POST /api/environments/ssh.",
+    "Save an SSH profile for a host alias, hostname or IP without connecting or exchanging credentials. Use its id with connect_ssh_environment. Delegation takes the environmentId returned after Station verifies the connection and checks the host key against the operator's known_hosts.",
     // archive#1136 constraint 4: reused as-is (not re-declared) so adding
     // archive#1133's `launchMode` field there becomes a one-line change here too —
     // no second shape to keep in sync. Do not add `launchMode` ahead of
@@ -888,7 +950,7 @@ export function registerOperationsTools(
 
   server.tool(
     'connect_ssh_environment',
-    "Start (or resume) connecting a saved SSH environment. Non-blocking: if the connection reaches an interactive host-key confirmation or passphrase/security-key prompt, this returns that state promptly (`polling: true`) rather than waiting out OpenSSH's own multi-minute timeout — call connect_ssh_environment or get_ssh_environment again to keep polling, or hand off to a human at Station's own terminal. Never auto-accepts a host key or supplies a credential; there is no mechanism here to do either. Mirrors POST /api/environments/ssh/:id/connect.",
+    "Start or resume a saved SSH connection. If polling is true, check again with this tool or get_ssh_environment. Host-key and credential prompts are answered from Station's terminal or configured SSH_ASKPASS.",
     { id: z.string().min(1).describe('SshEnvironmentProfile.id') },
     async ({ id }) =>
       jsonToolResult(await connectSshEnvironmentWithPolling(id)),
@@ -921,7 +983,7 @@ export function registerOperationsTools(
 
   server.tool(
     'list_delegated_tasks',
-    'Recover a bounded, secret-free inventory of delegated task handles for the authenticated Station user. Selecting a saved SSH environment may reconnect its verified Station binding.',
+    'List your delegated task handles. Selecting a saved SSH Station may reconnect it.',
     {
       environmentId: z
         .string()
@@ -941,53 +1003,46 @@ export function registerOperationsTools(
 
   server.tool(
     'delegate_task',
-    'Delegate a resumable task to an Agent in the current or a verified SSH environment. A task that names no projectSlug or projectPath on this Station starts in your own Project, when it has a working folder; an agent may start Sessions only in its own Project (or, from the global space, only there).',
+    'Start a task here or on verified SSH. Defaults to your Project.',
     {
       prompt: z.string().min(1).describe('Work to delegate'),
       clientTurnId: z
         .string()
         .min(1)
         .max(200)
-        .describe(
-          'Stable key for this message; reuse it with identical input on retry.',
-        ),
+        .describe('Reuse this key only for an identical retry.'),
       environmentId: z
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Verified Station environment ID; omit to use the current environment',
-        ),
+        .describe('Environment ID. Omit for this Station.'),
       projectSlug: z
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Project slug on the selected Station environment; omit with projectPath to use your own Project on this Station',
-        ),
+        .describe('Defaults to your Project.'),
       projectPath: z
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Verified project path; inferred for a saved SSH environment when omitted',
-        ),
-      agent: z
-        .string()
-        .min(1)
-        .describe('Agent ID resolved by the selected Station'),
+        .describe('Project path. Saved SSH can infer it.'),
+      agent: z.string().min(1).describe('Agent ID on that Station'),
       model: z.string().min(1).optional().describe('Optional model override'),
       sessionId: z
         .string()
         .min(1)
         .optional()
-        .describe('Existing task session to resume; omit to create one'),
+        .describe('Session ID to resume. Omit to start one.'),
       parentTaskId: z
         .string()
         .min(1)
         .optional()
         .describe('Parent task for worker or subagent topology'),
       navigate: z.boolean().optional(),
+      appearanceProposal: z
+        .boolean()
+        .optional()
+        .describe('Allow a local appearance proposal.'),
       _delegation: delegationContextSchema.optional(),
       _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
@@ -1027,6 +1082,7 @@ export function registerOperationsTools(
           target,
           ...(input.sessionId ? { sessionId: input.sessionId } : {}),
           ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
           // #2601: a claim only, like `send_message`'s.
           delegation: _delegation,
           ...(_delegation && _delegationAttestation
@@ -1048,14 +1104,14 @@ export function registerOperationsTools(
 
   server.tool(
     'get_task',
-    'Read normalized status for a delegated task and recover state after reconnect',
+    'Read delegated task status.',
     {
       taskId: z.string().min(1).describe('Delegated task ID'),
       environmentId: z
         .string()
         .min(1)
         .optional()
-        .describe('Original Station environment ID; omit for current'),
+        .describe('Original environment ID.'),
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
@@ -1066,19 +1122,19 @@ export function registerOperationsTools(
 
   server.tool(
     'get_task_events',
-    'Read the next bounded page of safe task activity; pass nextCursor to resume without replaying history',
+    'Read task activity by page. Pass back nextCursor.',
     {
       taskId: z.string().min(1).describe('Delegated task ID'),
       environmentId: z
         .string()
         .min(1)
         .optional()
-        .describe('Original Station environment ID; omit for current'),
+        .describe('Original environment ID.'),
       cursor: z
         .string()
         .min(1)
         .optional()
-        .describe('Opaque nextCursor returned by the previous page'),
+        .describe('Previous page’s nextCursor'),
       limit: z.number().int().min(1).max(100).optional().default(50),
       _userId: z.string().optional(),
     },
@@ -1090,7 +1146,7 @@ export function registerOperationsTools(
 
   server.tool(
     'continue_task',
-    'Send a follow-up to an existing delegated task using its persisted environment, target, and project binding',
+    'Send a follow-up using the delegated task’s saved target.',
     {
       taskId: z.string().min(1).describe('Delegated task ID'),
       message: z.string().trim().min(1).describe('Follow-up instruction'),
@@ -1098,14 +1154,12 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .max(200)
-        .describe(
-          'Stable key for this message; reuse it with identical input on retry.',
-        ),
+        .describe('Reuse this key only for an identical retry.'),
       environmentId: z
         .string()
         .min(1)
         .optional()
-        .describe('Original Station environment ID; omit for current'),
+        .describe('Original environment ID.'),
       model: z.string().min(1).optional().describe('Optional model override'),
       _userId: z.string().optional(),
     },
@@ -1131,7 +1185,7 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .optional()
-        .describe('Original Station environment ID; omit for current'),
+        .describe('Original environment ID.'),
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
@@ -1153,7 +1207,7 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .optional()
-        .describe('Original Station environment ID; omit for current'),
+        .describe('Original environment ID.'),
       turnId: z.string().min(1).optional(),
       _userId: z.string().optional(),
     },

@@ -1,0 +1,7 @@
+{
+  "revision": "cb32c4eff0ffcc72bd39ae0778df90950968e6cb",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added propose_job's optional projectId paragraph; the session API claims citing this guide are unchanged.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

@@ -168,7 +168,7 @@ describe('BundledServiceBanner (station#3079)', () => {
         {
           route: '/settings/diagnostics',
           errorSummary:
-            "local-station-stopped: Station's local Station is stopped. Restart it to use local server actions.",
+            'local-station-stopped: HOST-NARRATION-SENTINEL owns this home.',
         },
       ]);
     } finally {
@@ -186,11 +186,13 @@ describe('BundledServiceBanner (station#3079)', () => {
           phase: 'failed' as const,
           ownership: 'sidecar' as const,
           failClosed: true,
+          message: '',
         }}
         onRestart={vi.fn()}
         onOpenConnections={vi.fn()}
       />,
     );
+    expect(calls[0]!.message).toBe('Local Station is unavailable.');
     expect(calls[0]!.actions?.map((action) => action.label)).toEqual([
       'Manage Stations',
       'Troubleshoot',

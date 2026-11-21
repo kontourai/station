@@ -1,13 +1,15 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  type ContinuePausedFlowGateFromSurveyInput,
-  type ContinuePausedFlowGateFromSurveyResult,
+import type {
+  ContinuePausedFlowGateFromSurveyInput,
+  ContinuePausedFlowGateFromSurveyResult,
   createSurveyFlowGateAdapter,
-  type DiscoverSurveyGateReviewWorkInput,
-  type ResolvedSurveyFlowGateReviewSession,
-  type SurveyGateReviewWorkRequest,
-} from '@kontourai/flow-agents';
+  ResolvedSurveyFlowGateReviewSession,
+} from '@kontourai/flow-agents/survey-flow-gate-adapter';
+import type {
+  DiscoverSurveyGateReviewWorkInput,
+  SurveyGateReviewWorkRequest,
+} from '@kontourai/flow-agents/survey-flow-gate-review-work';
 import {
   buildReviewItemPresentation,
   reviewSessionSummary,
@@ -18,7 +20,12 @@ import {
   surveyFlowReviewDiscoveries,
   surveyFlowReviewUnavailableProjects,
 } from '../../telemetry/metrics.js';
-import { loadFlowAgentsRoot } from '../evidence/load-flow-agents.js';
+import {
+  loadSurveyFlowGateAdapter,
+  loadSurveyFlowGateReviewWork,
+} from '../evidence/load-flow-agents.js';
+
+type SurveyFlowGateAdapter = ReturnType<typeof createSurveyFlowGateAdapter>;
 
 export interface StationSurveyReviewSession
   extends ResolvedSurveyFlowGateReviewSession {
@@ -252,7 +259,7 @@ function projectQueueItems(
 
 export class SurveyFlowReviewService {
   readonly #store: StationSurveyReviewSessionStore;
-  readonly #adapter: ReturnType<typeof createSurveyFlowGateAdapter>;
+  #adapter: SurveyFlowGateAdapter | undefined;
   readonly #diagnostic: (projectSlug: string, error: unknown) => void;
 
   constructor(
@@ -260,7 +267,6 @@ export class SurveyFlowReviewService {
     options?: { diagnostic?: (projectSlug: string, error: unknown) => void },
   ) {
     this.#store = store;
-    this.#adapter = createSurveyFlowGateAdapter({ reviewSessions: store });
     this.#diagnostic = options?.diagnostic ?? (() => {});
   }
 
@@ -331,7 +337,8 @@ export class SurveyFlowReviewService {
     input: DiscoverSurveyGateReviewWorkInput,
   ): Promise<SurveyGateReviewWorkRequest[]> {
     try {
-      const { discoverSurveyGateReviewWork } = await loadFlowAgentsRoot();
+      const { discoverSurveyGateReviewWork } =
+        await loadSurveyFlowGateReviewWork();
       const result = await discoverSurveyGateReviewWork(input);
       surveyFlowReviewDiscoveries.add(result.length, { outcome: 'success' });
       return result;
@@ -341,11 +348,22 @@ export class SurveyFlowReviewService {
     }
   }
 
+  /** The adapter's module is loaded on first continuation (load-flow-agents.ts). */
+  async #loadAdapter(): Promise<SurveyFlowGateAdapter> {
+    if (!this.#adapter) {
+      const { createSurveyFlowGateAdapter: create } =
+        await loadSurveyFlowGateAdapter();
+      this.#adapter ??= create({ reviewSessions: this.#store });
+    }
+    return this.#adapter;
+  }
+
   async continuePausedGate(
     input: ContinuePausedFlowGateFromSurveyInput,
   ): Promise<ContinuePausedFlowGateFromSurveyResult> {
     try {
-      const result = await this.#adapter.continuePausedGate(input);
+      const adapter = await this.#loadAdapter();
+      const result = await adapter.continuePausedGate(input);
       surveyFlowReviewContinuations.add(1, { outcome: 'resumed' });
       return result;
     } catch (error) {

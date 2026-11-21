@@ -1,0 +1,13 @@
+{
+  "revision": "f91b85f21e1d09b17d2ceb5f1f0d246746848cdc",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Adds the seven-day Settled/Third-party window (older rows on group.older, search unwindowed) and labels searched-out rows Hidden with the preview on. placement.md cites it only for inbox ownership in the Chat layout, which is unchanged.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Adds the seven-day Settled/Third-party window (older rows on group.older, search unwindowed) and labels searched-out rows Hidden with the preview on. placement.md cites it only for inbox ownership in the Chat layout, which is unchanged.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Adds the seven-day Settled/Third-party window (older rows on group.older, search unwindowed) and labels searched-out rows Hidden with the preview on. placement.md cites it only for inbox ownership in the Chat layout, which is unchanged.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Adds the seven-day Settled/Third-party window (older rows on group.older, search unwindowed) and labels searched-out rows Hidden with the preview on. placement.md cites it only for inbox ownership in the Chat layout, which is unchanged.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"claimDue takes an optional held predicate and applies the lateness cutoff to Project jobs as to targeted ones; without a predicate claims are unchanged.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"claimDue takes an optional held predicate and applies the lateness cutoff to Project jobs as to targeted ones; without a predicate claims are unchanged.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

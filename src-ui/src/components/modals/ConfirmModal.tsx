@@ -15,6 +15,8 @@ export interface ConfirmModalProps {
   /** Small line above the title, e.g. who is asking. */
   eyebrow?: ReactNode;
   message: string;
+  /** Structured detail under the message, e.g. what a deletion removes. */
+  details?: ReactNode;
   confirmLabel?: string;
   /**
    * Refuse the confirm when the action would change nothing. The dialog stays
@@ -64,6 +66,7 @@ export function ConfirmModal({
   isOpen,
   title,
   message,
+  details,
   confirmLabel = 'Confirm',
   confirmDisabled = false,
   cancelLabel = 'Cancel',
@@ -155,6 +158,7 @@ export function ConfirmModal({
         }
       >
         <p className="station-dialog__message">{message}</p>
+        {details}
         {error && (
           <p className="editor-error" role="alert">
             {error}

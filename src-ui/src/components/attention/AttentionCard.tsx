@@ -62,15 +62,16 @@ import {
   sessionFailureCause,
 } from '../../utils/attention';
 import {
-  acknowledgeThenOpen,
   isPlainLeftClick,
   navigateToAttentionTarget,
+  openThenAcknowledge,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { Dialog } from '../Dialog';
+import { FlowGateDiagnostics } from '../flow/FlowGateDiagnostics';
 import { LazyBoundary } from '../LazyBoundary';
 import { DecisionError } from '../notifications/DecisionError';
 import {
@@ -85,6 +86,7 @@ import { NoticeAction } from '../notifications/NoticeAction';
 import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
 import { ExactRequestInline } from './ExactRequestInline';
+import { GuardianApprovalReason } from './GuardianApprovalReason';
 import './AttentionCard.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
@@ -189,6 +191,9 @@ export function AttentionCard({
             item.body && (
               <div className="attention-item__detail">{item.body}</div>
             )
+          )}
+          {item.kind === 'approval' && !item.requestReference && (
+            <GuardianApprovalReason reason={item.guardianReason} />
           )}
           {item.kind === 'gate-route-back' && (
             <GateRouteBackDetail item={item} />
@@ -428,7 +433,7 @@ function PullRequestFeedbackActions({
             disabled={change.isPending}
             onClick={() => change.mutate('turn-off')}
           >
-            Turn off auto-fix
+            Turn off agent feedback
           </NoticeAction>
         )}
       </div>
@@ -1165,11 +1170,9 @@ function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
        * The asymmetry between the two was the bug — both are the user acting
        * on this row, and only one of them decremented the badge.
        *
-       * `onOpen` is what makes that true. `OpenSessionLink` returns early
-       * without it (`if (!onOpen || !isPlainLeftClick(event)) return`), so the
-       * comment above described a behaviour the DOM stopped having when D9
-       * (ed3e767) rewrote this component and dropped the prop — a label
-       * nothing derived, with its own test left red on main to say so.
+       * `onOpen` is what makes that true: without it `OpenSessionLink`
+       * navigates and records nothing. D9 (ed3e767) once dropped the prop,
+       * and its own test was left red on main to say so.
        */}
       <OpenSessionLink
         href={item.openHref}
@@ -1255,6 +1258,21 @@ function GateReEvaluateAction({
       </div>
       <OpenFlowConsoleLink href={item.openHref} />
       <MutationError error={mutation.error} />
+      {mutation.data?.reopened && (
+        <div className="attention-item__detail" role="status">
+          <p>
+            The completed run reopened after {mutation.data.reopened.gateId}{' '}
+            returned {mutation.data.reopened.verdict}.
+          </p>
+          {mutation.data.reopened.missing.length > 0 && (
+            <p>
+              Evidence still needed for{' '}
+              {mutation.data.reopened.missing.join(', ')}.
+            </p>
+          )}
+          <FlowGateDiagnostics details={mutation.data.reopened.diagnostics} />
+        </div>
+      )}
     </>
   );
 }
@@ -1383,12 +1401,12 @@ function invalidateGateQueries(
 }
 
 /**
- * `onOpen`, when supplied, runs to completion before the browser leaves for
- * `href` (archive#3203) — see `acknowledgeThenOpen`. Without it the link keeps
- * its plain, untouched `<a href>` behaviour, which is what every kind other
- * than `session-failed` still wants: none of them has an acknowledgement to
- * record, and the server ignores an ack recorded against them anyway
- * (`decorateAcknowledgement` returns early for every other kind).
+ * A plain click opens `href` inside the running app, never a document
+ * reload; a modified click keeps the browser's own gesture. `onOpen`, when
+ * supplied, records the acknowledgement after the navigation (archive#3203,
+ * `openThenAcknowledge`). Only `session-failed` supplies one: the server
+ * ignores an ack recorded against any other kind
+ * (`decorateAcknowledgement` returns early for them).
  */
 function OpenSessionLink({
   href,
@@ -1404,9 +1422,9 @@ function OpenSessionLink({
       className="attention-open-link"
       href={href}
       onClick={(event) => {
-        if (!onOpen || !isPlainLeftClick(event)) return;
+        if (!isPlainLeftClick(event)) return;
         event.preventDefault();
-        void acknowledgeThenOpen({
+        void openThenAcknowledge({
           acknowledge: onOpen,
           navigate: () => navigateToAttentionTarget(href),
         });

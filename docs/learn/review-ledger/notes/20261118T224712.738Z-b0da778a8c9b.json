@@ -1,0 +1,9 @@
+{
+  "revision": "39c879e2827c389cebf9910c771974b470e34571",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Verified the fixed sign-in terminal shows a neutral completion message and retains output. It cannot restart in place or degrade into a generic command executor. Shell and agent terminal behavior uses the existing branches.","inputs":["src-ui/src/components/coding-layout/TerminalPanel.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"Verified the fixed sign-in terminal shows a neutral completion message and retains output. It cannot restart in place or degrade into a generic command executor. Shell and agent terminal behavior uses the existing branches.","inputs":["src-ui/src/components/coding-layout/TerminalPanel.tsx"]}
+  ]
+}

@@ -621,6 +621,20 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
       }
     )._registeredTools;
 
+    // #2377 slice D: a caller-less tool call is refused before any route, so
+    // the tool runs as an agent session's caller, as every engine delivers it.
+    const { withStationControlCallerContext } = await import(
+      '../../../tools/station-control-shared.js'
+    );
+    const asAgent = <T>(operation: () => T): T =>
+      withStationControlCallerContext(
+        {
+          token: 'd6-agent-session',
+          resolve: () => ({ sessionId: 'd6-agent', assurance: 'bound' }),
+        },
+        operation,
+      );
+
     const previousApiBase = process.env.STATION_API_BASE;
     process.env.STATION_API_BASE = 'http://d6-local-read.test';
     vi.stubGlobal(
@@ -669,7 +683,8 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
           LOOPBACK_ENV,
         )
       ).text();
-      const toolForced = (await tools.read_logs.handler({})).content[0].text;
+      const toolForced = (await asAgent(() => tools.read_logs.handler({})))
+        .content[0].text;
       expect(
         developerForced,
         'home-possession caller leaked after the shared predicate was replaced',
@@ -687,7 +702,8 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
           LOOPBACK_ENV,
         )
       ).text();
-      const toolOpened = (await tools.read_logs.handler({})).content[0].text;
+      const toolOpened = (await asAgent(() => tools.read_logs.handler({})))
+        .content[0].text;
       expect(developerOpened).toContain(SEEDED_API_KEY);
       expect(toolOpened).not.toContain(SEEDED_API_KEY);
       expect(toolOpened).toContain('Diagnostics log access is not granted');
