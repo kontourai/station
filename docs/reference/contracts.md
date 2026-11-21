@@ -1921,8 +1921,10 @@ On a serve session:
   re-attaches it on a fresh host with `session/resume`, never `session/start`
   and never the exec fallback. Muse answering `sessionNotFound`, or with
   another session, publishes `engine-session-binding-dead`, which recovery does
-  not retry; any other failure refuses the start and keeps the cursor. Exec
-  sessions do not resume.
+  not retry; any other failure refuses the start and keeps the cursor. On
+  cold resume and host restart, Station checks any reported workspace root
+  against the recorded directory before sending another turn. Exec sessions
+  do not resume.
 - **Goals.** Read, `goal/pause` and `goal/clear` (`tokenBudget:
   'unsupported'`). A read reports the goal Muse last stated
   (`session/goalChanged`): none on a fresh session, unknown after a resume
