@@ -68,6 +68,8 @@ function PillDetails({
   );
   const { popupStyle, renderPopup } = useAnchoredPopup(
     anchor.current ? anchor : undefined,
+    host,
+    360,
   );
   useEffect(() => {
     const outside = (event: PointerEvent) => {

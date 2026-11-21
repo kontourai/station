@@ -129,12 +129,82 @@ export function MobileInboxSelection({
       setNotice(`Couldn’t update ${failed.size} selected. Try again.`);
     } else onChange(null);
   };
+  const snoozeLabel = (
+    <>
+      <TimeGlyph />
+      <span>Snooze</span>
+    </>
+  );
   return (
     <section
       className="mobile-inbox-selection"
       aria-label="Selected conversations"
     >
-      <div className="mobile-inbox-selection__summary">
+      <div className="mobile-inbox-selection__commands">
+        {pending || !canSnooze ? (
+          <Button
+            variant="ghost"
+            className="mobile-inbox-selection__action"
+            aria-label="Snooze selected conversations"
+            disabled
+          >
+            <span>{snoozeLabel}</span>
+          </Button>
+        ) : (
+          <ActionOverflowMenu
+            label="Snooze selected conversations"
+            triggerClassName="mobile-inbox-selection__action"
+            triggerGlyph={snoozeLabel}
+            actions={SNOOZE_OPTIONS.map((option) => ({
+              key: option.label,
+              label: option.label,
+              onSelect: (trigger) => {
+                if (trigger instanceof HTMLButtonElement)
+                  void apply(
+                    'snooze',
+                    trigger,
+                    snoozeWakeAt(option, Date.now()),
+                  );
+              },
+            }))}
+          />
+        )}
+        <Button
+          variant="ghost"
+          className="mobile-inbox-selection__action"
+          disabled={pending || !canSettle}
+          onClick={(e) => void apply('settle', e.currentTarget)}
+        >
+          <span>
+            <CheckGlyph />
+            <span>Settle</span>
+          </span>
+        </Button>
+        <Button
+          variant="ghost"
+          className="mobile-inbox-selection__action"
+          disabled={pending || !canDismiss}
+          onClick={(e) => void apply('dismiss', e.currentTarget)}
+        >
+          <span>
+            <CloseGlyph />
+            <span>Dismiss</span>
+          </span>
+        </Button>
+      </div>
+      <div className="mobile-inbox-selection__meta">
+        <small role="status">
+          {notice ||
+            (!entries.length
+              ? 'Select conversations to update.'
+              : !canSettle
+                ? work.supported
+                  ? 'Settle is available after work finishes and requests are answered.'
+                  : 'Settle requires the Open and Settled inbox preview.'
+                : !canDismiss
+                  ? 'Dismiss applies to settled or imported items.'
+                  : '')}
+        </small>
         {entries.length === 1 && (
           <Button
             variant="ghost"
@@ -145,48 +215,6 @@ export function MobileInboxSelection({
           </Button>
         )}
       </div>
-      <div className="mobile-inbox-selection__commands">
-        <ActionOverflowMenu
-          label="Snooze selected conversations"
-          triggerText="Snooze"
-          triggerGlyph={<TimeGlyph />}
-          actions={SNOOZE_OPTIONS.map((option) => ({
-            key: option.label,
-            label: option.label,
-            disabled: pending || !canSnooze,
-            onSelect: (trigger) => {
-              if (trigger instanceof HTMLButtonElement)
-                void apply('snooze', trigger, snoozeWakeAt(option, Date.now()));
-            },
-          }))}
-        />
-        <Button
-          disabled={pending || !canSettle}
-          onClick={(e) => void apply('settle', e.currentTarget)}
-        >
-          <CheckGlyph />
-          Settle
-        </Button>
-        <Button
-          disabled={pending || !canDismiss}
-          onClick={(e) => void apply('dismiss', e.currentTarget)}
-        >
-          <CloseGlyph />
-          Dismiss
-        </Button>
-      </div>
-      <small role="status">
-        {notice ||
-          (!entries.length
-            ? 'Select conversations to update.'
-            : !canSettle
-              ? work.supported
-                ? 'Settle is available after work finishes and requests are answered.'
-                : 'Settle requires the Open and Settled inbox preview.'
-              : !canDismiss
-                ? 'Dismiss applies to settled or imported items.'
-                : '')}
-      </small>
     </section>
   );
 }

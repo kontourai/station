@@ -5,15 +5,27 @@ import {
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { get, update } from 'idb-keyval';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
+import {
+  appendDictation,
+  useStartDictation,
+} from '../chat-start/useStartDictation';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { recordedDeliveryPort } from '../conversation/DeliveryPort';
 import { LazyBoundary } from '../LazyBoundary';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
+import type { ChildInstructionForm } from './ChatInputArea';
 
 const loadInstructionForm = () =>
   import('./ChatInputArea').then((module) => ({
@@ -44,6 +56,12 @@ async function clearInstruction(key: string, expected: Pending) {
   );
 }
 
+export type ChildReplyRun = {
+  engineId?: string;
+  engineLabel?: string;
+  model?: string;
+};
+
 export type ChildInstructionDrafts = Map<
   string,
   { text: string; turnId?: string }
@@ -59,7 +77,7 @@ export function ChildWorkInstructionPanel({
   composer,
 }: {
   composer?: {
-    identity: string;
+    run: ChildReplyRun;
     canContinue: boolean;
     drafts?: ChildInstructionDrafts;
   };
@@ -291,7 +309,11 @@ export function ChildWorkInstructionPanel({
     loaded &&
     !pending;
   const identity = composer && (
-    <span className="child-instructions__identity">{composer.identity}</span>
+    <span className="child-instructions__identity">
+      {[composer.run.engineLabel, composer.run.model ?? 'Model not reported']
+        .filter(Boolean)
+        .join(' · ')}
+    </span>
   );
   const historyContent = (
     <>
@@ -460,31 +482,43 @@ export function ChildWorkInstructionPanel({
       ) : !key || !loaded ? (
         <p>Preparing instructions…</p>
       ) : (
-        <LazyBoundary
-          load={loadInstructionForm}
-          shareAcrossMounts
-          pending={<SkeletonBlock count={1} label="Preparing instructions" />}
-          componentProps={{
-            name,
-            editorId,
-            identity: composer?.identity,
-            text,
-            onChange: (value: string) => {
-              if (busy.current) return;
+        <ChildInstructionEditor
+          name={name}
+          editorId={editorId}
+          run={composer?.run}
+          text={text}
+          onChange={(value) => {
+            if (!busy.current)
               writeDraft(
                 value,
                 value ? (text ? draftTurnId : turnId) : undefined,
               );
-            },
-            sending: submitting || send.isPending,
-            onSubmit:
-              historyAvailable && history.isSuccess && !history.isError
-                ? submit
-                : undefined,
           }}
+          sending={submitting || send.isPending}
+          onSubmit={
+            historyAvailable && history.isSuccess && !history.isError
+              ? submit
+              : undefined
+          }
         />
       )}
       {!composer && message && <p role="status">{message}</p>}
     </section>
+  );
+}
+
+function ChildInstructionEditor(
+  props: ComponentProps<typeof ChildInstructionForm>,
+) {
+  const voice = useStartDictation((value) =>
+    props.onChange(appendDictation(props.text, value)),
+  );
+  return (
+    <LazyBoundary
+      load={loadInstructionForm}
+      shareAcrossMounts
+      pending={<SkeletonBlock count={1} label="Preparing instructions" />}
+      componentProps={{ ...props, voice }}
+    />
   );
 }

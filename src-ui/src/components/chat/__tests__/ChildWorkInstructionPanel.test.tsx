@@ -167,17 +167,21 @@ test('a reopened child draft stays bound to the turn on which it was typed', asy
       turnId={turnId}
       running
       historyAvailable
-      composer={{ identity: 'Codex · example-model', canContinue, drafts }}
+      composer={{
+        run: { engineLabel: 'Codex', model: 'example-model' },
+        canContinue,
+        drafts,
+      }}
     />
   );
   const first = render(child('turn-one'));
-  fireEvent.change(await screen.findByLabelText('Send to Worker'), {
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Message' }), {
     target: { value: 'Check this result' },
   });
   first.unmount();
   const next = render(child('turn-two'));
   expect(await screen.findByDisplayValue('Check this result')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Steer' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   await screen.findByText(
     'The subagent turn changed. This instruction was not sent.',
   );
@@ -190,10 +194,23 @@ test('sends only to the named child and keeps the same request after an uncertai
   mocks.send
     .mockResolvedValueOnce({ outcome: 'indeterminate' })
     .mockResolvedValueOnce({ outcome: 'steered' });
-  view();
-  const input = await screen.findByLabelText('Send to Worker');
+  render(
+    <ChildWorkInstructionPanel
+      threadId="parent"
+      childId="child"
+      name="Worker"
+      turnId="turn"
+      running
+      historyAvailable
+      composer={{
+        run: { engineLabel: 'Codex', model: 'example-model' },
+        canContinue: true,
+      }}
+    />,
+  );
+  const input = await screen.findByRole('textbox', { name: 'Message' });
   fireEvent.change(input, { target: { value: 'Please check this' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
   await screen.findAllByText('May have reached the agent');
   const first = mocks.send.mock.calls[0][0];
   expect(first).toMatchObject({

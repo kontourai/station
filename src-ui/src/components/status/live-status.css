@@ -387,6 +387,8 @@ button.chat-status-pill {
 }
 
 .chat-status-pill__details[style] {
+  max-width: none;
+  box-sizing: border-box;
   overflow: auto;
   animation: none;
 }

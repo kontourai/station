@@ -391,7 +391,17 @@ function LiveChildReader({
           running={running}
           name={item.title || entry.title}
           historyAvailable={!!item.transcript}
-          composer={{ identity, canContinue: mayInstruct, drafts }}
+          composer={{
+            run: {
+              engineId: engine ?? undefined,
+              engineLabel: engine
+                ? (engineDisplayLabel(engine) ?? undefined)
+                : undefined,
+              model: item.model?.id,
+            },
+            canContinue: mayInstruct,
+            drafts,
+          }}
         />
       ) : (
         <div className="child-chat-pane__record">{identity} · View only</div>
