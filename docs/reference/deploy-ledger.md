@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-21T22:56:40Z | nightly-desktop | 0.2.0-nightly.20261121.3 | `1bbeef7` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44953874657) |
+| 2026-11-21T22:56:40Z | nightly-android | 0.2.0-nightly.20261121.3 | `1bbeef7` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44953874657) |
+| 2026-11-21T22:00:37Z | nightly-npm | 0.12.0-nightly.20261121.44953874657 | `1bbeef7` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44953874657) |
 | 2026-11-21T15:46:50Z | nightly-desktop | 0.2.0-nightly.20261121.2 | `8975d30` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44916136501) |
 | 2026-11-21T15:46:50Z | nightly-android | 0.2.0-nightly.20261121.2 | `8975d30` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44916136501) |
 | 2026-11-21T14:58:55Z | nightly-npm | 0.12.0-nightly.20261121.44916136501 | `8975d30` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44916136501) |
@@ -528,6 +531,87 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-21T22:56:40Z · nightly-desktop · 0.2.0-nightly.20261121.3
+
+- Ship SHA: `1bbeef7965e0309f2d72bb4b32751d7f2f0ae502`
+- Artifact built at: `2026-11-21T21:59:36.524Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 44953874657)
+
+### Changelog
+
+Commits since `8975d30` ([full sha](https://github.com/kontourai/station/commit/8975d30f8303673dbcabdab4c1b2161b27d8dff3)):
+
+**Features**
+
+- [#5375](https://github.com/kontourai/station/pull/5375) feat(chat): share desktop Inbox rows and preserve the collapsed chat header
+
+**Fixes**
+
+- [#5377](https://github.com/kontourai/station/pull/5377) fix(service): wait for Windows archive launcher before uninstall
+- [#5376](https://github.com/kontourai/station/pull/5376) fix(muse): verify the assigned workspace on resume
+- [#5374](https://github.com/kontourai/station/pull/5374) fix(opencode): preserve Project workspace continuity
+- [#5373](https://github.com/kontourai/station/pull/5373) fix(ci): retry trusted Ubuntu bootstrap downloads
+- [#5372](https://github.com/kontourai/station/pull/5372) fix(chat): align OpenCode tool activity and startup
+
+**Other**
+
+- [#5371](https://github.com/kontourai/station/pull/5371) perf: load the OpenTelemetry SDK only for configured servers
+
+## 2026-11-21T22:56:40Z · nightly-android · 0.2.0-nightly.20261121.3
+
+- Ship SHA: `1bbeef7965e0309f2d72bb4b32751d7f2f0ae502`
+- Artifact built at: `2026-11-21T21:58:29.705Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 44953874657)
+
+### Changelog
+
+Commits since `8975d30` ([full sha](https://github.com/kontourai/station/commit/8975d30f8303673dbcabdab4c1b2161b27d8dff3)):
+
+**Features**
+
+- [#5375](https://github.com/kontourai/station/pull/5375) feat(chat): share desktop Inbox rows and preserve the collapsed chat header
+
+**Fixes**
+
+- [#5377](https://github.com/kontourai/station/pull/5377) fix(service): wait for Windows archive launcher before uninstall
+- [#5376](https://github.com/kontourai/station/pull/5376) fix(muse): verify the assigned workspace on resume
+- [#5374](https://github.com/kontourai/station/pull/5374) fix(opencode): preserve Project workspace continuity
+- [#5373](https://github.com/kontourai/station/pull/5373) fix(ci): retry trusted Ubuntu bootstrap downloads
+- [#5372](https://github.com/kontourai/station/pull/5372) fix(chat): align OpenCode tool activity and startup
+
+**Other**
+
+- [#5371](https://github.com/kontourai/station/pull/5371) perf: load the OpenTelemetry SDK only for configured servers
+
+## 2026-11-21T22:00:37Z · nightly-npm · 0.12.0-nightly.20261121.44953874657
+
+- Ship SHA: `1bbeef7965e0309f2d72bb4b32751d7f2f0ae502`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261121.44953874657 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `8975d30` ([full sha](https://github.com/kontourai/station/commit/8975d30f8303673dbcabdab4c1b2161b27d8dff3)):
+
+**Features**
+
+- [#5375](https://github.com/kontourai/station/pull/5375) feat(chat): share desktop Inbox rows and preserve the collapsed chat header
+
+**Fixes**
+
+- [#5377](https://github.com/kontourai/station/pull/5377) fix(service): wait for Windows archive launcher before uninstall
+- [#5376](https://github.com/kontourai/station/pull/5376) fix(muse): verify the assigned workspace on resume
+- [#5374](https://github.com/kontourai/station/pull/5374) fix(opencode): preserve Project workspace continuity
+- [#5373](https://github.com/kontourai/station/pull/5373) fix(ci): retry trusted Ubuntu bootstrap downloads
+- [#5372](https://github.com/kontourai/station/pull/5372) fix(chat): align OpenCode tool activity and startup
+
+**Other**
+
+- [#5371](https://github.com/kontourai/station/pull/5371) perf: load the OpenTelemetry SDK only for configured servers
 
 ## 2026-11-21T15:46:50Z · nightly-desktop · 0.2.0-nightly.20261121.2
 
