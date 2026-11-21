@@ -233,34 +233,30 @@ describe('transcript: one work row per settled turn', () => {
     _setApiBase('');
   });
 
-  test.each([true, false])(
-    'a settled turn folds its calls and narration on mobile=%s',
-    async (isMobile) => {
-      mobile.current = isMobile;
-      windowEvents.current = workedTurn({ settled: true });
-      renderTranscript();
+  test('a settled turn folds every call and the narration between them into one row; intent and outcome stay', async () => {
+    windowEvents.current = workedTurn({ settled: true });
+    renderTranscript();
 
-      await waitFor(() => expect(screen.getByText(/OUTCOME:/)).toBeTruthy());
-      const row = answerRow();
-      const summaries = row.querySelectorAll('.tool-call-batch__summary');
-      expect(summaries).toHaveLength(1);
-      // The four calls are inside it: no standalone call row in the answer.
-      expect(
-        row.querySelectorAll('.tool-call:not(.tool-call-batch *)'),
-      ).toHaveLength(0);
-      expect(within(row).queryByText(/BETWEEN:/)).toBeNull();
-      expect(within(row).getByText(/INTENT:/)).toBeTruthy();
-      // The summary row sits where the first call was: after the intent,
-      // before the outcome.
-      const text = row.textContent ?? '';
-      const summaryAt = text.indexOf(summaries[0]!.textContent ?? '');
-      expect(text.indexOf('INTENT:')).toBeLessThan(summaryAt);
-      expect(summaryAt).toBeLessThan(text.indexOf('OUTCOME:'));
-      // The c3 failure was recovered by the identical c4: named neutrally.
-      expect(summaries[0]!.textContent).toContain('1 retried');
-      expect(summaries[0]!.textContent).not.toContain('failed');
-    },
-  );
+    await waitFor(() => expect(screen.getByText(/OUTCOME:/)).toBeTruthy());
+    const row = answerRow();
+    const summaries = row.querySelectorAll('.tool-call-batch__summary');
+    expect(summaries).toHaveLength(1);
+    // The four calls are inside it: no standalone call row in the answer.
+    expect(
+      row.querySelectorAll('.tool-call:not(.tool-call-batch *)'),
+    ).toHaveLength(0);
+    expect(within(row).queryByText(/BETWEEN:/)).toBeNull();
+    expect(within(row).getByText(/INTENT:/)).toBeTruthy();
+    // The summary row sits where the first call was: after the intent,
+    // before the outcome.
+    const text = row.textContent ?? '';
+    const summaryAt = text.indexOf(summaries[0]!.textContent ?? '');
+    expect(text.indexOf('INTENT:')).toBeLessThan(summaryAt);
+    expect(summaryAt).toBeLessThan(text.indexOf('OUTCOME:'));
+    // The c3 failure was recovered by the identical c4: named neutrally.
+    expect(summaries[0]!.textContent).toContain('1 retried');
+    expect(summaries[0]!.textContent).not.toContain('failed');
+  });
 
   test('opening the work row shows the folded narration between the calls it was written between', async () => {
     windowEvents.current = workedTurn({ settled: true });
@@ -295,6 +291,19 @@ describe('transcript: one work row per settled turn', () => {
       between.compareDocumentPosition(editRow) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  test('desktop keeps today’s per-run shape: narration between runs stays inline', async () => {
+    mobile.current = false;
+    windowEvents.current = workedTurn({ settled: true });
+    renderTranscript();
+
+    await waitFor(() => expect(screen.getByText(/OUTCOME:/)).toBeTruthy());
+    const row = answerRow();
+    expect(within(row).getByText(/BETWEEN:/)).toBeTruthy();
+    // Run 1 is the solo read (an inline row); run 2 is the 3-call batch.
+    expect(row.querySelectorAll('.tool-call-batch__summary')).toHaveLength(1);
+    expect(within(row).getByText('Read useVisualViewport.ts')).toBeTruthy();
   });
 
   test('an OpenCode child card stays between folded activity and the answer', async () => {
