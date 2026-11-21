@@ -282,6 +282,10 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   `session.moved` is published, so no check after the event could keep that
   code from running. A wholly denied tool leaves OpenCode's catalog, and
   children inherit the rule.
+- A Station Project session keeps its recorded checkout in every approval
+  mode. Its native session rules disable Code Mode's move tool. Station stops
+  a live Project session moved by another client and refuses native recovery
+  if OpenCode reports a different checkout.
 - **A session that moves anyway** (another client of its server, or a resume
   of a session moved earlier) is followed. In a governed session, a
   `session.moved` for it or a descendant runs the #3924 scan on the new

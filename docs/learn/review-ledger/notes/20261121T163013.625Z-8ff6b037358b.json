@@ -1,0 +1,7 @@
+{
+  "revision": "6ff0abcde41fa3c4b69d97a6fc9d44f53674b262",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Checked Project-bound OpenCode startup, cold recovery and live move handling against the replay and retained-workspace tests. Native sessions retain their recorded Project checkout across approval modes, while the ACP fallback and unbound OpenCode transport behavior remain as documented.","inputs":["docs/guides/acp.md","src-server/providers/adapters/opencode-adapter.ts"]}
+  ]
+}

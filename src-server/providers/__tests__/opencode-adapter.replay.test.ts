@@ -3070,33 +3070,75 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
 
   const MOVED_TO = '{PROJ}/sub';
 
-  test("Code Mode's session move is not offered to a governed session: Station's rules deny it and OpenCode leaves it out", async () => {
+  test.each(['confined', 'project'])(
+    'Code Mode cannot move a %s session',
+    async (scope) => {
+      const h = await setup({
+        scenario: 'move-denied',
+        respond: childGovernance({ build: [] }),
+      });
+      if (scope === 'confined') await h.start({ approvalMode: 'ask' });
+      else
+        await h.start(undefined, {
+          metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+        });
+      const body = h.replay.made('POST', '/api/session')[0]?.body as {
+        permissions: OpenCodeNativeRule[];
+      };
+      expect(body.permissions.at(-1)).toEqual({
+        action: 'opencode_session_move',
+        resource: '*',
+        effect: 'deny',
+      });
+      const { turnId } = await h.turn('DO_MOVE sub-denied');
+      await h.waitFor(completedFor(turnId));
+      // The engine, under that rule (`move-denied` capture): the tool is unknown.
+      expect(
+        h.events.find(
+          (event) =>
+            event.method === 'tool.completed' && event.turnId === turnId,
+        )?.output,
+      ).toEqual(
+        expect.stringContaining("Unknown tool 'opencode.session_move'"),
+      );
+      expect(
+        h.events.some(
+          (event) => event.code === OPENCODE_SESSION_MOVED_UNGOVERNABLE,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  test('a Project session moved externally stops without rebinding its resume cursor', async () => {
+    const h = await setup({ scenario: 'move' });
+    const session = await h.start(undefined, {
+      metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+    });
+    await h.turn('DO_MOVE sub');
+    await h.waitFor(
+      (event) => event.code === 'OPENCODE_PROJECT_WORKSPACE_MOVED',
+    );
+    expect(session.resumeCursor).toMatchObject({ cwd: '/replay/proj' });
+  });
+
+  test('cold Project recovery refuses a native session whose stored checkout moved', async () => {
+    const sessionId = recordedSessionId('move');
     const h = await setup({
-      scenario: 'move-denied',
-      respond: childGovernance({ build: [] }),
+      scenario: 'move',
+      ungated: (record) => record.method === 'GET',
+      respond: (request) =>
+        request.path === `/api/session/${sessionId}/inbox`
+          ? { status: 200, body: { data: [] } }
+          : undefined,
     });
-    await h.start({ approvalMode: 'ask' });
-    const body = h.replay.made('POST', '/api/session')[0]?.body as {
-      permissions: OpenCodeNativeRule[];
-    };
-    expect(body.permissions.at(-1)).toEqual({
-      action: 'opencode_session_move',
-      resource: '*',
-      effect: 'deny',
-    });
-    const { turnId } = await h.turn('DO_MOVE sub-denied');
-    await h.waitFor(completedFor(turnId));
-    // The engine, under that rule (`move-denied` capture): the tool is unknown.
-    expect(
-      h.events.find(
-        (event) => event.method === 'tool.completed' && event.turnId === turnId,
-      )?.output,
-    ).toEqual(expect.stringContaining("Unknown tool 'opencode.session_move'"));
-    expect(
-      h.events.some(
-        (event) => event.code === OPENCODE_SESSION_MOVED_UNGOVERNABLE,
-      ),
-    ).toBe(false);
+    await expect(
+      h.start(undefined, {
+        metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+        resumeCursor: nativeCursor(sessionId, 'native'),
+      }),
+    ).rejects.toThrow('OpenCode moved this session');
+    expect(h.replay.made('PATCH', '/api/session/:id')).toHaveLength(0);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
   });
 
   test('a governed session OpenCode moves into a directory whose configuration runs code is stopped, with a warning that says why', async () => {
