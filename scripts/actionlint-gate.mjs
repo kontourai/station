@@ -2681,7 +2681,7 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   run: `set -euo pipefail
 if [[ ! -x /bin/zsh ]]; then
   bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
-  curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \\
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --retry 2 --retry-max-time 40 \\
     "https://raw.githubusercontent.com/\${BOOTSTRAP_SOURCE_REPOSITORY}/\${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \\
     --output "$bootstrap"
   printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"

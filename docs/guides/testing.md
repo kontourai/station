@@ -1709,7 +1709,10 @@ two merge groups; after the third failure the step exits with that attempt's
 apt status and error. The Gallery renderer image
 remains pinned by digest.
 Each caller stages that helper from the immutable workflow-definition commit
-into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+into `RUNNER_TEMP`, independently of the application checkout. The download
+allows up to two retries for transient errors such as HTTP 429, with a
+40-second retry window and a 20-second limit per attempt. If the download
+still fails, the step exits before executing the helper. Older PR heads
 therefore receive base-workflow bootstrap fixes without needing the new helper
 in their tree. Full regression uses local reusable workflow references; those
 resolve at the caller's workflow commit, while `inputs.source_sha` continues to
