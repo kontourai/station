@@ -1567,9 +1567,13 @@ none is a provider failure kind or retryable as such). `turn_start_held`: an
 earlier start by this Station process may have reached the engine; the next
 send settles it once the Session's engine is observed to have ended.
 `turn_start_held_until_restart`: the same, on an engine that does not report
-its process ending, so it stays held until that turn reports its end or
-Station restarts. `turn_start_busy`: another start on the Session (another
+its process ending, so it stays held until that turn reports its end; to
+send now, restart Station. `turn_start_busy`: another start on the Session (another
 request or Station process, or the engine's own start) has not finished.
+`conversation_predecessor_engine_live` (`CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE`):
+a continuation was refused because the conversation's current Session failed
+while its engine process still runs, and a successor would resume the same
+native conversation beside it; it clears once that process has stopped.
 A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
 conversation's durable inbox (#3568): `POST /chat` answers `202` with a
 `ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
