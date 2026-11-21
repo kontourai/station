@@ -13,7 +13,7 @@ const manifest = JSON.parse(readFileSync('.github/labels.json', 'utf8'));
 
 describe('label manifest', () => {
   test('pins all live labels plus the lifecycle and stage additions', () => {
-    expect(manifest.labels).toHaveLength(38);
+    expect(manifest.labels).toHaveLength(39);
     // Live since 2026-10-22; undeclared, they failed the scheduled backlog
     // policy in its label check before the policy itself ran.
     expect(EXPECTED_LABEL_NAMES).toEqual(
@@ -23,6 +23,9 @@ describe('label manifest', () => {
         'multiplayer:extension',
         'multiplayer:follow-up',
         'multiplayer:pilot',
+        // Main: Health's tracker filter; create it live before the reporter
+        // lands, or the backlog policy reports the drift.
+        'ci:red',
       ]),
     );
     expect(validateLabelManifest(manifest)).toEqual([]);
@@ -89,7 +92,7 @@ describe('label manifest', () => {
       { ...manifest.labels[0], color: 'ffffff' },
       { name: 'unexpected', color: '000000', description: 'keep me' },
     ]);
-    expect(plan.create).toHaveLength(37);
+    expect(plan.create).toHaveLength(38);
     expect(plan.update).toEqual([manifest.labels[0]]);
     expect(plan.unexpected).toEqual(['unexpected']);
   });

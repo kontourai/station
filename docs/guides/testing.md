@@ -442,6 +442,83 @@ queue. `PR: Secret scan` keeps its push trigger: it has no merge-group run,
 it is the only scan of main's own history (including bot ledger commits that
 bypass the queue), and `Main: Health` tracks its main-push result.
 
+### Scheduled workflow failures
+
+Every scheduled workflow's red run opens or updates one issue. `Main: Health`
+is the only reporter: it watches each scheduled workflow by name and keeps one
+tracker per workflow, titled `Main pipeline red: <workflow name>` and labelled
+`bug` and `P1`, plus `ci:red` once the owner has created that label (until
+then trackers open unlabelled with it and the job log says so). The tracker is
+found with one consistent listing of the issues the workflow bot opened, not a
+scan of every issue or a search; report and close runs for one workflow share
+a concurrency group, so a second red reads the first one's tracker. When
+several trackers with one title are open, the oldest is kept and the others
+are closed as duplicates; a tracker closed as a duplicate is never reopened.
+In `main-health.yml` and `container-smoke.yml`, a job holding any write scope
+checks out only the default branch, without credentials (a test pins this for
+those two files; release, Nightly and TestFlight jobs elsewhere legitimately
+check out the exact source they build). Only an issue whose body Main: Health wrote (its marker, or the `Workflow:
+<name>` line) counts as a tracker, so a bot issue a person renamed to a
+tracker title is neither reused nor closed. A tracker closed as not planned is
+reopened by the next red: to stop watching a workflow, remove it from the
+watch list. Only exact titles match: a tracker a person renamed,
+or the tracker of a workflow that was renamed, is left as it is and the next
+red opens a new one. Its body is rewritten for each red run with the run URL, trigger, head
+SHA, failing jobs and steps, and up to 15 failing annotation lines, so an
+agent can start from the issue alone. Comments follow the
+[comment policy](../../scripts/main-health-comment-policy.mjs): a new comment
+only when the failure changes, the tracker reopens, or a day has passed. The
+next fully green run closes it once the green has held: a tracker stays
+open while the workflow had a red run on `main` in the preceding day, and a
+red within a day of a close reopens it without a comment. Replaying
+2026-10-17..11-16 this cut tracker comments from 199 to 129 (Main:
+Qualification health from 66 to 20, Nightly from 40 to 20); opening is
+never delayed.
+
+Known gap: the failure and success jobs of one workflow share a concurrency
+group, so a newer queued job replaces an older pending one. A failure that is
+followed by a success before it could be reported is not reported, when no
+tracker exists yet.
+
+A cancelled run is attributed from its jobs' annotations. Only a person's
+cancel ("The run was canceled by @…") and a run superseded in its concurrency
+group ("Canceling since a higher priority waiting request for … exists") write
+nothing. A job GitHub never gave a runner, or whose runner was lost, is
+reported, and so is any cancel whose cause is not recognised, including an API
+cancel by automation, which leaves no annotation. Push and dispatch runs on
+`main` of a watched workflow report too; `Nightly: iOS Rust cache` and the
+push-only `Main: Seatbelt kernel legs` are the push-triggered ones.
+
+A schedule that stops firing is a failure as well. On every Main: Health run,
+its `overdue-schedules` job reads each watched scheduled workflow's cron from
+the workflow file, takes the longest gap between firings as the interval, and
+opens the same tracker with a "has not run on its schedule since …" body when
+both the newest scheduled run and the commit that last changed the file's cron
+lines (when the current schedule took effect) are older than max(2 × interval,
+20 h), so a cron that just landed or changed gets one full tolerance first and
+an unrelated edit to the file does not postpone detection. GitHub fires
+this repository's schedules late and sparsely (largest gaps measured
+2026-10-17..11-16: 10.8 h for hourly crons, 15.8 h for six-hourly, 28.6 h for
+daily, 170 h for weekly), so the tolerance is 20 h, 20 h, 48 h and 14 days.
+Only a successful run triggered by its `schedule` closes a tracker that check opened. The
+check runs only when Main: Health runs, that is when some watched workflow
+completes on `main`. Hourly `Nightly` and `Repo: Starved PR report` and every
+main push's secret scan normally trigger it many times a day; on a day when
+no watched workflow completes on `main` at all, nothing checks, and the next
+completion catches up on every overdue schedule at once. Each schedule is
+checked on its own; a failed check does not stop the others, and the job then
+fails once, naming what it could not check. Main: Health cannot watch itself,
+so when any of its jobs fails, a final job opens or rewrites one `Main: Health
+could not run` issue, closed by hand once Main: Health runs green again. A
+label API failure never stops a tracker: it opens with `bug` and `P1` and says
+the label could not be checked.
+
+`scripts/__tests__/scheduled-failure-reporting.test.ts` refuses a scheduled
+workflow that is neither watched nor on its justified allowlist: `Main:
+Qualification`, whose repair episode and health trackers report it. An
+allowlist entry for a workflow that is gone or no longer scheduled fails the
+test.
+
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
 pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
@@ -487,7 +564,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, filtered to runs on `main`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Qualification health`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: Backlog policy`, `Repo: Dated TODO sweep`, `Repo: Starved PR report`, `Repo: Duplicate sweep`, `Nightly: Fresh-home walkthrough`, `Nightly: iOS Rust cache`, `Main: Seatbelt kernel legs`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |

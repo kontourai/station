@@ -1,0 +1,7 @@
+{
+  "revision": "41803c5f23dafa317a172babc5abb0e2dfcff0c9",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Cites main-health.yml, which now also watches Repo: Duplicate sweep and closes a tracker before commenting; this page's claims concern the advisory floor's tracker body and cadence, unchanged.","inputs":["docs/guides/dependency-security.md",".github/workflows/main-health.yml"]}
+  ]
+}

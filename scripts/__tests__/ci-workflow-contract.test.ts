@@ -410,6 +410,17 @@ describe('CI verification workflow contracts', () => {
       // Scheduled housekeeping that went red unnoticed: the docs sweep for
       // weeks (#4270).
       '.github/workflows/docs-freshness-sweep.yml',
+      // Every other scheduled workflow (owner decision: a scheduled red must
+      // open an issue). scheduled-failure-reporting.test.ts holds the whole
+      // scheduled set to this list or a justified allowlist.
+      '.github/workflows/backlog-priority-policy.yml',
+      '.github/workflows/dated-todo-sweep.yml',
+      '.github/workflows/starved-pr-report.yml',
+      '.github/workflows/pr-duplicate-sweep.yml',
+      '.github/workflows/fresh-home-walkthrough.yml',
+      '.github/workflows/ios-rust-cache-warm.yml',
+      // Push-only, path-filtered; its main push run is the only Seatbelt run.
+      '.github/workflows/seatbelt-kernel.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -432,6 +443,7 @@ describe('CI verification workflow contracts', () => {
     );
     const successJob = mainHealth.slice(
       mainHealth.indexOf('  close-after-success:'),
+      mainHealth.indexOf('  overdue-schedules:'),
     );
 
     expect(trigger).toContain('types: [completed]');
@@ -441,14 +453,18 @@ describe('CI verification workflow contracts', () => {
     // Pinned as an exact object rather than a `not.toContain`, so the next
     // scope added to this privileged workflow_run handler is a visible edit
     // here and not a silently passing absence check.
+    // `checks: read` reads annotations: the failing lines the tracker
+    // quotes and who cancelled a run.
     expect(parsedMainHealth?.permissions).toEqual({
       actions: 'read',
+      checks: 'read',
       contents: 'read',
       issues: 'write',
     });
     expect(failureJob).toContain(
       "github.event.workflow_run.conclusion == 'failure'",
     );
+    expect(failureJob).toContain('classifyCancellation(annotations)');
     expect(successJob).toContain(
       "github.event.workflow_run.conclusion == 'success'",
     );
@@ -471,11 +487,17 @@ describe('CI verification workflow contracts', () => {
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
-      expect(job).toContain('Main pipeline red: $' + '{workflowName}');
+      expect(job).toContain('trackerTitle(workflowName)');
+      // One consistent listing of the bot's issues, never a scan of every
+      // issue (scheduled-failure-reporting.test.ts executes it).
+      expect(job).toContain(
+        'consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title)',
+      );
+      expect(job).not.toContain(
+        'github.paginate(github.rest.issues.listForRepo',
+      );
     }
-    expect(failureJob).toContain("labels: ['bug', 'P1']");
-    expect(failureJob).toContain("state: 'all'");
-    expect(failureJob).toContain("state: 'open'");
+    expect(failureJob).toContain('labels,');
     expect(failureJob).toContain(
       'group: main-health-$' + '{{ github.event.workflow_run.name }}',
     );
@@ -501,6 +523,7 @@ describe('CI verification workflow contracts', () => {
     const mainHealth = workflow('main-health.yml');
     const successJob = mainHealth.slice(
       mainHealth.indexOf('  close-after-success:'),
+      mainHealth.indexOf('  overdue-schedules:'),
     );
 
     expect(successJob).toContain('github.rest.actions.listJobsForWorkflowRun');
@@ -560,6 +583,9 @@ describe('CI verification workflow contracts', () => {
       rest: {
         actions: { listJobsForWorkflowRun: listJobs },
         issues: {
+          getLabel: vi.fn(async () => {
+            throw Object.assign(new Error('Not Found'), { status: 404 });
+          }),
           listForRepo,
           listComments,
           create: vi.fn(),
@@ -579,13 +605,16 @@ describe('CI verification workflow contracts', () => {
             },
           ];
         if (method === listComments) return comments;
-        return [
-          {
-            number: 42,
-            state: issueState,
-            title: 'Main pipeline red: Repo: Backlog policy',
-          },
-        ];
+        if (method === listForRepo)
+          return [
+            {
+              number: 42,
+              state: issueState,
+              title: 'Main pipeline red: Repo: Backlog policy',
+              body: 'A required workflow failed on main.\n\nWorkflow: Repo: Backlog policy',
+            },
+          ];
+        throw new Error('unexpected paginate');
       }),
     };
     await run(
@@ -608,7 +637,7 @@ describe('CI verification workflow contracts', () => {
     return { createComment, updateComment, updateIssue };
   }
 
-  function recordedComment(failure: string) {
+  function recordedComment(failure: string, ageMs = 0) {
     return renderMainHealthComment(
       {
         workflowName: 'Repo: Backlog policy',
@@ -621,7 +650,7 @@ describe('CI verification workflow contracts', () => {
         failureCount: 1,
         digest: failureDigest([failure]),
         redRunsSinceComment: 4,
-        commentedAt: new Date().toISOString(),
+        commentedAt: new Date(Date.now() - ageMs).toISOString(),
       },
     );
   }
@@ -645,12 +674,15 @@ describe('CI verification workflow contracts', () => {
     expect(parseMainHealthState(call[0].body)?.redRunsSinceComment).toBe(5);
   });
 
-  it('comments when a different step fails than the last comment recorded', async () => {
+  it('comments when a different step fails than a day-old comment recorded', async () => {
     const { createComment, updateComment } = await runReportFailure({
       comments: [
         {
           id: 7,
-          body: recordedComment('policy > Run the gate (failure)'),
+          body: recordedComment(
+            'policy > Run the gate (failure)',
+            25 * 60 * 60 * 1000,
+          ),
           user: { type: 'Bot' },
         },
       ],
@@ -741,13 +773,16 @@ describe('CI verification workflow contracts', () => {
     )?.document as {
       jobs: Record<string, { steps: { with: { script: string } }[] }>;
     };
-    const script = document.jobs['close-after-success'].steps[0].with.script;
-    const run = new (Object.getPrototypeOf(async () => {}).constructor)(
-      'github',
-      'context',
-      'process',
-      script,
-    );
+    const script = document.jobs['close-after-success'].steps.find(
+      (step) => typeof step.with?.script === 'string',
+    )?.with.script as string;
+    // The step imports the tracker lookup, so it needs a host for dynamic
+    // import(); vm.compileFunction with the main loader runs it as written.
+    const run = vm.compileFunction(
+      `return async function (github, context, process, core) {\n${script}\n};`,
+      [],
+      { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
+    )();
     const scenarios = [
       {
         workflowName: 'Nightly',
@@ -788,15 +823,29 @@ describe('CI verification workflow contracts', () => {
         );
         jobs.push({ name: optionalName, conclusion: 'skipped' });
         const listJobs = vi.fn();
+        const listForRepo = vi.fn();
+        const tracker = {
+          number: 1,
+          state: 'open',
+          title: `Main pipeline red: ${workflowName}`,
+          body: `A required workflow failed on main.\n\nWorkflow: ${workflowName}`,
+        };
         const github = {
           rest: {
-            actions: { listJobsForWorkflowRun: listJobs },
-            issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
+            actions: {
+              listJobsForWorkflowRun: listJobs,
+              listWorkflowRuns: vi.fn(async () => ({
+                data: { workflow_runs: [] },
+              })),
+            },
+            issues: { listForRepo, createComment: vi.fn(), update },
           },
           paginate: vi.fn(async (method) =>
             method === listJobs
               ? jobs
-              : [{ number: 1, title: `Main pipeline red: ${workflowName}` }],
+              : method === listForRepo
+                ? [tracker]
+                : [],
           ),
         };
         await run(
@@ -807,11 +856,13 @@ describe('CI verification workflow contracts', () => {
           },
           {
             env: {
+              GITHUB_WORKSPACE: pathToFileURL(root).href,
               WORKFLOW_NAME: workflowName,
               RUN_URL: 'https://example.test/run/123',
               HEAD_SHA: 'a'.repeat(40),
             },
           },
+          { info: vi.fn() },
         );
         expect(
           update,
