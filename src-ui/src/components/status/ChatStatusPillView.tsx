@@ -18,6 +18,7 @@ import { ScheduledCheckBackContext } from './ScheduledCheckBackContext';
 export function ChatStatusPillView({
   input,
   sessionSummary,
+  stopControl,
   onRevealApproval,
   onRepair,
   onResync,
@@ -26,6 +27,7 @@ export function ChatStatusPillView({
 }: {
   input: ChatStatusInput;
   sessionSummary?: OrchestrationSessionSummary | null;
+  stopControl?: import('react').ReactNode;
   onRevealApproval: () => void;
   onRepair: () => void;
   /** Re-reads the conversation; absent leaves an unobservable pill inert. */
@@ -100,7 +102,9 @@ export function ChatStatusPillView({
             : undefined)
         }
         checkBack={combine ? checkBack : undefined}
+        activeTurnSince={input.turnLive ? status?.clockFrom : undefined}
         runningChildren={agents}
+        stopControl={stopControl}
         onRevealApproval={onRevealApproval}
         onRepair={onRepair}
         onResync={onResync}

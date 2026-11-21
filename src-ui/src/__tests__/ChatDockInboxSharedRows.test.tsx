@@ -145,7 +145,7 @@ function renderSheetHost(
   );
 }
 
-function expectSharedRowAnatomy(root: ParentNode) {
+function expectSharedRowAnatomy(root: ParentNode, recency = '1m') {
   // One shared row implementation: the class family is the contract.
   expect(root.querySelector('.chat-dock-inbox__row')).not.toBeNull();
   expect(root.querySelector('.inbox-row__agent')?.textContent).toBe(
@@ -158,7 +158,7 @@ function expectSharedRowAnatomy(root: ParentNode) {
   // line's slot: a status row used to drop its time entirely, leaving "how
   // long has it sat like this?" unanswerable from the inbox.
   expect(root.querySelector('.inbox-row__word')?.textContent).toBe('Running');
-  expect(root.querySelector('.inbox-row__time')?.textContent).toBe('1m');
+  expect(root.querySelector('.inbox-row__time')?.textContent).toBe(recency);
 }
 
 describe('shared inbox rows render in both hosts (station#3312)', () => {
@@ -288,9 +288,8 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       ),
     });
     expect(screen.getByText('Child chat')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Details for Child chat' }),
-    );
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Child chat/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     await screen.findByRole('dialog', { name: 'Details for Child chat' });
     mounted.rerender(view([parent, { ...child, lifecycleLabel: 'Completed' }]));
     const details = await screen.findByRole('dialog', {
@@ -381,21 +380,34 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
               />,
             );
       const first = mount();
-      fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
-        target: { value: 'project:["station:local","alpha"]' },
-      });
+      if (host === 'mobile') {
+        fireEvent.click(screen.getByRole('button', { name: 'Filter inbox' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Alpha/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+      } else
+        fireEvent.change(
+          screen.getByRole('combobox', { name: 'Inbox scope' }),
+          {
+            target: { value: 'project:["station:local","alpha"]' },
+          },
+        );
       expect(screen.queryByText('Remote approval')).toBeNull();
       expect(screen.getByText('Local project work')).toBeTruthy();
       first.unmount();
       deviceSettingsStore.reloadFromStorage();
       mount();
-      expect(
-        (
-          screen.getByRole('combobox', {
-            name: 'Inbox scope',
-          }) as HTMLSelectElement
-        ).value,
-      ).toBe('project:["station:local","alpha"]');
+      if (host === 'mobile')
+        expect(
+          screen.getByRole('button', { name: 'Clear filters' }),
+        ).toBeTruthy();
+      else
+        expect(
+          (
+            screen.getByRole('combobox', {
+              name: 'Inbox scope',
+            }) as HTMLSelectElement
+          ).value,
+        ).toBe('project:["station:local","alpha"]');
       fireEvent.click(
         // Desktop: a count badge on the scope picker; the phone keeps its notice.
         screen.getByRole('button', {
@@ -870,7 +882,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
     const dialog = screen.getByRole('region', { name: 'Inbox' });
-    expectSharedRowAnatomy(dialog);
+    expectSharedRowAnatomy(dialog, '1m ago');
     expect(
       screen.getByRole('button', {
         name: /^Shared row title.*Shared project/,
@@ -923,14 +935,15 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
-  it('the sheet keeps one overflow control and snoozes from its actions sheet', async () => {
+  it('a selected phone row snoozes from its Details sheet', async () => {
     renderSheetHost(workItem());
     expect(
       screen.queryByRole('button', { name: 'Snooze Shared row title' }),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Details for Shared row title' }),
+    fireEvent.contextMenu(
+      screen.getByRole('button', { name: /^Shared row title/ }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Dismiss from inbox' }),
@@ -1007,9 +1020,10 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
   it('a snooze written in one host is read by the other (same store, same key)', async () => {
     const item = workItem();
     const sheet = renderSheetHost(item);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Details for Shared row title' }),
+    fireEvent.contextMenu(
+      screen.getByRole('button', { name: /^Shared row title/ }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
     sheet.unmount();
 

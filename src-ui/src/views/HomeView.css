@@ -276,6 +276,10 @@
   .home-view__start .start-composer__input {
     min-height: 44px;
   }
+  .home-view__group-label {
+    padding-block-start: var(--k-space-4);
+    margin-block-end: var(--k-space-2);
+  }
   .home-view__actions {
     grid-template-columns: 1fr;
     margin: 8px 0 32px;

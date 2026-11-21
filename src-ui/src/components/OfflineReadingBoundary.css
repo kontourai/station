@@ -60,7 +60,7 @@
   .offline-reading-launcher[role="status"] {
     inset-block-start: calc(
       var(--chat-visual-viewport-top, 0px) +
-      var(--safe-top, 0px) +
+      var(--app-toolbar-total-height, 0px) +
       var(--k-space-4)
     );
     inset-block-end: auto;

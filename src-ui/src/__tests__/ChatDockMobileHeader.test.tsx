@@ -256,7 +256,7 @@ describe('mobile conversation focus', () => {
     expect(
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
   test.each([
     { hasConversation: false },
@@ -270,18 +270,18 @@ describe('mobile conversation focus', () => {
         name: /Switch project|New chats:|Choose a project/,
       }),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
     expect(
       screen.getByText(state.inboxActive ? 'Inbox' : 'New chat', {
         selector: '.chat-dock__mobile-title-text',
       }),
     ).toBeTruthy();
   });
-  test('puts chat actions before identity and full screen after identity', () => {
+  test('puts extent and overflow together after the title', () => {
     renderHeader({ extentToggle: { maximized: false, onToggle: vi.fn() } });
     const actions = screen.getByRole('button', { name: 'Chat actions' });
     const extent = screen.getByRole('button', { name: 'Full screen chat' });
-    expect(actions.closest('.chat-dock__mobile-leading')).not.toBeNull();
+    expect(actions.closest('.chat-dock__mobile-actions')).not.toBeNull();
     expect(extent.closest('.chat-dock__mobile-actions')).not.toBeNull();
     fireEvent.click(extent);
   });
@@ -292,7 +292,9 @@ describe('mobile conversation focus', () => {
       onToggleInbox,
     });
     const inbox = screen.getByRole('button', { name: 'Inbox' });
-    const identity = inbox.closest('.chat-dock__mobile-identity')!;
+    const identity = inbox
+      .closest('.chat-dock__mobile-header')!
+      .querySelector('.chat-dock__mobile-identity')!;
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
     // The visible title ellipsizes on narrow widths; the full text rides
@@ -423,18 +425,11 @@ describe('mobile conversation focus', () => {
     expect(onClear).toHaveBeenCalledOnce();
   });
 
-  test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
+  test('New chat opens from the active chat overflow', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat, showConnection: false });
-    const newChat = screen.getByRole('button', { name: 'New chat' });
-    // The same quiet icon control as Chat actions beside it, not a filled
-    // primary button with a label squeezed out of view.
-    const chatActions = screen.getByRole('button', { name: 'Chat actions' });
-    expect(newChat.classList.contains('app-toolbar__icon-btn')).toBe(true);
-    expect(chatActions.classList.contains('app-toolbar__icon-btn')).toBe(true);
-    expect(newChat.classList.contains('button--primary')).toBe(false);
-    expect(newChat.textContent).toBe('');
-    fireEvent.click(newChat);
+    await openActions();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledOnce();
     await openActions();
     expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
@@ -461,7 +456,7 @@ describe('mobile conversation focus', () => {
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of ['Collapse chat', 'Inbox', 'Chat actions']) {
+    for (const name of ['Inbox', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });
@@ -732,28 +727,27 @@ describe('full-screen and peek control (#4391)', () => {
 });
 
 describe('first-run bar without a chat (#4404 A44)', () => {
-  test('offers New chat, not a pressed Back to chat or Chat actions', () => {
-    renderHeader({
-      hasConversation: false,
-      inboxActive: true,
-      showConnection: false,
-      agentIdentity: null,
-    });
-    expect(screen.queryByRole('button', { name: 'Back to chat' })).toBe(null);
-    expect(screen.queryByRole('button', { name: 'Chat actions' })).toBe(null);
-    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
-  });
-
-  test('keeps Back to chat and Chat actions once a chat exists', () => {
-    renderHeader({
-      hasConversation: true,
-      inboxActive: true,
-      agentIdentity: null,
-    });
-    expect(screen.getAllByText('Inbox', { exact: true })).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-  });
+  test.each([false, true])(
+    'gives Inbox its shared tool slot with existing chat = %s',
+    (hasConversation) => {
+      renderHeader({
+        hasConversation,
+        inboxActive: true,
+        showConnection: false,
+        agentIdentity: null,
+      });
+      expect(
+        screen.getByText('Inbox', { selector: '.chat-dock__mobile-title' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: 'Collapse chat' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Chat actions' })).toBeNull();
+      expect(
+        document.querySelector('.chat-dock__mobile-inbox-tools'),
+      ).not.toBeNull();
+    },
+  );
 });
 
 test('Inbox title takes precedence over an open child breadcrumb', () => {

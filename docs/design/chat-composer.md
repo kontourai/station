@@ -566,8 +566,7 @@ cards allow two title lines while status and metadata keep predictable positions
 Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
 clock and ×, while × hides any conversation without stopping work or deleting
 history. Undo restores it on this device; inbox search reveals dismissed work with Restore.
-Long press and the visible ⋯ open the same chat actions and details on touch
-rows. One action definition supplies the desktop shortcuts, Details sheet and
+A hold opens Details on touch Home rows. In the mobile Inbox it selects a conversation, with Details available for a single selection. One action definition supplies the desktop shortcuts, Details sheet and
 swipe tray, including availability, labels and pending state.
 With Sheet gestures preview enabled, mobile rows follow the finger on a left
 swipe and snap to reveal labelled actions. Only one row's tray stays open.
@@ -1547,19 +1546,16 @@ change an existing conversation's binding. The future-project switcher is absent
 from every dock header, including empty and Inbox states. This reflects the October 30 product
 decision to remove a competing project hierarchy, while retaining project
 context in the conversation's session details.
-The mobile **Inbox** is embedded in Chat. The header's Inbox icon and the
-**Inbox** row in Chat actions open it. The header keeps the shared **New chat**
-action outside the scrolling list. Opening the start composer sends no message.
-Rows lead with the marks of the engines that ran the conversation (up to three, overlapping, then "+N"; the Agent's own mark
-when no engine with a mark is recorded) beside the Agent's name, then the
-conversation title, the Project with its icon (or a folder when it has none),
-a pencil when this device holds an unsent draft for it, and a right-aligned
-status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs input`, `Needs
-approval`, …, the same words the dock row prints), prefixed with "Last known:"
-when its latest observation failed. Verified running time uses the
-recorded open-turn start; without one, the row's compact time trails the status
-line (`· 2m`). One ellipsis opens the
-existing details/actions sheet, including Git and PR reads on demand.
+The mobile **Inbox** is embedded in Chat. Use the leading arrow to return to
+Inbox, or open it from Chat actions. **New chat** floats at the lower right of
+the Inbox list. A tap opens the start composer. The Home and Inbox rows lead
+with the conversation title. The next line groups engine marks and project
+artwork with their names. A pencil identifies an unsent draft on this device.
+The right edge aligns the status with one time beneath it. A live clock uses
+the start of the observed activity, a scheduled check shows its due time, and
+other rows show recency. Opening Inbox does not reset these times. On Home,
+hold a row for Details. In Inbox, hold to select, then use Details for a single
+row or an available bulk action.
 
 The start composer's **Project** chip opens **Choose project**. Choosing a
 Project changes the new-chat default without starting a chat or navigating.

@@ -471,8 +471,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await swipe(cdp, page, -90);
     expect(await page.locator('.inbox-row__swipe-actions').count()).toBe(0);
     await page
-      .getByRole('button', { name: 'Details for Review the inbox' })
-      .click();
+      .getByRole('button', { name: /^Review the inbox/ })
+      .click({ button: 'right' });
+    await page.getByRole('button', { name: 'Details', exact: true }).click();
     await page
       .getByRole('button', { name: 'Dismiss from inbox', exact: true })
       .click();
@@ -480,8 +481,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await page.getByRole('searchbox').fill('Review the inbox');
     await page.getByRole('region', { name: /Dismissed/ }).waitFor();
     await page
-      .getByRole('button', { name: 'Details for Review the inbox' })
-      .click();
+      .getByRole('button', { name: /^Review the inbox/ })
+      .click({ button: 'right' });
+    await page.getByRole('button', { name: 'Details', exact: true }).click();
     await page
       .getByRole('button', { name: 'Restore to inbox', exact: true })
       .click();

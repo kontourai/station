@@ -722,7 +722,7 @@ as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and the phone header's compose icon open the same composer.
+**⌘T**, and the floating button in the phone Inbox open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -816,18 +816,15 @@ directly from the collapsed bar. The menu drawer lists places and Projects.
 The chat bar's Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapse
-and reopen restore the last view. Use the compose icon at the right of the
-chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
+and reopen restore the last view. Use the floating **New chat** button in Inbox, the compose icon in the collapsed bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
-a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
-management remains in the chat actions menu. **Projects** has the same add control
+a chip in the dock header. The app header keeps connection health, the drawer, and the Station switcher above the dock in full screen. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
 On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
-Project **Tasks** list. Release when the ring fills. The actions menu offers
-the same refresh. A floating status pill shows what’s refreshing.
+Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in Inbox actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
@@ -849,8 +846,7 @@ chats from a side dock, open **More dock actions** and choose **Open chat…**.
 The picker opens over the current dock placement.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
-details. With **Sheet gestures preview** enabled in Settings → Advanced →
+from inbox**. On mobile, hold a conversation or choose **Select conversations** from Inbox actions. Choose **Details** for one selected row to open its actions. The bottom tray shows which actions apply to the selection. Use **Filter inbox** for Station, Project and status. On narrow phones, Search and Filter are in Inbox actions. With **Sheet gestures preview** enabled in Settings → Advanced →
 Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Dismiss** hides the conversation.

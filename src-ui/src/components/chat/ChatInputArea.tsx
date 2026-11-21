@@ -54,9 +54,19 @@ import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
+import {
+  appendDictation,
+  useStartDictation,
+} from '../chat-start/useStartDictation';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
+import { AgentIcon } from '../icons/AgentIcon';
 import { BrandIcon } from '../icons/BrandIcon';
-import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
+import {
+  AgentGlyph,
+  ArrowDownGlyph,
+  EngineGlyph,
+  PlusGlyph,
+} from '../icons/Glyph';
 import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
@@ -201,6 +211,7 @@ interface ChatInputAreaProps {
    * stopped being true seconds into a turn that ran for minutes.
    */
   turnInFlight: boolean;
+  stopInActivity?: boolean;
   /**
    * Whether the running turn offers an explicit steer. A follow-up queues
    * by default, including when the engine can steer.
@@ -514,6 +525,7 @@ export function ChatInputArea({
   disabled,
   allowDraftWhileDisabled = false,
   turnInFlight,
+  stopInActivity = false,
   busySteeringKind = 'native',
   busyQueueTakesFiles = false,
   busySteeringUnavailableReason,
@@ -2135,7 +2147,7 @@ export function ChatInputArea({
             className="chat-input__send-group"
             data-stop-placement={isMobile ? 'trailing' : undefined}
           >
-            {turnInFlight && !isMobile && (
+            {turnInFlight && !stopInActivity && !isMobile && (
               <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -2253,7 +2265,7 @@ export function ChatInputArea({
                 </button>
               )}
             </div>
-            {turnInFlight && isMobile && (
+            {turnInFlight && !stopInActivity && isMobile && (
               <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -2371,7 +2383,11 @@ export function ChildInstructionForm({
   sending: boolean;
   onSubmit?: () => Promise<void>;
 }) {
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const ready = !!text.trim() && !!onSubmit && !sending;
+  const voice = useStartDictation((value) =>
+    onChange(appendDictation(text, value)),
+  );
   const field = (
     <textarea
       id={editorId}
@@ -2408,32 +2424,60 @@ export function ChildInstructionForm({
     </Button>
   );
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (ready) void onSubmit?.();
-      }}
-    >
-      {identity ? (
-        <div className="chat-input">
-          <div className="chat-input__capsule">
-            <ComposerMessageField>{field}</ComposerMessageField>
-            <div className="chat-controls-row">
-              <span className="child-instructions__identity" title={identity}>
-                {identity}
-              </span>
-              <span className="chat-controls-row__spacer" />
-              {send}
+    <>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (ready) void onSubmit?.();
+        }}
+      >
+        {identity ? (
+          <div className="chat-input">
+            <div className="chat-input__capsule">
+              <ComposerMessageField>{field}</ComposerMessageField>
+              <div className="chat-controls-row">
+                {voice && <VoiceOrb {...voice} disabled={sending} />}
+                <ComposerIconAction
+                  label="Saved drafts"
+                  expanded={draftsOpen}
+                  onClick={() => setDraftsOpen(true)}
+                >
+                  <PlusGlyph />
+                </ComposerIconAction>
+                <span className="chat-controls-row__spacer child-instructions__model">
+                  <AgentIcon agent={{ name, id: `child:${name}` }} size={18} />
+                  <span
+                    className="child-instructions__identity"
+                    title={identity}
+                  >
+                    {identity}
+                  </span>
+                </span>
+                {send}
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <>
-          <label htmlFor={editorId}>Send to {name}</label>
-          {field}
-          {send}
-        </>
+        ) : (
+          <>
+            <label htmlFor={editorId}>Send to {name}</label>
+            {field}
+            {send}
+          </>
+        )}
+      </form>
+      {identity && draftsOpen && (
+        <React.Suspense fallback={null}>
+          <PortableDraftsMenu
+            hideTrigger
+            textOnly
+            input={text}
+            attachments={[]}
+            open={draftsOpen}
+            onOpenChange={setDraftsOpen}
+            onRestore={(draft) => onChange(draft.text)}
+          />
+        </React.Suspense>
       )}
-    </form>
+    </>
   );
 }

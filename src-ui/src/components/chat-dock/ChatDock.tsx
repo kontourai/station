@@ -52,8 +52,6 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { useLayoutChatPlacement } from '../../app-shell/chat-placement';
-import { resolveViewFromPath } from '../../app-shell/routing';
 import {
   activeChatsStore,
   useActiveChatActions,
@@ -246,7 +244,7 @@ import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
-import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
+
 import { NewChatUnavailableError } from './newChatErrors';
 import {
   activateProjectChat,
@@ -613,7 +611,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
   useConversationOpenPreload();
   const isFullscreenPlacement = placement === 'fullscreen';
-  const layoutChatPlacement = useLayoutChatPlacement();
   // A full-screen Chat shows its active chat without opening the dock; end-of-
   // turn toasts must treat that chat as on screen (`isChatInForeground`).
   const fullscreenOnScreen = isFullscreenPlacement && props.onScreen !== false;
@@ -1189,6 +1186,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setShowNewChatModalState,
   });
   const mobileInboxShown = isMobile && mobileInboxOpen;
+  const [mobileInboxToolsHost, setMobileInboxToolsHost] =
+    useState<HTMLDivElement | null>(null);
   const [isChildReaderOpen, setIsChildReaderOpen] = useState(false);
   const readerCovered =
     mobileInboxShown || showNewChatModal || isChildReaderOpen;
@@ -3381,25 +3380,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     bootstrap.sharedRealtime,
   ]);
 
-  // station#1048: whether the app toolbar is genuinely gone (not merely
-  // collapsed/half-open) — the one state `ChatDockMobileHeader`'s drawer
-  // toggle AND connection control both need to know before rendering,
-  // computed once so the two can never disagree about it the way they used
-  // to (the drawer toggle already guarded on this; the connection control
-  // did not, so it rendered next to the toolbar's own — same accessible
-  // name prefix — every time the dock was merely on screen, which is the
-  // DEFAULT mobile state, not an edge case).
-  const isMobileToolbarHidden = isMobileDockFullscreen({
-    isMobile,
-    isDockOpen: isPaneOpen,
-    isDockMaximized: isPaneMaximized,
-    // Coding embeds a fullscreen chat pane beneath the app toolbar. Only a
-    // viewport-owned Chat layout replaces that toolbar’s controls.
-    isDockOwnedView:
-      (isFullscreenPlacement && layoutChatPlacement !== 'center') ||
-      isDockOwnedViewType(resolveViewFromPath(pathname).type),
-  });
-
   // #2049: what a link in this conversation's rendered markdown may open.
   // The CONVERSATION's project, not the dock's binding — a model's
   // repo-relative path names a file in the checkout it was running in — and
@@ -4143,14 +4123,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? undefined
                         : activeOrchestrationSession?.modelRoute?.label
                     }
-                    // Only when the app toolbar is hidden — otherwise its drawer
-                    // toggle and this one are two controls with one accessible name.
-                    showDrawerToggle={isMobileToolbarHidden}
-                    // station#1048: same condition, same reasoning — otherwise
-                    // this header's connection control and the toolbar's own
-                    // (`app-toolbar-connection`) are two controls whose accessible
-                    // name starts "Manage Stations".
-                    showConnection={isMobileToolbarHidden}
+                    inboxToolsHostRef={setMobileInboxToolsHost}
+                    showDrawerToggle={false}
+                    showConnection={false}
                     sessionTitle={
                       showNewChatModal
                         ? newChatDraftTitle
@@ -4534,6 +4509,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           surface={{ id: 'mobile-inbox', label: 'Inbox' }}
                           componentProps={{
                             open: workspaceShown && mobileInboxShown,
+                            toolsHost: mobileInboxToolsHost,
+                            onNewChat: openNewChatDirect,
                             tasks: taskItems,
                             authority: requestAuthority,
                             pending: taskItemsPending,

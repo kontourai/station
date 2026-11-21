@@ -897,7 +897,11 @@ function LiveConversationBody({
   }, [chatInput.textareaRef]);
   const streamCatchingUp = useStreamCatchingUp(apiBase);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
-  const { pill: statusPill, statusInPill } = useChatStatusPill({
+  const {
+    pill: statusPill,
+    statusInPill,
+    stopInPill,
+  } = useChatStatusPill({
     activeSession,
     sessionSummary:
       activeOrchestrationSessionRead === 'error'
@@ -906,6 +910,12 @@ function LiveConversationBody({
     streamStatus,
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
+    stopControl: turnInFlight && (
+      <ConversationStopControl
+        onCancel={chatInput.handleCancel}
+        stopPending={!!activeSession.stopPending}
+      />
+    ),
     windowRequests,
     observationUnavailable: observationUnavailable || resyncPending,
     resyncPending,
@@ -3129,6 +3139,7 @@ function LiveConversationBody({
             }
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={turnInFlight}
+            stopInActivity={stopInPill}
             busyFollowUp={busyFollowUp}
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}

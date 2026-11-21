@@ -59,6 +59,7 @@ function ReportUnavailable({ onUnavailable }: { onUnavailable: () => void }) {
 export function useChatStatusPill({
   activeSession,
   sessionSummary,
+  stopControl,
   streamStatus,
   turnLive,
   enabled,
@@ -72,6 +73,7 @@ export function useChatStatusPill({
 }: {
   activeSession: ChatSession;
   sessionSummary?: OrchestrationSessionSummary | null;
+  stopControl?: ReactNode;
   /** The Station whose live tool record counts this chat's running tools. */
   apiBase?: string;
   /** The stream is replaying missed events (`useStreamCatchingUp`). */
@@ -88,7 +90,7 @@ export function useChatStatusPill({
   onResync?: () => void;
   /** Focus the recovered composer without changing its write permission. */
   onRecoveryFocus?: () => boolean;
-}): { pill: ReactNode; statusInPill: boolean } {
+}): { pill: ReactNode; statusInPill: boolean; stopInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
   );
@@ -236,9 +238,10 @@ export function useChatStatusPill({
     next.current = 0;
   }, [requestKey]);
 
-  if (!enabled) return { pill: null, statusInPill: false };
+  if (!enabled) return { pill: null, statusInPill: false, stopInPill: false };
   return {
     statusInPill: view !== 'unavailable',
+    stopInPill: !!stopControl && view === 'mounted',
     pill: (
       <LazyBoundary
         key={activeSession.id}
@@ -249,6 +252,7 @@ export function useChatStatusPill({
         componentProps={{
           input,
           sessionSummary,
+          stopControl,
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
           onResync,

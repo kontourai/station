@@ -46,9 +46,32 @@
 .child-instructions--composer .chat-controls-row {
   align-items: center;
 }
-.child-instructions--composer .chat-controls-row .child-instructions__identity {
+.child-instructions--composer
+  .chat-input
+  .chat-controls-row
+  .child-instructions__identity {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.child-instructions--composer .chat-controls-row {
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-2);
+}
+.child-instructions--composer .chat-input .tap-target {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+}
+
+.child-instructions__model {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  gap: var(--k-space-1);
+}
+.child-instructions__model > .brand-icon {
+  flex: none;
 }

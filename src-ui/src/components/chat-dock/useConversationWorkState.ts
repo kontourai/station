@@ -157,9 +157,17 @@ interface WorkState {
   change: {
     isPending: boolean;
     mutate(input: { conversationId: string; settled: boolean }): void;
+    mutateAsync?(input: {
+      conversationId: string;
+      settled: boolean;
+    }): Promise<unknown>;
   };
   hide: {
     mutate(input: { sessionId: string; hidden: boolean }): void;
+    mutateAsync?(input: {
+      sessionId: string;
+      hidden: boolean;
+    }): Promise<unknown>;
   };
   migrateHidden(sessionIds: readonly string[]): Promise<string[]>;
   /** The host authority this state belongs to. */

@@ -178,6 +178,9 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         lane: 'needsYou',
         tone: 'attention',
         word: SESSION_STATUS_WORDS[kind],
+        ...(facts?.attentionStartedAt !== undefined
+          ? { since: facts.attentionStartedAt }
+          : {}),
       };
     }
     case 'Failed':

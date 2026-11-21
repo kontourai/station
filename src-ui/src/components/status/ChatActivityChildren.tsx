@@ -2,6 +2,7 @@ import {
   type ChildWorkItem,
   childWorkKey,
 } from '@kontourai/station-contracts/child-work';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { parseEpochMs } from '../../utils/parseEpochMs';
 import { Button } from '../Button';
 import {
@@ -39,16 +40,28 @@ export function ChatActivityMarks({
 
 export function ChatActivityChildren({
   items,
-  onOpen,
+  returnFocus,
 }: {
   items: readonly ChildWorkItem[];
-  onOpen(): void;
+  returnFocus(): HTMLElement | undefined;
 }) {
   const open = useChildChatNavigation();
   const connection = useOptionalConversationConnection();
   return (
     <ul className="chat-activity-children" aria-label="Running subagents">
       {items.map((item) => {
+        const engine =
+          item.transcript?.kind === 'codex-thread'
+            ? 'codex'
+            : item.transcript?.kind === 'claude-subagent'
+              ? 'claude'
+              : undefined;
+        const identity = [
+          engine && engineDisplayLabel(engine),
+          item.model?.id ?? 'Model not reported',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         const since = parseEpochMs(item.startedAt);
         const canOpen =
           !!open &&
@@ -61,7 +74,7 @@ export function ChatActivityChildren({
             <ChildMark item={item} size={24} />
             <span className="chat-activity-children__identity">
               <strong>{item.title || 'Subagent'}</strong>
-              <small>{item.model?.id ?? 'Model not reported'}</small>
+              <small>{identity}</small>
             </span>
             <span className="chat-activity-children__duration">
               Working
@@ -80,8 +93,10 @@ export function ChatActivityChildren({
               <Button
                 variant="ghost"
                 onClick={() => {
-                  onOpen();
-                  open(childChatTarget(item, connection));
+                  open({
+                    ...childChatTarget(item, connection),
+                    returnFocus: returnFocus(),
+                  });
                 }}
               >
                 {content}

@@ -209,6 +209,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       (group) => group.items.length > 0 || Boolean(group.older?.length),
     ),
     notice: dismissals.notice,
+    dismissSelected: dismissals.dismissSelected,
     rowActions: {
       onActivate: (item: HomeWorkItem) => {
         void activate(item);

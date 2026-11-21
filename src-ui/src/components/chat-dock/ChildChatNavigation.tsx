@@ -26,6 +26,7 @@ import {
 } from '../chat/ChildWorkInstructionPanel';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { registerDialogHistory } from '../dialog-history';
+import { ArrowLeftGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import {
@@ -111,9 +112,10 @@ export function ChildChatNavigation({
         {
           ...target,
           returnFocus:
-            document.activeElement instanceof HTMLElement
+            target.returnFocus ??
+            (document.activeElement instanceof HTMLElement
               ? document.activeElement
-              : undefined,
+              : undefined),
         },
       ],
     }));
@@ -169,7 +171,7 @@ export function ChildChatNavigation({
         onClick={() => pop(entries.length - 1)}
         aria-label="Back to parent chat"
       >
-        ‹
+        <ArrowLeftGlyph />
       </Button>
       {[{ title }, ...entries].map((entry, index) => (
         <span className="child-chat-trail__segment" key={index}>
@@ -227,8 +229,8 @@ export function ChildChatNavigation({
               value={{ ...entry.connection, record: { readOnly: true } }}
             >
               <div className="child-chat-pane__origin">
-                Subagent of{' '}
                 <Button variant="ghost" onClick={() => pop(index)}>
+                  <ArrowLeftGlyph /> Subagent of{' '}
                   {index === 0 ? title : entries[index - 1].title}
                 </Button>
               </div>
@@ -254,7 +256,9 @@ export function ChildChatNavigation({
   return (
     <ChildChatContext.Provider value={push}>
       <ChildChatCoveredContext.Provider value={covered}>
-        <ChildChatPresentationContext.Provider value={{ trail, pane }}>
+        <ChildChatPresentationContext.Provider
+          value={{ trail, pane, currentChild: entries.at(-1) }}
+        >
           <div
             className="child-chat-root"
             hidden={!dockOutlet && covered}

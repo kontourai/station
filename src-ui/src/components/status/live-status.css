@@ -390,3 +390,87 @@ button.chat-status-pill {
   overflow: auto;
   animation: none;
 }
+.chat-status-pill__island {
+  display: contents;
+}
+.chat-status-pill__island[data-active] {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: var(--k-space-1);
+  gap: var(--k-space-1);
+  background: var(--k-panel);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-pill, 999px);
+  pointer-events: auto;
+}
+.chat-status-pill__island .chat-status-pill {
+  width: auto;
+  padding: var(--k-space-1) var(--k-space-2);
+  min-height: var(--touch-target-min);
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.chat-status-pill__island:has([data-tone="attention"]) {
+  border-color: var(--k-caution);
+}
+.chat-status-pill__island .chat-input__stop-btn {
+  display: grid;
+  place-items: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  border-radius: var(--k-radius-pill, 999px);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+.chat-activity-caret {
+  display: inline-flex;
+  align-items: center;
+  color: var(--k-text-muted);
+}
+.chat-activity-caret svg {
+  width: var(--k-space-3);
+  height: var(--k-space-3);
+}
+.chat-activity-heading {
+  display: block;
+  padding: var(--k-space-2) 0;
+  color: var(--k-text);
+}
+.chat-status-pill__details[style] {
+  border-radius: var(--k-radius-lg, var(--k-space-3));
+  background: var(--k-panel-raised);
+  padding: var(--k-space-3);
+}
+.chat-activity-children li + li {
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+.chat-activity-children li > button {
+  padding: var(--k-space-2);
+  min-height: var(--touch-target-min);
+}
+
+.chat-activity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+}
+.chat-activity-heading button {
+  display: grid;
+  place-items: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  border: 0;
+  color: var(--k-text-muted);
+  background: transparent;
+}
+.chat-activity-heading svg {
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+}
+.chat-activity-children .brand-icon,
+.chat-status-pill__children .brand-icon {
+  border-radius: 50%;
+}

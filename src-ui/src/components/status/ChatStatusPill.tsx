@@ -16,6 +16,8 @@ import { useAnchoredPopup } from '../../hooks/useAnchoredPopup';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { motionTokenMs, prefersReducedMotion } from '../../lib/reduced-motion';
 import { formatDuration } from '../../utils/relativeTime';
+import { useIsChildChatCovered } from '../chat-dock/ChildChatNavigationContext';
+import { ArrowDownGlyph, ArrowUpGlyph, CloseGlyph } from '../icons/Glyph';
 import {
   ChatActivityChildren,
   ChatActivityMarks,
@@ -127,6 +129,8 @@ export function ChatStatusPill({
   status,
   checkBack,
   runningChildren,
+  activeTurnSince,
+  stopControl,
   onRevealApproval,
   onRepair,
   onResync,
@@ -135,6 +139,8 @@ export function ChatStatusPill({
   status: ChatStatus | undefined;
   checkBack?: ContextType<typeof ScheduledCheckBackContext>;
   runningChildren?: readonly ChildWorkItem[];
+  activeTurnSince?: number;
+  stopControl?: ReactNode;
   onRevealApproval?: () => void;
   onRepair?: () => void;
   /** Re-reads this conversation's status and history from the Station. */
@@ -143,6 +149,7 @@ export function ChatStatusPill({
   onRecoveryFocus?: () => boolean;
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
+  const covered = useIsChildChatCovered();
   const detailsId = useId();
   const hostRef = useRef<HTMLElement>(null);
   const resyncControl = useRef<HTMLButtonElement | null>(null);
@@ -343,6 +350,12 @@ export function ChatStatusPill({
         <PillClock from={current.clockFrom} />
       )}
       {children && <ChatActivityMarks items={children} />}
+      {shownAction === 'details' &&
+        (hasDetails || current.details.length > 0) && (
+          <span aria-hidden="true" className="chat-activity-caret">
+            {expanded ? <ArrowDownGlyph /> : <ArrowUpGlyph />}
+          </span>
+        )}
       {current.action === 'resync' && onResync && (
         <span className="chat-status-pill__action" aria-hidden="true">
           {current.pending ? 'Resyncing…' : 'Resync'}
@@ -379,44 +392,51 @@ export function ChatStatusPill({
         tabIndex={-1}
         aria-label="Conversation status"
       >
-        {current &&
-          (actionable ? (
-            <button
-              type="button"
-              {...common}
-              aria-label={
-                current.action === 'reveal-approval'
-                  ? current.count !== undefined
-                    ? `${current.label} (${current.count}) — show the requests`
-                    : `${current.label} — show the request`
-                  : current.action === 'repair'
-                    ? `${current.label} — repair the connection`
-                    : current.action === 'resync'
-                      ? `${current.label} — resync this conversation`
-                      : hasCheckBack && current.kind === 'waiting'
-                        ? `Waiting · ${checkBack?.nextTime}`
-                        : current.label
-              }
-              aria-expanded={shownAction === 'details' ? expanded : undefined}
-              aria-controls={
-                shownAction === 'details' && expanded ? detailsId : undefined
-              }
-              disabled={current.action === 'resync' && current.pending}
-              aria-busy={
-                current.action === 'resync' ? current.pending : undefined
-              }
-              ref={current.action === 'resync' ? resyncControl : undefined}
-              onClick={activate}
-            >
-              {body}
-            </button>
-          ) : (
-            <div {...common} aria-hidden="true">
-              {body}
-            </div>
-          ))}
+        <div
+          className="chat-status-pill__island"
+          data-active={!!current || !!stopControl || undefined}
+        >
+          {current &&
+            (actionable ? (
+              <button
+                type="button"
+                {...common}
+                aria-label={
+                  current.action === 'reveal-approval'
+                    ? current.count !== undefined
+                      ? `${current.label} (${current.count}) — show the requests`
+                      : `${current.label} — show the request`
+                    : current.action === 'repair'
+                      ? `${current.label} — repair the connection`
+                      : current.action === 'resync'
+                        ? `${current.label} — resync this conversation`
+                        : hasCheckBack && current.kind === 'waiting'
+                          ? `Waiting · ${checkBack?.nextTime}`
+                          : current.label
+                }
+                aria-expanded={shownAction === 'details' ? expanded : undefined}
+                aria-controls={
+                  shownAction === 'details' && expanded ? detailsId : undefined
+                }
+                disabled={current.action === 'resync' && current.pending}
+                aria-busy={
+                  current.action === 'resync' ? current.pending : undefined
+                }
+                ref={current.action === 'resync' ? resyncControl : undefined}
+                onClick={activate}
+              >
+                {body}
+              </button>
+            ) : (
+              <div {...common} aria-hidden="true">
+                {body}
+              </div>
+            ))}
+          {stopControl}
+        </div>
         {current &&
           expanded &&
+          !covered &&
           !leaving &&
           shownAction === 'details' &&
           (current.details.length > 0 || hasDetails) && (
@@ -427,7 +447,32 @@ export function ChatStatusPill({
               onDismiss={closeDetails}
             >
               {children && (
-                <ChatActivityChildren items={children} onOpen={closeDetails} />
+                <div className="chat-activity-heading">
+                  <strong>Conversation activity</strong>
+                  <button
+                    type="button"
+                    aria-label="Close activity"
+                    onClick={() => {
+                      closeDetails();
+                      hostRef.current?.querySelector('button')?.focus();
+                    }}
+                  >
+                    <CloseGlyph />
+                  </button>
+                </div>
+              )}
+              {children && activeTurnSince !== undefined && (
+                <p>
+                  Current turn · <PillClock from={activeTurnSince} /> elapsed
+                </p>
+              )}
+              {children && (
+                <ChatActivityChildren
+                  items={children}
+                  returnFocus={() =>
+                    hostRef.current?.querySelector('button') ?? undefined
+                  }
+                />
               )}
               {hasCheckBack && checkBack?.notes}
             </PillDetails>

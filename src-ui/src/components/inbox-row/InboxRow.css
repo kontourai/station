@@ -896,3 +896,107 @@
   background: color-mix(in srgb, var(--k-action) 10%, transparent);
   color: var(--k-text);
 }
+.inbox-row--touch .inbox-row__open:has(.inbox-row__touch-clock),
+.mobile-inbox .inbox-row--touch .inbox-row__open:has(.inbox-row__touch-clock) {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-content: center;
+  align-items: start;
+  gap: var(--k-space-1) var(--k-space-2);
+  padding: var(--k-space-3);
+  min-height: var(--touch-target-min);
+}
+.inbox-row .inbox-row__open:has(.inbox-row__touch-clock) > .inbox-row__title {
+  grid-row: 1;
+  grid-column: 1;
+  min-width: 0;
+  display: grid;
+}
+.inbox-row__touch-project {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+.inbox-row__touch-project .inbox-row__project,
+.inbox-row__touch-station {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.inbox-row__touch-project .inbox-row__project-accent {
+  flex: none;
+}
+.inbox-row__touch-clock {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--k-text-muted);
+}
+.inbox-row
+  .inbox-row__touch-clock
+  :is(.inbox-row__time, .inbox-row__elapsed, .inbox-row__status) {
+  position: static;
+  grid-row: auto;
+  grid-column: auto;
+  min-height: 0;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--k-text-xs);
+  gap: var(--k-space-1);
+}
+.inbox-row__touch-reason {
+  grid-column: 1 / -1;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.inbox-row .inbox-row__open[aria-pressed]:has(.inbox-row__selection-mark) {
+  position: relative;
+  padding-inline-start: calc(var(--k-space-6) + var(--k-space-4));
+}
+.inbox-row__selection-mark {
+  position: absolute;
+  top: var(--k-space-4);
+  inset-inline-start: var(--k-space-3);
+  display: grid;
+  place-items: center;
+  width: var(--k-space-5);
+  height: var(--k-space-5);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+.inbox-row__open[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--k-action) 11%, var(--k-panel));
+}
+.inbox-row__open[aria-pressed="true"] .inbox-row__selection-mark {
+  color: var(--k-panel);
+  background: var(--k-action);
+}
+.inbox-row__selection-mark svg {
+  width: var(--k-space-4);
+}
+.inbox-row__touch-project .identity-marks {
+  flex: none;
+}
+.inbox-row__touch-project .inbox-row__agent {
+  position: static;
+  width: auto;
+  height: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  clip-path: none;
+}

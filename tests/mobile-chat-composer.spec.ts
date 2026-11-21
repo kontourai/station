@@ -2173,10 +2173,7 @@ test('a Task inventory outage does not block the mobile inbox or New chat', asyn
   await expect(
     menu.getByRole('button', { name: /^Station Chat.*Default/i }).first(),
   ).toBeVisible();
-  await page
-    .getByTestId('chat-dock-mobile-header')
-    .getByRole('button', { name: 'New chat', exact: true })
-    .click();
+  await menu.getByRole('button', { name: 'New chat', exact: true }).click();
   const newChat = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(newChat).toBeVisible();
 });
@@ -2246,7 +2243,10 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(menu).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -2309,7 +2309,10 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(menu).toBeHidden();
   await expect(
     await runSetupControl(page, (panel) =>
@@ -2358,18 +2361,15 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const compactClose = page.getByRole('button', {
+  const actions = page.getByRole('button', { name: 'Inbox actions' });
+  await actions.focus();
+  await page.keyboard.press('Enter');
+  const compactClose = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
   });
-  await compactDialog.getByRole('combobox', { name: 'Inbox scope' }).focus();
-  await page.keyboard.press('Shift+Tab');
-  await expect(
-    page
-      .getByTestId('chat-dock-mobile-header')
-      .getByRole('button', { name: 'New chat', exact: true }),
-  ).toBeFocused();
-  await compactClose.click();
+  await compactClose.focus();
+  await page.keyboard.press('Enter');
   await expect(compactDialog).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -2378,8 +2378,8 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page.setViewportSize({ width: 800, height: 800 });
   await expect(compactDialog).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page
-    .getByTestId('chat-dock-mobile-header')
+  if (!(await compactDialog.isVisible())) await switcher.click();
+  await compactDialog
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   await expect(
@@ -2546,7 +2546,9 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await expect(page.locator('#station-main')).toHaveAttribute('inert', '');
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(
-    header.getByRole('button', { name: 'New chat', exact: true }),
+    header.getByRole('button', {
+      name: /^(Restore chat size|Full screen chat)$/,
+    }),
   ).toBeVisible();
   await expect(
     header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -2736,7 +2738,8 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await expect(page.locator('.app-toolbar')).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
 
   // A Station label too long to share the row: the chips keep every
@@ -3240,7 +3243,9 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(
-    header.getByRole('button', { name: 'New chat', exact: true }),
+    header.getByRole('button', {
+      name: /^(Restore chat size|Full screen chat)$/,
+    }),
   ).toBeVisible();
   await expect(
     header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -3262,7 +3267,8 @@ test('the 320px header reserves title space and exposes secondary actions in its
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await expect(page.locator('.app-toolbar')).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
 });
 
@@ -3281,10 +3287,9 @@ for (const width of [361, 375, 390, 431, 481]) {
       .getByRole('menuitem', { name: /^Full screen/ })
       .click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    // This is the configuration under test: the app toolbar is gone and this
-    // bar carries the drawer toggle.
+    // Global navigation stays above the maximized conversation.
     await expect(
-      page.getByRole('button', { name: 'Toggle menu' }),
+      page.locator('.app-toolbar').getByRole('button', { name: 'Toggle menu' }),
     ).toBeVisible();
 
     const header = page.locator('.chat-dock__mobile-header');
@@ -3300,7 +3305,9 @@ for (const width of [361, 375, 390, 431, 481]) {
     }
 
     await expect(
-      header.getByRole('button', { name: 'New chat', exact: true }),
+      header.getByRole('button', {
+        name: /^(Restore chat size|Full screen chat)$/,
+      }),
     ).toBeVisible();
     await expect(
       header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -3384,6 +3391,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     const box = (selector: string) =>
       document.querySelector(selector)!.getBoundingClientRect();
     return {
+      toolbarBottom: box('.app-toolbar').bottom,
       dockTop: box('.chat-dock').top,
       headerTop: box('.chat-dock__mobile-header').top,
       headerHeight: box('.chat-dock__mobile-header').height,
@@ -3414,18 +3422,16 @@ test('the maximized phone dock header clears the status bar once, not twice', as
   const identity = (await header
     .locator('.chat-dock__mobile-identity')
     .boundingBox())!;
-  const headerBox = (await header.boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
-  expect(
-    Math.abs(
-      identity.x + identity.width / 2 - (headerBox.x + headerBox.width / 2),
-    ),
-  ).toBeLessThanOrEqual(1);
-  const menu = (await header
-    .getByRole('button', { name: 'Toggle menu', exact: true })
+  const back = (await header
+    .getByRole('button', { name: 'Inbox', exact: true })
     .boundingBox())!;
-  expect(menu.width).toBeGreaterThanOrEqual(44);
-  expect(menu.x + menu.width).toBeLessThanOrEqual(identity.x + 1);
+  expect(back.width).toBeGreaterThanOrEqual(44);
+  expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
+  const appToolbar = (await page.locator('.app-toolbar').boundingBox())!;
+  expect(
+    Math.abs(geometry.dockTop - appToolbar.y - appToolbar.height),
+  ).toBeLessThanOrEqual(5);
 });
 
 /**
@@ -3477,6 +3483,7 @@ const chatGeometry = (page: Page) =>
     return {
       vw: innerWidth,
       vh: innerHeight,
+      toolbarBottom: box('.app-toolbar').bottom,
       dockTop: box('.chat-dock').top,
       headerTop: box('.chat-dock__mobile-header').top,
       headerHeight: box('.chat-dock__mobile-header').height,
@@ -3499,7 +3506,8 @@ test('an iPhone 15 portrait inset is honoured once by the maximized chat', async
   const g = await chatGeometry(page);
   // Top: the sheet clears the Dynamic Island (plus its 4px toolbar
   // clearance) and its header starts right there, not a second inset lower.
-  expect(g.dockTop).toBe(59 + 4);
+  expect(g.toolbarBottom).toBeGreaterThanOrEqual(59 + 44);
+  expect(Math.abs(g.dockTop - g.toolbarBottom)).toBeLessThanOrEqual(4);
   expect(g.headerTop - g.dockTop, JSON.stringify(g)).toBeLessThanOrEqual(2);
   expect(g.headerHeight).toBeLessThan(59);
   // Bottom: the composer ends exactly one home-indicator inset above the edge.
@@ -3721,7 +3729,9 @@ for (const viewport of [
     await expect(moreActions).toBeVisible();
     const mobileHeader = page.locator('.chat-dock__mobile-header');
     await expect(
-      mobileHeader.getByRole('button', { name: 'New chat', exact: true }),
+      mobileHeader.getByRole('button', {
+        name: /^(Restore chat size|Full screen chat)$/,
+      }),
     ).toBeVisible();
     await expect(
       mobileHeader.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -4913,7 +4923,11 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  const close = page.getByRole('button', { name: 'Back to chat', exact: true });
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  const close = page.getByRole('menuitem', {
+    name: 'Back to chat',
+    exact: true,
+  });
   await expect(close).toBeVisible();
   // The real assertion: the Close control must actually receive the tap —
   // Playwright refuses the click if another element (the app toolbar)
@@ -4988,7 +5002,7 @@ test('keeps primary context controls draggable and navigation actions tap-only (
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(header).toBeVisible({ timeout: 15_000 });
   await expect(
-    header.getByRole('button', { name: 'Toggle menu' }),
+    page.locator('.app-toolbar').getByRole('button', { name: 'Toggle menu' }),
   ).toBeVisible();
 
   await expect(header.locator('.chat-dock__mobile-identity')).toHaveAttribute(
@@ -4996,7 +5010,7 @@ test('keeps primary context controls draggable and navigation actions tap-only (
     '',
   );
   const navigation = header.getByRole('button');
-  expect(await navigation.count()).toBeGreaterThanOrEqual(4);
+  expect(await navigation.count()).toBeGreaterThanOrEqual(3);
   for (const control of await navigation.all()) {
     await expect(control).toHaveAttribute('data-no-dock-drag', '');
   }
@@ -5245,7 +5259,10 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(sheet).not.toBeVisible();
 
   await chatActions.click();

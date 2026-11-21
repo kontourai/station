@@ -21,7 +21,11 @@ import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useSwipeActions } from '../../hooks/useSwipeActions';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
-import { relativeTime } from '../../utils/relativeTime';
+import {
+  clockTime,
+  relativeTime,
+  relativeTimeAgo,
+} from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
   isCurrentInboxItem,
@@ -41,6 +45,7 @@ import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
+import { ElapsedDuration } from '../ElapsedDuration';
 import {
   CheckGlyph,
   CloseGlyph,
@@ -55,6 +60,7 @@ import {
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { IdentityMarks } from '../inbox-row/IdentityMarks';
 import {
+  CompactStatusExplanation,
   InboxRowChips,
   InboxRowStatusGlyph,
   InboxRowStatusLine,
@@ -76,6 +82,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { ErrorState } from '../state';
 import type { MobileActivityGroup } from './mobile-activity-groups';
+import { inboxResolutionId } from './mobile-inbox-selection';
 import {
   inboxHideTarget,
   useConversationWorkState,
@@ -436,6 +443,10 @@ interface InboxRowProps {
   isOpenChat: boolean;
   now: number;
   onActivate: (item: HomeWorkItem) => void;
+  compact?: boolean;
+  onSelectRow?: (item: HomeWorkItem) => void;
+  onHoldRow?: (item: HomeWorkItem) => void;
+  selectedIds?: ReadonlySet<string> | null;
   /**
    * Absent hides the snooze actions — the compact sidebar host (#3314) lists
    * open chats from a store snoozing does not filter, so offering a snooze
@@ -496,6 +507,7 @@ interface InboxRowProps {
    * swatch when the project has one. Absent draws the swatch.
    */
   projectIcon?: string;
+  projectName?: string;
   /**
    * `card` (the default) is the full row for work that needs you, is
    * running or is idle. `slim` is the one-line row for snoozed and settled
@@ -584,6 +596,10 @@ export function InboxRow({
   isOpenChat,
   now,
   onActivate,
+  compact = false,
+  onSelectRow,
+  onHoldRow,
+  selectedIds,
   onSnoozeWake,
   onCloseChat,
   onDismiss,
@@ -599,6 +615,7 @@ export function InboxRow({
   gitLocation,
   projectAccent: suppliedProjectAccent,
   projectIcon: suppliedProjectIcon,
+  projectName,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
@@ -653,7 +670,12 @@ export function InboxRow({
     !item.projectSlug && item.projectLabel === 'No project' && item.cwdLabel;
   const contextLabel = directoryContext
     ? `Directory · ${directoryContext}`
-    : item.projectLabel;
+    : compact &&
+        !remoteProject &&
+        facts?.hostDetails !== false &&
+        item.delegationEnvironmentKind !== 'peer'
+      ? (projectName ?? item.projectLabel)
+      : item.projectLabel;
   const hasTime = item.updatedAt > 0;
   const tooltip = hoverCard && chrome === 'hover';
   const details = hoverCard && chrome === 'touch';
@@ -741,7 +763,11 @@ export function InboxRow({
   const resolutionAction = actions.find((action) => action.id === 'resolution');
   if (resolutionAction) trayActions.push(resolutionAction);
   const canSwipe = Boolean(
-    details && swipeActions && !isDismissed && trayActions.length,
+    !selectedIds &&
+      details &&
+      swipeActions &&
+      !isDismissed &&
+      trayActions.length,
   );
   const swipe = useSwipeActions(canSwipe, {
     triggerSelector: '.inbox-row__open',
@@ -830,8 +856,13 @@ export function InboxRow({
     </div>
   ) : undefined;
   const gesture = useContextMenuGesture({
-    enabled: details,
-    onOpen: openDetails,
+    enabled: details || !!onHoldRow,
+    onOpen: onHoldRow
+      ? () => {
+          onHoldRow(item);
+          return true;
+        }
+      : openDetails,
   });
   const reasonId = `${statusId}-reason`;
   const durationId = `${statusId}-duration`;
@@ -866,7 +897,7 @@ export function InboxRow({
         'inbox-row',
         `inbox-row--${size}`,
         `inbox-row--${chrome}`,
-        hasActions ? 'inbox-row--has-actions' : '',
+        hasActions && !compact ? 'inbox-row--has-actions' : '',
         isCurrent ? 'is-current' : '',
         canSwipe ? 'inbox-row--swipe' : '',
         swipe.open ? 'inbox-row--swiped' : '',
@@ -905,6 +936,17 @@ export function InboxRow({
         if (!event.isPropagationStopped()) gesture.onClickCapture(event);
       }}
       onKeyDown={(event) => {
+        if (
+          compact &&
+          event.target === detailsTriggerRef.current &&
+          (event.key === 'ContextMenu' ||
+            (event.shiftKey && event.key === 'F10'))
+        ) {
+          event.preventDefault();
+          if (onHoldRow) onHoldRow(item);
+          else openDetails();
+          return;
+        }
         if (
           event.key === 'Escape' &&
           swipe.open &&
@@ -966,9 +1008,13 @@ export function InboxRow({
         className="chat-dock-inbox__item inbox-row__open"
         // The visible row supplies its name in reading order. Only the
         // off-screen reason and coarse duration belong in its description.
+        ref={compact ? detailsTriggerRef : undefined}
         aria-describedby={describedBy}
+        aria-pressed={selectedIds ? selectedIds.has(item.id) : undefined}
         aria-current={isCurrent ? 'true' : undefined}
-        onClick={() => onActivate(item)}
+        onClick={() =>
+          selectedIds && onSelectRow ? onSelectRow(item) : onActivate(item)
+        }
         {...(referenceable?.ids.has(item.id)
           ? {
               draggable: true,
@@ -982,7 +1028,75 @@ export function InboxRow({
             }
           : {})}
       >
-        {size === 'slim' ? (
+        {selectedIds && compact && (
+          <span aria-hidden="true" className="inbox-row__selection-mark">
+            {selectedIds.has(item.id) ? <CheckGlyph /> : null}
+          </span>
+        )}
+        {compact && size !== 'slim' ? (
+          <>
+            <InboxRowTitle title={item.title} />
+            <span className="inbox-row__touch-project">
+              <IdentityMarks
+                identity={identity}
+                size={16}
+                fallbackTitle={agentText}
+              />
+              {agentText &&
+                (agentText !== contextLabel || identity.marks.length === 0) && (
+                  <span className="inbox-row__agent">{agentText}</span>
+                )}
+              <ProjectAccentSwatch
+                size={16}
+                accent={projectAccent}
+                icon={projectIcon}
+                name={contextLabel}
+                fallback="initials"
+              />
+              <span className="inbox-row__project">{contextLabel}</span>
+              {stationLabel && (
+                <span className="inbox-row__touch-station">
+                  {' '}
+                  · {stationLabel}
+                </span>
+              )}
+              {hasUnsentDraft && <DraftMarker />}
+            </span>
+            <span className="inbox-row__touch-clock">
+              <span
+                className="inbox-row__status"
+                id={statusId}
+                data-tone={status.tone}
+                data-testid="inbox-row-status"
+              >
+                <InboxRowStatusGlyph rung={status.rung} />
+                <span className="inbox-row__word">{status.word}</span>
+              </span>
+              {status.since !== undefined ? (
+                <span className="inbox-row__elapsed" id={durationId}>
+                  for <ElapsedDuration since={status.since} />
+                </span>
+              ) : status.rung === 'scheduled' && item.nextWakeUpAt ? (
+                <span>
+                  Check at {clockTime(Date.parse(item.nextWakeUpAt), now)}
+                </span>
+              ) : hasTime ? (
+                <span className="inbox-row__time">
+                  {relativeTimeAgo(
+                    status.rung === 'done'
+                      ? (item.terminalAt ?? item.updatedAt)
+                      : item.updatedAt,
+                    now,
+                  )}
+                </span>
+              ) : null}
+            </span>
+            <CompactStatusExplanation status={status} reasonId={reasonId} />
+            <InboxRowChips
+              chips={chips.filter((chip) => chip.kind !== 'remote')}
+            />
+          </>
+        ) : size === 'slim' ? (
           <>
             <span className="inbox-row__slim-status" data-tone={status.tone}>
               <InboxRowStatusGlyph rung={status.rung} />
@@ -1122,7 +1236,7 @@ export function InboxRow({
           <span className="sr-only">{` ${spokenContext}`}</span>
         )}
       </button>
-      {hasActions && (
+      {hasActions && !compact && (
         <div className="chat-dock-inbox__row-actions inbox-row__actions">
           {/* No separate "open" control: the row itself opens, and a second
               one would be a redundant tab stop on every row. */}
@@ -1314,6 +1428,8 @@ function InboxTaskRow({
 export type CollapsibleInboxSectionId = InboxSectionId;
 
 export interface InboxGroupListProps {
+  requestedDetails?: string | null;
+  onConsumeDetails?: () => void;
   groups: MobileActivityGroup[];
   /** Namespace for the group-label element ids (two hosts, one document). */
   idPrefix: string;
@@ -1333,6 +1449,10 @@ export interface InboxGroupListProps {
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
   onActivate: (item: HomeWorkItem) => void;
+  compact?: boolean;
+  onSelectRow?: (item: HomeWorkItem) => void;
+  onHoldRow?: (item: HomeWorkItem) => void;
+  selectedIds?: ReadonlySet<string> | null;
   onSnoozeWake: InboxRowProps['onSnoozeWake'];
   onCloseChat?: InboxRowProps['onCloseChat'];
   onDismiss?: InboxRowProps['onDismiss'];
@@ -1356,6 +1476,7 @@ export interface InboxGroupListProps {
    */
   projectAccentBySlug?: ReadonlyMap<string, string>;
   /** Project icons by slug (`useProjectIcons`), resolved like the accents. */
+  projectNames?: ReadonlyMap<string, string>;
   projectIconBySlug?: ReadonlyMap<string, string>;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
@@ -1382,6 +1503,12 @@ export function InboxGroupList({
   collapsible,
   showGroupCounts = false,
   onActivate,
+  compact = false,
+  onSelectRow,
+  onHoldRow,
+  selectedIds,
+  requestedDetails,
+  onConsumeDetails,
   onSnoozeWake,
   onCloseChat,
   onDismiss,
@@ -1391,6 +1518,7 @@ export function InboxGroupList({
   agents,
   gitLocationByThreadId,
   projectAccentBySlug,
+  projectNames,
   projectIconBySlug,
   chrome,
   actionsInDetails,
@@ -1409,6 +1537,12 @@ export function InboxGroupList({
   // Owned here, by item id, so the sheet outlives the row's remount when
   // the item moves to another lane.
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (requestedDetails) {
+      setDetailsFor(requestedDetails);
+      onConsumeDetails?.();
+    }
+  }, [requestedDetails, onConsumeDetails]);
   const [swipedFor, setSwipedFor] = useState<string | null>(null);
   const isCurrent = (item: HomeWorkItem) =>
     isCurrentInboxItem(item, activeChatSessionId);
@@ -1467,15 +1601,11 @@ export function InboxGroupList({
   }, [swipedFor, swipedRowRendered]);
   const renderItem = (group: MobileActivityGroup, item: HomeWorkItem) => {
     const facts = workFacts?.get(item.id);
-    const conversationId =
-      resolutionState.supported &&
-      facts?.hostDetails !== false &&
-      !item.environmentId &&
-      item.kind !== 'remote-session' &&
-      item.controlMode !== 'read-only-attached' &&
-      !['Running', 'Needs attention', 'Draft'].includes(item.lifecycleLabel)
-        ? item.conversationId
-        : undefined;
+    const conversationId = inboxResolutionId(
+      item,
+      facts,
+      resolutionState.supported,
+    );
     return item.kind === 'task' ? (
       <InboxTaskRow
         item={item}
@@ -1491,6 +1621,13 @@ export function InboxGroupList({
     ) : (
       <InboxRow
         key={item.id}
+        projectName={
+          item.projectSlug ? projectNames?.get(item.projectSlug) : undefined
+        }
+        compact={compact}
+        onSelectRow={onSelectRow}
+        onHoldRow={onHoldRow}
+        selectedIds={selectedIds}
         inlineApproval={group.id === 'needsYou'}
         item={item}
         isCurrent={isCurrent(item)}

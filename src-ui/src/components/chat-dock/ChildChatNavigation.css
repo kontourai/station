@@ -181,3 +181,13 @@
   flex: none;
   padding-block: var(--k-space-3);
 }
+
+.child-chat-pane__origin button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+.child-chat-pane__origin svg {
+  width: var(--k-space-3);
+  height: var(--k-space-3);
+}
