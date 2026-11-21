@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-21T07:06:41Z | nightly-npm | 0.12.0-nightly.20261121.44878018803 | `a4b1d2a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44878018803) |
 | 2026-11-20T23:49:28Z | nightly-desktop | 0.2.0-nightly.20261120.3 | `a820710` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44833049230) |
 | 2026-11-20T23:49:28Z | nightly-android | 0.2.0-nightly.20261120.3 | `a820710` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44833049230) |
 | 2026-11-20T23:05:01Z | nightly-npm | 0.12.0-nightly.20261120.44833049230 | `a820710` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44833049230) |
@@ -521,6 +522,32 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-21T07:06:41Z · nightly-npm · 0.12.0-nightly.20261121.44878018803
+
+- Ship SHA: `a4b1d2a620967f2b8caa69e7e57ed14511cbb797`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261121.44878018803 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a820710` ([full sha](https://github.com/kontourai/station/commit/a820710bf89c8535cbb1d4c2e8f573d77b19a6db)):
+
+**Features**
+
+- [#4937](https://github.com/kontourai/station/pull/4937) feat(server): GitHub Copilot through the Copilot SDK, behind a Feature Preview
+
+**Fixes**
+
+- [#5365](https://github.com/kontourai/station/pull/5365) fix: bind create claim digest before caller lookup
+- [#5363](https://github.com/kontourai/station/pull/5363) fix(ci): select engine durability parity before merge
+- [#4644](https://github.com/kontourai/station/pull/4644) fix(engines): wait and cancel person-initiated starts across recovery
+
+**Other**
+
+- [#5361](https://github.com/kontourai/station/pull/5361) perf(server): skip archive discovery outside launcher context
+- [#5360](https://github.com/kontourai/station/pull/5360) perf(chat): make repeated desktop Inbox opens ready to type sooner
 
 ## 2026-11-20T23:49:28Z · nightly-desktop · 0.2.0-nightly.20261120.3
 
