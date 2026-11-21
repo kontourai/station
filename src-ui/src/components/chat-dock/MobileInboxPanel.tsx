@@ -260,9 +260,19 @@ export function MobileInboxPanel({
       const panel = panelRef.current;
       const frame = requestAnimationFrame(() => {
         const trigger = triggerRef.current;
+        // Closing Inbox also removes its portalled menu trigger. Its own focus
+        // fallback may already have landed on the dock's surviving header.
+        const header = trigger?.closest<HTMLElement>(
+          '.chat-dock__mobile-header',
+        );
+        const active = document.activeElement;
+        const menuFallback =
+          header &&
+          (active === header ||
+            active === header.querySelector('.chat-dock__mobile-actions'));
         applyReturnFocus(
           trigger ? [...captureReturnFocus(trigger), ...previous] : previous,
-          panel,
+          menuFallback ? header : panel,
         );
       });
       return () => cancelAnimationFrame(frame);
