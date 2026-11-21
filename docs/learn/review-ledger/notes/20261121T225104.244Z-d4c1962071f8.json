@@ -1,0 +1,7 @@
+{
+  "revision": "4909ef0d44a82c1813b3fec4638e377b0f41fa13",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked claims about stale_generation refusals, the session_configuration_replaced code and its busy kind, launch-bound Station settings (Claude Artifact tool, confined network), raced starts and ACP's stale-turn error against this round and the merge with origin/main: a replaced session restarts at its next message, so no page should advise a new chat; no other claim on these pages depends on the changed lines.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}
