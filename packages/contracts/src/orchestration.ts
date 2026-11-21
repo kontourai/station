@@ -1589,6 +1589,15 @@ export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
 export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
   'conversation_handoff_predecessor_busy';
 
+/**
+ * The machine code on a continuation refused because the conversation's
+ * current Session failed while its engine process is still running: a
+ * successor would resume the same native conversation in a second engine.
+ * Nothing was sent; it clears once that process has stopped.
+ */
+export const CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE =
+  'conversation_predecessor_engine_live';
+
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
   'toolState',

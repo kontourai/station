@@ -3543,6 +3543,11 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      // Only the adapter the Session is bound to knows its engine process.
+      engineStillRunning: (threadId) => {
+        const bound = this.sessionAdapters.get(threadId);
+        return bound?.engineEnded !== undefined && !bound.engineEnded(threadId);
+      },
       needsCoordinatorToolsSuccessor: (conversationId, detail) => {
         const store = options.eventStore;
         const provider = detail.session.provider;

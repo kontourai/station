@@ -3037,6 +3037,17 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // Refused before anything reaches the engine: its stream has ended, so
     // this turn cannot start. A refusal releases the turn-start claim; any
     // other error would hold it as a turn that may have started.
+    // Also refused once the engine's exit is observed, before the Session's
+    // end is published (it waits for the workload outcome): a prompt queued
+    // there would be accepted into a process that is gone.
+    if (
+      record.engineExit !== undefined ||
+      record.engineProcess?.exited() === true
+    )
+      throw new SendTurnRefusedError(
+        "This Claude Session's engine has exited and Station is closing the Session, so nothing was sent. Send again in a moment: the conversation then continues in a new Session.",
+        'session_gone',
+      );
     if (record.session.status === 'error' || record.session.status === 'dead')
       throw new SendTurnRefusedError(
         'This Claude Session has stopped and takes no more turns. Continue its conversation by the conversation id to start a new Session.',
@@ -5767,7 +5778,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.session.status = 'error';
       record.engineFailurePublished = true;
       record.promptQueue.close();
+      // #4266: the stream failed but `claude` may still run. This record
+      // takes no more turns, and a successor would resume the same native
+      // conversation in a second engine beside it, so the engine is stopped
+      // now; its observed exit then ends the Session (`session.exited`).
+      if (!record.stopping && record.engineProcess?.exited() === false)
+        void this.stopEngineAfterStreamFailure(record);
     }
+  }
+
+  /**
+   * Bounded: `terminate` signals, waits, then forces. If the exit is still
+   * not observed, `engineEnded` keeps answering false, so orchestration
+   * keeps the conversation from starting a second engine for it.
+   */
+  private async stopEngineAfterStreamFailure(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    try {
+      await record.engineProcess?.terminate();
+    } catch {
+      // Reported below by the exit that did not happen.
+    }
+    if (record.stopping || record.engineProcess?.exited() !== false) return;
+    (this.options.logger ?? console).warn?.(
+      'Claude engine process did not exit after its stream failed; the conversation will not start a new engine beside it',
+      { threadId: record.session.threadId },
+    );
   }
 
   private mapMessage(record: ClaudeSessionRecord, message: SDKMessage): void {

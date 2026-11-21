@@ -12,7 +12,10 @@ import type {
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import type {
   EngineId,
   NativeResumeIdentityStatus,
@@ -207,6 +210,35 @@ function sessionTakesNextTurn(
   );
 }
 
+/**
+ * A Session whose binding ended (`error`, `dead`, `closed`) while its engine
+ * process is still running: a failed stream with the process alive, before
+ * the adapter has stopped it. A successor would resume the same native
+ * conversation in a second engine beside it, so none is started.
+ */
+export class ConversationPredecessorEngineLiveError extends Error {
+  readonly code = CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE;
+
+  constructor() {
+    super(
+      "This conversation's previous engine failed but its process has not stopped yet, so Station did not start a new one beside it and nothing was sent. Send again in a moment. If this keeps happening, restart Station, which stops that process.",
+    );
+    this.name = 'ConversationPredecessorEngineLiveError';
+  }
+}
+
+function bindingEndedWithEngineLive(
+  session: OrchestrationSessionDetail['session'],
+  engineStillRunning: ((threadId: string) => boolean) | undefined,
+): boolean {
+  return (
+    (session.status === 'closed' ||
+      session.status === 'dead' ||
+      session.status === 'error') &&
+    engineStillRunning?.(session.threadId) === true
+  );
+}
+
 export function canResolveConversationContinuation(
   detail: OrchestrationSessionDetail,
 ): boolean {
@@ -253,6 +285,11 @@ interface ConversationLineageDeps {
     conversationId: string,
     detail: OrchestrationSessionDetail,
   ) => boolean;
+  /**
+   * True only when the adapter the Session is bound to reports its engine
+   * process still running (`engineEnded` false). Absent or unknown: false.
+   */
+  engineStillRunning?: (threadId: string) => boolean;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -520,6 +557,10 @@ export class ConversationLineage {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
+    if (
+      bindingEndedWithEngineLive(detail.session, this.deps.engineStillRunning)
+    )
+      throw new ConversationPredecessorEngineLiveError();
     const child = store.reserveNextConversationSession({
       conversationId,
       predecessorSessionId: current.sessionId,
@@ -616,6 +657,14 @@ export class ConversationLineage {
       error instanceof Error ? error : new Error(String(error)),
     );
     if (delivery instanceof Error) return undefined;
+    // That turn would be refused (no successor beside a live engine).
+    if (
+      bindingEndedWithEngineLive(
+        described.session,
+        this.deps.engineStillRunning,
+      )
+    )
+      return undefined;
     return (
       delivery === 'redeliver' ||
       !sessionTakesNextTurn(described.session) ||
