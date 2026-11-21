@@ -5845,8 +5845,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* The drawer and its backdrop own presses until navigation closes. */
-  .sidebar-backdrop ~ .app__main > .chat-dock {
-    interactivity: inert;
+  .sidebar-backdrop ~ .app__main > .chat-dock.is-collapsed {
+    pointer-events: none;
   }
 
   /* Mobile Safari zooms the whole page when an editable control below 16px
