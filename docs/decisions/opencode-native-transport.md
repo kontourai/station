@@ -211,6 +211,8 @@ server, not two.
   resolved the same way. Each is added with
   `PUT /api/experimental/mcp/{name}`
   ([native MCP](../../src-server/providers/adapters/opencode-native-mcp.ts)).
+  Station checks the registered servers for readiness before starting the
+  session and warns if readiness fails or remains unconfirmed after two seconds.
   An added server belongs to the server's location, which every session on
   that server shares. So the pool key includes `openCodeMcpDigest` of the
   session's set, and sessions whose tool servers differ never share a server.
