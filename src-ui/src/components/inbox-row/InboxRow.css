@@ -55,14 +55,13 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-1) var(--k-space-2);
-  margin-block-start: calc(var(--space-1) - var(--inbox-row-pad-block));
+  margin-block-start: calc(var(--k-space-1) / 2 - var(--inbox-row-pad-block));
   padding-inline: calc(
       var(--inbox-row-pad-inline) +
       var(--inbox-row-unread-gutter)
     )
     var(--inbox-row-pad-inline);
   padding-block-end: var(--inbox-row-pad-block);
-  color: var(--warning-text);
   font-size: var(--inbox-row-text-size);
   line-height: var(--inbox-row-line);
 }
@@ -70,21 +69,10 @@
   flex: 0 0 auto;
 }
 /* A flagged hover row: the flag belongs to the row, so the hover and current
-   treatment moves from the open button to the whole row, as on a touch row,
-   instead of stopping short of the flag. */
+   treatment moves from the open button to the whole row (the touch row's
+   rules below), instead of stopping short of the flag. */
 .inbox-row--hover:has(> .inbox-row__flag) {
   border: 1px solid transparent;
-}
-.inbox-row--hover:has(> .inbox-row__flag):is(
-  :has(.inbox-row__open:hover),
-  :has(.inbox-row__open:focus-visible),
-  .is-current
-) {
-  border-color: var(--border-secondary);
-  background: var(--bg-tertiary);
-}
-.inbox-row--hover.is-current:has(> .inbox-row__flag) {
-  border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 .inbox-row--hover:has(> .inbox-row__flag) .inbox-row__open {
   border-color: transparent;
@@ -362,7 +350,8 @@
 
 .inbox-row__status[data-tone="caution"] .inbox-row__word,
 .inbox-row__status[data-tone="caution"] .inbox-row__status-glyph,
-.inbox-row__slim-status[data-tone="caution"] {
+.inbox-row__slim-status[data-tone="caution"],
+.inbox-row__flag {
   color: var(--warning-text);
 }
 
@@ -640,12 +629,16 @@
  * stopped short of them and read as a second, unrelated control. */
 .inbox-row--touch:has(.inbox-row__open:hover),
 .inbox-row--touch:has(.inbox-row__open:focus-visible),
-.inbox-row--touch.is-current {
+.inbox-row--touch.is-current,
+.inbox-row--hover:has(> .inbox-row__flag):has(.inbox-row__open:hover),
+.inbox-row--hover:has(> .inbox-row__flag):has(.inbox-row__open:focus-visible),
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
   border-color: var(--border-secondary);
   background: var(--bg-tertiary);
 }
 
-.inbox-row--touch.is-current {
+.inbox-row--touch.is-current,
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
   border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 
