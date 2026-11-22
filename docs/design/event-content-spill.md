@@ -58,9 +58,11 @@ There are also two read-side gaps that the same design should close:
   a reload `openApprovalRequests` (`src-ui/src/hooks/orchestration/pendingRequestRows.ts:39`)
   no longer sees its `requestId`, so neither the strip nor the toast can
   answer it **(source)**.
-- Conversation fork reads the bounded window
-  (`src-server/routes/chat/conversations.ts:351`) and ignores `elided`, so a
-  `turn.completed` over 48,000 bytes silently drops out of a fork **(source)**.
+- Conversation fork read the bounded window and ignored `elided`, so a
+  `turn.completed` over 48,000 bytes silently dropped out of a fork. Closed: a
+  fork now reads the same resolved Session messages a handoff seed reads
+  (`readConversationForkSource` in
+  `src-server/services/orchestration/conversation-lineage.ts`) **(source)**.
 
 ## Rejected approaches
 

@@ -1,0 +1,11 @@
+{
+  "revision": "70547657a4e01d94e59bdb0342989ceba4b30a2f",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked pages citing contracts.md (glossary, integrating guide, contracts AGENTS): the edit only names CONVERSATION_FORK_REFUSAL_CODES in the orchestration row; their cited claims are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked pages citing contracts.md (glossary, integrating guide, contracts AGENTS): the edit only names CONVERSATION_FORK_REFUSAL_CODES in the orchestration row; their cited claims are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked pages citing contracts.md (glossary, integrating guide, contracts AGENTS): the edit only names CONVERSATION_FORK_REFUSAL_CODES in the orchestration row; their cited claims are unaffected.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

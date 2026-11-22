@@ -1,0 +1,11 @@
+{
+  "revision": "68d8bc403f08de0c1371a676eb48fbf9a82193c0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked citing pages: ConversationForkContextError may now carry a fork refusal code; the copy keeps only text past the 2 MB bound instead of refusing (documented in api and module-map); delivery and deletion claims unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked citing pages: ConversationForkContextError may now carry a fork refusal code; the copy keeps only text past the 2 MB bound instead of refusing (documented in api and module-map); delivery and deletion claims unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked citing pages: ConversationForkContextError may now carry a fork refusal code; the copy keeps only text past the 2 MB bound instead of refusing (documented in api and module-map); delivery and deletion claims unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]}
+  ]
+}

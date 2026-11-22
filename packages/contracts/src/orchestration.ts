@@ -1752,6 +1752,36 @@ export interface ConversationContextSeedReceipt {
 export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
   'conversation-context-unavailable';
 
+/**
+ * Machine codes on a refused `POST /agents/:slug/conversations/:id/fork`, so a
+ * client says what to do instead of showing the server's sentence. Every 4xx
+ * envelope that route answers carries one of these, a Station Control scope
+ * code, or {@link CONVERSATION_CONTEXT_UNAVAILABLE_CODE} (a saved fork context
+ * that needs reconciling).
+ */
+export const CONVERSATION_FORK_REFUSAL_CODES = Object.freeze({
+  /** The request names a malformed Agent or conversation identity (400). */
+  invalidRequest: 'conversation_fork_invalid_request',
+  /** The source Agent or the conversation is absent or not visible (404). */
+  sourceNotFound: 'conversation_fork_source_not_found',
+  /** The target Agent is absent, or not available in the target Project (404). */
+  targetUnavailable: 'conversation_fork_target_unavailable',
+  /** The caller's identity could not be resolved (403). */
+  callerUnresolved: 'conversation_fork_caller_unresolved',
+  /** The source history could not be read in full right now (409). */
+  historyUnavailable: 'conversation_fork_history_unavailable',
+  /** Even the text of the history up to the selected turn is too large to save (409). */
+  historyTooLarge: 'conversation_fork_history_too_large',
+  /** The selected turn is not a completed assistant answer (409). */
+  turnIncomplete: 'conversation_fork_turn_incomplete',
+  /** The source Agent does not own the conversation or the selected turn (409). */
+  sourceAgentMismatch: 'conversation_fork_source_agent_mismatch',
+  /** The idempotency key already names a different request or a deleted fork (409). */
+  idempotencyConflict: 'conversation_fork_idempotency_conflict',
+} as const);
+export type ConversationForkRefusalCode =
+  (typeof CONVERSATION_FORK_REFUSAL_CODES)[keyof typeof CONVERSATION_FORK_REFUSAL_CODES];
+
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
   currentSessionId: string;

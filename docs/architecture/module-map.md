@@ -2248,6 +2248,12 @@ framework's native memory companion retain their separate contracts.
 
 [Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
 is an owner-scoped immutable copy with an independent Conversation identity.
+The fork route reads its source through
+[`readConversationForkSource`](../../src-server/services/orchestration/conversation-lineage.ts),
+the same authorized whole-Session read a handoff's carried history uses
+(including rows an earlier fork copied in), before any stored Agent record,
+and cuts it at the branch-point turn. The copy keeps messages whole within its
+2 MB bound and only their text past it.
 Opening it returns `fork-ready` without inventing a provider Session. First send
 creates the actual Session and carries the saved text projection; canonical
 refresh combines copied parent rows with subsequent runtime turns. Deletion
