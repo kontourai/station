@@ -4152,20 +4152,20 @@ test('a pairing code needs both fields, submits on Return, and names a bad addre
 describe('pairing by code without a camera', () => {
   test('opens on code entry with no camera API, focus in the first empty field (the address), never mounting the scanner', () => {
     expect(navigator.mediaDevices).toBeUndefined();
-    // Record every node ever added, so a scanner that mounts for one commit
-    // and is then replaced (a visible "Starting camera…" frame) is caught.
-    const added: Node[] = [];
+    // A scanner that mounts for one commit and is then replaced (a visible
+    // "Starting camera…" frame) leaves its detached subtree in the removed
+    // nodes, so record those as well as the nodes still mounted.
+    const removed: Node[] = [];
     const observer = new MutationObserver((records) => {
-      for (const record of records) added.push(...record.addedNodes);
+      for (const record of records) removed.push(...record.removedNodes);
     });
     observer.observe(document.body, { childList: true, subtree: true });
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
-    observer.takeRecords().forEach((record) => {
-      added.push(...record.addedNodes);
-    });
+    for (const record of observer.takeRecords())
+      removed.push(...record.removedNodes);
     observer.disconnect();
     expect(
-      added.some(
+      [document.body, ...removed].some(
         (node) =>
           node instanceof Element &&
           (node.matches('video') ||
