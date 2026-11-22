@@ -331,6 +331,11 @@ const exclusions = {
       'input_binding_unsupported',
       'Delegation input-request binding validation before provider dispatch.',
     ],
+  'src-server/routes/schemas/schema-definitions/runtime.ts:CONNECTION_ADDRESS_REQUIRED_CODE':
+    [
+      'connection_address_required',
+      'Connection save validation, refused before any provider runs.',
+    ],
   'src-server/tools/station-control-shared.ts:StationControlCallerRequiredError.code':
     ['station_control_caller_required', 'Station Control caller authority.'],
   'src-server/utils/sqlite-wal.ts:WalJournalModeUnavailableError.code': [
