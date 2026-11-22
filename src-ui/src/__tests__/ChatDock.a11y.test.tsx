@@ -151,6 +151,9 @@ describe('ChatDock project-binding wiring (archive#4525)', () => {
     expect(forkBody).toMatch(/runFork\(/);
     const runForkBody = extractBalancedBody(source, 'const runFork = async (');
     expect(runForkBody).toMatch(/forkConversation\(/);
+    // The key lifecycle and model inheritance are the tested helpers'.
+    expect(runForkBody).toMatch(/runForkAttempt\(/);
+    expect(runForkBody).toMatch(/forkOpenExecution\(source, agent\.slug, choice\)/);
     expect(runForkBody).not.toMatch(/setActiveProjectSlug/);
 
     const nonForkBody = extractBalancedBody(source, /onSelect: \(\s*agent,/);

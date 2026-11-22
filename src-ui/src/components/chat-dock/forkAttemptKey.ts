@@ -76,3 +76,56 @@ export function completeForkAttempt(
   delete attempts[key];
   write(storage, attempts);
 }
+
+/**
+ * One fork attempt's key lifecycle, as `ChatDock.runFork` runs it. `run` gets
+ * the retry-safe key for (source turn, target Agent) and creates and opens
+ * the fork. The key is released only once `run` resolves (the fork is open),
+ * so a retry after a failed open replays the same fork rather than making a
+ * second. A refusal naming the key's conflict (another request or a deleted
+ * fork) releases it too, so forking again is a new request.
+ */
+export async function runForkAttempt<T>(
+  coordinate: {
+    sourceConversationId: string;
+    turnId: string;
+    targetAgentId: string;
+  },
+  run: (idempotencyKey: string) => Promise<T>,
+  options: {
+    isKeyConflict: (error: unknown) => boolean;
+    storage?: Pick<Storage, 'getItem' | 'setItem'>;
+    generate?: () => string;
+  },
+): Promise<T> {
+  const { sourceConversationId, turnId, targetAgentId } = coordinate;
+  const storage = options.storage ?? localStorage;
+  const idempotencyKey = getOrCreateForkAttemptKey(
+    sourceConversationId,
+    turnId,
+    targetAgentId,
+    storage,
+    options.generate,
+  );
+  try {
+    const result = await run(idempotencyKey);
+    completeForkAttempt(
+      sourceConversationId,
+      turnId,
+      targetAgentId,
+      idempotencyKey,
+      storage,
+    );
+    return result;
+  } catch (error) {
+    if (options.isKeyConflict(error))
+      completeForkAttempt(
+        sourceConversationId,
+        turnId,
+        targetAgentId,
+        idempotencyKey,
+        storage,
+      );
+    throw error;
+  }
+}

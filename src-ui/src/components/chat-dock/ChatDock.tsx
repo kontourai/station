@@ -231,6 +231,7 @@ import {
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import { ConversationPickerRecovery } from './ConversationPickerRecovery';
 import type { ContinuedOnStation } from './ConversationStationHandoff';
+import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import { conversationRefusalMessage } from './conversationRefusalCopy';
 import {
   chatModelLabel,
@@ -3801,75 +3802,76 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     forkAbortRef.current = controller;
     setForkOperation({ pending: true, error: null });
     try {
-      const sameAgent = agent.slug === source.agentSlug;
-      const [{ forkConversation }, { getOrCreateForkAttemptKey }] =
+      const [{ forkConversation }, { runForkAttempt }, { forkOpenExecution }] =
         await Promise.all([
           import('@kontourai/station-sdk'),
           import('./forkAttemptKey'),
+          import('./forkSourceExecution'),
         ]);
       if (generation !== forkGenerationRef.current) return;
-      const idempotencyKey = getOrCreateForkAttemptKey(
-        source.id,
-        source.turnId,
-        agent.slug,
-      );
-      const result = await forkConversation(
-        source.agentSlug,
-        source.id,
-        agent.slug,
+      const opened = await runForkAttempt(
         {
-          branchPointTurnId: source.turnId,
-          targetProjectSlug,
-          idempotencyKey,
-          signal: controller.signal,
+          sourceConversationId: source.id,
+          turnId: source.turnId,
+          targetAgentId: agent.slug,
+        },
+        async (idempotencyKey) => {
+          const result = await forkConversation(
+            source.agentSlug,
+            source.id,
+            agent.slug,
+            {
+              branchPointTurnId: source.turnId,
+              targetProjectSlug,
+              idempotencyKey,
+              signal: controller.signal,
+            },
+          );
+          // Superseded: throw rather than finish, so the key is kept and a
+          // later attempt to this Agent replays the fork Station created.
+          if (generation !== forkGenerationRef.current)
+            throw new DOMException('Fork superseded', 'AbortError');
+          const open = await openConversation(
+            result.conversationId,
+            agent.slug,
+            {
+              projectSlug: targetProjectSlug,
+              projectName: targetProjectName,
+              ...forkOpenExecution(source, agent.slug, choice),
+              hydrateMessages: true,
+              signal: controller.signal,
+              revealDock: !isFullscreenPlacement,
+              beforeFocus: () => {
+                // The fork's open navigates, which dismisses the draft's Back
+                // entry: settle first.
+                settleDockForStartedDraft();
+                return commitForkOpenBoundary({
+                  signal: controller.signal,
+                  generation,
+                  currentGeneration: () => forkGenerationRef.current,
+                  route: () => routeToScopedChatProject(targetProjectSlug),
+                });
+              },
+            },
+          );
+          // Superseded: throw rather than finish, so the key is kept and a
+          // later attempt to this Agent replays the fork Station created.
+          if (generation !== forkGenerationRef.current)
+            throw new DOMException('Fork superseded', 'AbortError');
+          // A failed open keeps the attempt's key, so a retry replays this
+          // same fork instead of creating a second one.
+          if (!open)
+            throw new Error('The fork was created but could not be opened.');
+          return result.conversationId;
+        },
+        {
+          isKeyConflict: (error) =>
+            (error as { code?: unknown } | null)?.code ===
+            CONVERSATION_FORK_REFUSAL_CODES.idempotencyConflict,
         },
       );
       if (generation !== forkGenerationRef.current) return;
-      const { completeForkAttempt } = await import('./forkAttemptKey');
-      completeForkAttempt(source.id, source.turnId, agent.slug, idempotencyKey);
-      const inherited = <T,>(chosen: T | undefined, recorded: T | undefined) =>
-        chosen ?? (sameAgent ? recorded : undefined);
-      const opened = await openConversation(result.conversationId, agent.slug, {
-        projectSlug: targetProjectSlug,
-        projectName: targetProjectName,
-        model: inherited(choice?.modelOverride, source.model),
-        requestedModel: inherited(choice?.modelOverride, source.model),
-        modelSource: inherited(choice?.modelSource, source.modelSource),
-        defaultModel: inherited(choice?.defaultModel, source.defaultModel),
-        defaultModelSource: inherited(
-          choice?.defaultModelSource,
-          source.defaultModelSource,
-        ),
-        providerOptions: inherited(
-          choice?.providerOptions,
-          source.providerOptions,
-        ),
-        requestedProviderOptions: inherited(
-          choice?.providerOptions,
-          source.providerOptions,
-        ),
-        providerId: inherited(choice?.providerId, source.providerId),
-        providerType: inherited(choice?.providerType, source.providerType),
-        hydrateMessages: true,
-        signal: controller.signal,
-        revealDock: !isFullscreenPlacement,
-        beforeFocus: () => {
-          // The fork's open navigates, which dismisses the draft's Back
-          // entry: settle first.
-          settleDockForStartedDraft();
-          return commitForkOpenBoundary({
-            signal: controller.signal,
-            generation,
-            currentGeneration: () => forkGenerationRef.current,
-            route: () => routeToScopedChatProject(targetProjectSlug),
-          });
-        },
-      });
-      if (generation !== forkGenerationRef.current) return;
-      if (!opened)
-        throw new Error('The fork was created but could not be opened.');
-      if (source.followUp)
-        applyForkFollowUp(result.conversationId, source.followUp);
+      if (source.followUp) applyForkFollowUp(opened, source.followUp);
       invalidate(conversationQueries.inventory().queryKey);
       invalidate(orchestrationQueries.sessions().queryKey);
       cancelFork();
