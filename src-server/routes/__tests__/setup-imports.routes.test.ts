@@ -485,4 +485,33 @@ describe('setup import routes', () => {
     ]);
     expect(skillExists('same')).toBe(true);
   });
+
+  // Three layers refuse to write over an existing skill: apply's
+  // target-not-absent check, `createLocalSkillIfAbsent`, and the check inside
+  // `createLocalSkillOwned`. This test pins the OUTCOME (the person's files
+  // are byte-identical) through all of them; any one layer alone still keeps
+  // it green, so it proves the property, not each layer.
+  test('an import aimed at an existing skill, or a case variant of it, never changes its files', async () => {
+    const { codex, project, service, post } = await realImportApp();
+    await service.createLocalSkill(
+      { name: 'mine', description: 'Mine', body: 'The person’s own words.' },
+      project,
+    );
+    const files = ['SKILL.md', 'skill.json'].map((file) =>
+      join(project, 'skills', 'mine', file),
+    );
+    const before = files.map((file) => readFileSync(file));
+    writeFileSync(join(codex, 'prompts', 'exact.md'), 'Overwrite attempt.');
+    writeFileSync(join(codex, 'prompts', 'variant.md'), 'Case attempt.');
+
+    const receipt = await importWith(post, (entry) =>
+      entry.name === 'exact.md' ? 'mine' : 'Mine',
+    );
+    expect(
+      receipt.items.map((item: { outcome: string }) => item.outcome),
+    ).toEqual(['failed', 'failed']);
+    files.forEach((file, index) => {
+      expect(readFileSync(file).equals(before[index]!), file).toBe(true);
+    });
+  });
 });
