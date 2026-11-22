@@ -139,7 +139,8 @@ export function KnowledgeConnectionView({
     <>
       <div className="knowledge-view">
         <p className="knowledge-view__cross-link">
-          Manage your personal knowledge in Settings.{' '}
+          Project knowledge is in each project's settings. Your own knowledge is
+          in Settings:{' '}
           <button
             type="button"
             className="button button--link"
@@ -152,8 +153,6 @@ export function KnowledgeConnectionView({
           >
             Open Settings → My knowledge store
           </button>
-          <br />
-          For project knowledge, open the project's settings.
         </p>
 
         <SectionNav
