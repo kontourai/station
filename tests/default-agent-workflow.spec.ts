@@ -639,16 +639,21 @@ test.describe('Default agent workflow', () => {
     await sendButton.click();
     await expect(page.locator('body')).toContainText('Conversation Statistics');
 
-    // /clear is gone: it only emptied the list on screen. The transcript
-    // stays, and the composer says the command is unknown.
-    const transcript = page.getByRole('log', {
-      name: 'Conversation transcript',
-    });
+    // /clear and /new announce themselves with the same notice, so /new is
+    // only observable as a second one: the first alone would satisfy a
+    // presence check before /new ran at all.
+    const clearedNotices = page
+      .getByRole('log', { name: 'Conversation transcript' })
+      .getByText('Conversation cleared', { exact: true });
     await closeRunSetup(page);
     await textarea.fill('/clear');
     await sendButton.click();
-    await expect(page.locator('body')).toContainText('Unknown command: /clear');
-    await expect(transcript).toContainText('Hi from Station!');
+    await expect(clearedNotices).toHaveCount(1);
+
+    await closeRunSetup(page);
+    await textarea.fill('/new');
+    await sendButton.click();
+    await expect(clearedNotices).toHaveCount(2);
 
     await page.getByRole('button', { name: 'History', exact: true }).click();
     await expect(page.locator('.conversation-history')).toContainText(
@@ -657,13 +662,6 @@ test.describe('Default agent workflow', () => {
     await expect(page.locator('.conversation-history')).toContainText(
       'Station Chat',
     );
-    await page.keyboard.press('Escape');
-
-    // /new opens New chat, the dock's own New chat action.
-    await closeRunSetup(page);
-    await textarea.fill('/new');
-    await sendButton.click();
-    await expect(page.locator('.new-chat-modal')).toBeVisible();
   });
 
   test('#749 resolves one runtime inventory row before opening and revalidates it after reload', async ({
