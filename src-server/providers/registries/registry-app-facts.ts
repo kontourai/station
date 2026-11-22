@@ -14,7 +14,7 @@
  * package and reused while the files they came from are unchanged: a listing
  * of an unchanged catalog costs an `lstat` and a `stat` per file read before.
  */
-import { lstatSync, statSync } from 'node:fs';
+import { lstatSync, type Stats, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   deriveRegistryAppFacts,
@@ -52,7 +52,7 @@ interface LocalRegistryPackage {
 
 class AppFactsRefusal extends Error {}
 
-function statSignature(stat: () => ReturnType<typeof lstatSync>): string {
+function statSignature(stat: () => Stats): string {
   try {
     const info = stat();
     return `${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
