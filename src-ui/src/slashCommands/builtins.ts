@@ -1,6 +1,10 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import { agentQueries } from '@kontourai/station-sdk';
+import {
+  getContextBreakdownEntries,
+  perTurnCostUsd,
+} from '../components/conversation-stats/utils';
 import { escapeHtml } from '../highlight/shared';
 import { runtimeCatalogSourceLabel } from '../utils/execution';
 import { agentCommandSkills } from '../utils/skill-command-catalog';
@@ -211,6 +215,8 @@ registerCommand(
           providerPromptCacheInclusivity,
         },
         {
+          conversationStatsMeasurementView,
+          describeUnreportedMeasurements,
           enginesReportingTokensSeparately,
           formatMeasuredCostUsd,
           formatMeasuredTokens,
@@ -274,6 +280,24 @@ registerCommand(
             )
             .join('\n              ')
         : tokenRows(usageProvider, stats);
+      // The modal's rules, so the two surfaces agree: the token section is
+      // left out when no token figure was reported, the breakdown lists only
+      // Station's own estimates that exist, and one sentence names what was
+      // not reported.
+      const tokensReported =
+        perEngineTokens !== undefined ||
+        [
+          stats.inputTokens,
+          stats.outputTokens,
+          stats.totalTokens,
+          stats.cacheReadTokens,
+          stats.cacheWriteTokens,
+        ].some((value) => value !== undefined);
+      const breakdown = getContextBreakdownEntries(stats);
+      const unreportedNote = describeUnreportedMeasurements(
+        conversationStatsMeasurementView(stats),
+        (provider) => engineDisplayLabel(provider),
+      );
 
       const html = `
       <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px;">
@@ -298,20 +322,30 @@ registerCommand(
             : ''
         }
         
+        ${
+          breakdown.length > 0
+            ? `
         <details open style="margin-bottom: 12px;">
           <summary style="cursor: pointer; font-weight: 600; padding: 8px; background: var(--bg-secondary); border-radius: 4px; user-select: none;">
             Context Breakdown
           </summary>
           <div style="padding: 12px 8px;">
             <table style="width: 100%;">
-              <tr><td>System Prompt:</td><td style="text-align: right;">${formatMeasuredTokens(stats.systemPromptTokens)}</td></tr>
-              <tr><td>MCP Tools:</td><td style="text-align: right;">${formatMeasuredTokens(stats.mcpServerTokens)}</td></tr>
-              <tr><td>User Messages:</td><td style="text-align: right;">${formatMeasuredTokens(stats.userMessageTokens)}</td></tr>
-              <tr><td>Assistant Messages:</td><td style="text-align: right;">${formatMeasuredTokens(stats.assistantMessageTokens)}</td></tr>
+              ${breakdown
+                .map(
+                  (entry) =>
+                    `<tr><td>${entry.label}:</td><td style="text-align: right;">${entry.value.toLocaleString()}</td></tr>`,
+                )
+                .join('\n              ')}
             </table>
           </div>
         </details>
-        
+        `
+            : ''
+        }
+        ${
+          tokensReported
+            ? `
         <details open style="margin-bottom: 12px;">
           <summary style="cursor: pointer; font-weight: 600; padding: 8px; background: var(--bg-secondary); border-radius: 4px; user-select: none;">
             Total LLM Consumption
@@ -323,6 +357,9 @@ registerCommand(
             </div>
           </div>
         </details>
+        `
+            : ''
+        }
         
         <details style="margin-bottom: 12px;">
           <summary style="cursor: pointer; font-weight: 600; padding: 8px; background: var(--bg-secondary); border-radius: 4px; user-select: none;">
@@ -337,7 +374,7 @@ registerCommand(
             <div>
               <strong>Cost</strong><br/>
               Total: <strong>${formatMeasuredCostUsd(stats.estimatedCost)}</strong><br/>
-              Per Turn: <strong>${formatMeasuredCostUsd(stats.estimatedCost === undefined ? undefined : stats.estimatedCost / (stats.turns || 1))}</strong>
+              Per Turn: <strong>${formatMeasuredCostUsd(perTurnCostUsd(stats))}</strong>
             </div>
           </div>
         </details>
@@ -354,7 +391,7 @@ registerCommand(
                 .map(
                   ([modelId, modelData]: [string, any]) => `
                 <div style="margin-bottom: 12px; padding: 8px; background: var(--bg-tertiary); border-radius: 4px;">
-                  <div style="font-family: monospace; font-size: 12px; margin-bottom: 8px;">${modelId}</div>
+                  <div style="font-family: monospace; font-size: 12px; margin-bottom: 8px;">${escapeHtml(modelId)}</div>
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
                     <div>
                       <strong>Consumed</strong><br/>
@@ -376,6 +413,11 @@ registerCommand(
             </div>
           </details>
         `
+            : ''
+        }
+        ${
+          unreportedNote
+            ? `<div style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">${escapeHtml(unreportedNote)}</div>`
             : ''
         }
       </div>

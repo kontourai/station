@@ -460,33 +460,94 @@ describe('ConversationStatsModal — engine-reported usage and MCP servers', () 
 describe('ConversationStatsModal — "Not reported", never a false 0 (#5390)', () => {
   /**
    * What the stats route returns for a Station-agent chat whose model
-   * reported no usage (a local model connection): its record carries no
-   * stats, so tokens, cost and cache are absent, not zero.
+   * reported no usage, after one turn: Station counted the turn, nothing
+   * reported tokens or cost, and the agent's prompt is unknown. The same
+   * response is rendered by `/stats` in `slash-stats-cache-honesty.test.ts`.
    */
   const NO_USAGE: ConversationStatsSnapshot = {
-    turns: 0,
+    turns: 1,
     toolCalls: 0,
     conversationId: 'station:1',
     modelId: '',
     modelStats: {},
-    systemPromptTokens: 0,
     mcpServerTokens: 26_238,
     userMessageTokens: 3,
     contextFilesTokens: 0,
     measurement: { source: 'station-memory' },
   };
 
-  test('absent token, cache and cost figures read "Not reported", not 0', () => {
+  /** The route's response after Claude Code reported a turn of zeros. */
+  const REPORTED_ZERO: ConversationStatsSnapshot = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextTokens: 0,
+    turns: 1,
+    toolCalls: 0,
+    estimatedCost: 0,
+    engines: [
+      {
+        provider: 'claude',
+        turns: 1,
+        toolCalls: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        estimatedCost: 0,
+      },
+    ],
+    conversationId: 'conv',
+    modelId: 'configured-model',
+    modelStats: {},
+    assistantMessageTokens: 0,
+    measurement: { source: 'engine-events', provider: 'claude' },
+  };
+
+  test('says once that the model reported no token counts, and shows no invented 0', () => {
     renderModal(NO_USAGE);
 
-    expect(rowValue('In')).toBe('Not reported');
-    expect(rowValue('Out')).toBe('Not reported');
-    expect(rowValue('Total')).toBe('Not reported');
-    // The token total and the cost total.
-    expect(screen.getAllByText('Total: Not reported')).toHaveLength(2);
-    expect(screen.queryByText(/^Cache (read|write):/)).toBeNull();
+    expect(
+      screen.getByText('The model did not report token counts for this chat.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Total LLM Consumption')).toBeNull();
+    expect(screen.getByText('Turns: 1')).toBeTruthy();
+    expect(screen.getByText('Total: Not reported')).toBeTruthy();
+    expect(screen.getByText('Per Turn: Not reported')).toBeTruthy();
     expect(screen.queryByText(/\$0\.0000/)).toBeNull();
     expect(screen.queryByText(/^(In|Out|Total): 0$/)).toBeNull();
+  });
+
+  test('a reported zero stays zero', () => {
+    renderModal(REPORTED_ZERO);
+
+    expect(rowValue('In (uncached)')).toBe('0');
+    expect(rowValue('Out')).toBe('0');
+    expect(screen.getByText('Total: 0')).toBeTruthy();
+    expect(screen.getByText('Total: $0.0000')).toBeTruthy();
+    expect(screen.getByText('Per Turn: $0.0000')).toBeTruthy();
+    expect(screen.queryByText(/did not report/)).toBeNull();
+  });
+
+  test('the cost card shows both the figures its heading names', () => {
+    renderModal({ ...NO_USAGE, turns: 0 });
+
+    expect(screen.getByText('Total and per-turn cost')).toBeTruthy();
+    expect(screen.getByText('Total: Not reported')).toBeTruthy();
+    expect(screen.getByText('Per Turn: Not reported')).toBeTruthy();
+  });
+
+  test("lists only Station's own estimates that exist, as /stats does", () => {
+    renderModal({ ...NO_USAGE, contextWindowPercentage: 13 });
+
+    // The same labels `slash-stats-cache-honesty.test.ts` expects.
+    expect(screen.getByText('MCP Tools:')).toBeTruthy();
+    expect(screen.getByText('User Messages:')).toBeTruthy();
+    expect(screen.queryByText('System Prompt:')).toBeNull();
+    expect(screen.queryByText('Assistant Messages:')).toBeNull();
   });
 });
 

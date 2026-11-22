@@ -23,13 +23,21 @@ describe('the one unreported-measurement representation (station#3201)', () => {
     expect(formatMeasuredCostUsd(0.0125)).toBe('$0.0125');
   });
 
-  it("discloses nothing for Station's own accounting, where absence is a counted zero", () => {
-    expect(unreportedMeasurementClasses({ source: 'station-memory' })).toEqual(
-      [],
-    );
+  it("names only token counts for Station's own accounting, and only when none were reported (#5390)", () => {
+    // Station prices cost itself and estimates context itself, so neither is
+    // something the model failed to report.
+    expect(unreportedMeasurementClasses({ source: 'station-memory' })).toEqual([
+      'token counts',
+    ]);
     expect(
       describeUnreportedMeasurements(
         { source: 'station-memory' },
+        () => 'Station',
+      ),
+    ).toBe('The model did not report token counts for this chat.');
+    expect(
+      describeUnreportedMeasurements(
+        { source: 'station-memory', inputTokens: 0, outputTokens: 0 },
         () => 'Station',
       ),
     ).toBeNull();

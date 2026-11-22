@@ -50,10 +50,10 @@ export function formatMeasuredCostUsd(value: number | undefined): string {
  */
 export interface SessionMeasurementView {
   /**
-   * `engine-events` — folded from what an engine reported, so an absent
-   * field is a question nobody asked. `station-memory` — Station's own
-   * accounting, where absence is a recorded zero and there is nothing to
-   * disclose.
+   * `engine-events` — folded from what an engine reported. `station-memory`
+   * — Station's own accounting of the turns it ran, where token counts are
+   * what the model reported and cost is Station's price for them. In both,
+   * an absent field was never reported (#5390), not a zero.
    */
   source: 'station-memory' | 'engine-events';
   provider?: string;
@@ -83,18 +83,18 @@ export interface SessionMeasurementView {
 /**
  * Which CLASSES of measurement this session has none of — derived from the
  * fields that actually came back absent, never from a per-engine capability
- * list. A hardcoded "Claude reports cost, ACP does not" table in a surface
+ * list. For `station-memory` only token counts are disclosed: its cost is
+ * Station's own price (absent for an unpriced model) and its context figure
+ * Station's own estimate, so neither is something the model failed to report. A hardcoded "Claude reports cost, ACP does not" table in a surface
  * is the same defect as a hardcoded price table: it is a label that drifts
  * from what the engine did on this session (a Claude turn that crashed
  * reports no cost either).
  *
- * Empty for a `station-memory` view, and empty when everything was
- * reported.
+ * Empty when everything was reported.
  */
 export function unreportedMeasurementClasses(
   view: SessionMeasurementView,
 ): string[] {
-  if (view.source !== 'engine-events') return [];
   const classes: string[] = [];
   if (
     view.inputTokens === undefined &&
@@ -104,6 +104,7 @@ export function unreportedMeasurementClasses(
   ) {
     classes.push('token counts');
   }
+  if (view.source !== 'engine-events') return classes;
   if (view.costUsd === undefined && !view.reportedCostUnits)
     classes.push('cost');
   if (view.contextTokens === undefined && view.contextPercent === undefined)
@@ -128,6 +129,8 @@ export function describeUnreportedMeasurements(
 ): string | null {
   const classes = unreportedMeasurementClasses(view);
   if (classes.length === 0) return null;
+  if (view.source === 'station-memory')
+    return 'The model did not report token counts for this chat.';
   const engine =
     (view.provider ? resolveEngineLabel(view.provider) : null) ??
     view.provider ??

@@ -34,6 +34,7 @@ import {
   getContextBreakdownEntries,
   getContextWindowColor,
   getModelStatsEntries,
+  perTurnCostUsd,
 } from './utils';
 
 interface ConversationStatsModalProps {
@@ -230,14 +231,14 @@ export function ConversationStatsModal({
    * context occupancy only, so three cards sat fully dashed above a footnote
    * that alone carried the information). A section collapses only when every
    * figure it shows is unreported; a mixed section keeps its dashes so a
-   * measured field stays distinguishable from an unmeasured one. A
-   * `station-memory` view records numbers (zeros included), so it never
-   * collapses.
+   * measured field stays distinguishable from an unmeasured one. Token
+   * counts collapse on a `station-memory` view too: there, as on an
+   * engine-events view, an absent count was never reported (#5390). Its cost
+   * card stays, because that cost is Station's own price.
    */
   const engineEventsView = stats?.measurement?.source === 'engine-events';
   const tokenUsageReported = stats
-    ? !engineEventsView ||
-      perEngineTokens !== undefined ||
+    ? perEngineTokens !== undefined ||
       [
         stats.inputTokens,
         stats.outputTokens,
@@ -520,16 +521,9 @@ export function ConversationStatsModal({
                 <div style={{ marginBottom: '4px' }}>
                   Total: {formatMeasuredCostUsd(stats.estimatedCost)}
                 </div>
-                {stats.turns > 0 && (
-                  <div>
-                    Per Turn:{' '}
-                    {formatMeasuredCostUsd(
-                      stats.estimatedCost === undefined
-                        ? undefined
-                        : stats.estimatedCost / stats.turns,
-                    )}
-                  </div>
-                )}
+                <div>
+                  Per Turn: {formatMeasuredCostUsd(perTurnCostUsd(stats))}
+                </div>
               </SectionCard>
             )}
             {stats.reportedCosts && stats.reportedCosts.length > 0 && (

@@ -86,3 +86,17 @@ export function formatReportedCost(cost: {
       : cost.unit;
   return `${amount} ${unit}`;
 }
+
+/**
+ * The cost of one turn, or `undefined` when there is none to divide: no cost
+ * was reported, or no turn was counted. The stats modal and `/stats` both
+ * show this, so they agree on when a per-turn cost exists.
+ */
+export function perTurnCostUsd(stats: {
+  estimatedCost?: number;
+  turns: number;
+}): number | undefined {
+  return stats.estimatedCost === undefined || stats.turns <= 0
+    ? undefined
+    : stats.estimatedCost / stats.turns;
+}
