@@ -1337,7 +1337,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ? projects.find((project) => project.slug === inventoryProjectSlug)?.id
     : undefined;
   const conversationBoundaryDialogs = useConversationBoundaryDialogs({
-    agents,
     apiBase,
     activeSession: hostConversation ? activeSession : null,
     allSessions: allSessions.filter((session) => chatBelongsToStation(session)),
@@ -1366,7 +1365,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     forkAbortRef,
     forkGenerationRef,
     cancelFork,
-    forkEligibleAgents,
     contextResetSource,
     setContextResetSource,
     contextBoundaryLabel,
@@ -1422,15 +1420,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (newChatRequestEpoch > 0) revealNewChatDraft();
   }, [newChatRequestEpoch]);
   // What the dock's title slot calls an open draft, as the draft names itself.
-  const newChatDraftTitle = forkSource
-    ? forkSource.followUp?.mode === 'regenerate'
-      ? 'Regenerate'
-      : forkSource.followUp
-        ? 'Edit and resend'
-        : 'Fork from here'
-    : newChatTaskShaping
-      ? 'New Task'
-      : 'New chat';
+  const newChatDraftTitle = newChatTaskShaping ? 'New Task' : 'New chat';
   // Closes the draft without touching the dock's size: leaving it for a chat
   // (a tab, the inbox, a toast's Open, `?chat=`, Back/Forward to a chat) is
   // going to that chat, which must stay on screen.
@@ -1439,9 +1429,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setShowNewChatModal(false);
     setNewChatProjectOverride(null);
     setHandoffSource(null);
-    cancelFork();
-  }, [setShowNewChatModal, setHandoffSource, cancelFork]);
-  // The draft's own dismissal (Escape, Back, Cancel fork): the dock goes back
+  }, [setShowNewChatModal, setHandoffSource]);
+  // The draft's own dismissal (Escape, Back): the dock goes back
   // to the size it had before the draft forced it, maximize memory included.
   const dismissNewChatDraft = useCallback(() => {
     const before = dockBeforeDraft.current;
@@ -3723,7 +3712,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setForkSource(next);
     setForkOperation({ pending: false, error: null });
     if (timeline) returnToLatestConversation();
-    setShowNewChatModal(true);
     return next;
   };
 
@@ -3878,7 +3866,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       invalidate(conversationQueries.inventory().queryKey);
       invalidate(orchestrationQueries.sessions().queryKey);
       cancelFork();
-      setShowNewChatModal(false);
     } catch (error) {
       if (generation !== forkGenerationRef.current || controller.signal.aborted)
         return;
@@ -4651,7 +4638,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   visibleNewChatEpoch === newChatRequestEpoch
                                 }
                                 componentProps={{
-                                  agents: forkEligibleAgents,
+                                  agents,
                                   projects:
                                     hasImmutableProjectScope && projectSlug
                                       ? projects.filter(
@@ -4823,47 +4810,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                     navigate(pathname, { chat: sessionId });
                                     setNewChatProjectOverride(null);
                                     setHandoffSource(null);
-                                  },
-                                  forkMode: forkSource
-                                    ? {
-                                        kind: 'fork',
-                                        preferredAgentSlug:
-                                          forkSource.agentSlug,
-                                        sourceModel: forkSource.model,
-                                        pending: forkOperation.pending,
-                                        error: forkOperation.error,
-                                      }
-                                    : undefined,
-                                  onForkAgentSelect: (
-                                    agent,
-                                    projectSlug,
-                                    projectName,
-                                    _initialMessage,
-                                    modelOverride,
-                                    modelSource,
-                                    defaultModel,
-                                    defaultModelSource,
-                                    providerOptions,
-                                    providerId,
-                                    providerType,
-                                  ) => {
-                                    if (!forkSource || forkOperation.pending)
-                                      return;
-                                    return runFork(
-                                      forkSource,
-                                      agent,
-                                      projectSlug,
-                                      projectName,
-                                      {
-                                        modelOverride,
-                                        modelSource,
-                                        defaultModel,
-                                        defaultModelSource,
-                                        providerOptions,
-                                        providerId,
-                                        providerType,
-                                      },
-                                    );
                                   },
                                   onConversationStarted: (agent, start) => {
                                     const sessionId =
@@ -5345,7 +5291,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             {((handoffSource &&
               !stagedAgentChange.previewChecking &&
               !stagedAgentChange.pending) ||
-              contextResetSource) && (
+              contextResetSource ||
+              forkSource) && (
               <LazyBoundary
                 load={loadConversationBoundaryDialogs}
                 componentProps={{
@@ -5364,6 +5311,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   showToast,
                   refetchOrchestrationSessions,
                   continueOnStation,
+                  onFork: (agent, choice) => {
+                    if (!forkSource || forkOperation.pending) return;
+                    void runFork(
+                      forkSource,
+                      agent,
+                      forkSource.projectSlug,
+                      forkSource.projectName,
+                      choice,
+                    );
+                  },
                   handoffAvailable:
                     !stagedAgentChange.previewChecking &&
                     !stagedAgentChange.pending,
@@ -5379,7 +5336,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               load={loadChatDockModalStack}
               componentProps={{
                 goalSessionId: activeSession?.currentSessionId,
-                agents: forkEligibleAgents,
+                agents,
                 projects:
                   hasImmutableProjectScope && projectSlug
                     ? projects.filter((project) => project.slug === projectSlug)

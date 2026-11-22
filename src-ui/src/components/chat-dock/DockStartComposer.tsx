@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useScopedProjectRunLocationsQuery } from '../../contexts/ProjectsContext';
 import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
-import { NewChatModal, type NewChatModalMode } from '../modals/NewChatModal';
+import { NewChatModal } from '../modals/NewChatModal';
 
 type NewChatProps = ComponentProps<typeof NewChatModal>;
 
@@ -29,16 +29,12 @@ export function composerDraftContext(
   };
 }
 
-const FORK_REPLAY_ONLY_DISCLOSURE =
-  'Station replays the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
-
 export type DockStartComposerProps = Omit<
   NewChatProps,
   | 'projectRunLocations'
   | 'requestAuthority'
   | 'startSurface'
   | 'draftContext'
-  | 'mode'
 > & {
   /** The Project a sidebar or plugin request named, with its draft. */
   newChatProjectOverride?: {
@@ -46,16 +42,12 @@ export type DockStartComposerProps = Omit<
     name: string;
     composerDraft?: ProjectChatComposerDraft;
   } | null;
-  /** Set while forking: the draft offers the fork's Agent list instead. */
-  forkMode?: Omit<NewChatModalMode, 'disclosure'>;
-  onForkAgentSelect?: NewChatProps['onSelect'];
 };
 
 /**
  * The dock's New chat draft: the one start surface (`NewChatModal`) in the
- * dock's chat body, for a chat, a Task or a fork. This maps the dock's
- * request onto it: a fork carries none of a start's hand-over (files,
- * choices, draft) and picks through its own handler.
+ * dock's chat body, for a chat or a Task. Forks pick in
+ * `ConversationForkDialog` instead.
  *
  * #3391: the run-locations read lives here, not in the dock, so it is
  * mounted only while the draft is: the dock and the Project list never wait
@@ -64,14 +56,7 @@ export type DockStartComposerProps = Omit<
  */
 export function DockStartComposer({
   newChatProjectOverride,
-  forkMode,
-  onForkAgentSelect,
   activeProjectSlug,
-  initialFiles,
-  startSelection,
-  handoff,
-  selectionInvalid,
-  onSelect,
   ...props
 }: DockStartComposerProps) {
   const projectRunLocations = useScopedProjectRunLocationsQuery().data;
@@ -85,21 +70,7 @@ export function DockStartComposer({
       activeProjectSlug={
         newChatProjectOverride ? newChatProjectOverride.slug : activeProjectSlug
       }
-      initialFiles={forkMode ? undefined : initialFiles}
-      startSelection={forkMode ? undefined : startSelection}
-      handoff={forkMode ? undefined : handoff}
-      selectionInvalid={forkMode ? false : selectionInvalid}
-      draftContext={
-        forkMode
-          ? undefined
-          : composerDraftContext(newChatProjectOverride?.composerDraft)
-      }
-      mode={
-        forkMode
-          ? { ...forkMode, disclosure: FORK_REPLAY_ONLY_DISCLOSURE }
-          : undefined
-      }
-      onSelect={forkMode && onForkAgentSelect ? onForkAgentSelect : onSelect}
+      draftContext={composerDraftContext(newChatProjectOverride?.composerDraft)}
     />
   );
 }

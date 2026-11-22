@@ -18,6 +18,10 @@ import type { useToast } from '../../contexts/ToastContext';
 import type { useChatInput } from '../../hooks/useChatInput';
 import type { ChatSession } from '../../types';
 import { ConversationContextResetDialog } from './ConversationContextResetDialog';
+import {
+  ConversationForkDialog,
+  type ForkTargetChoice,
+} from './ConversationForkDialog';
 import { ConversationHandoffDialog } from './ConversationHandoffDialog';
 import type { ContinuedOnStation } from './ConversationStationHandoff';
 import {
@@ -28,9 +32,9 @@ import {
 import type { ConversationBoundaryDialogsState } from './useConversationBoundaryDialogs';
 
 /**
- * The dock's Agent-handoff and context-reset overlays.
+ * The dock's Agent-handoff, fork and context-reset overlays.
  *
- * Both are driven entirely by `useConversationBoundaryDialogs`; everything
+ * All are driven entirely by `useConversationBoundaryDialogs`; everything
  * else this takes is the ambient dock context the two dialogs report back
  * into (the composer's draft, the active-chat store, the query cache and the
  * toast surface). Splitting them out of `ChatWorkspacePane` keeps that
@@ -58,6 +62,7 @@ export function ConversationBoundaryDialogs({
   showToast,
   refetchOrchestrationSessions,
   continueOnStation,
+  onFork,
   onStageAgentChange,
   handoffAvailable = true,
 }: {
@@ -89,6 +94,8 @@ export function ConversationBoundaryDialogs({
   onStageAgentChange?: React.ComponentProps<
     typeof ConversationHandoffDialog
   >['onStage'];
+  /** Forks the held fork source to the chosen Agent (the dock's `runFork`). */
+  onFork: (agent: AgentData, choice: ForkTargetChoice) => void;
   /** Opens the paired Station's new chat and sends its first turn there. */
   continueOnStation?: (
     result: ContinuedOnStation,
@@ -106,6 +113,9 @@ export function ConversationBoundaryDialogs({
     contextBoundarySessionId,
     contextBoundaryAuthority,
     hasLocalDeferredMessages,
+    forkSource,
+    forkOperation,
+    cancelFork,
   } = dialogs;
   const handoffIsActive = handoffSession?.id === activeSession?.id;
   // The client turn this chat is busy with (the handoff's own dispatch marks
@@ -116,6 +126,31 @@ export function ConversationBoundaryDialogs({
   );
   return (
     <>
+      {forkSource && (
+        <ConversationForkDialog
+          // A new dialog per fork source: no choice crosses turns.
+          key={`${forkSource.id}\0${forkSource.turnId}\0${forkSource.idempotencyKey}`}
+          title={
+            forkSource.followUp?.mode === 'regenerate'
+              ? 'Regenerate'
+              : forkSource.followUp
+                ? 'Edit and resend'
+                : 'Fork from here'
+          }
+          sourceAgentId={forkSource.agentSlug}
+          sourceModel={forkSource.model}
+          projectSlug={forkSource.projectSlug}
+          agents={agents}
+          projects={projects}
+          pending={forkOperation.pending}
+          error={forkOperation.error}
+          onFork={onFork}
+          onClose={() => {
+            cancelFork();
+            requestAnimationFrame(() => chatInput.textareaRef.current?.focus());
+          }}
+        />
+      )}
       {handoffAvailable && handoffSource && handoffSession?.conversationId && (
         <ConversationHandoffDialog
           // A new dialog per open: request state never crosses chats.
