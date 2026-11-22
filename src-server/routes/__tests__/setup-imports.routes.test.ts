@@ -276,6 +276,8 @@ describe('setup import routes', () => {
       'hinted.md':
         '---\ndescription: Explain a file\nargument-hint: [FILE=<path>]\n---\nExplain $FILE plainly.\n',
       'named.md': '---\nname: other-name\n---\nDraft notes for $ARGUMENTS.\n',
+      'unquoted.md':
+        '---\ndescription: Review a change by area\nargument-hint: [FILE=<path>] [FOCUS=<area>]\n---\nReview $FILE with focus on $FOCUS.\n',
       'complete.md':
         '---\nname: complete\ndescription: Fully described\n---\nUse $NAME.\n',
       'bare.md': 'No front matter here.\n',
@@ -288,7 +290,7 @@ describe('setup import routes', () => {
       preview.entries
         .map((entry: { skillName: string }) => entry.skillName)
         .sort(),
-    ).toEqual(['bare', 'complete', 'described', 'hinted', 'named']);
+    ).toEqual(['bare', 'complete', 'described', 'hinted', 'named', 'unquoted']);
     const review = await post(`/previews/${preview.id}/targets`, {
       items: preview.entries.map(
         (entry: { id: string; skillName: string }) => ({
@@ -309,6 +311,10 @@ describe('setup import routes', () => {
       },
       hinted: { description: 'Explain a file', body: 'Explain $FILE plainly.' },
       named: { body: 'Draft notes for $ARGUMENTS.' },
+      unquoted: {
+        description: 'Review a change by area',
+        body: 'Review $FILE with focus on $FOCUS.',
+      },
       complete: { description: 'Fully described', body: 'Use $NAME.' },
       bare: { body: 'No front matter here.' },
     };

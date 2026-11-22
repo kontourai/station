@@ -13,7 +13,7 @@ import type {
   SkillOrigin,
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
-import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { MAX_DESCRIPTION_LENGTH, parseFrontmatter } from 'agent-skills-ts-sdk';
 import { load as loadYaml } from 'js-yaml';
 import { isRecord } from '../../utils/is-record.js';
 
@@ -98,19 +98,58 @@ function leadingFrontmatterBlock(
   };
 }
 
-/** `description` from a block the spec parser refused, when it is text. */
-function lenientDescription(yaml: string): string | undefined {
-  try {
-    const value = loadYaml(yaml, { maxAliases: 0 });
-    if (value === null || typeof value !== 'object' || Array.isArray(value))
-      return undefined;
-    const description = (value as Record<string, unknown>).description;
-    return typeof description === 'string' && description.trim() !== ''
-      ? description.trim()
-      : undefined;
-  } catch {
+/**
+ * C0/C1 controls and the bidirectional formatting marks. Text holding one can
+ * read as something it is not, so the Codex importer refuses such file names
+ * and the lenient reader below refuses such descriptions.
+ */
+const CONTROL_OR_BIDI = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
+export function hasControlOrBidiCharacters(text: string): boolean {
+  return CONTROL_OR_BIDI.test(text);
+}
+
+/**
+ * A `description:` line read as plain text, for a block that is not YAML at
+ * all (Codex documents `argument-hint: [FILE=<path>] [FOCUS=<area>]`, which
+ * no YAML parser accepts). Only a one-line value is read; a block scalar or
+ * a value continued on later lines stays unread.
+ */
+function lineDescription(block: string): string | undefined {
+  const match = /^description:[ \t]*(.*?)[ \t]*$/m.exec(block);
+  const raw = match?.[1] ?? '';
+  if (raw === '' || raw.startsWith('|') || raw.startsWith('>'))
     return undefined;
+  const quoted = /^(["'])(.*)\1$/.exec(raw);
+  return quoted ? quoted[2] : raw;
+}
+
+/**
+ * `description` from a block the spec parser refused, when it is plain text
+ * the skills format allows: at most its description length, with no control
+ * or direction-changing character. Anything else is refused, not trimmed to
+ * fit, and the file name stands alone.
+ */
+function lenientDescription(block: string): string | undefined {
+  let description: unknown;
+  try {
+    const value = loadYaml(block, { maxAliases: 0 });
+    description =
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>).description
+        : undefined;
+  } catch {
+    description = lineDescription(block);
   }
+  if (typeof description !== 'string') return undefined;
+  const text = description.trim();
+  if (
+    text === '' ||
+    text.length > MAX_DESCRIPTION_LENGTH ||
+    hasControlOrBidiCharacters(text)
+  )
+    return undefined;
+  return text;
 }
 
 /** What an imported `.md` file contributes to a new local skill. */

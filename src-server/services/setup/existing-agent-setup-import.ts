@@ -28,6 +28,7 @@ import {
   enumerateBoundDirectory,
 } from '../agents/bound-directory-enumeration.js';
 import {
+  hasControlOrBidiCharacters,
   isSafeSkillName,
   parseImportedSkillMarkdown,
 } from '../agents/skill-metadata.js';
@@ -52,12 +53,6 @@ const MAX_RECEIPTS = 64;
 const SOURCE_ID = 'codex-prompts';
 const STORE_SCHEMA_VERSION = 1;
 const SOURCE_ADAPTER_VERSION = 2;
-/**
- * C0/C1 controls and the bidirectional formatting marks. A file name holding
- * one can make its row read as a different name, so it is not offered.
- */
-const DECEPTIVE_NAME_CHARACTERS =
-  /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 type SetupImportErrorCode =
   | 'INVALID_SOURCE'
@@ -564,7 +559,7 @@ export class ExistingAgentSetupImportModule {
       throw new SetupImportError('SOURCE_UNAVAILABLE');
     }
     for (const entry of listed) {
-      if (DECEPTIVE_NAME_CHARACTERS.test(entry.name)) {
+      if (hasControlOrBidiCharacters(entry.name)) {
         this.exclude(excluded, 'unsafe-name');
         continue;
       }

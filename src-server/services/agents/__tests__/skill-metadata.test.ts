@@ -158,6 +158,13 @@ describe('front matter the spec parser refuses', () => {
       description: undefined,
     },
     {
+      label: 'an argument-hint that is not YAML',
+      file: 'review.md',
+      text: '---\ndescription: "Review a change"\nargument-hint: [FILE=<path>] [FOCUS=<area>]\n---\nReview $FILE, focusing on $FOCUS.\n',
+      name: 'review',
+      description: 'Review a change',
+    },
+    {
       label: 'CRLF line endings',
       file: 'crlf.md',
       text: '---\r\ndescription: Windows prompt\r\n---\r\nDo the thing.\r\n',
@@ -165,11 +172,12 @@ describe('front matter the spec parser refuses', () => {
       description: 'Windows prompt',
     },
     {
+      // Not YAML, so the description line is read as written.
       label: 'unparseable YAML',
       file: 'broken.md',
       text: '---\ndescription: [unclosed\n---\nStill a body.\n',
       name: 'broken',
-      description: undefined,
+      description: '[unclosed',
     },
   ];
   for (const { label, file, text, name, description } of cases) {
@@ -195,5 +203,40 @@ describe('front matter the spec parser refuses', () => {
   test('a file with no front matter is unchanged', () => {
     const parsed = parseImportedSkillMarkdown('plain.md', 'Just text.\n');
     expect(parsed).toEqual({ name: 'plain', body: 'Just text.' });
+  });
+
+  test("a refused block's description must fit the skills format, or none is used", () => {
+    const header = (description: string) =>
+      `---\ndescription: ${description}\nargument-hint: [A] [B]\n---\nBody.\n`;
+    expect(
+      parseImportedSkillMarkdown('fits.md', header('d'.repeat(1024)))
+        .description,
+    ).toBe('d'.repeat(1024));
+    const tooLong = parseImportedSkillMarkdown(
+      'long.md',
+      header('d'.repeat(1025)),
+    );
+    expect(tooLong.description).toBeUndefined();
+    expect(tooLong.name).toBe('long');
+    expect(tooLong.body).toBe('Body.');
+    const reversed = parseImportedSkillMarkdown(
+      'bidi.md',
+      header('safe \u202Etxt.exe'),
+    );
+    expect(reversed.description).toBeUndefined();
+    const yamlTooLong = parseImportedSkillMarkdown(
+      'yaml-long.md',
+      `---\ndescription: ${'d'.repeat(1025)}\n---\nBody.\n`,
+    );
+    expect(yamlTooLong.description).toBeUndefined();
+  });
+
+  test('a block-scalar description that is not YAML stays unread', () => {
+    const parsed = parseImportedSkillMarkdown(
+      'folded.md',
+      '---\ndescription: >\n  folded text\nargument-hint: [A] [B]\n---\nBody.\n',
+    );
+    expect(parsed.description).toBeUndefined();
+    expect(parsed.body).toBe('Body.');
   });
 });
