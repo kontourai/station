@@ -3871,10 +3871,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         },
       );
       if (generation !== forkGenerationRef.current) return;
+      // Close the dialog first (its request is done, so nothing to abort):
+      // its focus return then yields to the composer the follow-up focuses.
+      if (forkAbortRef.current === controller) forkAbortRef.current = null;
+      cancelFork();
       if (source.followUp) applyForkFollowUp(opened, source.followUp);
       invalidate(conversationQueries.inventory().queryKey);
       invalidate(orchestrationQueries.sessions().queryKey);
-      cancelFork();
     } catch (error) {
       if (generation !== forkGenerationRef.current || controller.signal.aborted)
         return;
