@@ -1232,10 +1232,15 @@ scripts or supporting files. Load plugin packages through Registry.
 
 When the Station's computer has saved Codex prompts, **Import from Codex…**
 lists them with nothing selected. Tick the ones you want and choose
-**Import**. A prompt whose name matches one of your skills asks for a new name
-in its row. Station copies the prompt text into new skills and leaves the
-Codex files unchanged. When the import finishes, **Undo import** removes the
-skills it created. Only the Station operator can import from Codex.
+**Import**. A prompt whose name matches one of your skills, or another prompt
+in the list, asks for a new name in its row. Station copies each prompt into a
+new skill: the prompt's `description` becomes the skill's description, and the
+rest of its front matter is left out. Placeholders such as `$1`, `$ARGUMENTS`
+or `$NAME` are copied as written; Station's own inputs use `{{name}}`, so edit
+the skill if you want Station to ask for them. Station imports up to 32 prompts
+at a time and leaves the Codex files unchanged. **Undo import** removes the
+skills the import created, until you close the import window. Only the Station
+operator can import from Codex.
 
 For a writable skill, **Edit skill** opens its definition and command settings.
 **Back to overview** asks before discarding unsaved edits. Package-owned or

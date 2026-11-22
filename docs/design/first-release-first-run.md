@@ -105,12 +105,12 @@ On a phone: Avatars are hidden and the approval buttons are 44px and full width.
 
 ### `first-run-08` Import Codex prompts as skills
 
-On a phone: A bottom sheet. Row status wraps under the row.
+On a phone: The product's shared dialog, which every Station dialog uses on a phone, not a separate bottom sheet. Row status wraps under the row.
 
 1. **Titled "Import your Codex prompts as skills".** That is all the importer does. There is no Claude Code import, and drawing one would be invented. _(copy; slice 1.11)_
 2. **Nothing is pre-selected (two are shown picked), and a name conflict is solved inline.** _(new screen state; slice 1.11)_
-3. **The copy promises "undo the whole import".** The rollback exists in the product. _(copy; slice 1.11)_
-4. **The entry point is Customize › Skills › New skill › Import from Codex…, and it is offered once on a fresh Home.** It is a menu item on the Skills page's single button, not a second button. Looking for sources is one folder check on the host, so it is cheap when Home first paints. It needs the operator's setup-import permission, so the offer stays hidden for anyone else. _(layout, backend check first; slice 1.11)_
+3. **The copy promises "undo the whole import".** The rollback exists in the product. Undo is offered in the dialog until it closes, because nothing lists past imports to undo later. _(copy; slice 1.11)_
+4. **The entry point is the Skills page, under its other ways to import a skill, and it is offered once on a fresh Home.** When the Skills page gains its New skill menu, the entry becomes that menu's Import from Codex… item, so the page keeps one button. It is offered only where a preview can read the folder. Looking for sources is one folder check on the host, so it is cheap when Home first paints. It needs the operator's setup-import permission, so the offer stays hidden for anyone else. _(layout, backend check first; slice 1.11)_
 
 ### `first-run-09` Unpaired device, connect screen
 
