@@ -85,9 +85,12 @@ const NATIVE_THREAD_METADATA_KEY: ReadonlyMap<string, string> = new Map([
  * that reported tokens ({@link reportsEngineTokens}), and absent when several
  * did: engines count tokens on different scales, and a sum would be a figure
  * no engine reported. Turns and tool calls (Station counts them) and costs
- * (per unit, never converted) are summed. The latest figures (model, context,
- * MCP servers, provider) come from the newest run that has one, as the
- * single-stream fold gave them.
+ * (per unit, never converted) are summed. Provider and MCP servers come from
+ * the run that holds the newest Session. The model and context occupancy come
+ * from the newest run that has one among the runs since the last engine
+ * change: another engine's model and context are not the ones the next turn
+ * uses, so an engine that has not reported them yet has none rather than its
+ * predecessor's. A Session with no events has no engine and changes nothing.
  *
  * A module of its own so the cached per-Session fold
  * (`USAGE_PROJECTION_VERSION`, pinned to `usage-fold.ts`) is not invalidated
@@ -99,8 +102,9 @@ export function foldLineageUsageEvents(
 ): LineageUsageAggregate {
   const runs = groupRuns(sessions);
   if (runs.length === 0) return foldUsageEvents([]);
-  const folds = runs.map(({ provider, events }) => ({
+  const folds = runs.map(({ provider, events, newestSession }) => ({
     provider,
+    newestSession,
     usage: foldUsageEvents(events, onDroppedFigure),
   }));
   const engines = new Map<string, EngineUsageAggregate>();
@@ -113,7 +117,11 @@ export function foldLineageUsageEvents(
     engines.set(provider, addRunUsage(engine, usage));
   }
   const perEngine = [...engines.values()];
-  const aggregate = latestFigures(folds.map(({ usage }) => usage));
+  // A Session can continue an earlier run that is not the last one (a Codex
+  // resume of an older thread), so runs are ordered by their newest Session.
+  const aggregate = latestFigures(
+    [...folds].sort((a, b) => a.newestSession - b.newestSession),
+  );
   for (const engine of perEngine) addEngineToConversation(aggregate, engine);
   const counted = perEngine.filter(reportsEngineTokens);
   if (counted.length === 1)
@@ -129,6 +137,8 @@ interface UsageRun {
   provider: string;
   events: CanonicalRuntimeEvent[];
   lastThread?: string;
+  /** Position in the lineage of the newest Session the run holds. */
+  newestSession: number;
 }
 
 /** Sessions grouped into runs, by the rules on {@link foldLineageUsageEvents}. */
@@ -136,7 +146,7 @@ function groupRuns(
   sessions: readonly (readonly CanonicalRuntimeEvent[])[],
 ): UsageRun[] {
   const runs: UsageRun[] = [];
-  for (const events of sessions) {
+  for (const [position, events] of sessions.entries()) {
     // The Session's engine as its own fold names it: the newest event's.
     let provider: string | undefined;
     for (const event of events) if (event.provider) provider = event.provider;
@@ -152,9 +162,11 @@ function groupRuns(
     } else if (runs[runs.length - 1]?.provider === provider) {
       run = runs[runs.length - 1];
     }
-    if (run) run.events.push(...events);
-    else {
-      run = { provider, events: [...events] };
+    if (run) {
+      run.events.push(...events);
+      run.newestSession = position;
+    } else {
+      run = { provider, events: [...events], newestSession: position };
       runs.push(run);
     }
     if (threads.length > 0) run.lastThread = threads[threads.length - 1];
@@ -176,14 +188,23 @@ function runOnThread(
   return undefined;
 }
 
-/** Model, context, MCP servers and provider from the newest run with one. */
+/**
+ * The latest figures, by the rules on {@link foldLineageUsageEvents}; `runs`
+ * are in the order of their newest Session.
+ */
 function latestFigures(
-  folds: readonly SessionUsageAggregate[],
+  runs: readonly { provider: string; usage: SessionUsageAggregate }[],
 ): LineageUsageAggregate {
-  const latest = folds[folds.length - 1]!;
-  const newest = (key: keyof SessionUsageAggregate) => {
-    for (let index = folds.length - 1; index >= 0; index -= 1)
-      if (folds[index]![key] !== undefined) return folds[index];
+  const { provider: engine, usage: latest } = runs[runs.length - 1]!;
+  const newest = (
+    key: keyof SessionUsageAggregate,
+    sinceEngineChange = false,
+  ) => {
+    for (let index = runs.length - 1; index >= 0; index -= 1) {
+      const run = runs[index]!;
+      if (sinceEngineChange && run.provider !== engine) return undefined;
+      if (run.usage[key] !== undefined) return run.usage;
+    }
     return undefined;
   };
   const aggregate: LineageUsageAggregate = {
@@ -192,14 +213,14 @@ function latestFigures(
     ...(latest.provider ? { provider: latest.provider } : {}),
     ...(latest.engineMcp ? { engineMcp: latest.engineMcp } : {}),
   };
-  const model = newest('lastModelId')?.lastModelId;
+  const model = newest('lastModelId', true)?.lastModelId;
   if (model) aggregate.lastModelId = model;
-  const context = newest('contextTokens');
+  const context = newest('contextTokens', true);
   if (context) {
     aggregate.contextTokens = context.contextTokens;
     aggregate.contextWindowTokens = context.contextWindowTokens;
   }
-  const percent = newest('contextPercent')?.contextPercent;
+  const percent = newest('contextPercent', true)?.contextPercent;
   if (percent !== undefined) aggregate.contextPercent = percent;
   return aggregate;
 }

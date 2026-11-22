@@ -198,7 +198,7 @@ export async function getConversationStats(
   slug: string,
   conversationId: string | undefined,
   memoryAdapters: Map<string, FileMemoryAdapter>,
-  _agentFixedTokens: Map<
+  agentFixedTokens: Map<
     string,
     { systemPromptTokens: number; mcpServerTokens: number }
   >,
@@ -238,17 +238,23 @@ export async function getConversationStats(
   }
 
   let spec: any;
+  let specLoaded = true;
   try {
     spec = await configLoader.loadAgent(slug);
   } catch (e) {
     logger.debug('Failed to load agent spec, using defaults', { error: e });
     // Default/temp agents don't have agent.json on disk — use minimal defaults
-    spec = { prompt: '', model: appConfig.defaultModel };
+    spec = { model: appConfig.defaultModel };
+    specLoaded = false;
   }
   const modelId = spec.model || appConfig.defaultModel;
 
-  // Calculate base stats from system prompt and tools
-  const systemPromptTokens = Math.ceil((spec.prompt?.length || 0) / 4);
+  // Calculate base stats from system prompt and tools. Without an agent file
+  // the prompt is the one the runtime recorded for the agent, if any; an
+  // unknown prompt stays absent rather than an estimate of zero (#5390).
+  const systemPromptTokens: number | undefined = specLoaded
+    ? Math.ceil((spec.prompt?.length || 0) / 4)
+    : agentFixedTokens.get(slug)?.systemPromptTokens;
   const agentToolsList = agentTools.get(slug) || [];
   const toolsJson = JSON.stringify(
     agentToolsList.map((t: any) => ({
@@ -294,7 +300,14 @@ export async function getConversationStats(
       throw new Error('Conversation usage aggregate was invalid');
     }
     if (!hasUsageSignal(aggregate)) return undefined;
-    const effectiveModelId = aggregate.lastModelId || modelId;
+    // The model is the one the newest engine reported. After an engine
+    // change, an engine that reported no model has none here (and so no
+    // window): the agent's configured model need not be the model that
+    // engine runs.
+    const windowModelId =
+      aggregate.lastModelId ??
+      ((aggregate.engines?.length ?? 0) > 1 ? undefined : modelId);
+    const effectiveModelId = windowModelId ?? '';
     const reportedContextWindowTokens = isValidContextObservation(
       aggregate.contextTokens,
       aggregate.contextWindowTokens,
@@ -314,7 +327,9 @@ export async function getConversationStats(
       // for an engine-events view it is honestly absent.
       contextWindowTokens:
         reportedContextWindowTokens ??
-        (await resolveContextWindowTokens?.(effectiveModelId)),
+        (windowModelId
+          ? await resolveContextWindowTokens?.(windowModelId)
+          : undefined),
       measurement: {
         source: 'engine-events',
         ...(aggregate.provider ? { provider: aggregate.provider } : {}),
@@ -374,12 +389,10 @@ export async function getConversationStats(
       record.metadata?.stats ? [record.metadata.stats] : [],
     ),
   ) || {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
+    // No turn recorded stats on this conversation (a model that reports no
+    // usage): its token counts and cost were never reported, not zero.
     turns: 0,
     toolCalls: 0,
-    estimatedCost: 0,
   };
 
   const modelStats = combineLineageModelStats(

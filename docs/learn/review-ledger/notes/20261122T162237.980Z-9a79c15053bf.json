@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Only cites api.md's terminal socket anchor, untouched.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

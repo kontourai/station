@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Its builtins.ts claims are about /compact; this round changes only /stats rendering (breakdown rows, disclosure, per-turn cost, escaping).","inputs":["docs/guides/agent-efficiency.md","src-ui/src/slashCommands/builtins.ts"]}
+  ]
+}

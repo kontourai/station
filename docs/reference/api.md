@@ -1992,8 +1992,9 @@ Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
 loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
-approval hooks and memory, and processes the configured system prompt. This is
-not a tool-free text helper. Delivery to an external engine depends on that
+approval hooks and memory, and processes the configured system prompt. It also
+records the estimate of that prompt and its tools that conversation stats show,
+as a persisted Agent's framework does. This is not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
 from proof that a particular engine received its tools.
 
@@ -3076,7 +3077,29 @@ resume (`nativeSessionResumed`). `engines` lists each engine's own figures
 first ran, on every engine-events view. When more than one engine reported
 tokens, the response's own token figures are absent: engines count on
 different scales, so no single total exists. Turns, tool calls and costs (per
-unit) stay conversation-wide.
+unit) stay conversation-wide. Context occupancy and the model come from the
+runs since the last engine change, so once a Session of the new engine has
+recorded events, both are absent until that engine reports them, never the
+previous engine's. A successor Session with no events yet has no engine, so
+until its first event the previous engine's figures still show. After an
+engine change, the context window is resolved only from a model the new
+engine reported. Token counts and cost that nothing recorded are absent
+rather than zero, including for a conversation with no stored stats and for
+the empty view, and a system prompt Station cannot see is absent too.
+
+For a Station-agent conversation, the stored stats count every turn that
+ended with an answer or reported usage, including answered turns whose model
+reported no usage, so per-turn averages divide by all counted turns. A turn
+that failed with nothing reported is not counted; one that failed after
+reporting usage keeps its tokens. On the built-in Station agent a turn a
+person stops is not counted; on a Strands Agent a stopped turn that ended in
+an assistant message is. A turn's tokens are the sum over all its model steps,
+so a turn that called tools counts every step. `systemPromptTokens` there is
+an estimate of the prompt the Agent was built with (its configured or
+bootstrap prompt, a quarter token per character), as for a persisted Agent.
+The built-in Station Assistant records stats from #5390 on, so a conversation
+with it that began earlier counts turns, tokens and the user-message estimate
+only from its next turn on; the response does not say when counting started.
 
 `engineMcp`, present when the engine reported its MCP servers, is the latest
 `engine-mcp.status` reports folded per Session of the lineage (a later

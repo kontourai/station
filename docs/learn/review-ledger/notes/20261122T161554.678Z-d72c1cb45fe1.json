@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read the Station-agent counting paragraph against agent-hooks.ts and voltagent-adapter.ts: answered turns, turns that reported usage and stopped turns count; a failed turn with nothing reported does not. The counting-start sentence no longer reads as a release note. The default-Agent builder paragraph holds; the estimate is now set after the build.","inputs":["docs/reference/api.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

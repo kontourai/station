@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Conversation measurements: conversation-stats-view.ts still owns the storage-to-wire projection; it now leaves the empty view's system prompt and context estimate absent when the prompt is unknown, consistent with absence meaning unreported.","inputs":["docs/reference/contracts.md","src-server/runtime/conversation/conversation-stats-view.ts"]}
+  ]
+}

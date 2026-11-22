@@ -70,7 +70,9 @@ interface Start {
   claudeResumed?: boolean;
 }
 
-function fixture() {
+function fixture(
+  resolveContextWindowTokens?: (modelId: string) => number | undefined,
+) {
   const directory = makeTempDir('station-stats-engine-change-');
   const store = new EventStore(join(directory, 'events.sqlite'));
   const service = new OrchestrationService({
@@ -214,6 +216,7 @@ function fixture() {
     undefined,
     service as never,
     () => OWNER,
+    resolveContextWindowTokens,
   );
 
   async function stats(): Promise<ConversationStatsResponse> {
@@ -296,6 +299,76 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
       toolCalls: 0,
       estimatedCost: 0.25,
       measurement: { source: 'engine-events', provider: 'codex' },
+    });
+  });
+
+  test("after a move to Codex the context figure is not Claude Code's until Codex reports one", async () => {
+    const f = fixture();
+    f.session(CONVERSATION, 'claude').claudeTurn({
+      input: 10,
+      output: 5,
+      cacheRead: 100,
+      cacheWrite: 20,
+      runningCostUsd: 0.1,
+    });
+    const before = await f.stats();
+    expect(before.contextTokens).toBe(130);
+
+    // Codex started and ran a turn; its running totals carry no context.
+    f.session(`${CONVERSATION}:session:codex`, 'codex', {
+      codexThreadId: 'codex-thread-a',
+    }).codexTurn({ input: 300, output: 40, total: 340, cachedInput: 200 });
+
+    const after = await f.stats();
+    expect(after.measurement).toMatchObject({ provider: 'codex' });
+    expect(after.contextTokens).toBeUndefined();
+    expect(after.contextWindowPercentage).toBeUndefined();
+  });
+
+  test("after a move to an engine that reported no model, the window is not the previous engine's model's", async () => {
+    // Every model resolves to a window here, so only the rule can leave the
+    // percentage absent.
+    const f = fixture(() => 200_000);
+    f.session(CONVERSATION, 'codex', {
+      codexThreadId: 'codex-thread-a',
+    }).codexTurn({ input: 300, output: 40, total: 340, cachedInput: 0 });
+    expect((await f.stats()).modelId).toBe('codex-model');
+
+    // Claude Code reports context occupancy without a window or a model.
+    f.session(`${CONVERSATION}:session:claude`, 'claude').claudeTurn({
+      input: 10,
+      output: 5,
+      cacheRead: 100,
+      cacheWrite: 20,
+      runningCostUsd: 0.1,
+    });
+
+    const after = await f.stats();
+    expect(after.contextTokens).toBe(130);
+    expect(after.modelId).toBe('');
+    expect(after.contextWindowPercentage).toBeUndefined();
+  });
+
+  test('a reported zero stays zero through the fold and the route', async () => {
+    const f = fixture();
+    f.session(CONVERSATION, 'claude').claudeTurn({
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      runningCostUsd: 0,
+    });
+
+    const stats = await f.stats();
+
+    expect(stats).toMatchObject({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      estimatedCost: 0,
+      turns: 1,
     });
   });
 

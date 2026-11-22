@@ -1,4 +1,5 @@
 import {
+  type ConversationEngineUsage,
   type ConversationStatsResponse,
   reportsEngineTokens,
 } from '@kontourai/station-contracts/runtime';
@@ -24,16 +25,16 @@ import {
  * in the entry chunk (`scripts/ui-bundle-budget.json`). One home, imported
  * only by the surfaces that render — DRY without the eager weight.
  */
-export const UNREPORTED_MEASUREMENT_TEXT = '—';
+export const UNREPORTED_MEASUREMENT_TEXT = 'Not reported';
 
-/** `undefined` -> the shared dash; any reported number -> that number. */
+/** `undefined` -> "Not reported"; any reported number -> that number. */
 export function formatMeasuredTokens(value: number | undefined): string {
   return value === undefined
     ? UNREPORTED_MEASUREMENT_TEXT
     : value.toLocaleString();
 }
 
-/** `undefined` -> the shared dash; a reported `0` -> `$0.0000`, honestly. */
+/** `undefined` -> "Not reported"; a reported `0` -> `$0.0000`, honestly. */
 export function formatMeasuredCostUsd(value: number | undefined): string {
   return value === undefined
     ? UNREPORTED_MEASUREMENT_TEXT
@@ -49,10 +50,10 @@ export function formatMeasuredCostUsd(value: number | undefined): string {
  */
 export interface SessionMeasurementView {
   /**
-   * `engine-events` — folded from what an engine reported, so an absent
-   * field is a question nobody asked. `station-memory` — Station's own
-   * accounting, where absence is a recorded zero and there is nothing to
-   * disclose.
+   * `engine-events` — folded from what an engine reported. `station-memory`
+   * — Station's own accounting of the turns it ran, where token counts are
+   * what the model reported and cost is Station's price for them. In both,
+   * an absent field was never reported (#5390), not a zero.
    */
   source: 'station-memory' | 'engine-events';
   provider?: string;
@@ -82,18 +83,18 @@ export interface SessionMeasurementView {
 /**
  * Which CLASSES of measurement this session has none of — derived from the
  * fields that actually came back absent, never from a per-engine capability
- * list. A hardcoded "Claude reports cost, ACP does not" table in a surface
+ * list. For `station-memory` only token counts are disclosed: its cost is
+ * Station's own price (absent for an unpriced model) and its context figure
+ * Station's own estimate, so neither is something the model failed to report. A hardcoded "Claude reports cost, ACP does not" table in a surface
  * is the same defect as a hardcoded price table: it is a label that drifts
  * from what the engine did on this session (a Claude turn that crashed
  * reports no cost either).
  *
- * Empty for a `station-memory` view, and empty when everything was
- * reported.
+ * Empty when everything was reported.
  */
 export function unreportedMeasurementClasses(
   view: SessionMeasurementView,
 ): string[] {
-  if (view.source !== 'engine-events') return [];
   const classes: string[] = [];
   if (
     view.inputTokens === undefined &&
@@ -103,6 +104,7 @@ export function unreportedMeasurementClasses(
   ) {
     classes.push('token counts');
   }
+  if (view.source !== 'engine-events') return classes;
   if (view.costUsd === undefined && !view.reportedCostUnits)
     classes.push('cost');
   if (view.contextTokens === undefined && view.contextPercent === undefined)
@@ -127,6 +129,8 @@ export function describeUnreportedMeasurements(
 ): string | null {
   const classes = unreportedMeasurementClasses(view);
   if (classes.length === 0) return null;
+  if (view.source === 'station-memory')
+    return 'The model did not report token counts for this chat.';
   const engine =
     (view.provider ? resolveEngineLabel(view.provider) : null) ??
     view.provider ??
@@ -178,4 +182,18 @@ export function conversationStatsMeasurementView(
       ? { contextPercent: stats.contextWindowPercentage }
       : {}),
   };
+}
+
+/**
+ * #5389: the engines whose token counts a conversation shows one by one, or
+ * `undefined` when it has a single token total. When more than one engine
+ * reported tokens the conversation-wide token fields are absent on purpose
+ * (each engine counts on its own scale), so a surface lists these rows
+ * instead, each with its own figures and no total across them.
+ */
+export function enginesReportingTokensSeparately(
+  stats: Pick<ConversationStatsResponse, 'engines'>,
+): ConversationEngineUsage[] | undefined {
+  const counted = stats.engines?.filter(reportsEngineTokens) ?? [];
+  return counted.length > 1 ? counted : undefined;
 }

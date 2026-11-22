@@ -1,0 +1,7 @@
+{
+  "revision": "e88633bcb6a218871895902d9c0bd707a8f92ddc",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Default Agent inventory and Basis preview claims unaffected; the test change only adds assertions that the prompt estimate is removed on the external-binding and no-model paths.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/agents/__tests__/runtime-default-agent.test.ts"]}
+  ]
+}
