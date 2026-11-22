@@ -31,10 +31,7 @@ export function composerDraftContext(
 
 export type DockStartComposerProps = Omit<
   NewChatProps,
-  | 'projectRunLocations'
-  | 'requestAuthority'
-  | 'startSurface'
-  | 'draftContext'
+  'projectRunLocations' | 'requestAuthority' | 'startSurface' | 'draftContext'
 > & {
   /** The Project a sidebar or plugin request named, with its draft. */
   newChatProjectOverride?: {

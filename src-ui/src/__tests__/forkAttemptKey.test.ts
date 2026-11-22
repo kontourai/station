@@ -19,27 +19,54 @@ describe('fork attempt idempotency persistence', () => {
     let generated = 0;
     const generate = () => `attempt-${++generated}`;
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, generate),
+      getOrCreateForkAttemptKey(
+        'parent',
+        'turn-1',
+        'codex',
+        persisted,
+        generate,
+      ),
     ).toBe('attempt-1');
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, generate),
+      getOrCreateForkAttemptKey(
+        'parent',
+        'turn-1',
+        'codex',
+        persisted,
+        generate,
+      ),
     ).toBe('attempt-1');
     expect(generated).toBe(1);
   });
 
   test('only a known terminal success releases the coordinate for a new fork', () => {
     const persisted = storage();
-    const first = getOrCreateForkAttemptKey('parent', 'turn-1', 'codex',
+    const first = getOrCreateForkAttemptKey(
+      'parent',
+      'turn-1',
+      'codex',
       persisted,
       () => 'attempt-1',
     );
     completeForkAttempt('parent', 'turn-1', 'codex', 'different', persisted);
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, () => 'new'),
+      getOrCreateForkAttemptKey(
+        'parent',
+        'turn-1',
+        'codex',
+        persisted,
+        () => 'new',
+      ),
     ).toBe(first);
     completeForkAttempt('parent', 'turn-1', 'codex', first, persisted);
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, () => 'new'),
+      getOrCreateForkAttemptKey(
+        'parent',
+        'turn-1',
+        'codex',
+        persisted,
+        () => 'new',
+      ),
     ).toBe('new');
   });
 
@@ -65,7 +92,13 @@ describe('fork attempt idempotency persistence', () => {
     expect(toClaude).toBe('attempt-2');
     // A retry to either target still reuses its own key.
     expect(
-      getOrCreateForkAttemptKey('retarget-parent', 'turn-1', 'codex', persisted, generate),
+      getOrCreateForkAttemptKey(
+        'retarget-parent',
+        'turn-1',
+        'codex',
+        persisted,
+        generate,
+      ),
     ).toBe(toCodex);
   });
 
@@ -76,12 +109,18 @@ describe('fork attempt idempotency persistence', () => {
         throw new DOMException('quota', 'QuotaExceededError');
       },
     };
-    const first = getOrCreateForkAttemptKey('quota-parent', 'quota-turn', 'codex',
+    const first = getOrCreateForkAttemptKey(
+      'quota-parent',
+      'quota-turn',
+      'codex',
       unavailable,
       () => 'quota-attempt',
     );
     expect(
-      getOrCreateForkAttemptKey('quota-parent', 'quota-turn', 'codex',
+      getOrCreateForkAttemptKey(
+        'quota-parent',
+        'quota-turn',
+        'codex',
         unavailable,
         () => 'must-not-regenerate',
       ),
@@ -96,13 +135,19 @@ describe('fork attempt idempotency persistence', () => {
       },
     };
     expect(
-      getOrCreateForkAttemptKey('malformed-parent', 'turn-a', 'codex',
+      getOrCreateForkAttemptKey(
+        'malformed-parent',
+        'turn-a',
+        'codex',
         malformed,
         () => 'safe-a',
       ),
     ).toBe('safe-a');
     expect(
-      getOrCreateForkAttemptKey('malformed-parent', 'turn-b', 'codex',
+      getOrCreateForkAttemptKey(
+        'malformed-parent',
+        'turn-b',
+        'codex',
         malformed,
         () => 'safe-b',
       ),

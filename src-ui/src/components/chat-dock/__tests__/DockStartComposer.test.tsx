@@ -38,13 +38,11 @@ const draft: ProjectChatComposerDraft = {
   message: 'Read the `plugin-authoring` topic.',
 };
 
-function renderDraft(
-  override: {
-    slug: string;
-    name: string;
-    composerDraft?: ProjectChatComposerDraft;
-  },
-) {
+function renderDraft(override: {
+  slug: string;
+  name: string;
+  composerDraft?: ProjectChatComposerDraft;
+}) {
   const noop = vi.fn();
   render(
     <DockStartComposer

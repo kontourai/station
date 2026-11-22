@@ -44,7 +44,10 @@ const offline = {
   available: false,
   execution: { agentConnectionId: 'offline' },
 };
-const MODELS: Record<string, { id: string; name: string; providerId?: string }[]> = {
+const MODELS: Record<
+  string,
+  { id: string; name: string; providerId?: string }[]
+> = {
   claude: [
     { id: 'sonnet', name: 'Sonnet' },
     { id: 'opus', name: 'Opus' },
@@ -107,9 +110,7 @@ describe('ConversationForkDialog', () => {
     const radios = screen.getAllByRole('radio') as HTMLInputElement[];
     expect(radios.map((input) => input.value)).toEqual(['codex', 'claude']);
     expect(radio('Codex reviewer').checked).toBe(true);
-    expect(
-      screen.getByRole('button', { name: /^Model GPT-6$/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Model GPT-6$/ })).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Fork with Codex reviewer' }),
     );

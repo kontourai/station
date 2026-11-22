@@ -12,7 +12,14 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import type { PreparedOutgoingText } from '../../hooks/useChatInput';
 import type { FileAttachment } from '../../types';
+import {
+  type DraftQuote,
+  draftQuoteKeys,
+  parseDraftQuote,
+} from '../../utils/answer-quotes';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   sanitizeRuntimeOptionsForModel,
   updateModelRuntimeOption,
@@ -31,20 +38,13 @@ import {
   settledModelId,
   useChatReadyAgentChoice,
 } from './AgentModelChoice';
-import type { PreparedOutgoingText } from '../../hooks/useChatInput';
-import {
-  type DraftQuote,
-  draftQuoteKeys,
-  parseDraftQuote,
-} from '../../utils/answer-quotes';
-import { userFacingErrorMessage } from '../../utils/errorText';
-import { conversationRefusalMessage } from './conversationRefusalCopy';
 import {
   type ContinuedOnStation,
   ConversationStationChoice,
   ConversationStationHandoff,
   readPendingStationHandoff,
 } from './ConversationStationHandoff';
+import { conversationRefusalMessage } from './conversationRefusalCopy';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;

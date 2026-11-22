@@ -26,6 +26,7 @@ import { ContinueInProjectDialog } from './ContinueInProjectDialog';
 import '../chat/TaskShaping.css';
 import './ChatDockDeepLinkOpening.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
@@ -231,8 +232,6 @@ import {
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import { ConversationPickerRecovery } from './ConversationPickerRecovery';
 import type { ContinuedOnStation } from './ConversationStationHandoff';
-import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
-import { conversationRefusalMessage } from './conversationRefusalCopy';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -245,6 +244,7 @@ import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
+import { conversationRefusalMessage } from './conversationRefusalCopy';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 
 import { NewChatUnavailableError } from './newChatErrors';

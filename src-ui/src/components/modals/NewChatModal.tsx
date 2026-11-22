@@ -2278,9 +2278,7 @@ export function NewChatModal({
                 modelsForAgent(agent).length === 0 && !modelsLoading
               }
               onOpenModel={(agent, trigger) => openModelPicker(agent, trigger)}
-              interactionDisabled={
-                checkingSetup || setupReturn.pending
-              }
+              interactionDisabled={checkingSetup || setupReturn.pending}
               fixDisabledFor={(agent) =>
                 agentFixRoute(agent) === 'enable' &&
                 resolveNewChatAgentEnable(agent)

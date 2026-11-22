@@ -91,9 +91,7 @@ export function ConversationForkDialog({
     ? (selection.defaultEffectiveModelForAgent(target).id ?? undefined)
     : undefined;
   const [modelId, setModelId] = useState<string | undefined>(sourceModel);
-  const [modelOptions, setModelOptions] = useState<Record<string, unknown>>(
-    {},
-  );
+  const [modelOptions, setModelOptions] = useState<Record<string, unknown>>({});
   useEffect(() => {
     if (!target) return;
     setModelId((current) => settledModelId(current, models, defaultModel));
@@ -116,10 +114,7 @@ export function ConversationForkDialog({
     >
       <div className="conversation-handoff-dialog__header">
         <h3>{title}</h3>
-        <ResponsiveDialogCloseButton
-          label="Cancel fork"
-          onClick={onClose}
-        />
+        <ResponsiveDialogCloseButton label="Cancel fork" onClick={onClose} />
       </div>
 
       {candidates.length === 0 ? (
