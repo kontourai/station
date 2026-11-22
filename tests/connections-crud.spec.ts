@@ -1617,26 +1617,40 @@ test.describe('Connections CRUD', () => {
   test('the tool server editor stays usable with Secret bindings open', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1440, height: 600 });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/connections/tools');
     await page.getByRole('button', { name: /Filesystem Tools/ }).click();
     await page.waitForSelector('#int-name', { timeout: 15_000 });
 
     const stack = page.locator('.integration-editor-stack');
+    await expect(stack).toHaveCount(1);
     const pane = page.locator('.integration-editor-stack > .split-pane');
     const section = page.locator('.editor__expandable');
+    const summary = section.locator('summary');
     await expect(section).toBeVisible();
     // Closed: the column adds no scrollbar of its own.
     expect(
       await stack.evaluate((el) => el.scrollHeight - el.clientHeight),
     ).toBeLessThanOrEqual(1);
 
-    await section.getByText('Advanced: Secret bindings').click();
+    // Tall window: both fit, so opening the section must not scroll the
+    // editor out of view.
+    await summary.click();
     await expect(section).toHaveJSProperty('open', true);
-    // The opened section is scrolled into the column's view.
+    const tallColumn = (await stack.boundingBox())!;
+    const tallPane = (await pane.boundingBox())!;
+    expect(tallPane.y).toBeGreaterThanOrEqual(tallColumn.y - 1);
+    expect(tallPane.height).toBeGreaterThan(200);
+    await summary.click();
+    await expect(section).toHaveJSProperty('open', false);
+
+    // Short window: the opened summary is brought into the column's view.
+    await page.setViewportSize({ width: 1440, height: 600 });
+    await summary.click();
+    await expect(section).toHaveJSProperty('open', true);
     await expect
       .poll(async () => {
-        const box = (await section.boundingBox())!;
+        const box = (await summary.boundingBox())!;
         const column = (await stack.boundingBox())!;
         return box.y < column.y + column.height;
       })

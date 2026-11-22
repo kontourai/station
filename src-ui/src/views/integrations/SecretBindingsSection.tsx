@@ -160,11 +160,14 @@ export function SecretBindingsSection() {
       aria-labelledby="secret-bindings-heading"
     >
       <details
-        className="editor__expandable"
+        className="editor__expandable secret-bindings__disclosure"
         onToggle={(event) => {
-          // In a short panel the opened section can start below the fold.
+          // In a short panel the opened summary can sit below the fold. The
+          // whole section is taller than the panel, so only its summary moves.
           if (event.currentTarget.open)
-            event.currentTarget.scrollIntoView?.({ block: 'nearest' });
+            event.currentTarget
+              .querySelector('summary')
+              ?.scrollIntoView?.({ block: 'nearest' });
         }}
       >
         <summary className="editor__expandable-header">

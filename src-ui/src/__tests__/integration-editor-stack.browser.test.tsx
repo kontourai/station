@@ -26,7 +26,7 @@ const fixture = `
         </div>
       </SplitPaneLayout>
       <section className="agent-editor__section">
-        <details className="editor__expandable">
+        <details className="editor__expandable secret-bindings__disclosure">
           <summary className="editor__expandable-header">Advanced: Secret bindings</summary>
           <div className="editor__expandable-content" style={{height:900}}>Form</div>
         </details>
