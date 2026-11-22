@@ -210,8 +210,9 @@ for (const theme of ['light', 'dark']) {
         });
       expect(retryStyle.top).toBe('6px');
       expect(retryStyle.right).toBe('12px');
-      // #4403: a control is at least 12px.
-      if (width === 1280) expect(retryStyle.fontSize).toBe('12.5px');
+      // #4403: a control is at least 12px. The default Comfortable density
+      // (#4723, tokens.css) sets `--k-text-sm` to 13px; Compact keeps 12.5px.
+      if (width === 1280) expect(retryStyle.fontSize).toBe('13px');
       if (width === 390) {
         const header = page.getByLabel('Collapsed dock geometry');
         const control = page.getByRole('button', { name: 'Open dock' });
