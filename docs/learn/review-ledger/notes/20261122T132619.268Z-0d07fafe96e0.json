@@ -1,0 +1,7 @@
+{
+  "revision": "64570bc59d8f47664f19ccdd3c6cbb07dfcbbce2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"SetupImportEffectJournal: checked the new source-check paragraph against sources()/assertEnumerable/DECEPTIVE_NAME_CHARACTERS in existing-agent-setup-import.ts and the route's TOO_MANY_FILES mapping; the dialog changes (name planning, full-folder refusal) leave the receipt and rollback claims unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/setup/existing-agent-setup-import.ts","src-ui/src/components/setup/CodexPromptImportDialog.tsx"]}
+  ]
+}
