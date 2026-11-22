@@ -4150,8 +4150,25 @@ test('a pairing code needs both fields, submits on Return, and names a bad addre
 });
 
 describe('pairing by code without a camera', () => {
-  test('opens on code entry with no camera API, focus in the first empty field (the address), never mounting the scanner', () => {
+  const secureContext = Object.getOwnPropertyDescriptor(
+    window,
+    'isSecureContext',
+  );
+  function setSecureContext(value: boolean) {
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value,
+    });
+  }
+  afterEach(() => {
+    if (secureContext)
+      Object.defineProperty(window, 'isSecureContext', secureContext);
+    else Reflect.deleteProperty(window, 'isSecureContext');
+  });
+
+  test('opens on code entry with no camera API on an insecure page, focus in the first empty field (the address), never mounting the scanner', () => {
     expect(navigator.mediaDevices).toBeUndefined();
+    setSecureContext(false);
     // A scanner that mounts for one commit and is then replaced (a visible
     // "Starting camera…" frame) leaves its detached subtree in the removed
     // nodes, so record those as well as the nodes still mounted.
@@ -4186,6 +4203,16 @@ describe('pairing by code without a camera', () => {
     expect(reason.closest('[role="alert"]')).toBeNull();
     expect(reason.className).not.toContain('pairing-error');
     expect(document.querySelector('video')).toBeNull();
+  });
+
+  test('a secure page without a camera API gets no secure-connection reason', () => {
+    expect(navigator.mediaDevices).toBeUndefined();
+    setSecureContext(true);
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(screen.getByLabelText('Pairing code')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    expect(screen.queryByText(/Camera scanning requires/)).toBeNull();
   });
 
   test('focuses the first empty field: the code, when the address is already known', () => {

@@ -311,6 +311,11 @@ describe('ConnectionListPanel', () => {
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Scan a QR code' })).toBeTruthy();
     expect(
+      screen.getByText(
+        'Use its Station address, or a QR code or pairing code created there.',
+      ),
+    ).toBeTruthy();
+    expect(
       screen.getByRole('button', { name: 'Enter a pairing code' }),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /advanced/i })).toBeNull();
@@ -324,6 +329,12 @@ describe('ConnectionListPanel', () => {
     expect(
       screen.getByRole('button', { name: 'Enter a pairing code' }),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Use its Station address, or a pairing code created there.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/a QR code or pairing code/)).toBeNull();
   });
 
   it('hides the host-only Station-access section on a client-only device', () => {

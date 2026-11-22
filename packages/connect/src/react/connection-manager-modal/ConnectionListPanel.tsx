@@ -891,7 +891,9 @@ export function ConnectionListPanel({
         >
           <h3>Connect to another computer</h3>
           <p>
-            Use its Station address, or a QR code or pairing code created there.
+            {hasCameraApi()
+              ? 'Use its Station address, or a QR code or pairing code created there.'
+              : 'Use its Station address, or a pairing code created there.'}
           </p>
           <button
             type="button"

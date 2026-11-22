@@ -9,3 +9,16 @@ export function hasCameraApi(): boolean {
     typeof navigator.mediaDevices?.getUserMedia === 'function'
   );
 }
+
+/**
+ * True only when the capture API is missing because the page is not a secure
+ * context (plain HTTP on a LAN address). A secure page can also lack the API,
+ * for example a WebView with media capture turned off; that is not this case.
+ */
+export function cameraApiBlockedByInsecureContext(): boolean {
+  return (
+    !hasCameraApi() &&
+    typeof window !== 'undefined' &&
+    window.isSecureContext === false
+  );
+}

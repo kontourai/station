@@ -724,12 +724,14 @@ created it. Use a reachable HTTPS endpoint for that scan flow. Browser camera
 and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
-Where the browser has no camera API (outside a secure context), **Manage
-Stations** does not offer **Scan a QR code**, the pairing dialog is titled
-**Enter a pairing code** and opens on code entry with the note "Camera scanning
-requires HTTPS or localhost.", and the Connect Station dialog has no **Scan QR**
-method. Where the API exists but a capture attempt finds no camera, both dialogs
-switch to code entry without an error or a note.
+Where the browser has no camera API, **Manage Stations** does not offer **Scan
+a QR code** and says to use the Station address or a pairing code, the pairing
+dialog is titled **Enter a pairing code** and opens on code entry, and the
+Connect Station dialog has no **Scan QR** method. Only when the page is not a
+secure context (plain HTTP) does code entry add the note "Camera scanning
+requires HTTPS or localhost."; a secure page without the API gets no note. Where
+the API exists but a capture attempt finds no camera, both dialogs switch to
+code entry without an error or a note.
 
 For another browser, set **Browser app address** to a reachable Station web
 address and choose **Copy browser link**. That address must serve the web UI

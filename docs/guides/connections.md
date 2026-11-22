@@ -346,7 +346,7 @@ Station also offers **Enter Station address** on its welcome screen, beside
 **Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
 under **More ways to connect**. Enter its address, a pairing code,
 or scan a QR code. Scanning is offered only where the browser has a camera
-API (HTTPS or localhost). Return in the address field continues. Without a controlling
+API, which a plain HTTP page lacks. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
 When that request is handed to the application shell, the dialog's status line

@@ -25,7 +25,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { hasCameraApi } from '../core/cameraSupport';
+import {
+  cameraApiBlockedByInsecureContext,
+  hasCameraApi,
+} from '../core/cameraSupport';
 import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
@@ -305,8 +308,14 @@ export function JoinDevicePairingPanel({
   // without mounting the scanner. Otherwise only a capture attempt that finds
   // no camera drops it; the device list is not trusted before a grant.
   // Fixed for the page's life: the API exists only in a secure context.
-  const [noCameraApi] = useState(() => !hasCameraApi());
-  const [cameraUnavailable, setCameraUnavailable] = useState(noCameraApi);
+  const [cameraUnavailable, setCameraUnavailable] = useState(
+    () => !hasCameraApi(),
+  );
+  // Fixed for the page's life: name the cause only when it is the insecure
+  // page; a secure page without the API gets no reason it could not back.
+  const [insecureContextBlocksCamera] = useState(
+    cameraApiBlockedByInsecureContext,
+  );
   const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(() =>
     initialMode === 'scan' && cameraUnavailable ? 'manual' : initialMode,
   );
@@ -1198,7 +1207,7 @@ export function JoinDevicePairingPanel({
             if (manualReady) void beginManual();
           }}
         >
-          {noCameraApi && (
+          {insecureContextBlocksCamera && (
             // Say why scanning is missing; the other device may still suggest
             // scanning. A missing camera found at capture time stays silent.
             <p
