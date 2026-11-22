@@ -1804,6 +1804,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
+  /** `sendTurn` refuses a Session in `error` as `session_gone`. */
+  readonly refusesTurnsAfterFailure = true as const;
   private readonly continuity: ProviderContinuityCapabilities = {
     resume: 'same-session',
     fork: 'none',

@@ -345,6 +345,50 @@ describe('a Claude engine that dies, through the real service and adapter', () =
     }
   });
 
+  test('a failed turn whose engine exit is seen before the Session ends: the conversation continues in one new engine, not refused as still stopping', async () => {
+    const childWorkload = await import(
+      '@kontourai/station-shared/child-workload'
+    );
+    let release: (v: undefined) => void = () => {};
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(new Promise((r) => (release = r)) as never);
+    try {
+      const { q, child } = await start();
+      await settle();
+      expect(await send(T)).toMatchObject({ ok: true });
+      await vi.waitFor(() => expect(methods()).toContain('turn.started'));
+      q.push({
+        type: 'result',
+        subtype: 'error_during_execution',
+        is_error: true,
+        result: 'API Error: overloaded',
+        stop_reason: 'end_turn',
+        num_turns: 1,
+        usage: { input_tokens: 1, output_tokens: 1 },
+        uuid: 'result-failed',
+        session_id: T,
+      });
+      await vi.waitFor(async () =>
+        expect((await snapshot()).status).toBe('error'),
+      );
+      child.exit(null, 'SIGKILL');
+      child.closeStderr();
+      await vi.waitFor(() => expect(adapter.engineEnded(T)).toBe(true));
+      // The window: the exit is seen, the Session's end is not yet published.
+      expect(methods()).not.toContain('session.exited');
+      const { cont, sent } = await continueConversation('are you there');
+      expect(cont).toMatchObject({ startRequired: true });
+      expect(cont.sessionId).not.toBe(T);
+      expect(sent).toMatchObject({ ok: true });
+      expect(engines).toHaveLength(2);
+      expect(alive()).toEqual([engines[1]]);
+      release(undefined);
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
   test('the engine dies inside the turn start: that message is recorded as interrupted, with its banner', async () => {
     const { q, child } = await start();
     await settle();

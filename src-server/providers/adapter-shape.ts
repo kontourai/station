@@ -699,6 +699,15 @@ export interface ProviderAdapterShape {
    */
   engineEnded?(threadId: string): boolean;
   /**
+   * Positive declaration that `sendTurn` refuses every turn on a Session
+   * whose status is `error` (a failed stream or turn), so a binding in
+   * `error` takes no more turns. Absent: an engine may stay alive after a
+   * failed turn and keep accepting turns, so `error` is not an ended
+   * binding. Distinct from {@link engineEnded}, which reports an observed
+   * process exit, not whether a failed binding still accepts turns.
+   */
+  readonly refusesTurnsAfterFailure?: true;
+  /**
    * Whether the live engine for the thread still runs work past its turn
    * that dies with its process: background tasks, subagents, and commands
    * it has not reported an end for. An idle park never stops such an
