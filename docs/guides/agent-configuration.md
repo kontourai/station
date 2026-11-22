@@ -314,6 +314,8 @@ that cannot resume, starts a successor session and stops the old engine if
 it is idle. A
 session still running work it started under the old configuration refuses
 that message until the work ends, so a conversation never has two engines.
+A session whose engine failed or has exited is never restarted in place: its
+next message starts a successor once that engine process has stopped.
 While a change is still being applied, or the configuration cannot be read,
 a call is refused with a request to retry it.
 
