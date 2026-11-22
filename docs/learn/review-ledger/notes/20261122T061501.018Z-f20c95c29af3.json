@@ -1,0 +1,7 @@
+{
+  "revision": "09c82d735e478d29bb920425840278b4321bad34",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#5389: usage-fold entry names foldLineageUsageEvents and EngineUsageAggregate; checked against packages/shared/src/usage-fold.ts.","inputs":["docs/reference/shared.md","packages/contracts/src/runtime.ts","packages/shared/src/usage-fold.ts"]}
+  ]
+}
