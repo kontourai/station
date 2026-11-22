@@ -18,6 +18,11 @@ function run(
   command: string,
   openNewChat: (() => void) | undefined,
   provider = 'ollama',
+  extra: {
+    agents?: unknown[];
+    queryClient?: QueryClient;
+    readSkillDetail?: (name: string) => Promise<unknown>;
+  } = {},
 ) {
   const addEphemeralMessage = vi.fn();
   const updateChat = vi.fn();
@@ -35,12 +40,14 @@ function run(
     {
       apiBase: 'http://127.0.0.1:1',
       chatState: { provider, agentSlug: 'station' } as never,
-      agents: [] as never,
+      agents: (extra.agents ?? []) as never,
       updateChat: updateChat as never,
       addEphemeralMessage: addEphemeralMessage as never,
-      queryClient: new QueryClient(),
-      runSkillMutation: {} as never,
-      readSkillDetail: (async () => null) as never,
+      queryClient: extra.queryClient ?? new QueryClient(),
+      runSkillMutation: {
+        mutateAsync: vi.fn().mockResolvedValue(undefined),
+      } as never,
+      readSkillDetail: (extra.readSkillDetail ?? (async () => null)) as never,
     },
   );
   return { result, addEphemeralMessage, updateChat };
@@ -93,6 +100,41 @@ describe('/new and /clear', () => {
       });
     },
   );
+
+  // A person's own `clear` wins over Station's answer: it is theirs, and the
+  // refusal exists only because Station no longer has a /clear.
+  test('an agent’s own clear command still runs in a claude chat', async () => {
+    const { result, addEphemeralMessage } = run('/clear', vi.fn(), 'claude', {
+      agents: [
+        {
+          slug: 'station',
+          commands: {
+            clear: { name: 'clear', prompt: 'Summarise and start over.' },
+          },
+        },
+      ],
+    });
+    await expect(result).resolves.toBe('Summarise and start over.');
+    expect(addEphemeralMessage).not.toHaveBeenCalled();
+  });
+
+  test('a command skill named clear still runs in a claude chat', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      ['skills', 'local'],
+      [{ name: 'clear', command: { enabled: true, global: true } }],
+    );
+    const { result, addEphemeralMessage } = run('/clear', vi.fn(), 'claude', {
+      queryClient,
+      readSkillDetail: async () => ({
+        name: 'clear',
+        body: 'Tidy the workspace.',
+        variables: [],
+      }),
+    });
+    await expect(result).resolves.toBe('Tidy the workspace.');
+    expect(addEphemeralMessage).not.toHaveBeenCalled();
+  });
 
   test('an unknown command in a claude chat still goes to the engine', async () => {
     await expect(run('/compact-now', vi.fn(), 'claude').result).resolves.toBe(

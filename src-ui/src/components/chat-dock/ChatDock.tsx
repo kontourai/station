@@ -1695,12 +1695,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       );
     },
     onAuthError: () => requestAuth?.(),
-    // The same action as the New chat button (`openNewChatDirect`, declared
-    // further down): leave an imported session's view, then open New chat.
-    onOpenNewChat: () => {
-      setImportedSessionId(null);
-      requestNewChat();
-    },
+    onOpenNewChat: () => requestNewChat(),
     // station#1294 review (SHOULD-FIX-4): a send failing while the dock is
     // collapsed has nowhere visible to render the transcript notice — the
     // generic toast must not be suppressed in that case.
