@@ -86,9 +86,20 @@ there it is usually an identifier.
 `ui-css-slop` skips the token sheet, font faces and generated theme CSS.
 
 The noun gate's `RETIRED_USER_TERMS` lists "AI app", "device hub", "Station
-owner", "built-in assistant", "default assistant" and "credential entry". An
+owner", "built-in assistant", "default assistant" and "credential entry",
+then the phrases the [first-release design](../design/first-release.md#words-that-change)
+retires, such as "model connection", "Chat inventory" and "Fork from here". An
 entry marked `pending` is tested but not yet enforced; deleting the flag
-enforces it.
+enforces it. Single words that design also retires (Connections, Plugins,
+Layout, Basis, Settle) are not listed, because they keep legitimate uses the
+gate cannot tell apart.
+
+The gate reads only `.tsx` files under `src-ui/src` and
+`packages/sdk/src/components`, plus the two settings registries in
+`packages/contracts`. Enabling an entry does not cover copy in
+`packages/connect`, in `.ts` copy modules such as
+`packages/contracts/src/pairing-copy.ts`, or in server tool text, so a change
+that retires a word also searches those for it.
 
 ### Fixing a failure
 
