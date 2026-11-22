@@ -2,12 +2,11 @@
  * Incident regression (2026-11-16): after a conversation's engine exited, every
  * continue went back to the dead Session until Station restarted.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   type ProviderAdapterMetadata,
   type ProviderAdapterShape,
@@ -256,6 +255,7 @@ const OWNER = 'human:test:delegator';
  * conversation, with no restart and nothing else done by hand.
  */
 describe('an idle engine that exited, then a message by the conversation id', () => {
+  const tempDir = trackTempDirs();
   let tmp: string;
   let eventStore: EventStore;
   let service: OrchestrationService;
@@ -266,7 +266,7 @@ describe('an idle engine that exited, then a message by the conversation id', ()
     fetchMock.mockReset();
     installCurrentStationFetch();
 
-    tmp = mkdtempSync(join(tmpdir(), 'station-delegation-binding-'));
+    tmp = tempDir('station-delegation-binding-');
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     acp = new AcpFakeAdapter();
     service = new OrchestrationService({
@@ -303,7 +303,6 @@ describe('an idle engine that exited, then a message by the conversation id', ()
 
   afterEach(() => {
     eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
     vi.unstubAllGlobals();
     fetchMock.mockReset();
   });

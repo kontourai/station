@@ -4,8 +4,6 @@
  * process can start). At every point at most one engine runs for the
  * conversation, and the person's next message runs in one new Session.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -37,6 +35,7 @@ vi.mock('../../../providers/auth/cli-auth.js', () => ({
   runCliCommand: mockRunCliCommand,
 }));
 
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   FakeClaudeChild,
   startFakeClaudeEngine,
@@ -91,6 +90,7 @@ function endableQuery() {
   };
 }
 
+const tempDir = trackTempDirs();
 let dir: string;
 let store: EventStore;
 let service: OrchestrationService;
@@ -111,7 +111,7 @@ const alive = () =>
   engines.filter((c) => c.exitCode === null && c.signalCode === null);
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'zz-verify-claude-'));
+  dir = tempDir('zz-verify-claude-');
   store = new EventStore(join(dir, 'o.sqlite'));
   mockFindCliBinaryAsync.mockResolvedValue(null);
   mockRunCliCommand.mockResolvedValue(null);
@@ -135,7 +135,6 @@ beforeEach(() => {
 afterEach(async () => {
   await service.shutdown().catch(() => undefined);
   store.close();
-  rmSync(dir, { recursive: true, force: true });
   mockQuery.mockReset();
 });
 
