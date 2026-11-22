@@ -14879,7 +14879,11 @@ export class OrchestrationService {
           // without a word. When that start's own adapter has seen its engine
           // gone, it is recorded first, as a send would: interrupted, with its
           // banner, so the message that may have started is not left silent.
-          await this.settleHeldStartsBeforeTerminal(normalized, adapter);
+          const settlingHeld = this.settleHeldStartsBeforeTerminal(
+            normalized,
+            adapter,
+          );
+          if (settlingHeld) await settlingHeld;
           // `projectAndPublishEvent` with a bounded retry of its publish half,
           // holding this event until it is appended before the next one is
           // consumed (#3560).
@@ -15408,20 +15412,27 @@ export class OrchestrationService {
    * (an adapter that cannot tell, an engine still alive, an unknown engine)
    * keeps it held.
    */
-  private async settleHeldStartsBeforeTerminal(
+  // Not `async`: with nothing held it returns `undefined` and the event loop
+  // does not yield. A yield before the exit is published leaves the Session
+  // looking live and bound, so a park could start on the engine whose exit
+  // was just consumed and wait out the whole exit timeout under its lock.
+  private settleHeldStartsBeforeTerminal(
     event: CanonicalRuntimeEvent,
     adapter: ProviderAdapterShape,
-  ): Promise<void> {
+  ): Promise<void> | undefined {
     const sessionTerminal =
       event.method === 'session.exited' ||
       (event.method === 'runtime.error' &&
         event.turnId === undefined &&
         event.invocationId === undefined);
-    if (!sessionTerminal) return;
-    if (this.heldStartAdapters.get(event.threadId) !== adapter) return;
+    if (!sessionTerminal) return undefined;
+    if (this.heldStartAdapters.get(event.threadId) !== adapter)
+      return undefined;
     const held = this.sessionStartBoundaries.heldTurnStarts?.(event.threadId);
-    if (held?.kind !== 'available' || held.records.length === 0) return;
-    await this.settleHeldTurnStarts(event.threadId, held.records).catch(
+    if (held?.kind !== 'available' || held.records.length === 0)
+      return undefined;
+    return this.settleHeldTurnStarts(event.threadId, held.records).then(
+      () => undefined,
       (error: unknown) =>
         this.options.logger.warn(
           'Held turn start could not be recorded as interrupted before its Session ended',
