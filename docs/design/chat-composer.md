@@ -755,7 +755,9 @@ conversation seeded with the error and this conversation's ids
 ([troubleshoot with an agent](troubleshoot-in-app.md)), and sends nothing to
 this one. After a reload, or on another device, the newest turn's error card
 is rebuilt from its stored failure with the same actions; an older failure the
-person has moved past shows its message without Send again. A failed retry from the picker keeps the last answer for that
+person has moved past shows its message without Send again. Send again resends
+only the failed turn's own message: a turn the engine or an automation opened
+has none, so its card offers no Send again. A failed retry from the picker keeps the last answer for that
 conversation. Not gated: the app-wide New chat entry points (toolbar,
 shortcut, inbox, task switcher), because the answer is per conversation, and
 Fork from turn (and Regenerate and Edit and resend, which fork the same way),
