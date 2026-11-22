@@ -91,11 +91,12 @@ const hooks = vi.hoisted(() => ({
   review: vi.fn(),
   apply: vi.fn(),
   rollback: vi.fn(),
+  previewData: undefined as unknown,
 }));
 
 vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
   useCreateSetupImportPreviewMutation: () => ({
-    data: preview,
+    data: hooks.previewData,
     isPending: false,
     isError: false,
     mutate: hooks.preview,
@@ -127,6 +128,7 @@ function renderDialog() {
 describe('CodexPromptImportDialog', () => {
   beforeEach(() => {
     hooks.preview.mockReset();
+    hooks.previewData = preview;
     hooks.review.mockReset();
     hooks.apply.mockReset();
     hooks.rollback.mockReset();
@@ -274,5 +276,19 @@ describe('CodexPromptImportDialog', () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  test('with no prompts to import there is nothing to commit, only Close', () => {
+    hooks.previewData = { ...preview, entries: [], excluded: {}, warnings: [] };
+    const dialog = renderDialog();
+    expect(
+      within(dialog).getByText(
+        'Codex has no saved prompts Station can import.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(dialog).queryByRole('button', { name: /^Import/ }),
+    ).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toBeTruthy();
   });
 });

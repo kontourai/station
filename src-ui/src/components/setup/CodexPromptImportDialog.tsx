@@ -28,7 +28,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { Dialog } from '../Dialog';
-import { ErrorState, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './CodexPromptImportDialog.css';
 
 const SOURCE_ID = 'codex-prompts';
@@ -198,17 +198,19 @@ function CodexPromptImportBody({ onClose }: { onClose: () => void }) {
             Only Codex prompts can be imported today.
           </p>
           <Button variant="secondary" onClick={onClose} disabled={importing}>
-            Cancel
+            {entries.length > 0 ? 'Cancel' : 'Close'}
           </Button>
-          <Button
-            variant="primary"
-            pending={importing}
-            pendingLabel="Importing…"
-            disabled={!preview || chosen.length === 0 || invalidChoice}
-            onClick={startImport}
-          >
-            Import {skillCount(chosen.length)}
-          </Button>
+          {entries.length > 0 && (
+            <Button
+              variant="primary"
+              pending={importing}
+              pendingLabel="Importing…"
+              disabled={chosen.length === 0 || invalidChoice}
+              onClick={startImport}
+            >
+              Import {skillCount(chosen.length)}
+            </Button>
+          )}
         </>
       }
     >
@@ -229,9 +231,7 @@ function CodexPromptImportBody({ onClose }: { onClose: () => void }) {
           }
         />
       ) : entries.length === 0 ? (
-        <p className="codex-import__empty">
-          Codex has no saved prompts Station can import.
-        </p>
+        <Empty label="Codex has no saved prompts Station can import." />
       ) : (
         <div className="codex-import__picker">
           <div className="codex-import__count-row">
