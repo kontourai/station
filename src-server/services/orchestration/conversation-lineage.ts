@@ -13,7 +13,11 @@ import type {
   OrchestrationSessionSummary,
   StagedConversationHandoff,
 } from '@kontourai/station-contracts/orchestration';
-import { CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
+  type ConversationHandoffRefusalCode,
+} from '@kontourai/station-contracts/orchestration';
 import type {
   EngineId,
   NativeResumeIdentityStatus,
@@ -173,13 +177,24 @@ function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
 function reservedTailRefusal(
   store: EventStore,
   tailSessionId: string,
-): string | undefined {
+): Error | undefined {
   if (store.conversationHandoffForSession(tailSessionId))
-    return 'This conversation has an explicit Agent/engine handoff awaiting its target session start.';
+    return handoffRefusal(
+      'This conversation has an explicit Agent/engine handoff awaiting its target session start.',
+      CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
+    );
   const boundary = store.conversationContextBoundaryForSuccessor(tailSessionId);
   if (boundary?.status === 'cancelled' || boundary?.status === 'indeterminate')
-    return 'This conversation context boundary is not startable.';
+    return new Error('This conversation context boundary is not startable.');
   return undefined;
+}
+
+/** A handoff refusal carrying its machine code, as the busy refusal does. */
+function handoffRefusal(
+  message: string,
+  code: ConversationHandoffRefusalCode,
+): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 /**
@@ -425,7 +440,7 @@ export class ConversationLineage {
       // by an ordinary continuation racing after the reservation. Once that
       // child exists, it is a normal current Session and may continue.
       const refusal = reservedTailRefusal(store, current.sessionId);
-      if (refusal) throw new Error(refusal);
+      if (refusal) throw refusal;
       const contextBoundary = store.conversationContextBoundaryForSuccessor(
         current.sessionId,
       );
@@ -1081,8 +1096,9 @@ export class ConversationLineage {
     );
     if (existing) {
       if (!hasTarget(existing)) {
-        throw new Error(
+        throw handoffRefusal(
           'The handoff idempotency key already names a different target or message.',
+          CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict,
         );
       }
       const boundary = store.conversationContextBoundaryForSuccessor(
@@ -1150,8 +1166,9 @@ export class ConversationLineage {
       target.stagedHandoff &&
       current.sessionId !== target.stagedHandoff.expectedCurrentSessionId
     ) {
-      throw new Error(
+      throw handoffRefusal(
         'The current Session changed. Review the Agent change before sending again.',
+        CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged,
       );
     }
     // A deliberate context replacement reserves the same successor the
@@ -1165,8 +1182,9 @@ export class ConversationLineage {
       currentBoundary &&
       currentBoundary.status !== 'consumed'
     ) {
-      throw new Error(
+      throw handoffRefusal(
         'Finish the pending context change before switching Agents.',
+        CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending,
       );
     }
     const boundary = target.stagedHandoff ? undefined : currentBoundary;
@@ -1178,8 +1196,9 @@ export class ConversationLineage {
     if (!predecessor)
       throw new Error('Conversation handoff predecessor was not found');
     if (store.conversationHandoffForPredecessor(predecessor.sessionId)) {
-      throw new Error(
+      throw handoffRefusal(
         'This conversation already has an explicit Agent/engine handoff awaiting its target session start.',
+        CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
       );
     }
     const predecessorSequence = target.stagedHandoff
