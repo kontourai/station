@@ -1,0 +1,7 @@
+{
+  "revision": "103476396e79ad90fa6f32d9ea433ad93b8f3317",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"The guide gained a paragraph on what a directory scan picks up; this ADR describes the store/index split and per-project namespaces and makes no claim about scan selection, so it stays accurate.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]}
+  ]
+}
