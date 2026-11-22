@@ -130,6 +130,7 @@ import {
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  providerSessionBindingEnded,
   readApprovalMode,
   readProviderDurabilityProfile,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
@@ -4815,15 +4816,25 @@ export class OrchestrationService {
   ): Promise<'none' | 'restart' | 'successor' | 'busy'> {
     if ((await this.options.preToolPolicyReplaced?.(threadId)) !== true)
       return 'none';
-    // No live engine (parked, exited, never attached here): whatever starts
-    // next binds the current configuration.
+    // No live engine (parked, exited, never attached here), or a binding that
+    // takes no more turns (a failed stream, `error`, whose process may still
+    // be stopping): whatever starts next binds the current configuration.
+    // Neither is restarted in place: a failed Session continues in a
+    // successor once its process is gone, and an engine whose exit was
+    // observed is refused by its adapter until its Session ends.
+    const adapter = this.sessionAdapters.get(threadId);
     const status = this.sessionReadModel.get(threadId)?.status;
     if (
-      !this.sessionAdapters.has(threadId) ||
-      status === 'closed' ||
-      status === 'dead'
+      !adapter ||
+      (status !== undefined && providerSessionBindingEnded(status)) ||
+      adapter.engineEnded?.(threadId) === true
     )
       return 'none';
+    // Its engine is being parked (a restart in place, or the idle sweep):
+    // that park holds the lifecycle lock this turn's start queues behind, and
+    // whatever starts after it binds the current configuration. It is not
+    // work running under the old configuration, so it is not `busy`.
+    if (this.parkingThreads.has(threadId)) return 'none';
     const now = Date.now();
     if (!this.isParkableIdleSession(threadId, now, 0, true, true))
       return 'busy';

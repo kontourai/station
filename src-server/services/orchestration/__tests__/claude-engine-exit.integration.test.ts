@@ -96,6 +96,8 @@ let store: EventStore;
 let service: OrchestrationService;
 let adapter: ClaudeAdapter;
 const warn = vi.fn();
+/** Sessions whose launch configuration #5380's fingerprint found replaced. */
+const replaced = new Set<string>();
 const engines: FakeClaudeChild[] = [];
 
 function startEngine() {
@@ -125,8 +127,10 @@ beforeEach(() => {
     eventBus: new EventBus(),
     eventStore: store,
     logger: { debug: vi.fn(), warn },
+    preToolPolicyReplaced: async (threadId: string) => replaced.has(threadId),
   });
   engines.length = 0;
+  replaced.clear();
 });
 afterEach(async () => {
   await service.shutdown().catch(() => undefined);
@@ -441,4 +445,214 @@ describe('a Claude engine that dies, through the real service and adapter', () =
       expect(alive()).toHaveLength(1);
     });
   }
+});
+
+describe('a Claude engine that dies after its launch configuration was replaced', () => {
+  /** A resumable Session (a native cursor), as a restart in place needs. */
+  async function startResumable() {
+    const q = endableQuery();
+    mockQuery.mockReturnValue(q);
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: T,
+        provider: 'claude',
+        persistSession: true,
+        resumeCursor: 'native-original',
+      },
+    } as never);
+    return { q, child: startEngine() };
+  }
+  /** The engine ignores signals until the test lets it exit. */
+  function stubbornKill(child: FakeClaudeChild) {
+    const kills: Array<NodeJS.Signals | undefined> = [];
+    child.kill = (signal?: NodeJS.Signals) => {
+      kills.push(signal);
+      child.killed = true;
+      return true;
+    };
+    return kills;
+  }
+  const refusalOf = (error: unknown) => {
+    const e = error as { code?: string; message?: string };
+    return { code: e?.code, message: e?.message };
+  };
+
+  test('a failed stream with the engine alive: the successor waits for the exit, and retiring the dead predecessor stops nothing again', async () => {
+    const { q, child } = await start();
+    await settle();
+    replaced.add(T);
+    const kills = stubbornKill(child);
+    q.crash(new Error('Unexpected token in JSON at position 0'));
+    await vi.waitFor(() => expect(methods()).toContain('runtime.error'));
+    await vi.waitFor(() => expect(kills.length).toBeGreaterThan(0));
+    const lineage = store.conversationSessions(T).length;
+    const refused = await continueConversation('are you there').then(
+      () => undefined,
+      refusalOf,
+    );
+    expect(refused).toMatchObject({
+      code: 'conversation_predecessor_engine_live',
+    });
+    // Nothing reserved, nothing started beside the live process.
+    expect(store.conversationSessions(T)).toHaveLength(lineage);
+    expect(mockQuery.mock.calls).toHaveLength(1);
+    const killsBeforeExit = kills.length;
+    child.exit(null, 'SIGTERM');
+    child.closeStderr();
+    await vi.waitFor(() => expect(methods()).toContain('session.exited'), {
+      timeout: 5000,
+    });
+    const { cont, sent } = await continueConversation('are you there');
+    expect(cont.sessionId).not.toBe(T);
+    expect(sent).toMatchObject({ ok: true });
+    // The successor's retirement of the replaced predecessor found its engine
+    // gone: no further signal, and nothing it logged.
+    expect(kills).toHaveLength(killsBeforeExit);
+    expect(warn).not.toHaveBeenCalled();
+    expect(engines).toHaveLength(2);
+    expect(alive()).toHaveLength(1);
+    expect(count('session.exited')).toBe(1);
+  });
+
+  test('a replaced Session whose engine exits while idle: the next message continues in a new Session, not held', async () => {
+    const { child } = await start();
+    await settle();
+    replaced.add(T);
+    child.exit(null, 'SIGKILL');
+    child.closeStderr();
+    await vi.waitFor(() => expect(methods()).toContain('session.exited'), {
+      timeout: 5000,
+    });
+    const { cont, sent } = await continueConversation('are you there');
+    expect(cont).toMatchObject({ startRequired: true });
+    expect(cont.sessionId).not.toBe(T);
+    expect(sent).toMatchObject({ ok: true });
+    expect(engines).toHaveLength(2);
+    expect(alive()).toHaveLength(1);
+  });
+
+  test('a held turn start on a Session replaced before its engine ends: the start settles, and a send in the window gets the exit notice', async () => {
+    const childWorkload = await import(
+      '@kontourai/station-shared/child-workload'
+    );
+    let release: (v: undefined) => void = () => {};
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(new Promise((r) => (release = r)) as never);
+    try {
+      const { q, child } = await start();
+      await settle();
+      q.setModel.mockImplementation(async () => {
+        // The configuration changes while the start is in flight, then the
+        // engine dies inside it.
+        replaced.add(T);
+        await new Promise((r) => setTimeout(r, 20));
+        child.exit(null, 'SIGTERM');
+        child.closeStderr();
+        throw new Error('Claude Code process terminated by signal SIGTERM');
+      });
+      const first = await send(T, { modelId: 'claude-other-model' });
+      expect(first).toMatchObject({
+        ok: false,
+        code: 'foreground_message_indeterminate',
+      });
+      await vi.waitFor(() => expect(adapter.engineEnded(T)).toBe(true));
+      // Before the Session ends: the exited engine's own refusal, not a claim
+      // that work is still running under the old settings.
+      const window = await send(T);
+      expect(window).toMatchObject({ ok: false });
+      expect(window.ok ? undefined : window.code).not.toBe(
+        'session_configuration_replaced',
+      );
+      expect(window.ok ? '' : window.message).toMatch(
+        /engine has exited and Station is closing the Session, so nothing was sent/,
+      );
+      release(undefined);
+      await vi.waitFor(() => expect(methods()).toContain('session.exited'), {
+        timeout: 5000,
+      });
+      expect(
+        store.listEvents(T).some((e) => e.id.startsWith('turn-interrupted:')),
+      ).toBe(true);
+      const { cont, sent } = await continueConversation('are you there');
+      expect(cont.sessionId).not.toBe(T);
+      expect(sent).toMatchObject({ ok: true });
+      expect(alive()).toHaveLength(1);
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
+  test('a send that arrives while a restart in place stops the old engine is never accepted into it', async () => {
+    const { child: old } = await startResumable();
+    await settle();
+    replaced.add(T);
+    let during: ReturnType<typeof send> | undefined;
+    old.kill = (signal?: NodeJS.Signals) => {
+      old.killed = true;
+      // The second send lands while the park is stopping this engine.
+      during ??= send(T);
+      setTimeout(() => {
+        old.exit(null, signal ?? 'SIGTERM');
+        old.closeStderr();
+      }, 30);
+      return true;
+    };
+    // The restarted engine binds the current configuration.
+    mockQuery.mockImplementation(() => {
+      replaced.delete(T);
+      const next = endableQuery();
+      queueMicrotask(() => startEngine());
+      return next;
+    });
+    const first = await send(T);
+    const second = await during!;
+    expect(first).toMatchObject({ ok: true });
+    // Refused because the restarted engine is running the first message,
+    // which is true, and not with a claim about the old settings.
+    expect(second).toMatchObject({ ok: false });
+    expect(second.ok ? '' : second.message).toMatch(
+      /already has an active turn/,
+    );
+    expect(second.ok ? undefined : second.code).not.toBe(
+      'session_configuration_replaced',
+    );
+    expect(mockQuery.mock.calls).toHaveLength(2);
+    expect(engines).toHaveLength(2);
+    expect(alive()).toEqual([engines[1]]);
+    expect(count('turn.started')).toBe(1);
+  });
+
+  test('a failed, replaced Session whose process is alive: the live-engine refusal is returned, and nothing restarts it in place', async () => {
+    const { q, child } = await startResumable();
+    await settle();
+    replaced.add(T);
+    const kills = stubbornKill(child);
+    q.crash(new Error('Unexpected token in JSON at position 0'));
+    await vi.waitFor(() => expect(methods()).toContain('runtime.error'));
+    await vi.waitFor(() => expect(kills.length).toBeGreaterThan(0));
+    const killsAfterFailure = kills.length;
+    const continued = await continueConversation('are you there').then(
+      () => undefined,
+      refusalOf,
+    );
+    expect(continued).toMatchObject({
+      code: 'conversation_predecessor_engine_live',
+    });
+    expect(continued?.message).toMatch(
+      /process has not stopped yet, so Station did not start a new one beside it and nothing was sent/,
+    );
+    // A send naming the failed Session itself is the adapter's own refusal:
+    // the settings notice would promise a restart this Session cannot take.
+    const direct = await send(T);
+    expect(direct).toMatchObject({ ok: false });
+    expect(direct.ok ? undefined : direct.code).not.toBe(
+      'session_configuration_replaced',
+    );
+    expect(direct.ok ? '' : direct.message).toMatch(/takes no more turns/);
+    expect(kills).toHaveLength(killsAfterFailure);
+    expect(mockQuery.mock.calls).toHaveLength(1);
+    expect(alive()).toEqual([child]);
+  });
 });
