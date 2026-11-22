@@ -2448,7 +2448,8 @@ isolated repair API instead. A source can be deleted only once no rule names
 it.
 
 `episodes` lists unclosed episodes (`open`, `exhausted`, `indeterminate`).
-`retry-episode` gives an exhausted episode exactly one more attempt under the
+`retry-episode` gives an exhausted episode, or an open one marked
+`startFailed` (its Agent never started), exactly one more attempt under the
 rule's current policy; it is refused for an indeterminate episode, one with
 pending or running work, an event older than 72 hours, or a rule that may not
 act now.

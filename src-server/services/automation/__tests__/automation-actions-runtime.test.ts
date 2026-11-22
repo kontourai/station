@@ -1566,14 +1566,11 @@ test('a live rule naming its Project by id still starts a Task in that Project',
   expect(w.agentStarts.at(-1)).toBe(STATION_PROJECT.slug);
 });
 
-test('a rule already stored with a slug dispatches without being rewritten', async () => {
+test('a rule already stored with a slug dispatches, and its Project is pinned to the id', async () => {
   const w = await world({
     projects: [STATION_PROJECT],
     storedProject: 'station',
   });
-  const stored = JSON.parse(readFileSync(w.store.path, 'utf8'));
-  expect(stored.rules[0].action.projectId).toBe('station');
-  expect(stored.sources[0].grants[0].projectId).toBe('station');
   await liveTick(w);
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
   const intent = w.ledger.listActionIntents()[0]!;
@@ -1585,6 +1582,10 @@ test('a rule already stored with a slug dispatches without being rewritten', asy
   // A later tick keeps it running: the Task's Project matches the intent's.
   await w.runtime.tick();
   expect(w.ledger.readIntent(intent.intentId)?.state).toBe('running');
+  await w.store.projectReferencesPinned();
+  const stored = JSON.parse(readFileSync(w.store.path, 'utf8'));
+  expect(stored.rules[0].action.projectId).toBe(STATION_PROJECT.id);
+  expect(stored.sources[0].grants[0].projectId).toBe(STATION_PROJECT.id);
 });
 
 test('a grant naming its Project by slug grants an action naming the id', async () => {
@@ -1802,4 +1803,84 @@ test('retry-episode never accepts an episode whose start is indeterminate', asyn
   );
   expect(retryOf(w, first)().kind).toMatch(/^(indeterminate|active)$/);
   expect(w.ledger.listOpenEpisodes()[0]).not.toHaveProperty('startFailed');
+});
+
+test('a stored slug stays with its Project: a same-slug replacement Project starts no Task', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    storedProject: 'station',
+    episode: false,
+  });
+  await w.store.projectReferencesPinned();
+  await w.real!.storage.deleteProject('station');
+  await w.real!.create({ id: 'replacement-project-id', slug: 'station' });
+  w.intake(laterFailure(w));
+  await liveTick(w);
+  await w.runtime.tick();
+  expect(w.agentStarts).toEqual([]);
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.ledger.listDeliveries().map((delivery) => delivery.reason)).toEqual([
+    'project_unavailable',
+    'project_unavailable',
+  ]);
+});
+
+test('an unreadable Project list stops the tick as unavailable, refuses nothing, and is logged once', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const list = vi
+    .spyOn(w.real!.service, 'listProjects')
+    .mockImplementation(() => {
+      throw new Error('project record unreadable');
+    });
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick().catch(() => undefined);
+  await w.runtime.tick().catch(() => undefined);
+  expect(w.ledger.listActionIntents()[0]?.state).toBe('pending');
+  expect(w.ledger.listDeliveries()[0]?.outcome).not.toBe('refused');
+  expect(
+    w.warnings.mock.calls.filter(([message]) =>
+      String(message).includes('could not read the Project list'),
+    ),
+  ).toHaveLength(1);
+  expect(
+    w.warnings.mock.calls.some(([message]) =>
+      String(message).includes('was not found'),
+    ),
+  ).toBe(false);
+  list.mockRestore();
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+});
+
+test('an intent recorded with a slug before slugs were resolved is refused as a rule change, not a missing Project', async () => {
+  const w = await world({ projects: [STATION_PROJECT], episode: false });
+  // As intake recorded it before the store resolved slugs.
+  recordAutomationEvent({
+    ledger: w.ledger,
+    rules: w.store
+      .actionableRules(w.source.id)
+      .map((rule) => ({
+        ...rule,
+        action: { ...rule.action, projectId: 'station' },
+      })),
+    source: w.store.read().sources[0],
+    event: laterFailure(w),
+    transportId: 'legacy-slug-intent',
+    now: Date.now(),
+  });
+  const legacy = w.ledger
+    .listActionIntents()
+    .find((intent) => intent.action.projectId === 'station')!;
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.ledger.readIntent(legacy.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'policy_changed',
+  });
+  expect(w.agentStarts).toEqual([STATION_PROJECT.slug]);
+  expect(
+    w.warnings.mock.calls.some(([message]) =>
+      String(message).includes('was not found'),
+    ),
+  ).toBe(false);
 });

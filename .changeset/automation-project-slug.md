@@ -8,3 +8,7 @@ Project's id and another's slug, the id wins. Creating or editing a rule or
 grant that names no Project is refused, quoting the value. A delivery whose
 rule names a Project that no longer exists is refused with the new reason
 `project_unavailable` in `AUTOMATION_REFUSAL_REASONS`, and no Task starts.
+
+`AutomationEpisodeRecord` gains an optional `startFailed: true` for an open
+episode whose latest start failed before its Agent started; retry-episode
+now accepts such an episode.

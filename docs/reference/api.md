@@ -6381,7 +6381,7 @@ method. Every mutation also requires the operator in person (the same proof as
 | `PUT /automations/rules/:target/disable` | Sets `off`; optional `{expectedFingerprint}`. |
 | `DELETE /automations/rules/:target` | A `dispatch-task` rule. |
 | `GET /automations/episodes?limit=<1-200>` | `{episodes}`: unclosed episodes, newest first, without their internal key. |
-| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode; `{ruleId, episodeId, retry}`. |
+| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode, or an open one marked `startFailed`; `{ruleId, episodeId, retry}`. |
 
 Everything except disable and delete also needs the
 `github-automation-observations` Feature Preview (404

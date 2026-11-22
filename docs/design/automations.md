@@ -285,6 +285,10 @@ retry count in its identity, so it is a new Task) is retained under the rule's
 current policy. It is refused for an indeterminate episode (its earlier effect
 is unknown and never replayed), an episode with pending or running work, an
 event older than 72 hours, or a rule that is not `live` or no longer granted.
+It is also accepted for an `open` episode whose latest intent ended `failed`
+or `refused` before anything was invoked (the Agent never started, so the
+attempt was not used); the open-episode list marks it `startFailed` and
+Settings offers Retry. An invoked or `indeterminate` intent never qualifies.
 
 A held claim writes its reason to the delivery row as `suppressed(reason)`:
 `rate-limited`, `rule-active-limit`, `concurrency-limit` or `episode-active`
@@ -502,10 +506,15 @@ directory under [`src-server/services/`](../../src-server/services/).
 - A grant's or an action's `projectId` accepts a Project's id or its slug.
   The [store](../../src-server/services/automation/automation-store.ts)
   resolves it to the id on every read and stores the id on every write, so
-  each reader compares ids and a rule stored with a slug keeps working. A
-  value that is one Project's id and another's slug names the Project with
-  that id. Creating or editing a rule or grant that names no Project is
-  refused with the value quoted.
+  each reader compares ids. A rule or grant stored with a slug keeps working:
+  the first read that resolves it writes the id back through the normal
+  mutation path, so a later Project created with the same slug never
+  inherits it. A value that is one Project's id and another's slug names the
+  Project with that id. Creating or editing a rule or grant that names no
+  Project is refused with the value quoted; if the Project list cannot be
+  read the write is refused as unavailable (503). The action runtime holds
+  the id and creates the Task with that Project's slug, the identity
+  TaskGraph and the Agent start resolve a Project by.
 - `AutomationEvent` is `{ schemaVersion: 1; eventId; sourceId; sourceKind;
   type (for example `'github.workflow_run.completed'`); deliveryId?;
   semanticKey; occurredAt; receivedAt; fields: Readonly<Record<string,

@@ -33,6 +33,7 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { automationConfigurationFingerprint } from '../../services/automation/automation-intent.js';
 import type { RetryEpisodeOutcome } from '../../services/automation/automation-ledger.js';
 import {
+  AUTOMATION_PROJECTS_UNAVAILABLE,
   AutomationPolicyUnavailableError,
   type AutomationStore,
   AutomationValidationError,
@@ -337,7 +338,10 @@ export function createAutomationRoutes(
         return c.json(
           {
             success: false,
-            error: 'Automation policy is unavailable.',
+            error:
+              error.detail === AUTOMATION_PROJECTS_UNAVAILABLE
+                ? 'Station could not read its Projects, so nothing was changed. Try again.'
+                : 'Automation policy is unavailable.',
             code: error.code,
           },
           503,
