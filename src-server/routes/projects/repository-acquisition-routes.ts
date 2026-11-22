@@ -210,6 +210,9 @@ function denied(c: Context) {
   return c.json(
     {
       success: false,
+      // Clients tell this refusal from the runtime's own 403s (origin, device
+      // scope, sign-in) by this code, not by status.
+      code: 'repository_operator_required',
       error:
         "Repository acquisition uses this Station's Git credentials and requires its operator.",
     },

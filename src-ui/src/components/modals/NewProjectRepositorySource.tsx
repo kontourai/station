@@ -10,7 +10,7 @@ import {
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -49,17 +49,18 @@ function retainedId(key: string) {
 /**
  * A refusal the server answers before recording anything leaves no operation
  * to read or poll, so its reason belongs beside the URL instead. A 400 names
- * the rule the source broke. A 403 means this caller may not use the host's
- * Git credentials; its copy is fixed here because a 403 can also come from the
- * runtime's own admission, whose text is not written for this form. A 503 can
- * follow a started attempt, so it keeps the operation to inspect.
+ * the rule the source broke. A 403 is the route's operator check only when it
+ * carries the route's code; the runtime also answers 403 for origin, device
+ * scope and sign-in, so any other 403 gets copy that is true for all of them.
+ * A 503 can follow a started attempt, so it keeps the operation to inspect.
  */
 function refusalBeforeRecording(error: unknown) {
   if (!(error instanceof StationHttpError)) return '';
   if (error.status === 400) return userFacingErrorMessage(error);
-  if (error.status === 403)
-    return "Cloning uses this Station's Git credentials, so only its operator can do it.";
-  return '';
+  if (error.status !== 403) return '';
+  return error.code === 'repository_operator_required'
+    ? "Cloning uses this Station's Git credentials, so only its operator can do it."
+    : "Station refused this request from this device. Sign in again or check this device's access.";
 }
 
 function RepositorySourceControls({
@@ -87,6 +88,7 @@ function RepositorySourceControls({
   const sourceFailureId = useId();
   const refId = useId();
   const subdirectoryId = useId();
+  const acquireRef = useRef<HTMLButtonElement>(null);
   const client = useQueryClient();
   const key = [
     'repository-acquisition',
@@ -245,6 +247,14 @@ function RepositorySourceControls({
     );
     forgetOperation();
   }, [record, acquire.isPending, forgetOperation]);
+
+  // The reason is beside the URL, but the next step is Acquire, which can sit
+  // below the dialog's fold. `nearest` leaves an already visible button alone,
+  // and scrolling does not move focus.
+  useEffect(() => {
+    if (sourceFailure && !requestId)
+      acquireRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [sourceFailure, requestId]);
 
   function begin() {
     cancel.reset();
@@ -405,6 +415,7 @@ function RepositorySourceControls({
             </p>
           )}
           <Button
+            ref={acquireRef}
             type="button"
             disabled={!sourceUrl.trim() || acquire.isPending || reuse.isPending}
             onClick={begin}

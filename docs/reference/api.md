@@ -585,7 +585,9 @@ provider calls and at response-body release.
 responses. This host-local operation uses the operator's Git configuration;
 operator authority is required for every read and write. Agent-originated
 internal requests and delegated or paired-device credentials are refused, even
-when the device can run commands.
+when the device can run commands. That refusal is 403 with
+`code: "repository_operator_required"`; other 403s on these paths come from
+request admission (origin, device scope, sign-in) and carry their own codes.
 
 The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`,
 `failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and

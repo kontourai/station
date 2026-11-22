@@ -404,42 +404,96 @@ test.each([
   },
 );
 
-test('a refusal for a caller who is not the operator keeps the form and never reads an operation', async () => {
-  const calls: string[] = [];
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      calls.push(`${init?.method ?? 'GET'} ${url}`);
-      if (
-        init?.method === 'POST' &&
-        url.endsWith('/api/projects/repository-acquisitions')
-      )
-        // The exact body the route's operator check sends.
-        return Response.json(
-          {
-            success: false,
-            error:
-              "Repository acquisition uses this Station's Git credentials and requires its operator.",
-          },
-          { status: 403 },
-        );
-      throw new Error(`Unexpected fixture request: ${url}`);
-    }),
-  );
-  mount();
-  enterSource();
-  const alert = await screen.findByText(
+test.each([
+  [
+    "the route's operator check",
+    {
+      success: false,
+      code: 'repository_operator_required',
+      error:
+        "Repository acquisition uses this Station's Git credentials and requires its operator.",
+    },
     "Cloning uses this Station's Git credentials, so only its operator can do it.",
-  );
-  const field = screen.getByLabelText('Repository URL');
-  expect(field).toHaveProperty('value', 'git@github.com:org/research.git');
-  expect(field.getAttribute('aria-describedby')).toBe(alert.id);
-  expect(screen.queryByText(/Operation:/)).toBeNull();
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(calls).toEqual([
-    'POST http://station.test/api/projects/repository-acquisitions',
-  ]);
-  expect(Object.keys(sessionStorage)).toEqual([]);
+  ],
+  [
+    "the runtime's device scope check",
+    { error: { code: 'insufficient_scope' } },
+    "Station refused this request from this device. Sign in again or check this device's access.",
+  ],
+] as const)(
+  'a 403 from %s keeps the form with a true reason and never reads an operation',
+  async (_, body, reason) => {
+    // Each body is exactly what that refusal sends.
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? 'GET'} ${url}`);
+        if (
+          init?.method === 'POST' &&
+          url.endsWith('/api/projects/repository-acquisitions')
+        )
+          return Response.json(body, { status: 403 });
+        throw new Error(`Unexpected fixture request: ${url}`);
+      }),
+    );
+    mount();
+    enterSource();
+    const alert = await screen.findByText(reason);
+    const field = screen.getByLabelText('Repository URL');
+    expect(field).toHaveProperty('value', 'git@github.com:org/research.git');
+    expect(field.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(screen.queryByText(/Operation:/)).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toEqual([
+      'POST http://station.test/api/projects/repository-acquisitions',
+    ]);
+    expect(Object.keys(sessionStorage)).toEqual([]);
+  },
+);
+
+test('a failure brings Acquire repository into view without scrolling on an untouched form', async () => {
+  const reason =
+    'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.';
+  const scrolled: Array<{ text: string | null; options: unknown }> = [];
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function (options?: unknown) {
+    scrolled.push({ text: this.textContent, options });
+  };
+  try {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (
+          init?.method === 'POST' &&
+          url.endsWith('/api/projects/repository-acquisitions')
+        )
+          return Response.json(
+            {
+              success: false,
+              error: reason,
+              details: { formErrors: [reason], fieldErrors: {} },
+            },
+            { status: 400 },
+          );
+        throw new Error(`Unexpected fixture request: ${url}`);
+      }),
+    );
+    mount();
+    fireEvent.change(screen.getByLabelText('Repository URL'), {
+      target: { value: 'not a url' },
+    });
+    expect(scrolled).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
+    await screen.findByText(reason);
+    await waitFor(() =>
+      expect(scrolled).toEqual([
+        { text: 'Acquire repository', options: { block: 'nearest' } },
+      ]),
+    );
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
 });
 
 test('a recorded failed clone returns to the form with its source and reason, and trying again starts a new operation', async () => {

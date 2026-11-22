@@ -108,12 +108,15 @@ function validateSource(
       url.password ||
       url.search ||
       url.hash ||
-      (url.protocol === 'https:' && url.username) ||
-      !url.hostname ||
-      url.pathname === '/'
+      (url.protocol === 'https:' && url.username)
     ) {
       throw new RepositoryAcquisitionInputError(
         'Use an HTTPS or SSH repository URL without embedded credentials, query or fragment.',
+      );
+    }
+    if (!url.hostname || url.pathname === '/') {
+      throw new RepositoryAcquisitionInputError(
+        'Include the host and the repository path in the URL.',
       );
     }
   } else if (

@@ -484,6 +484,14 @@ test('repository acquisition uses operator Git authority and returns one durable
     {},
   );
   expect(refusedRead.status).toBe(403);
+  // Clients tell the route's own operator refusal from the runtime's other
+  // 403s by this code.
+  expect(refusedRead.body).toMatchObject({
+    success: false,
+    code: 'repository_operator_required',
+    error:
+      "Repository acquisition uses this Station's Git credentials and requires its operator.",
+  });
   expect(JSON.stringify(refusedRead.body)).not.toContain(
     acquired.body.data.checkoutPath,
   );
@@ -537,6 +545,18 @@ test('repository acquisition uses operator Git authority and returns one durable
     error:
       'Use an HTTPS or SSH repository URL. Other URL schemes are not accepted.',
   });
+  for (const sourceUrl of ['https://host.example/', 'ssh:///repo']) {
+    const pathless = await f.send(
+      f.operator.credential,
+      'POST',
+      '/repository-acquisitions',
+      { requestId: randomUUID(), sourceUrl },
+    );
+    expect(pathless.status).toBe(400);
+    expect(pathless.body).toMatchObject({
+      error: 'Include the host and the repository path in the URL.',
+    });
+  }
   const scpLike = await f.send(
     f.operator.credential,
     'POST',
