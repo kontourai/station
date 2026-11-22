@@ -1091,8 +1091,20 @@ test.describe('compatibility-aware reconnect', () => {
               await setup
                 .getByRole('button', { name: 'Scan QR', exact: true })
                 .tap();
+              // Headless Chromium has no camera, so the scan falls back to
+              // code entry and withdraws Scan QR instead of a camera error.
+              await expect(
+                setup.getByRole('button', { name: 'Scan QR', exact: true }),
+              ).toHaveCount(0);
+              await expect(
+                setup.getByRole('button', {
+                  name: 'Pairing code',
+                  exact: true,
+                }),
+              ).toHaveAttribute('aria-pressed', 'true');
+              await expect(setup.getByText(/Camera error/)).toHaveCount(0);
               await setup
-                .getByRole('button', { name: 'Cancel', exact: true })
+                .getByRole('button', { name: 'Station address', exact: true })
                 .tap();
               await expect(
                 setup.getByRole('textbox', {
@@ -1100,9 +1112,6 @@ test.describe('compatibility-aware reconnect', () => {
                   exact: true,
                 }),
               ).toBeVisible();
-              await setup
-                .getByRole('button', { name: 'Station address', exact: true })
-                .tap();
               await expect(
                 setup.getByRole('button', {
                   name: 'Station address',
