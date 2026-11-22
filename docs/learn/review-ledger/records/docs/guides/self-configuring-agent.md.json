@@ -132,8 +132,6 @@
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
 
-    "src-ui/src/views/ConnectionsHub.tsx",
-
     "src-ui/src/views/connections-hub/AddMachineModal.tsx",
 
     "src-ui/src/views/connections-hub/ComputersSection.tsx",
@@ -224,7 +222,9 @@
 
     "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
 
-    "tests/owned-work-custody.spec.ts"
+    "tests/owned-work-custody.spec.ts",
+
+    "src-ui/src/views/customize/CustomizeLanding.tsx"
   ],
 
   "checks": [
