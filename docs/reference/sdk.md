@@ -7331,7 +7331,8 @@ for expiry, source/Device revalidation and remaining qualification limits.
 `createAutomationRule`, `updateAutomationRule(apiBase, id, { ...rule,
 expectedFingerprint })`, `enableAutomationRule(apiBase, id,
 expectedFingerprint)`, `disableAutomationRule` and `deleteAutomationRule`.
-Each accepts `ClientRequestOptions`.
+Each accepts `ClientRequestOptions`. A rule's `action.projectId` and a grant's
+`projectId` may be a Project's id or slug; the returned rule carries the id.
 
 `listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
 and `polls`, including partial coverage and source failures. Each delivery may

@@ -304,3 +304,26 @@ test("the composed poller wakes the Task's lead through the runtime's thread inb
     'Review comment 4363072349 on github:acme/widgets#14882 by member-reviewer (member, MEMBER)',
   );
 });
+
+// The same real composition also builds the Automation store; it must read
+// the Project service so a rule or grant may name its Project by slug.
+test('the composed Automation store resolves a grant Project through the Project service', async () => {
+  const { services } = compose({ submits: [] });
+  const grant = (projectId: string) => ({
+    kind: 'github-poll' as const,
+    name: 'main',
+    repository: 'kontourai/station',
+    grants: [
+      { projectId, agentId: 'agent', actions: ['dispatch-task' as const] },
+    ],
+  });
+  await expect(
+    services.automationStore.createSource(grant('missing-project')),
+  ).rejects.toMatchObject({
+    problems: [
+      'grants[0].projectId: no Project has the id or slug "missing-project"',
+    ],
+  });
+  await services.automationStore.createSource(grant('project-a'));
+  expect(services.automationStore.read().sources).toHaveLength(1);
+});

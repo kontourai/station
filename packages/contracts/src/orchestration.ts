@@ -659,6 +659,27 @@ export const FOREGROUND_MESSAGE_INDETERMINATE_CODE =
   'foreground_message_indeterminate' as const;
 
 /**
+ * Refusal codes of a send while the Session already has a turn start that
+ * blocks it. Nothing was sent in any of them.
+ *
+ * `turn_start_held`: an earlier start by this Station process may have
+ * reached the engine and cannot be confirmed or ruled out. The Session's
+ * engine reports its process ending, so once it has ended the next send
+ * records that turn as interrupted and goes ahead.
+ *
+ * `turn_start_held_until_restart`: the same, on an engine that does not
+ * report its process ending: it stays held until that turn reports its end
+ * or Station restarts.
+ *
+ * `turn_start_busy`: another start on the Session (from another request or
+ * Station process, or the start of its engine) has not finished.
+ */
+export const TURN_START_HELD_CODE = 'turn_start_held' as const;
+export const TURN_START_HELD_UNTIL_RESTART_CODE =
+  'turn_start_held_until_restart' as const;
+export const TURN_START_BUSY_CODE = 'turn_start_busy' as const;
+
+/**
  * Exact evidence returned when foreground start effects completed but the
  * accepted command receipt is not known durable. Callers must not retry.
  */
@@ -1672,6 +1693,15 @@ export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
  */
 export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
   'conversation_handoff_predecessor_busy';
+
+/**
+ * The machine code on a continuation refused because the conversation's
+ * current Session failed while its engine process is still running: a
+ * successor would resume the same native conversation in a second engine.
+ * Nothing was sent; it clears once that process has stopped.
+ */
+export const CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE =
+  'conversation_predecessor_engine_live';
 
 /**
  * Machine codes on a refused Agent/engine handoff beside

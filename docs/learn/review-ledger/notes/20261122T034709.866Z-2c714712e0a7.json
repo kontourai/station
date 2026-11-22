@@ -1,0 +1,7 @@
+{
+  "revision": "07a7651603d5a034c14a5b1b052548a1429563fc",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Edited: a replaced launch is never restarted in place when its engine exited or takes no more turns after a failure (Claude Code); an engine that keeps taking turns after a failed turn restarts in place, and a failed stop refuses that message and any sent meanwhile. Checked against policyReplacement and the turn-start re-check in orchestration-service.ts.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

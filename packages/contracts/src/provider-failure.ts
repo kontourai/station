@@ -22,8 +22,12 @@ import {
   CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   CONVERSATION_HANDOFF_REFUSAL_CODES,
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   SESSION_CONFIGURATION_REPLACED_CODE,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
 } from './orchestration.js';
 import {
   CONVERSATION_IMPORT_DELETED_CODE,
@@ -225,6 +229,13 @@ export const PROVIDER_FAILURE_KINDS = {
   // A replaced Session still runs work from before the change; sending again
   // once it ends restarts the Session.
   [SESSION_CONFIGURATION_REPLACED_CODE]: 'busy',
+  // A turn start refused beside one that may still run: waiting clears the
+  // held and busy starts and a live failed engine's stop; only a restart
+  // clears a held start whose engine cannot report its end.
+  [TURN_START_HELD_CODE]: 'busy',
+  [TURN_START_BUSY_CODE]: 'busy',
+  [CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE]: 'busy',
+  [TURN_START_HELD_UNTIL_RESTART_CODE]: 'conflict',
   // Continuing a conversation on a paired Station: the paired Station refused
   // the import outright (not retryable as sent), refused this Station's
   // credential, or takes imports only from a Station paired as a Station.

@@ -8,6 +8,7 @@ import type { TurnDeduplicator } from '@kontourai/monument';
 import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
   ORCHESTRATION_SHUTDOWN_EXIT_REASON,
+  type SessionTurnBoundaryRecord,
   type SessionTurnBoundaryTransition,
 } from '@kontourai/monument/session-boundary';
 import {
@@ -196,6 +197,10 @@ import {
   validateInputRequestContent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import {
+  TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+  TURN_ENGINE_ENDED_MESSAGE,
+} from '@kontourai/station-shared/runtime-event-projection';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import {
@@ -576,6 +581,8 @@ import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
   SessionLifecycleClaimRefusedError,
+  SessionTurnStartBusyError,
+  SessionTurnStartHeldError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
 import {
@@ -1103,11 +1110,13 @@ class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
  */
 export class PolicyReplacedSessionRefusedError extends SendTurnRefusedError {
   readonly code = SESSION_CONFIGURATION_REPLACED_CODE;
-  constructor(reason: 'busy' | 'successor') {
+  constructor(reason: 'busy' | 'successor' | 'changed-again') {
     super(
       reason === 'busy'
         ? "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings."
-        : "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+        : reason === 'changed-again'
+          ? "This agent's settings changed again before your message was sent, so nothing was sent. Send it again: the chat continues with the new settings."
+          : "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
       reason === 'busy' ? 'busy' : 'conflict',
     );
     this.name = 'PolicyReplacedSessionRefusedError';
@@ -2608,6 +2617,12 @@ export class OrchestrationService {
   >();
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
+  /**
+   * The adapter instance whose `sendTurn` left a thread's turn start held:
+   * the only one that knows the engine that start may have reached. Asked by
+   * `settleHeldTurnStarts`, never re-bound by later events.
+   */
+  private readonly heldStartAdapters = new Map<string, ProviderAdapterShape>();
   private readonly delegatedAppearance = new Map<
     string,
     { ownerId: string; parentSessionId: string; clientTurnId: string }
@@ -3349,6 +3364,10 @@ export class OrchestrationService {
     this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
       this.sessionStartBoundaries,
       this.workspaceExecutionBarrier,
+      {
+        settle: (threadId, held) => this.settleHeldTurnStarts(threadId, held),
+        logger: options.logger,
+      },
     );
     this.hostImages = new HostImageTurnCapture({
       preview: options.hostImagesPreview,
@@ -3701,6 +3720,11 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      // Only the adapter the Session is bound to knows its engine process.
+      engineStillRunning: (threadId) => {
+        const bound = this.sessionAdapters.get(threadId);
+        return bound?.engineEnded !== undefined && !bound.engineEnded(threadId);
+      },
       ...(options.preToolPolicyReplaced
         ? {
             // A replaced Session whose engine can restart in place is parked
@@ -4794,15 +4818,30 @@ export class OrchestrationService {
   ): Promise<'none' | 'restart' | 'successor' | 'busy'> {
     if ((await this.options.preToolPolicyReplaced?.(threadId)) !== true)
       return 'none';
-    // No live engine (parked, exited, never attached here): whatever starts
-    // next binds the current configuration.
+    // No live engine (parked, exited, never attached here), or a binding that
+    // takes no more turns: whatever starts next binds the current
+    // configuration. Neither is restarted in place: a failed Session continues
+    // in a successor once its process is gone, and an engine whose exit was
+    // observed is refused by its adapter until its Session ends. `error` ends
+    // the binding only for an adapter that declares it refuses turns after a
+    // failure; other engines stay alive after a failed turn and keep taking
+    // turns under the old configuration, so they are restarted in place.
+    const adapter = this.sessionAdapters.get(threadId);
     const status = this.sessionReadModel.get(threadId)?.status;
     if (
-      !this.sessionAdapters.has(threadId) ||
+      !adapter ||
       status === 'closed' ||
-      status === 'dead'
+      status === 'dead' ||
+      (status === 'error' && adapter.refusesTurnsAfterFailure === true) ||
+      adapter.engineEnded?.(threadId) === true
     )
       return 'none';
+    // Its engine is being parked (a restart in place, or the idle sweep):
+    // that park holds the lifecycle lock this turn's start queues behind.
+    // It is not work running under the old configuration, so it is not
+    // `busy`. If the park fails, the turn start re-checks under the lock and
+    // never dispatches into the old engine.
+    if (this.parkingThreads.has(threadId)) return 'none';
     const now = Date.now();
     if (!this.isParkableIdleSession(threadId, now, 0, true, true))
       return 'busy';
@@ -10365,6 +10404,8 @@ export class OrchestrationService {
           let engineMaterialized = false;
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
+            missingSessionHint: (threadId) =>
+              this.staleConversationSessionHint(threadId),
             threadProviders: this.threadProviders,
             requireAdapter: (provider) => this.requireAdapter(provider),
             adapters: this.options.adapterRegistry.list(),
@@ -10911,6 +10952,19 @@ export class OrchestrationService {
                     // lock (nothing was invoked) and restart it in place.
                     if (this.parkedThreads.has(turnInput.threadId))
                       throw new EngineParkedDuringDispatchError();
+                    // A send that queued behind a park of its replaced engine
+                    // (a restart in place, or the idle sweep) skipped the
+                    // replaced-configuration check. A park that failed left
+                    // that engine bound with its old configuration: refuse
+                    // rather than dispatch into it. Nothing was invoked, and
+                    // the next send parks and restarts it in place.
+                    const stillReplaced = await this.policyReplacement(
+                      turnInput.threadId,
+                    );
+                    if (stillReplaced !== 'none')
+                      throw new PolicyReplacedSessionRefusedError(
+                        'changed-again',
+                      );
                     const invoke = async () => {
                       const assertInputRequestCurrent = () => {
                         const expected = submittedInput.expectedInputRequest;
@@ -11542,7 +11596,7 @@ export class OrchestrationService {
                         }
                         claimOutcome = 'retain';
                         boundary.indeterminate(new Date().toISOString());
-                        throw new SessionTurnStartIndeterminateError();
+                        throw new SessionTurnStartIndeterminateError(error);
                       }
                     };
                     // #484 phase A follow-up: the receiver-owned offer/binding
@@ -11690,6 +11744,8 @@ export class OrchestrationService {
                 result = await startTurn();
               }
             } catch (error) {
+              if (error instanceof SessionTurnStartIndeterminateError)
+                this.heldStartAdapters.set(turnInput.threadId, adapter);
               if (!(error instanceof SessionTurnStartIndeterminateError)) {
                 this.options.eventStore?.releaseAttachmentCapacity(
                   turnInput.threadId,
@@ -13084,7 +13140,11 @@ export class OrchestrationService {
         // client can say the same send will be refused again instead of
         // offering a blind retry. #3290: so is an approval-governance
         // refusal, whose next step is a configuration or mode change.
+        // A held turn start's code: nothing was sent, and the client says
+        // what will clear it instead of "try again".
         error instanceof SessionEndedError ||
+          error instanceof SessionTurnStartHeldError ||
+          error instanceof SessionTurnStartBusyError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardedError ||
@@ -14828,6 +14888,15 @@ export class OrchestrationService {
           if (!this.quarantinedThreads.has(normalized.threadId)) {
             this.sessionAdapters.set(normalized.threadId, adapter);
           }
+          // A session-terminal fact retires the thread's held turn start
+          // without a word. When that start's own adapter has seen its engine
+          // gone, it is recorded first, as a send would: interrupted, with its
+          // banner, so the message that may have started is not left silent.
+          const settlingHeld = this.settleHeldStartsBeforeTerminal(
+            normalized,
+            adapter,
+          );
+          if (settlingHeld) await settlingHeld;
           // `projectAndPublishEvent` with a bounded retry of its publish half,
           // holding this event until it is appended before the next one is
           // consumed (#3560).
@@ -14844,6 +14913,7 @@ export class OrchestrationService {
           )
             continue;
           this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
+          this.noticeCompletionAfterInterruption(normalized);
           if (normalized.method === 'session.exited') {
             this.sessionAdapters.delete(normalized.threadId);
             this.lastEngineActivityAt.delete(normalized.threadId);
@@ -15344,6 +15414,154 @@ export class OrchestrationService {
     }
   }
 
+  /**
+   * A turn start this process could not confirm is held: it may have reached
+   * the engine, so no later start may run beside it. It is settled here,
+   * without a restart, only when the Session's own adapter has observed that
+   * no engine process for the thread can still run it (`engineEnded`).
+   * Then the turn either never started or ended with that process, which is
+   * exactly what boot recovery concludes from a dead owner, and it is
+   * recorded the same way: interrupted, with its banner. Any other answer
+   * (an adapter that cannot tell, an engine still alive, an unknown engine)
+   * keeps it held.
+   */
+  // Not `async`: with nothing held it returns `undefined` and the event loop
+  // does not yield. A yield before the exit is published leaves the Session
+  // looking live and bound, so a park could start on the engine whose exit
+  // was just consumed and wait out the whole exit timeout under its lock.
+  private settleHeldStartsBeforeTerminal(
+    event: CanonicalRuntimeEvent,
+    adapter: ProviderAdapterShape,
+  ): Promise<void> | undefined {
+    const sessionTerminal =
+      event.method === 'session.exited' ||
+      (event.method === 'runtime.error' &&
+        event.turnId === undefined &&
+        event.invocationId === undefined);
+    if (!sessionTerminal) return undefined;
+    if (this.heldStartAdapters.get(event.threadId) !== adapter)
+      return undefined;
+    const held = this.sessionStartBoundaries.heldTurnStarts?.(event.threadId);
+    if (held?.kind !== 'available' || held.records.length === 0)
+      return undefined;
+    return this.settleHeldTurnStarts(event.threadId, held.records).then(
+      () => undefined,
+      (error: unknown) =>
+        this.options.logger.warn(
+          'Held turn start could not be recorded as interrupted before its Session ended',
+          { threadId: event.threadId, error: errorMessage(error) },
+        ),
+    );
+  }
+
+  private async settleHeldTurnStarts(
+    threadId: string,
+    held: readonly SessionTurnBoundaryRecord[],
+  ): Promise<{ settled: boolean; engineObservable: boolean }> {
+    // Only the adapter instance that dispatched the held start knows the
+    // engine it may have reached, and only while it is still the registry's
+    // adapter: a replaced adapter may still be stopping its engines, and any
+    // other instance has never seen them, so "no record" from either proves
+    // nothing. No recorded dispatcher: nothing can tell, so it stays held.
+    const adapter = this.heldStartAdapters.get(threadId);
+    const engineObservable =
+      adapter !== undefined &&
+      this.options.adapterRegistry.get(adapter.provider) === adapter &&
+      typeof adapter.engineEnded === 'function';
+    if (!engineObservable || adapter.engineEnded?.(threadId) !== true)
+      return { settled: false, engineObservable };
+    const provider = adapter.provider;
+    const settled = await this.interruptedTurns.settleHeldTurnStarts(
+      held,
+      TURN_ENGINE_ENDED_MESSAGE,
+    );
+    // Proof from the store, not the pass: a row the pass left in place
+    // (recovery declined, or a fence it does not release) stays held.
+    const remaining = new Set(
+      (() => {
+        const read = this.sessionStartBoundaries.heldTurnStarts?.(threadId);
+        return read?.kind === 'available'
+          ? read.records.map((record) => record.boundaryId)
+          : held.map((record) => record.boundaryId);
+      })(),
+    );
+    const released = settled.filter((id) => !remaining.has(id));
+    for (const boundaryId of released)
+      this.options.logger.warn(
+        'Held turn start settled: the engine process for this Session ended, so the turn is recorded as interrupted and the Session takes new turns',
+        { threadId, boundaryId, provider, reason: 'engine-ended' },
+      );
+    if (remaining.size === 0) this.heldStartAdapters.delete(threadId);
+    return { settled: released.length > 0, engineObservable };
+  }
+
+  /**
+   * A turn already recorded as interrupted (its recovery abort is in the
+   * store) reported a successful completion after all. Reachable only if an
+   * engine was judged gone while it still ran, so it is logged as that, and
+   * the conversation gets a notice after the reply saying the turn finished
+   * and the interruption notice was premature. Nothing is removed: every
+   * fact stays in the order it happened. Idempotent by the completion's id.
+   */
+  private noticeCompletionAfterInterruption(
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (
+      event.method !== 'turn.completed' ||
+      event.finishReason === 'cancelled' ||
+      event.turnId === undefined
+    )
+      return;
+    const store = this.options.eventStore;
+    if (!store) return;
+    const recovery = store
+      .listEventsForTurn(event.threadId, event.turnId, 64)
+      .find(
+        (stored) =>
+          stored.payload.method === 'turn.aborted' &&
+          stored.payload.recoveryTerminal === true,
+      );
+    if (!recovery) return;
+    const eventId = `turn-completed-after-interruption:${event.eventId}`;
+    if (store.hasEventId(eventId)) return;
+    this.options.logger.warn(
+      'A turn recorded as interrupted reported that it completed: its engine was judged gone while it still ran',
+      {
+        threadId: event.threadId,
+        turnId: event.turnId,
+        recoveryEventId: recovery.id,
+      },
+    );
+    this.projectAndPublishEvent({
+      eventId,
+      provider: event.provider,
+      threadId: event.threadId,
+      turnId: event.turnId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+      message:
+        'This turn finished after all: Station had recorded it as interrupted, but the agent completed it. Its reply above is what the agent did.',
+    });
+  }
+
+  /**
+   * What works instead when a turn names an earlier Session of a
+   * conversation whose engine is gone and cannot be resumed: continuing the
+   * conversation by its own id, which routes to its current Session and
+   * starts a new one when that cannot take the turn. The message names the
+   * conversation; the turn is not redirected, since the caller named one
+   * Session and a different one would run it with a different engine state.
+   */
+  private staleConversationSessionHint(threadId: string): string | undefined {
+    const conversationId =
+      this.options.eventStore?.conversationForSession(threadId)?.conversationId;
+    return conversationId !== undefined && conversationId !== threadId
+      ? `This is an earlier Session of conversation ${conversationId}. Continue the conversation by that id; Station sends the message to its current Session, starting a new one if needed.`
+      : undefined;
+  }
+
   private isAdapterCurrent(adapter: ProviderAdapterShape): boolean {
     return this.options.adapterRegistry.get(adapter.provider) === adapter;
   }
@@ -15629,6 +15847,14 @@ export class OrchestrationService {
             : "Pick Default to keep using OpenCode's own settings."
       }`,
     );
+  }
+
+  /**
+   * #3290: who answers this ACP connection's approvals on this Station, for
+   * the start resolution's per-invocation settings check.
+   */
+  acpApprovalControlOf(connectionId: string): AcpApprovalControl | undefined {
+    return this.options.acpApprovalControl?.(connectionId);
   }
 
   private acpApprovalControlOfThread(

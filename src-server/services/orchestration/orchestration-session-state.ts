@@ -409,6 +409,8 @@ export async function resolveOrchestrationAdapterForThread(options: {
   materializeSession?: (
     threadId: string,
   ) => Promise<ProviderAdapterShape | undefined>;
+  /** What works instead, appended to the not-found answer when known. */
+  missingSessionHint?: (threadId: string) => string | undefined;
 }): Promise<ProviderAdapterShape> {
   const knownProvider = options.threadProviders.get(options.threadId);
   if (knownProvider) {
@@ -430,8 +432,9 @@ export async function resolveOrchestrationAdapterForThread(options: {
     return materialized;
   }
 
+  const hint = options.missingSessionHint?.(options.threadId);
   throw new OrchestrationProviderSessionNotFoundError(
-    `No provider session found for thread: ${options.threadId}`,
+    `No provider session found for thread: ${options.threadId}${hint ? `. ${hint}` : ''}`,
   );
 }
 

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { frameAgentMessage } from '../agent-message-frame.js';
 import {
   projectRuntimeEventsToMessages,
+  TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+  TURN_ENGINE_ENDED_MESSAGE,
   turnInterruptedContinueBoundaryId,
   turnInterruptedContinueClientTurnId,
 } from '../runtime-event-projection.js';
@@ -3747,4 +3749,78 @@ describe('a reply cut off at the output limit', () => {
       expect(turn(finishReason)?.metadata).not.toHaveProperty('turnCutOff');
     },
   );
+});
+
+describe('a turn that completed after it was recorded as interrupted', () => {
+  it('keeps the notice, then the reply, then says the turn finished after all', () => {
+    const base = { provider: 'claude', threadId: 't' } as const;
+    const events = [
+      {
+        ...base,
+        eventId: 's',
+        method: 'turn.started',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:00.000Z',
+        prompt: 'work',
+      },
+      {
+        ...base,
+        eventId: 'a',
+        method: 'turn.aborted',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:01.000Z',
+        reason: TURN_ENGINE_ENDED_MESSAGE,
+        recoveryTerminal: true,
+      },
+      {
+        ...base,
+        eventId: 'b',
+        method: 'session.state-changed',
+        createdAt: '2026-11-16T00:00:01.000Z',
+        sessionId: 't',
+        from: 'running',
+        to: 'awaiting-approval',
+        reason: TURN_ENGINE_ENDED_MESSAGE,
+        sessionState: 'needs_input',
+        transitionReason: 'runtime_exit',
+        transitionSource: 'system_recovery',
+        interruptedTurnBoundary: {
+          boundaryId: 'turn-boundary:x',
+          priorState: 'indeterminate',
+          ownerId: 'o',
+          boundaryCreatedAt: '2026-11-16T00:00:00.000Z',
+          boundaryUpdatedAt: '2026-11-16T00:00:00.000Z',
+        },
+      },
+      {
+        ...base,
+        eventId: 'c',
+        method: 'turn.completed',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:02.000Z',
+        outputText: 'done after all',
+      },
+      {
+        ...base,
+        eventId: 'w',
+        method: 'runtime.warning',
+        turnId: 'late',
+        createdAt: '2026-11-16T00:00:03.000Z',
+        severity: 'warning',
+        code: TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+        message: 'This turn finished after all.',
+      },
+    ] as unknown as CanonicalRuntimeEvent[];
+    const text = projectRuntimeEventsToMessages(events, {
+      markEndedTurns: true,
+    })
+      .flatMap((message) => message.parts ?? [])
+      .map((part) => ('text' in part ? String(part.text) : ''))
+      .join('\n');
+    expect(text).toContain(`[TURN_INTERRUPTED] ${TURN_ENGINE_ENDED_MESSAGE}`);
+    expect(text).toContain('done after all');
+    expect(text.indexOf('This turn finished after all.')).toBeGreaterThan(
+      text.indexOf('done after all'),
+    );
+  });
 });

@@ -14,6 +14,7 @@ import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
 import { isManagedEngineRefusal } from '../../security/managed-engine-limits.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
@@ -89,6 +90,7 @@ import {
   type TaskFollowUpWakePorts,
 } from '../../services/work-item-providers/task-follow-up-wake.js';
 import { stationSetupRequirementProbeOutcomes } from '../../telemetry/metrics.js';
+import { resolveTaskDispatchAgentStart } from '../../tools/station-control-delegation.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -722,7 +724,12 @@ export function configureRuntimeSupportServices(
       createAutomationLedger({ directory: join(automationHome, 'automation') }),
     () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
-  const automationStore = new AutomationStore(automationHome);
+  // Resolves a rule's or grant's Project slug to its id on read and write.
+  const automationStore = new AutomationStore(
+    automationHome,
+    undefined,
+    context.projectService,
+  );
   // #4508: Task tracker follow-ups ride the same tick, behind their own
   // Feature Preview; the store is the runtime's, shared with Task briefs.
   const taskFollowUps = context.taskFollowUps;
@@ -782,10 +789,15 @@ export function configureRuntimeSupportServices(
           hosted: false,
           featurePreviews: context.featurePreviews,
           store: automationStore,
-          isProjectCurrent: (id) =>
-            context.projectService
-              .listProjects()
-              .some((project) => project.id === id),
+          projects: context.projectService,
+          // The dispatch's own start resolution, for a rule's preflight.
+          checkAgentStart: (input) =>
+            runAsStationServer(() =>
+              resolveTaskDispatchAgentStart(
+                input,
+                context.orchestrationService,
+              ),
+            ),
           ledger: () => automationLedger.get(),
           existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,
@@ -817,6 +829,7 @@ export function configureRuntimeSupportServices(
         policy: automationStore,
         ledger: () => automationLedger.get(),
         tasks: context.taskGraphService,
+        projects: context.projectService,
         projectRoot: (id) => {
           const project = context.projectService
             .listProjects()

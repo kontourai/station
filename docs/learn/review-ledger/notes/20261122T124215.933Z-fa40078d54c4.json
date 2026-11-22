@@ -1,0 +1,7 @@
+{
+  "revision": "00552ef071b1030a5bb498d32789001d4eda94cd",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"The four turn-start refusal codes are in the failure-kind table (three busy and retryable, turn_start_held_until_restart conflict), matching PROVIDER_FAILURE_KINDS and the pinned rows in provider-failure.test.ts. Corrected the sentence that said none of them is a provider failure kind.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

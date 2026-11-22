@@ -74,6 +74,7 @@ describe('translateChatError', () => {
   it.each([
     "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings.",
     "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+    "This agent's settings changed again before your message was sent, so nothing was sent. Send it again: the chat continues with the new settings.",
   ])(
     'shows a replaced-configuration refusal as the server wrote it, with no hint repeating it: %s',
     (message) => {

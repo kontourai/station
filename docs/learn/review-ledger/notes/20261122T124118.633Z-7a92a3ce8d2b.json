@@ -1,0 +1,7 @@
+{
+  "revision": "00552ef071b1030a5bb498d32789001d4eda94cd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Held turn starts paragraph shortened to what the module map needs: the coordinator hands this process's held rows to the service, interrupted-turn recovery settles them once the dispatching adapter reports its engine ended, and the refusal codes are described in the Session API reference. Checked against session-execution-coordinator.ts, interrupted-turn-recovery.ts and docs/reference/session-api.md.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

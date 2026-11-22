@@ -18,10 +18,13 @@
  */
 import { join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { ENGINE_TURN_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
+import { createConformanceEngine } from '../../../providers/__tests__/adapter-conformance-fixtures.js';
+import { ADAPTERS } from '../../../providers/__tests__/adapter-contract-test-utils.js';
 import type {
   ProviderAdapterShape,
   ProviderSessionStartInput,
@@ -120,6 +123,14 @@ function world(
     openWork?: () => boolean;
     /** False: a model switch needs a successor session. */
     perTurnModel?: boolean;
+    /** True: the turn fails (`ENGINE_TURN_FAILED_CODE`); the engine lives on. */
+    failTurn?: () => boolean;
+    /** Runs before the engine is stopped; a throw fails the stop. */
+    beforeStop?: (threadId: string) => Promise<void>;
+    /** Declares `refusesTurnsAfterFailure`, as only the Claude adapter does. */
+    refusesTurnsAfterFailure?: boolean;
+    /** Runs after an engine launch bound its policy, before `startSession` returns. */
+    afterStart?: (launches: number) => Promise<void>;
   } = {},
 ) {
   const home = makeTempDir('external-policy-generation-');
@@ -203,6 +214,9 @@ function world(
           }
         : {}),
     } as never,
+    ...(options.refusesTurnsAfterFailure
+      ? { refusesTurnsAfterFailure: true as const }
+      : {}),
     async startSession(input) {
       starts.push(input);
       // What every external adapter does at session start.
@@ -211,6 +225,7 @@ function world(
         'authentic',
       );
       if (policy) policies.set(input.threadId, policy);
+      await options.afterStart?.(starts.length);
       const now = new Date().toISOString();
       events.push({
         eventId: `start-${input.threadId}-${starts.length}`,
@@ -248,6 +263,17 @@ function world(
         method: 'turn.started',
         prompt: input.input,
       });
+      if (options.failTurn?.() === true)
+        // What OpenCode native and Muse report for a failed turn: the
+        // Session goes to `error`, and the process keeps taking turns.
+        events.push({
+          ...base,
+          eventId: `${turnId}-failed`,
+          method: 'runtime.error',
+          severity: 'error',
+          code: ENGINE_TURN_FAILED_CODE,
+          message: 'The turn failed.',
+        });
       events.push({
         ...base,
         eventId: `${turnId}-end`,
@@ -261,6 +287,7 @@ function world(
     async respondToRequest() {},
     // The engine process ends: its policy goes with it.
     async stopSession(threadId: string) {
+      await options.beforeStop?.(threadId);
       stops.push(threadId);
       policies.delete(threadId);
       events.push({
@@ -1093,6 +1120,190 @@ describe('external engine pre-tool policy generation', () => {
       'conversation',
     ]);
     expect(await w.call('conversation')).toEqual({ behavior: 'defer' });
+  });
+
+  test('a restart in place whose park fails: a send queued behind it is refused, never run in the old engine, and a later send restarts it', async () => {
+    let failStop = true;
+    let queued: Promise<unknown> | undefined;
+    const sendTurn = (input: string) =>
+      w.service
+        .dispatch(
+          { type: 'sendTurn', input: { threadId: 'conversation', input } },
+          { userId: 'owner' },
+        )
+        .then(
+          () => ({ ok: true as const }),
+          (error: { code?: string; message?: string }) => ({
+            ok: false as const,
+            code: error?.code,
+            message: String(error?.message),
+          }),
+        );
+    const w = world('acp', {
+      beforeStop: async () => {
+        if (!failStop) return;
+        // A second send arrives while the park is stopping the engine.
+        queued ??= sendTurn('Queued behind the park.');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        throw new Error('stop failed');
+      },
+    });
+    const turnsStarted = () =>
+      w.store.listEventsByMethods('conversation', ['turn.started']).length;
+    await w.start('conversation');
+    await w.turn('conversation', 'Run the tests.');
+    await w.saveAgent('claude', {
+      name: 'Claude',
+      prompt: 'Help the person.',
+      tools: { mcpServers: ['github'], autoApprove: ['mcp__github__*'] },
+    });
+    expect(await w.call('conversation')).toMatchObject(replaced);
+
+    const first = await sendTurn('Run the tests again.');
+    expect(first).toMatchObject({ ok: false, message: 'stop failed' });
+    const second = await queued;
+    expect(second).toMatchObject({
+      ok: false,
+      code: 'session_configuration_replaced',
+      message: expect.stringContaining(
+        'changed again before your message was sent',
+      ),
+    });
+    // Nothing reached the old engine, which keeps refusing its tools.
+    expect(turnsStarted()).toBe(1);
+    expect(w.stops).toEqual([]);
+    expect(w.starts).toHaveLength(1);
+    expect(await w.call('conversation')).toMatchObject(replaced);
+
+    // The park succeeds: the next send restarts it in place.
+    failStop = false;
+    await w.turn('conversation', 'Once more.');
+    expect(w.stops).toEqual(['conversation']);
+    expect(w.starts.map((input) => input.threadId)).toEqual([
+      'conversation',
+      'conversation',
+    ]);
+    expect(await w.call('conversation')).toEqual({ behavior: 'defer' });
+  });
+
+  // The capability, not the provider name, decides whether `error` ends the
+  // binding: every name is crossed with the flag present and absent.
+  test.each([
+    { engine: 'acp', declares: false },
+    { engine: 'claude', declares: false },
+    { engine: 'acp', declares: true },
+    { engine: 'claude', declares: true },
+  ] as const)(
+    'a failed turn on a $engine-named engine, refusesTurnsAfterFailure=$declares: the outcome follows the flag',
+    async ({ engine, declares }) => {
+      let fail = false;
+      const w = world(engine, {
+        failTurn: () => fail,
+        refusesTurnsAfterFailure: declares,
+      });
+      await w.start('conversation');
+      await w.turn('conversation', 'Run the tests.');
+      fail = true;
+      await w.turn('conversation', 'This turn fails.');
+      fail = false;
+      expect(
+        (
+          await w.service.readSession(
+            'conversation',
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.session.status,
+      ).toBe('error');
+      await w.saveAgent('claude', {
+        name: 'Claude',
+        prompt: 'Help the person.',
+        tools: { mcpServers: ['github'], autoApprove: ['mcp__github__*'] },
+      });
+      expect(await w.call('conversation')).toMatchObject(replaced);
+
+      await w.turn('conversation', 'Run the tests again.');
+      if (declares) {
+        // Treated as ended: not parked, not restarted in place.
+        expect(w.stops).toEqual([]);
+        expect(w.starts).toHaveLength(1);
+        expect(await w.call('conversation')).toMatchObject(replaced);
+      } else {
+        // Still takes turns: parked and restarted in place.
+        expect(w.stops).toEqual(['conversation']);
+        expect(w.starts.map((input) => input.threadId)).toEqual([
+          'conversation',
+          'conversation',
+        ]);
+        expect(w.starts.at(-1)?.agent?.autoApprove).toEqual(['mcp__github__*']);
+        expect(await w.call('conversation')).toEqual({ behavior: 'defer' });
+      }
+    },
+  );
+
+  test('only the Claude adapter declares refusesTurnsAfterFailure among the real adapters', async () => {
+    const declared: string[] = [];
+    for (const name of ADAPTERS) {
+      const engine = createConformanceEngine(
+        name,
+        makeTempDir('external-policy-generation-adapter-'),
+      );
+      try {
+        if (engine.adapter.refusesTurnsAfterFailure === true)
+          declared.push(name);
+      } finally {
+        await engine.cleanup();
+      }
+    }
+    expect(ADAPTERS).toContain('claude');
+    expect(declared).toEqual(['claude']);
+  });
+
+  test('a configuration that changes again after a restart launched, before the send dispatches: refused as changed again, and the next send is accepted', async () => {
+    let launches = 0;
+    let landC: (() => Promise<void>) | undefined;
+    const w = world('acp', {
+      afterStart: async (count) => {
+        launches = count;
+        // The second launch is the restart in place under configuration B.
+        if (count === 2) await landC?.();
+      },
+    });
+    landC = () =>
+      w.saveAgent('claude', {
+        name: 'Claude',
+        prompt: 'Help the person.',
+        tools: { mcpServers: ['github'], autoApprove: ['Bash'] },
+      });
+    await w.start('conversation');
+    await w.turn('conversation', 'Run the tests.');
+    await w.saveAgent('claude', {
+      name: 'Claude',
+      prompt: 'Help the person.',
+      tools: { mcpServers: ['github'], autoApprove: ['mcp__github__*'] },
+    });
+    expect(await w.call('conversation')).toMatchObject(replaced);
+
+    await expect(
+      w.service.dispatch(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'conversation', input: 'Run the tests again.' },
+        },
+        { userId: 'owner' },
+      ),
+    ).rejects.toMatchObject({
+      code: 'session_configuration_replaced',
+      message: expect.stringContaining(
+        'changed again before your message was sent, so nothing was sent',
+      ),
+    });
+    expect(launches).toBe(2);
+
+    // Nothing more lands: the next send restarts it again and is accepted.
+    landC = undefined;
+    await w.turn('conversation', 'Once more.');
+    expect(launches).toBe(3);
+    expect(await w.call('conversation')).toEqual(allowed);
   });
 
   // The owner's Station: a reload with nothing changed (2026-11-17 the daily

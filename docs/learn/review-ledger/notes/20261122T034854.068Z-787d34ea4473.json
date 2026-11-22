@@ -1,0 +1,45 @@
+{
+  "revision": "1d61f368d1198c137af75776cb12754becd13fc9",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Delta: stored slugs are pinned to the id on first resolving read (automation-store.ts pinProjectReferences via mutate), an unreadable Project list refuses writes as unavailable, the runtime creates the Task with the Project's slug and holds the id (automation-actions-runtime.ts), and retry-episode accepts an open episode whose latest intent failed or was refused before invocation (automation-ledger.ts startFailedBeforeInvocation). Evidence: automation-store.test.ts and automation-actions-runtime.test.ts with a real ProjectService.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: retry-episode also accepts an open episode marked startFailed; checked against AutomationLedger.retryEpisode and the open-episode projection.","inputs":["docs/reference/cli.md","src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta: the retry row names startFailed open episodes; checked against retryEpisode and projectAutomationEpisode. The 503 text for an unreadable Project list was checked against automations.ts.","inputs":["docs/reference/api.md","src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta: the actions runtime now receives the Project service as `projects` instead of an isProjectCurrent predicate (exact-id matching moved into the runtime). Checked the citing pages: none describes that option; scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Delta: the runtime creates the automation Task with the Project's slug while authority keeps the exact id, compares the Task's Project through localProjectIdFor, logs an unreadable Project list once and stops the tick without refusing, and refuses a slug-recorded intent as a rule change. The cited setup and live-mode steps are unchanged.","inputs":["src-server/runtime/automation-actions-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta: a write refused because the Project list cannot be read now answers 503 policy_unavailable with 'Station could not read its Projects, so nothing was changed. Try again.'; other refusals and routes are unchanged. Checked the API and CLI reference automation sections.","inputs":["src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: a write refused because the Project list cannot be read now answers 503 policy_unavailable with 'Station could not read its Projects, so nothing was changed. Try again.'; other refusals and routes are unchanged. Checked the API and CLI reference automation sections.","inputs":["src-server/routes/operations/automations.ts"]},
+
+    {"path":"README.md","note":"Delta: retry-episode also accepts an open episode marked startFailed. Checked the citing pages: they do not describe retry-episode acceptance; commands and flags are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Delta: retry-episode also accepts an open episode marked startFailed. Checked the citing pages: they do not describe retry-episode acceptance; commands and flags are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Delta: retry-episode also accepts an open episode marked startFailed. Checked the citing pages: they do not describe retry-episode acceptance; commands and flags are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Delta: retry-episode also accepts an open episode marked startFailed. Checked the citing pages: they do not describe retry-episode acceptance; commands and flags are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Delta: retry-episode also accepts an open episode marked startFailed. Checked the citing pages: they do not describe retry-episode acceptance; commands and flags are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Delta: the retry row also names an open episode marked startFailed. Checked the citing pages: none summarizes the automations retry route.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Delta: the retry row also names an open episode marked startFailed. Checked the citing pages: none summarizes the automations retry route.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "8b0fbd88dec82b671a3f322c0f1d9e8c11d9b94e",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Added that a session whose engine failed or has exited is never restarted in place: its next message starts a successor once that engine process has stopped. Checked against OrchestrationService.policyReplacement, the predecessor-live refusal in ConversationLineage and the combined-behaviour tests in claude-engine-exit.integration.test.ts.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}
