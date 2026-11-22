@@ -935,7 +935,10 @@ queued follow-ups on it until a turn starts or the user sends one.
 `lastTurnCutOff` (`'max-tokens'`) is set while the latest turn completed with
 `finishReason: 'max-tokens'` and no turn is open after it: the reply is
 incomplete, and `sessionLadderWord` answers "Cut off" instead of "Done".
-Engines that report no finish reason are never marked.
+Engines that report no finish reason are never marked. Claude Code, ACP
+agents, the Station agent, Ollama and Bedrock report an output-limit stop.
+Codex, Muse Code, OpenCode and Copilot never do (their adapters report only
+`stop`, `cancelled` or `other`), so their cut-off replies still read "Done".
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
