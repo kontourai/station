@@ -70,7 +70,7 @@ This record and its area files are the specification the build is checked agains
 | Engine | What runs the agent. | Station, Claude Code, Codex, OpenCode |
 | Provider | A service plus its way of signing in. Auth is part of the provider. | Claude subscription, Claude API, Z.AI Coding Plan, Amazon Bedrock, OpenRouter, Ollama, CLIProxy |
 | Account | One sign-in or key under a provider. It owns usage left and limits. | Personal Max, Work |
-| Model | What you pick per chat. One canonical model, however many providers serve it. | Opus, GLM 5.3 |
+| Model | What you pick per chat. One canonical model, however many providers serve it. | Opus, GLM |
 
 - The thing you select and meter is provider + account: "Claude subscription · Personal Max". The account part is hidden when there is only one.
 - A provider is who you connect to and pay, not who made the model. Bedrock and OpenRouter serve other makers' models.

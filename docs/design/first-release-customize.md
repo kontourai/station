@@ -115,7 +115,7 @@ On a phone: The primary action is sticky above the chat dock.
 1. **"Verified" states what was proved: answered, listed 2 models, test message sent.** Uses the existing test and smoke checks. _(copy; slice 2.14)_
 2. **"Use it for", with one sensible default checked.** Guided where there is a decision. _(layout; slice 2.14)_
 3. **Claude Code and OpenCode rows are present but disabled, with the reason.** API format appears only as the reason a pairing is unavailable. _(copy; slice 2.14)_
-4. **"Make GLM 5.3 the default for new chats"** Needs the saved default for new chats. _(server work; slice 2.14)_
+4. **"Make GLM the default for new chats"** Needs the saved default for new chats. _(server work; slice 2.14)_
 
 ### `customize-10` Add provider: custom endpoint
 
