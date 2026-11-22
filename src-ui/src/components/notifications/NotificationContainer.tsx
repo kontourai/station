@@ -26,6 +26,7 @@ import {
 import { useSwipeToDismiss } from '../../hooks/useSwipeToDismiss';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { relativeTime } from '../../utils/relativeTime';
+import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
@@ -152,6 +153,30 @@ function ToastCard({
     notification.type === 'error' &&
     (notification.actions?.length ?? 0) < 2 &&
     !notification.dedupeKey?.startsWith('troubleshoot-');
+  // One handler for a labelled button and a menu item, so the two cannot
+  // answer differently.
+  const runToastAction = (index: number) => {
+    const action = notification.actions?.[index];
+    if (!action || !toastStore.isCurrentScope(notification.stationScope))
+      return;
+    if (isApproval || isPairing) {
+      action.onClick();
+      dismissToast(notification.id);
+    } else toastStore.runAction(notification.id, index);
+  };
+  const menuActions: OverflowAction[] = (notification.actions ?? []).flatMap(
+    (action, index) =>
+      action.inMenu
+        ? [
+            {
+              key: `${action.label}-${index}`,
+              label: action.label,
+              disabled: notification.pendingAction !== undefined,
+              onSelect: () => runToastAction(index),
+            },
+          ]
+        : [],
+  );
   const message = notification.message.trim();
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
   const headline =
@@ -321,27 +346,32 @@ function ToastCard({
       {((notification.actions && notification.actions.length > 0) ||
         troubleshootable) && (
         <div className="toast-card__actions">
-          {(notification.actions ?? []).map((action, index) => (
-            <Button
-              key={`${action.label}-${index}`}
-              variant={action.variant || 'secondary'}
-              size="sm"
-              className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
-              disabled={notification.pendingAction !== undefined}
-              aria-busy={notification.pendingAction === index || undefined}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!toastStore.isCurrentScope(notification.stationScope))
-                  return;
-                if (isApproval || isPairing) {
-                  action.onClick();
-                  dismissToast(notification.id);
-                } else toastStore.runAction(notification.id, index);
-              }}
-            >
-              {notification.pendingAction === index ? 'Working…' : action.label}
-            </Button>
-          ))}
+          {(notification.actions ?? []).map((action, index) =>
+            action.inMenu ? null : (
+              <Button
+                key={`${action.label}-${index}`}
+                variant={action.variant || 'secondary'}
+                size="sm"
+                className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
+                disabled={notification.pendingAction !== undefined}
+                aria-busy={notification.pendingAction === index || undefined}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  runToastAction(index);
+                }}
+              >
+                {notification.pendingAction === index
+                  ? 'Working…'
+                  : action.label}
+              </Button>
+            ),
+          )}
+          {menuActions.length > 0 && (
+            <ActionOverflowMenu
+              label={notification.actionsMenuLabel ?? 'More actions'}
+              actions={menuActions}
+            />
+          )}
           {troubleshootable && (
             <TroubleshootAction
               size="sm"

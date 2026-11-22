@@ -139,9 +139,9 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow Once',
-      'Allow all Bash commands for this session',
+      'Allow once',
       'Deny',
+      'Allow all Bash commands for this session',
     ]);
   });
 
@@ -192,7 +192,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow Once',
+      'Allow once',
       'Deny',
     ]);
   });
@@ -288,7 +288,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual(
-      label ? ['Allow Once', label, 'Deny'] : ['Allow Once', 'Deny'],
+      label ? ['Allow once', 'Deny', label] : ['Allow once', 'Deny'],
     );
   });
 
@@ -302,7 +302,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     const toast = approvalToast();
-    expect(toast.actions[1].label).toBe(
+    expect(toast.actions[2].label).toBe(
       'Allow all station-control.list_agents calls for this session',
     );
     expect(toast.toolPreview).toBe('{"status":"active"}');
@@ -316,7 +316,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.toolName).toBe('Allow Bash');
-    expect(toast.actions[1].label).toBe('Allow for this session');
+    expect(toast.actions[2].label).toBe('Allow for this session');
     expect(toast.toolPreview).toBeUndefined();
   });
 
@@ -351,7 +351,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.toolPreview).toBe('git status');
-    expect(toast.actions[1].label).toBe('Allow for this session');
+    expect(toast.actions[2].label).toBe('Allow for this session');
   });
 
   // Codex has no Station pre-tool seam, so its payload is the app-server's raw
@@ -414,11 +414,11 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
 
   test.each([
     [0, 'accept', false],
-    [1, 'acceptForSession', false],
-    [2, 'decline', false],
+    [1, 'decline', false],
+    [2, 'acceptForSession', false],
     [0, 'accept', true],
-    [1, 'acceptForSession', true],
-    [2, 'decline', true],
+    [1, 'decline', true],
+    [2, 'acceptForSession', true],
   ] as const)(
     'action %i sends %s bound to the request event id (visible draft: %s)',
     async (index, decision, visibleDraft) => {
@@ -484,10 +484,10 @@ describe('the Station browser server grant on the toast', () => {
       requestOpened({ ...browserPayload, stationBrowserServer: true }),
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow Once',
+      'Allow once',
+      'Deny',
       'Allow all station-browser.browser_click calls for this session',
       LABEL,
-      'Deny',
     ]);
   });
 
@@ -497,9 +497,9 @@ describe('the Station browser server grant on the toast', () => {
       requestOpened(browserPayload),
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow Once',
-      'Allow all station-browser.browser_click calls for this session',
+      'Allow once',
       'Deny',
+      'Allow all station-browser.browser_click calls for this session',
     ]);
   });
 
@@ -530,9 +530,16 @@ describe('the Station browser server grant on the toast', () => {
       'http://localhost:1',
       requestOpened({ ...browserPayload, stationBrowserServer: true }),
     );
-    approvalToast().actions[1]?.onClick();
+    const perTool = approvalToast().actions[2];
+    expect(perTool?.label).toBe(
+      'Allow all station-browser.browser_click calls for this session',
+    );
+    perTool?.onClick();
     await vi.waitFor(() =>
       expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    expect(vi.mocked(resolveOrchestrationRequest).mock.calls[0][0]).toEqual(
+      expect.objectContaining({ decision: 'acceptForSession' }),
     );
     expect(
       vi.mocked(resolveOrchestrationRequest).mock.calls[0][0],
@@ -597,9 +604,9 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(
       showToolApproval.mock.calls[1]?.[0].actions.map((a) => a.label),
     ).toEqual([
-      'Allow Once',
-      'Allow all Bash commands for this session',
+      'Allow once',
       'Deny',
+      'Allow all Bash commands for this session',
     ]);
   });
 
@@ -619,7 +626,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
       pendingApprovals: [],
     });
 
-    await click('Allow Once');
+    await click('Allow once');
 
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
@@ -646,7 +653,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
       requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
     );
 
-    await click('Allow Once');
+    await click('Allow once');
 
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
@@ -713,7 +720,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
       requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
     );
 
-    await click('Allow Once');
+    await click('Allow once');
 
     // Marked answered before the engine's `request.resolved` arrives, and
     // never taken back: the decision was delivered.
@@ -817,7 +824,7 @@ describe('#2344: the toast reports what happened to its answer', () => {
       requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
     );
 
-    await click('Allow Once');
+    await click('Allow once');
 
     expect(showToast).not.toHaveBeenCalled();
     expect(showToolApproval).toHaveBeenCalledTimes(1);
@@ -1017,13 +1024,13 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
     };
     handleRequestOpenedEvent('http://station.test', event);
     const first = approvalToast();
-    expect(first.actions.map((action) => action.label)).toContain('Allow Once');
+    expect(first.actions.map((action) => action.label)).toContain('Allow once');
     vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
       Object.assign(new Error('Load the full request before allowing it.'), {
         code: 'request_content_not_loaded',
       }),
     );
-    first.actions.find((action) => action.label === 'Allow Once')!.onClick();
+    first.actions.find((action) => action.label === 'Allow once')!.onClick();
     await vi.waitFor(() => expect(showToolApproval).toHaveBeenCalledTimes(2));
     expect(
       showToolApproval.mock.calls[1]![0].actions.map((action) => action.label),
@@ -1053,7 +1060,7 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
       requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
     );
     expect(approvalToast().actions.map((action) => action.label)).toContain(
-      'Allow Once',
+      'Allow once',
     );
   });
 });

@@ -42,7 +42,7 @@ test.describe('Notifications hierarchy', () => {
           notificationSource: 'approval-inbox',
         },
         actions: [
-          { id: 'accept', label: 'Allow Once', variant: 'primary' },
+          { id: 'accept', label: 'Allow once', variant: 'primary' },
           { id: 'decline', label: 'Deny', variant: 'danger' },
         ],
       },
@@ -267,7 +267,7 @@ test.describe('Notifications hierarchy', () => {
     ).toHaveCount(1);
     await expect(page.getByText('Job failed')).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Allow Once' }),
+      page.getByRole('button', { name: 'Allow once' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
     await expect(page.getByLabel('Answer this request')).toBeVisible();

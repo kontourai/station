@@ -253,7 +253,7 @@ describe('NotificationsPage', () => {
             notificationId: 'notif-1',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+          actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
         },
       ],
     };
@@ -261,7 +261,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getAllByText('Approval request').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByText('Allow Once'));
+    fireEvent.click(screen.getByText('Allow once'));
     expect(action).toHaveBeenCalledWith(
       { actionId: 'accept', id: 'notif-1' },
       { onSuccess: expect.any(Function) },
@@ -773,7 +773,7 @@ describe('NotificationsPage', () => {
             notificationId: 'active',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once' }],
+          actions: [{ id: 'accept', label: 'Allow once' }],
         },
       ],
     };
@@ -913,7 +913,7 @@ describe('NotificationsPage', () => {
             notificationId: 'notif-approval',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once' }],
+          actions: [{ id: 'accept', label: 'Allow once' }],
         },
       ],
     };
@@ -975,7 +975,7 @@ describe('NotificationsPage', () => {
             notificationId: 'notif-approval',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once' }],
+          actions: [{ id: 'accept', label: 'Allow once' }],
         },
       ],
     };

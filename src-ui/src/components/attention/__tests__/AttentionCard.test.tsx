@@ -188,7 +188,7 @@ function baseApproval(
     createdAt: now,
     updatedAt: now,
     source: { notificationId: 'notif-1', notificationSource: 'approval-inbox' },
-    actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+    actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
     ...overrides,
   };
 }
@@ -207,7 +207,7 @@ describe('AttentionCard — approval kind', () => {
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
     // Title/body/actions still render normally.
     expect(screen.getByText('Approval needed')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
   });
 });
 

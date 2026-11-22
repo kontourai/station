@@ -939,7 +939,7 @@ test.describe('Built-in runtime chat workflows', () => {
     });
     await expect(approvalQueue).toBeVisible({ timeout: 10_000 });
     const approvalPanel = page.getByTestId('approval-queue-panel');
-    const allowOnce = approvalPanel.getByRole('button', { name: 'Allow Once' });
+    const allowOnce = approvalPanel.getByRole('button', { name: 'Allow once' });
     await expect(allowOnce).toBeHidden();
     await approvalQueue.click();
     await expect(allowOnce).toBeVisible();
@@ -976,7 +976,7 @@ test.describe('Built-in runtime chat workflows', () => {
         status: 'approved',
       },
     });
-    await expect(page.getByRole('button', { name: 'Allow Once' })).toHaveCount(
+    await expect(page.getByRole('button', { name: 'Allow once' })).toHaveCount(
       0,
     );
   });

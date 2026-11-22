@@ -54,10 +54,10 @@ test('host and peer dock adopt the same writable conversation controls', async (
   );
   streams[0]!.stream.finish('tool_calls');
   await expect(
-    transcript.getByRole('button', { name: 'Allow Once', exact: true }),
+    transcript.getByRole('button', { name: 'Allow once', exact: true }),
   ).toBeEnabled();
   await captureConnectionState(page, testInfo, 'host-approval');
-  await page.getByRole('button', { name: 'Allow Once', exact: true }).click();
+  await page.getByRole('button', { name: 'Allow once', exact: true }).click();
   await expect.poll(() => streams.length).toBe(2);
   streams[1]!.stream.text('Local approval completed.');
   streams[1]!.stream.finish();

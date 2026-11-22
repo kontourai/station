@@ -58,7 +58,7 @@ function baseApproval(
     createdAt: now,
     updatedAt: now,
     source: { notificationId: 'notif-1', notificationSource: 'approval-inbox' },
-    actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+    actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
     ...overrides,
   };
 }
