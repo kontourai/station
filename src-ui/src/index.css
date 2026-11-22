@@ -770,7 +770,11 @@ button {
   cursor: pointer;
   line-height: 1.4;
 }
-button:hover {
+/* A disabled button has no hover state. This element rule outranks a single
+   variant class such as `.button--primary`, so hovering a disabled primary
+   swapped its fill for this surface and hid its white label. `:where()` keeps
+   the old specificity, so class hover rules still win as before. */
+button:hover:where(:not(:disabled)) {
   background: var(--bg-tertiary);
   border-color: var(--border-secondary);
 }
