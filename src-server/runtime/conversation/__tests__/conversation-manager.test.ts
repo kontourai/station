@@ -268,6 +268,34 @@ describe('getConversationStats — orchestration fallback (station#1299 slice 1)
     expect(data.turns).toBe(0);
   });
 
+  test('an agent without an agent file shows the prompt the runtime recorded, or none, never a zero (#5390)', async () => {
+    // The built-in Station agent has no agent file: loading it throws.
+    const configLoader = {
+      loadAgent: vi.fn().mockRejectedValue(new Error('not found')),
+    } as any;
+    const read = (fixed: Map<string, any>) =>
+      getConversationStats(
+        'default',
+        undefined,
+        new Map(),
+        fixed,
+        new Map([['default', []]]),
+        configLoader,
+        appConfig,
+        undefined,
+        mockLogger,
+      );
+
+    const unknown = await read(new Map());
+    expect(unknown.systemPromptTokens).toBeUndefined();
+    expect(unknown.contextTokens).toBeUndefined();
+
+    const recorded = await read(
+      new Map([['default', { systemPromptTokens: 900, mcpServerTokens: 1 }]]),
+    );
+    expect(recorded.systemPromptTokens).toBe(900);
+  });
+
   test('a memory-store conversation whose model reported no usage has no token counts or cost', async () => {
     // The record a Station-agent turn leaves when its model reports no usage
     // (a local model connection): metadata without `stats`.

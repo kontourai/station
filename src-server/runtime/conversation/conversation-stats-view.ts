@@ -79,12 +79,17 @@ export function buildEmptyConversationStatsView({
   contextWindowTokens,
 }: {
   modelId: string;
-  systemPromptTokens: number;
+  /** Absent when the agent's prompt is unknown. */
+  systemPromptTokens: number | undefined;
   mcpServerTokens: number;
   notFound?: boolean;
   contextWindowTokens?: number;
 }): ConversationStatsResponse {
-  const contextTokens = systemPromptTokens + mcpServerTokens;
+  // Without the prompt, the estimate would leave out what the agent sends.
+  const contextTokens =
+    systemPromptTokens === undefined
+      ? undefined
+      : systemPromptTokens + mcpServerTokens;
   // No turn recorded any usage here, so token counts and cost are absent
   // ("not reported"), never a zero nobody measured. The context figures
   // below are Station's own estimates of its prompt and tools.
@@ -133,7 +138,7 @@ export function buildConversationStatsView({
   if (!stats) {
     return buildEmptyConversationStatsView({
       modelId,
-      systemPromptTokens: systemPromptTokens ?? 0,
+      systemPromptTokens,
       mcpServerTokens: mcpServerTokens ?? 0,
       notFound,
       contextWindowTokens,

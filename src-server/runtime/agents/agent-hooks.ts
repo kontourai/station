@@ -394,7 +394,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     },
 
     afterInvocation: async (ctx) => {
-      const { invocation, usage, toolCallCount } = ctx;
+      const { invocation, usage, toolCallCount, error } = ctx;
       untrustedContent.clear(invocation);
       if (!invocation.conversationId) return;
 
@@ -402,7 +402,11 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         const adapter = deps.memoryAdapters.get(invocation.agentSlug);
         if (!adapter) return;
 
-        if (!usage) return;
+        // Station counts the turn and its tool calls itself, so a model that
+        // reports no usage still has a turn. Its token counts and cost stay
+        // absent ("not reported"). A failed invocation with nothing reported
+        // records nothing, as before.
+        if (!usage && error) return;
 
         const conversation = await adapter.getConversation(
           invocation.conversationId,
@@ -415,9 +419,15 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         )
           return;
 
-        const agentSpec = await deps.configLoader.loadAgent(
-          invocation.agentSlug,
-        );
+        // The built-in Station agent has no agent file to load; its spec is
+        // the one these hooks were built with. Throwing here dropped every
+        // turn's stats for that agent.
+        let agentSpec: AgentSpec;
+        try {
+          agentSpec = await deps.configLoader.loadAgent(invocation.agentSlug);
+        } catch {
+          agentSpec = deps.spec;
+        }
         let modelId =
           deps.spec.execution?.modelId ||
           agentSpec.execution?.modelId ||
@@ -438,15 +448,17 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
             // Usage persistence remains available for legacy provider state.
           }
         }
-        const cost = await calculateUsageCost(
-          modelId,
-          usage,
-          deps.modelCatalog,
-          providerType,
-          deps.appConfig,
-          deps.logger,
-          region,
-        );
+        const cost = usage
+          ? await calculateUsageCost(
+              modelId,
+              usage,
+              deps.modelCatalog,
+              providerType,
+              deps.appConfig,
+              deps.logger,
+              region,
+            )
+          : null;
 
         // Get existing stats
         const existingStats = conversation.metadata?.stats as any;
@@ -467,7 +479,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           existingStats,
           existingModelStats: (conversation.metadata?.modelStats ||
             {}) as Record<string, any>,
-          usage,
+          usage: usage ?? {},
           toolCallCount,
           modelId,
           latestUserMessageText,
@@ -486,15 +498,16 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           },
         });
 
-        await enrichLastMessage(
-          adapter,
-          invocation,
-          modelId,
-          providerType,
-          usage,
-          cost,
-          deps,
-        );
+        if (usage)
+          await enrichLastMessage(
+            adapter,
+            invocation,
+            modelId,
+            providerType,
+            usage,
+            cost,
+            deps,
+          );
       } catch (error) {
         deps.logger.error('Failed to update conversation stats', { error });
       }

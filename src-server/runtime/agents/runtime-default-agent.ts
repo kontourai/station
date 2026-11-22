@@ -315,6 +315,29 @@ export async function bootstrapRuntimeDefaultAgent(
     );
   }
 
+  const defaultInstructions = () =>
+    context.replaceTemplateVariables(
+      [
+        context.appConfig.systemPrompt || context.defaultSystemPrompt,
+        STATION_CAPABILITY_DISCOVERY_GUIDANCE,
+      ].join('\n\n'),
+    );
+  // #5390: the same estimate a persisted agent's framework bundle records
+  // (`voltagent-adapter.ts`), so the default agent's stats show the system
+  // prompt and tools it sends instead of a zero.
+  context.agentFixedTokens?.set('default', {
+    systemPromptTokens: Math.ceil(defaultInstructions().length / 4),
+    mcpServerTokens: Math.ceil(
+      JSON.stringify(
+        defaultTools.map((tool: any) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })),
+      ).length / 4,
+    ),
+  });
+
   // archive#914: one store, constructed once and shared. The agent used to be built
   // without a memory adapter while a *separate* `FileMemoryAdapter` was
   // registered under the same slug, so the agent wrote to the framework's own
@@ -365,13 +388,7 @@ export async function bootstrapRuntimeDefaultAgent(
     purpose: 'agent-run',
     agentId: 'station',
     name: 'default',
-    instructions: () =>
-      context.replaceTemplateVariables(
-        [
-          context.appConfig.systemPrompt || context.defaultSystemPrompt,
-          STATION_CAPABILITY_DISCOVERY_GUIDANCE,
-        ].join('\n\n'),
-      ),
+    instructions: defaultInstructions,
     model: defaultModel,
     tools: defaultTools,
     maxSteps: resolveStationRunMaxSteps(context.appConfig, { builtin: true }),

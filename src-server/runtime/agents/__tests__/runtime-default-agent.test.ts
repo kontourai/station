@@ -242,6 +242,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     const memoryAdapters = new Map();
     const agentMetadataMap = new Map();
     const agentHooksMap = new Map();
+    const agentFixedTokens = new Map();
     const provenanceGeneration = createMCPToolProvenanceGeneration();
 
     const agents = await bootstrapRuntimeDefaultAgent({
@@ -266,6 +267,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       memoryAdapters,
       agentMetadataMap,
       agentHooksMap,
+      agentFixedTokens,
     });
 
     expect(configLoader.saveIntegration).toHaveBeenCalledWith(
@@ -352,6 +354,17 @@ describe('bootstrapRuntimeDefaultAgent', () => {
         slug: 'default',
         name: 'Station Assistant',
       }),
+    );
+    // #5390: the stats estimate of what the agent sends, from the very
+    // instructions and tools it was built with, as a persisted agent's.
+    expect(agentFixedTokens.get('default')).toEqual({
+      systemPromptTokens: Math.ceil(instructions().length / 4),
+      mcpServerTokens: Math.ceil(
+        JSON.stringify([{ name: 'tool-1' }]).length / 4,
+      ),
+    });
+    expect(agentFixedTokens.get('default').systemPromptTokens).toBeGreaterThan(
+      0,
     );
   });
 

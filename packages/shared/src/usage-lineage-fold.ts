@@ -86,11 +86,11 @@ const NATIVE_THREAD_METADATA_KEY: ReadonlyMap<string, string> = new Map([
  * did: engines count tokens on different scales, and a sum would be a figure
  * no engine reported. Turns and tool calls (Station counts them) and costs
  * (per unit, never converted) are summed. Provider and MCP servers come from
- * the run that holds the newest Session, and the model from the newest run
- * that has one. Context occupancy comes from the newest run that has one
- * among the runs since the last engine change: another engine's context is
- * not the one the next turn sends, so an engine that has not reported context
- * yet has none rather than its predecessor's.
+ * the run that holds the newest Session. The model and context occupancy come
+ * from the newest run that has one among the runs since the last engine
+ * change: another engine's model and context are not the ones the next turn
+ * uses, so an engine that has not reported them yet has none rather than its
+ * predecessor's. A Session with no events has no engine and changes nothing.
  *
  * A module of its own so the cached per-Session fold
  * (`USAGE_PROJECTION_VERSION`, pinned to `usage-fold.ts`) is not invalidated
@@ -213,7 +213,7 @@ function latestFigures(
     ...(latest.provider ? { provider: latest.provider } : {}),
     ...(latest.engineMcp ? { engineMcp: latest.engineMcp } : {}),
   };
-  const model = newest('lastModelId')?.lastModelId;
+  const model = newest('lastModelId', true)?.lastModelId;
   if (model) aggregate.lastModelId = model;
   const context = newest('contextTokens', true);
   if (context) {

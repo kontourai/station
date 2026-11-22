@@ -350,4 +350,59 @@ describe('foldLineageUsageEvents (#5389)', () => {
       'claude',
     ]);
   });
+
+  it("has no model after an engine change until the new engine reports one, so no window is read from the previous engine's model", () => {
+    const aggregate = foldLineageUsageEvents([
+      [
+        ev({ method: 'session.started', provider: 'claude', threadId: 's1' }),
+        ev({
+          method: 'session.configured',
+          provider: 'claude',
+          threadId: 's1',
+          model: 'claude-model-200k',
+        }),
+        ...contextTurn('claude', 's1', 'c1', { contextTokens: 120_000 }),
+      ],
+      [
+        ev({ method: 'session.started', provider: 'acp', threadId: 's2' }),
+        ...contextTurn('acp', 's2', 'a1', { contextTokens: 9_000 }),
+      ],
+    ]);
+    expect(aggregate.provider).toBe('acp');
+    expect(aggregate.contextTokens).toBe(9_000);
+    expect(aggregate.lastModelId).toBeUndefined();
+    // The engine's own row keeps the model it ran.
+    expect(aggregate.engines?.[0]?.lastModelId).toBe('claude-model-200k');
+  });
+
+  it("a Codex Session back on an earlier thread of the same engine takes that thread's context (unreachable today)", () => {
+    // Threads X, then Y, then X again: only reachable if a resume could open
+    // a thread other than its predecessor's, which native-session ownership
+    // refuses today. Were it reached, the newest Session runs on thread X, so
+    // X's context is the one the next turn sends, not Y's.
+    const codex = (threadId: string, thread: string, context: number) => [
+      ev({
+        method: 'session.started',
+        provider: 'codex',
+        threadId,
+        metadata: { codexThreadId: thread },
+      }),
+      ...contextTurn('codex', threadId, `${threadId}:t`, {
+        contextTokens: context,
+      }),
+    ];
+    const aggregate = foldLineageUsageEvents([
+      codex('s1', 'X', 1_000),
+      codex('s2', 'Y', 2_000),
+      [
+        ev({
+          method: 'session.started',
+          provider: 'codex',
+          threadId: 's3',
+          metadata: { codexThreadId: 'X' },
+        }),
+      ],
+    ]);
+    expect(aggregate.contextTokens).toBe(1_000);
+  });
 });

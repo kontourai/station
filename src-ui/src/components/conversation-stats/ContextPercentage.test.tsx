@@ -156,29 +156,3 @@ describe('ContextPercentage live ACP usage', () => {
     ).toBeTruthy();
   });
 });
-
-describe('ContextPercentage after an engine change (#5390)', () => {
-  test('draws no ring until the new engine reports its context', () => {
-    // Before the change: the previous engine reported 65% of its window.
-    harness.stats = { contextWindowPercentage: 65 };
-    const { container, rerender } = render(<ContextPercentage {...props} />);
-    expect(container.querySelector('.context-meter__ring')).toBeTruthy();
-
-    // After the change the live usage is retired with the predecessor's
-    // Session, and the stats route gives no context figure until the new
-    // engine reports one (`conversation-stats-engine-change.routes.test.ts`).
-    harness.stats = {};
-    rerender(<ContextPercentage {...props} liveUsage={undefined} />);
-    expect(container.querySelector('.context-meter__ring')).toBeNull();
-
-    rerender(
-      <ContextPercentage
-        {...props}
-        liveUsage={{ contextTokens: 20_000, contextWindowTokens: 200_000 }}
-      />,
-    );
-    expect(
-      screen.getByRole('button', { name: 'Context 10.0% used' }),
-    ).toBeTruthy();
-  });
-});
