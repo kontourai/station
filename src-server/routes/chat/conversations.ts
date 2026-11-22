@@ -33,7 +33,6 @@ import {
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { conversationToThread } from '@kontourai/station-shared/thread-projection';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
-import type { LineageUsageAggregate } from '@kontourai/station-shared/usage-lineage-fold';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
@@ -403,7 +402,7 @@ interface SessionMessageReader {
   readConversationUsage?(
     conversationId: string,
     authority: SessionReadAuthority,
-  ): LineageUsageAggregate;
+  ): SessionUsageAggregate;
   listConversationHistoryPage(
     authority: SessionReadAuthority,
     options: { limit: number; cursor?: string; agentSlug?: string },
