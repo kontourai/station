@@ -4573,6 +4573,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         inboxPresence.mounted && (
                           <LazyBoundary
                             load={loadChatDockInboxPanel}
+                            shareAcrossMounts
                             componentProps={{
                               exiting: inboxPresence.exiting,
                               items: taskItems,
