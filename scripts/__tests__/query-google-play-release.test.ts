@@ -611,7 +611,7 @@ describe('Google Play readback cleanup', () => {
         }),
       ).resolves.toMatchObject({ provider: 'google-play' });
       expect(time.state.logs).toEqual([
-        `Google Play readback warning: ${detail} (attempt 1 of 3) for temporary edit edit-1; the edit was never committed and Play invalidates it at this account's next edit`,
+        `Google Play readback warning: ${detail} (attempt 1 of 3) for temporary edit edit-1; the edit was never committed`,
       ]);
       expect(play.methods()).toEqual(['POST', 'GET', 'GET', 'DELETE']);
     },

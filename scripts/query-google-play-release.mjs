@@ -416,8 +416,9 @@ async function observeOnce(identity, encodedPackage, context) {
  * the read and its cleanup, and nothing depends on the delete. A cleanup
  * failure of any other kind after a failed read is final. A good read whose
  * cleanup failed returns the observation with a stderr warning naming the
- * edit: the edit is never committed, never changes the live app, and Play
- * invalidates it at this account's next edit.
+ * edit: the edit is never committed and never changes the live app. Google's
+ * edits documentation says an account's next edit invalidates it; that is not
+ * verified here.
  */
 function settleAttempt(result, operationError, cleanupError, editId, context) {
   if (cleanupError && operationError)
@@ -433,7 +434,7 @@ function settleAttempt(result, operationError, cleanupError, editId, context) {
   if (operationError) throw operationError;
   if (cleanupError)
     context.log(
-      `Google Play readback warning: ${cleanupError.detail} for temporary edit ${editId}; the edit was never committed and Play invalidates it at this account's next edit`,
+      `Google Play readback warning: ${cleanupError.detail} for temporary edit ${editId}; the edit was never committed`,
     );
   return result;
 }
