@@ -2145,7 +2145,9 @@ Fetches app configuration.
 
 Fetches conversation stats. Disabled when either param is undefined. The
 response's `engineMcp`, when present, is the engine's folded MCP status, which
-a reopened conversation shows in place of the live list.
+a reopened conversation shows in place of the live list. Its `engines`, when
+present, lists each engine's own usage; after an engine change the
+conversation's own token figures are absent rather than a sum across engines.
 
 ### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
 

@@ -202,6 +202,7 @@ import {
   type SessionUsageAggregate,
   sessionStartedResumedNativeSession,
 } from '@kontourai/station-shared/usage-fold';
+import type { LineageUsageAggregate } from '@kontourai/station-shared/usage-lineage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import {
   readAuthorizedUsageExport,
@@ -7968,7 +7969,7 @@ export class OrchestrationService {
   readConversationUsage(
     conversationId: string,
     authority: SessionReadScope,
-  ): SessionUsageAggregate {
+  ): LineageUsageAggregate {
     this.initialize();
     return this.transcriptReads.readConversationUsage(
       this.conversationLineage.conversationSessionIds(conversationId),
