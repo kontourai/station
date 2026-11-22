@@ -3443,7 +3443,12 @@ kind/name does not invent a new engine adapter.
 Creation normally returns 201, update 200, with `{success: true, data}`. A saved
 configuration awaiting runtime activation returns 202 and
 `configurationActivation`, as with Agent writes. The returned definition is
-redacted. Invalid saves return a structured 400 response. A POST whose `id`
+redacted. Invalid saves return a structured 400 response. An
+OpenAI-compatible (`openai-compat`) Model connection without a non-blank
+`config.baseUrl` is refused on both POST and PUT with 400 and
+`code: "connection_address_required"`, and nothing is stored. The
+`/api/providers` writes (used by the `create_provider` control tool) apply the
+same rule. A POST whose `id`
 names an existing Model connection returns 409 and changes nothing; replacing
 it, including its stored API key, is a PUT.
 

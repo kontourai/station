@@ -20,6 +20,7 @@ import {
 import { providerOps } from '../../telemetry/metrics.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import {
+  connectionAddressRefusal,
   errorMessage,
   getBody,
   param,
@@ -113,82 +114,90 @@ export function createProviderRoutes(
     }
   });
 
-  app.post('/', validate(providerSchema), async (c) => {
-    try {
-      const body = restoreLegacyProviderSecrets(
-        getBody(c) as ProviderConnectionConfig,
-      );
-      const result = await mutate(async (beginMutation) => {
-        const duplicate = providerService.findDuplicateConnection(
-          body.type,
-          body.config ?? {},
+  app.post(
+    '/',
+    validate(providerSchema, { refusal: connectionAddressRefusal }),
+    async (c) => {
+      try {
+        const body = restoreLegacyProviderSecrets(
+          getBody(c) as ProviderConnectionConfig,
         );
-        if (duplicate) return { kind: 'duplicate', duplicate } as const;
-        if (!body.id) body.id = randomUUID();
-        beginMutation();
-        providerOps.add(1, { op: 'register' });
-        await providerService.saveProviderConnection(body);
-        return { kind: 'created', connection: body } as const;
-      });
-      if (result.value.kind === 'duplicate') {
-        providerOps.add(1, { op: 'duplicate-rejected', type: body.type });
+        const result = await mutate(async (beginMutation) => {
+          const duplicate = providerService.findDuplicateConnection(
+            body.type,
+            body.config ?? {},
+          );
+          if (duplicate) return { kind: 'duplicate', duplicate } as const;
+          if (!body.id) body.id = randomUUID();
+          beginMutation();
+          providerOps.add(1, { op: 'register' });
+          await providerService.saveProviderConnection(body);
+          return { kind: 'created', connection: body } as const;
+        });
+        if (result.value.kind === 'duplicate') {
+          providerOps.add(1, { op: 'duplicate-rejected', type: body.type });
+          return c.json(
+            {
+              success: false,
+              error: `A connection to this ${providerTypeLabel(body.type)} server already exists: ${result.value.duplicate.name}`,
+              existingId: result.value.duplicate.id,
+            },
+            409,
+          );
+        }
         return c.json(
           {
-            success: false,
-            error: `A connection to this ${providerTypeLabel(body.type)} server already exists: ${result.value.duplicate.name}`,
-            existingId: result.value.duplicate.id,
+            success: true,
+            data: redactLegacyProviderSecrets(result.value.connection),
+            ...configurationActivationPayload(result.activation),
           },
-          409,
+          configurationMutationStatus(result.activation, 201),
         );
+      } catch (error: unknown) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
       }
-      return c.json(
-        {
-          success: true,
-          data: redactLegacyProviderSecrets(result.value.connection),
-          ...configurationActivationPayload(result.activation),
-        },
-        configurationMutationStatus(result.activation, 201),
-      );
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 400);
-    }
-  });
+    },
+  );
 
-  app.put('/:id', validate(providerSchema), async (c) => {
-    try {
-      const id = param(c, 'id');
-      const body = getBody(c) as Omit<ProviderConnectionConfig, 'id'>;
-      const result = await mutate(async (beginMutation) => {
-        const existing = providerService
-          .listProviderConnections()
-          .find((connection) => connection.id === id);
-        if (!existing) return { kind: 'missing' } as const;
-        const connection = restoreLegacyProviderSecrets(
-          { ...body, id } as ProviderConnectionConfig,
-          existing,
-        );
-        if (isDeepStrictEqual(existing, connection)) {
-          return { kind: 'unchanged', connection } as const;
+  app.put(
+    '/:id',
+    validate(providerSchema, { refusal: connectionAddressRefusal }),
+    async (c) => {
+      try {
+        const id = param(c, 'id');
+        const body = getBody(c) as Omit<ProviderConnectionConfig, 'id'>;
+        const result = await mutate(async (beginMutation) => {
+          const existing = providerService
+            .listProviderConnections()
+            .find((connection) => connection.id === id);
+          if (!existing) return { kind: 'missing' } as const;
+          const connection = restoreLegacyProviderSecrets(
+            { ...body, id } as ProviderConnectionConfig,
+            existing,
+          );
+          if (isDeepStrictEqual(existing, connection)) {
+            return { kind: 'unchanged', connection } as const;
+          }
+          beginMutation();
+          await providerService.saveProviderConnection(connection);
+          return { kind: 'updated', connection } as const;
+        });
+        if (result.value.kind === 'missing') {
+          return c.json({ success: false, error: 'Provider not found' }, 404);
         }
-        beginMutation();
-        await providerService.saveProviderConnection(connection);
-        return { kind: 'updated', connection } as const;
-      });
-      if (result.value.kind === 'missing') {
-        return c.json({ success: false, error: 'Provider not found' }, 404);
+        return c.json(
+          {
+            success: true,
+            data: redactLegacyProviderSecrets(result.value.connection),
+            ...configurationActivationPayload(result.activation),
+          },
+          configurationMutationStatus(result.activation, 200),
+        );
+      } catch (error: unknown) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
       }
-      return c.json(
-        {
-          success: true,
-          data: redactLegacyProviderSecrets(result.value.connection),
-          ...configurationActivationPayload(result.activation),
-        },
-        configurationMutationStatus(result.activation, 200),
-      );
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 400);
-    }
-  });
+    },
+  );
 
   app.delete('/:id', async (c) => {
     try {

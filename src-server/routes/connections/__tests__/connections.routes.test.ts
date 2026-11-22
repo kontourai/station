@@ -505,4 +505,67 @@ describe('Connection Routes', () => {
       config: { apiKey: 'original-key' },
     });
   });
+
+  test('POST and PUT refuse an OpenAI-compatible connection with no server URL, storing nothing', async () => {
+    // Real ConnectionService over a stateful provider store, so "nothing was
+    // stored" is observed where the record would be written.
+    const stored: any[] = [];
+    const providerService = {
+      listProviderConnections: vi.fn(() => stored),
+      saveProviderConnection: vi.fn((connection: any) => {
+        const index = stored.findIndex((entry) => entry.id === connection.id);
+        if (index >= 0) stored[index] = connection;
+        else stored.push(connection);
+      }),
+      deleteProviderConnection: vi.fn(),
+      checkHealth: vi.fn().mockResolvedValue(true),
+    };
+    const service = createConnectionServiceForTest(
+      providerService as any,
+      () => [],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(async (updates: any) => updates),
+    );
+    const app = createConnectionRoutes(service);
+    const send = (method: 'POST' | 'PUT', path: string, baseUrl?: string) =>
+      app.request(path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        // The exact body the Add form sends for an untouched
+        // OpenAI-compatible choice.
+        body: JSON.stringify({
+          id: 'compat',
+          kind: 'model',
+          type: 'openai-compat',
+          name: 'OpenAI-Compatible',
+          enabled: true,
+          config:
+            baseUrl === undefined ? { apiKey: '' } : { baseUrl, apiKey: '' },
+          capabilities: ['llm', 'embedding'],
+        }),
+      });
+    const refusal = {
+      success: false,
+      error:
+        'A server URL is required to save this OpenAI-compatible connection.',
+      code: 'connection_address_required',
+    };
+
+    for (const baseUrl of ['', '   ', undefined]) {
+      const response = await send('POST', '/', baseUrl);
+      expect(response.status).toBe(400);
+      expect(await json(response)).toMatchObject(refusal);
+    }
+    expect(stored).toEqual([]);
+    expect(providerService.saveProviderConnection).not.toHaveBeenCalled();
+
+    expect((await send('POST', '/', 'http://127.0.0.1:9/v1')).status).toBe(201);
+    const update = await send('PUT', '/compat', '');
+    expect(update.status).toBe(400);
+    expect(await json(update)).toMatchObject(refusal);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].config.baseUrl).toBe('http://127.0.0.1:9/v1');
+  });
 });

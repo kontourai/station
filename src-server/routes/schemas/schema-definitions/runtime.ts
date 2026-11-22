@@ -536,14 +536,55 @@ export const rateSchema = z.object({
   reason: z.string().optional(),
 });
 
+/**
+ * An OpenAI-compatible connection is nothing without the server it talks to.
+ * A save with no address used to persist a record that listings marked as
+ * missing a prerequisite while capability lookups (the Knowledge embedding
+ * connection among them) still selected it, because they read `enabled` and
+ * `capabilities`, not readiness. Refusing the write here covers create and
+ * update on both connection routes.
+ */
+export const CONNECTION_ADDRESS_REQUIRED_CODE = 'connection_address_required';
+export const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
+  'A server URL is required to save this OpenAI-compatible connection.';
+
+function refuseMissingOpenAICompatAddress(
+  data: { type: string; config?: Record<string, unknown> },
+  ctx: z.RefinementCtx,
+) {
+  if (data.type !== 'openai-compat') return;
+  const baseUrl = data.config?.baseUrl;
+  if (typeof baseUrl === 'string' && baseUrl.trim().length > 0) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['config', 'baseUrl'],
+    message: CONNECTION_ADDRESS_REQUIRED_MESSAGE,
+    params: { code: CONNECTION_ADDRESS_REQUIRED_CODE },
+  });
+}
+
+/** `validate()` refusal that names the missing address instead of "Validation failed". */
+export function connectionAddressRefusal(issues: z.ZodIssue[]) {
+  const missing = issues.find(
+    (issue) =>
+      issue.code === z.ZodIssueCode.custom &&
+      issue.params?.code === CONNECTION_ADDRESS_REQUIRED_CODE,
+  );
+  return missing
+    ? { code: CONNECTION_ADDRESS_REQUIRED_CODE, error: missing.message }
+    : undefined;
+}
+
 // Provider
-export const providerSchema = z.object({
-  type: z.string().min(1),
-  name: z.string().min(1),
-  config: z.record(z.any()),
-  enabled: z.boolean().optional(),
-  capabilities: z.array(z.string()).optional(),
-});
+export const providerSchema = z
+  .object({
+    type: z.string().min(1),
+    name: z.string().min(1),
+    config: z.record(z.any()),
+    enabled: z.boolean().optional(),
+    capabilities: z.array(z.string()).optional(),
+  })
+  .superRefine(refuseMissingOpenAICompatAddress);
 
 const BEDROCK_AUTH_MODES = ['chain', 'profile', 'api-key'] as const;
 
@@ -587,6 +628,7 @@ export const connectionSchema = z
   // would otherwise silently resolve to the default credential chain later
   // (HIGH-2, review fix round). `config` stays a generic `z.record` for
   // every other connection type — this refinement only fires for `bedrock`.
+  .superRefine(refuseMissingOpenAICompatAddress)
   .superRefine((data, ctx) => {
     if (data.type !== 'bedrock') return;
     const authMode = data.config?.authMode;
