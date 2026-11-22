@@ -138,8 +138,8 @@ export function ScheduleJobsTable({
             <tr>
               <SortHeader
                 label="Name"
-                sortKey="name"
-                active={sortKey === 'name'}
+                sortKey="label"
+                active={sortKey === 'label'}
                 dir={sortDir}
                 onClick={toggleSort}
               />

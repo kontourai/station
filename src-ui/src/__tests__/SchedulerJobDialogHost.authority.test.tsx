@@ -39,6 +39,7 @@ const inputs = vi.hoisted(() => ({
 vi.mock('@kontourai/station-sdk', () => ({
   // A host that has not advertised chat automations: the form's file run.
   useScheduledConversationTargetCapability: () => ({ data: false }),
+  useSchedulerJobDisplayNameCapability: () => ({ data: true }),
   useAgentsQuery: () => ({
     data: inputs.agents,
     isSuccess: true,

@@ -120,10 +120,7 @@ export function ScheduleView() {
     toggle,
     filterText,
     setFilterText,
-  } = useSortableTable(enrichedJobs, 'lastRun', 'desc', [
-    'name',
-    'displayName',
-  ]);
+  } = useSortableTable(enrichedJobs, 'lastRun', 'desc', ['label', 'name']);
   const qualifiedRun = parseQualifiedScheduleRun(runTarget);
   const exactRun = useMemo(
     () => (runTarget ? runs.find((run) => run.runId === runTarget) : undefined),

@@ -1,10 +1,15 @@
 import {
+  isSchedulerJobDisplayName,
   SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS,
+  SCHEDULER_JOB_NAME_TAKEN,
   type SchedulerAutomationTarget,
   type SchedulerJob,
   type SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
-import { useScheduledConversationTargetCapability } from '@kontourai/station-sdk';
+import {
+  useScheduledConversationTargetCapability,
+  useSchedulerJobDisplayNameCapability,
+} from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
@@ -119,9 +124,14 @@ export function JobFormModal({
   const isEdit = !!job;
   const addJob = useAddJob();
   const editJob = useEditJob();
-  // Only to keep a new automation's hidden slug from colliding with one that
-  // exists; the server still refuses a duplicate.
+  // A host that stores display names picks the hidden slug itself, against
+  // every job. An older host needs the form to name one, and drops the
+  // display name: the slug is then kept clear of the jobs this person sees,
+  // and the host still refuses one it already has.
+  const displayNameSupport = useSchedulerJobDisplayNameCapability().data;
+  const displayNames = displayNameSupport === true;
   const existingJobs = useSchedulerJobs();
+  const [nameTouched, setNameTouched] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(
     job?.provider || providers[0]?.id || 'built-in',
   );
@@ -433,7 +443,7 @@ export function JobFormModal({
     if (isEdit) {
       const opts: Record<string, unknown> = {};
       // A rename changes only what people read; the slug stays the identity.
-      if (displayName !== jobLabel(job))
+      if (displayNames && displayName !== jobLabel(job))
         opts.displayName = displayName === job.name ? null : displayName;
       if (!scheduleEquals(nextSchedule, initialSchedule)) {
         opts.schedule = nextSchedule;
@@ -474,13 +484,18 @@ export function JobFormModal({
       editJob.mutate({ target: job.name, ...opts }, { onSuccess: onClose });
     } else {
       if (!nameValid) return;
-      const name = slugForJobName(
-        displayName,
-        new Set((existingJobs.data ?? []).map((existing) => existing.name)),
-      );
+      const name =
+        displayNames && selectedProvider === 'built-in'
+          ? undefined
+          : slugForJobName(
+              displayName,
+              new Set(
+                (existingJobs.data ?? []).map((existing) => existing.name),
+              ),
+            );
       addJob.mutate(
         {
-          name,
+          ...(name === undefined ? {} : { name }),
           ...(displayName === name ? {} : { displayName }),
           provider: selectedProvider,
           // #1536 L1: a bare `cron` string cannot carry a timezone, so sending
@@ -517,9 +532,25 @@ export function JobFormModal({
 
   const pending = addJob.isPending || editJob.isPending;
   const mutationError = addJob.error ?? editJob.error;
-  const nameValid =
-    form.name.trim().length > 0 &&
-    form.name.trim().length <= SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS;
+  const nameValid = isSchedulerJobDisplayName(form.name.trim());
+  // Said once the person has typed in the field, and always on Edit, where an
+  // empty name was a choice.
+  const nameError =
+    !nameValid && (isEdit || nameTouched)
+      ? form.name.trim()
+        ? 'Use letters, numbers or symbols, on one line.'
+        : 'Give the automation a name.'
+      : undefined;
+  // Only an existing name here can be the conflict: the form names no slug
+  // on a host that picks one, so a taken name means that host ran out of
+  // numbered slugs for it, or an older host already had the slug.
+  const nameTaken =
+    mutationError instanceof Error &&
+    'code' in mutationError &&
+    mutationError.code === SCHEDULER_JOB_NAME_TAKEN;
+  const renameLocked = isEdit && !displayNames;
+  // While the host's answer is arriving the field waits without a reason.
+  const renameUnsupported = renameLocked && displayNameSupport !== undefined;
   const scheduleValid =
     form.scheduleKind === 'cron'
       ? form.cron.trim().length > 0
@@ -582,7 +613,9 @@ export function JobFormModal({
       <div className="schedule__modal-body">
         {mutationError && (
           <div role="alert" className="schedule__field-error">
-            {userFacingErrorMessage(mutationError)}
+            {nameTaken
+              ? 'Another automation already uses this name. Choose a different name.'
+              : userFacingErrorMessage(mutationError)}
           </div>
         )}
         {!isEdit && providers.length > 1 && (
@@ -600,15 +633,42 @@ export function JobFormModal({
             </select>
           </label>
         )}
-        <label className="schedule__field">
-          <span className="schedule__field-label">Name</span>
+        {/* A container, not a wrapping label: the error and hint below are
+            the field's description, not part of its name. */}
+        <div className="schedule__field">
+          <label htmlFor="schedule-name" className="schedule__field-label">
+            Name
+          </label>
           <input
+            id="schedule-name"
             value={form.name}
-            onChange={set('name')}
+            onChange={(event) => {
+              setNameTouched(true);
+              set('name')(event);
+            }}
             maxLength={SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS}
             placeholder="Daily briefing"
+            readOnly={renameLocked}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={
+              nameError
+                ? 'schedule-name-error'
+                : renameUnsupported
+                  ? 'schedule-name-locked'
+                  : undefined
+            }
           />
-        </label>
+          {nameError && (
+            <span id="schedule-name-error" className="schedule__field-error">
+              {nameError}
+            </span>
+          )}
+          {renameUnsupported && (
+            <span id="schedule-name-locked" className="schedule__field-hint">
+              Renaming needs a newer version of this Station.
+            </span>
+          )}
+        </div>
         {runIn === 'project' && (
           <div className="schedule__field">
             <span className="schedule__field-label">Run in</span>

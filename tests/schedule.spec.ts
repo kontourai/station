@@ -1,6 +1,9 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
-import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
+import {
+  type SchedulerSchedule,
+  schedulerJobSlugCandidates,
+} from '@kontourai/station-contracts/scheduler';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { expect, type Page } from '@playwright/test';
 import { modelConnectionFixture } from './helpers/connection-fixtures';
@@ -164,18 +167,28 @@ async function seedScheduleCrudApi(page: Page) {
   await page.route('**/scheduler/jobs', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
-      if (jobs.has(body.name)) {
+      // As the scheduler does: an explicit slug that is taken is refused; a
+      // create that names only a display name gets the first unused slug.
+      const name: string | undefined = body.name
+        ? jobs.has(body.name)
+          ? undefined
+          : body.name
+        : schedulerJobSlugCandidates(body.displayName).find(
+            (candidate) => !jobs.has(candidate),
+          );
+      if (!name) {
         await route.fulfill({
           status: 409,
           json: {
             success: false,
+            code: 'job_name_taken',
             error: `Job '${body.name}' already exists`,
           },
         });
         return;
       }
       const job = makeJob({
-        name: body.name,
+        name,
         ...(body.displayName ? { displayName: body.displayName } : {}),
         provider: body.provider ?? 'built-in',
         cron: body.cron ?? '* * * * *',
@@ -298,9 +311,13 @@ test.describe('Schedule Page', () => {
       .getByRole('button', { name: 'New automation', exact: true })
       .click();
     const dialog = page.getByRole('dialog', { name: 'New automation' });
+    // This Station advertises chat automations, so the form settles on "Its
+    // own chat" once the handshake answers; asserting before that raced the
+    // Station-engine wording against it.
+    await expect(dialog.getByLabel('Run in')).toHaveValue('dedicated');
     await expect(
       dialog.getByText(
-        "Scheduled jobs need an agent that runs on Station's engine.",
+        'Scheduled jobs need an agent that is set up and ready.',
       ),
     ).toBeVisible();
     await expect(
@@ -467,7 +484,17 @@ test.describe('Schedule Page', () => {
     await expect(duplicateDialog.getByLabel('Name')).toHaveValue(
       'daily-report copy',
     );
-    await duplicateDialog.getByRole('button', { name: 'Cancel' }).click();
+    // The same name as the job it copies: the copy gets its own hidden slug
+    // instead of a refusal the person cannot get past.
+    await duplicateDialog.getByLabel('Name').fill('daily-report');
+    await duplicateDialog
+      .getByRole('button', { name: 'Create automation', exact: true })
+      .click();
+    await expect(duplicateDialog).toBeHidden();
+    await expect(page.getByTestId('job-row-daily-report-2')).toContainText(
+      'daily-report',
+    );
+    await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
 
     await page
       .getByRole('button', { name: 'New automation', exact: true })
