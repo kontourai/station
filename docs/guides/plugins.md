@@ -652,6 +652,15 @@ Entry `source` values (plugins and `tools`) are confined by
 
 A refused entry stays listed without a source, and installing it reports why.
 
+When a catalog is listed, each local plugin entry also says what it is: the
+provider reads its `plugin.json` and the layout files it names, and the row's
+`app` lists the layout tab labels, Workspace Pane names, where it opens, what
+it works with, the agents, prompt actions and knowledge it brings, the tool
+servers it requires, and whether a view is a sandboxed MCP tool UI. A plugin
+with no layout and no pane reads `{ "kind": "none" }`. A remote source is not
+fetched for this, and a manifest or layout that is missing, malformed or over
+a bound leaves only that row without `app`.
+
 ### Install and use a bundled layout
 
 Registry is the discovery and installation surface; **Plugins** is the
