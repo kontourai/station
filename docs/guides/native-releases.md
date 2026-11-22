@@ -253,19 +253,30 @@ with the run reference when its provider step did not succeed — as a
 per-platform state artifact. The Play readback
 (`scripts/query-google-play-release.mjs`, which the protected verifier also
 runs) reads the internal track and bundles through a temporary edit that it
-never commits. Each attempt acquires a new access token, creates its own edit
-and deletes it. A step that times out, a network failure, a 408, a 429 (after
-`Retry-After` when Play sends one) or a 5xx is retried, up to three attempts.
-Each step is limited to 15 s, the readback to a 60 s budget, and no attempt
-starts with less than 10 s left. An edit cleanup that starts at the deadline
-still gets 5 s, so the readback ends within 65 s; the verifier allows it 90 s,
-and the workflow step allows 3 minutes. A 400, 403, 404 or other non-retryable
-status, an observation the parser rejects, and a cleanup that fails after a
-failed read end the readback at once. A cleanup that fails after a good read
-is a warning that names the edit: Play invalidates an uncommitted edit when
-the same account next creates one. Each failure names the step and the
-attempt. Three Nightly runs (43418305981, 43530636495 and 44019513466) went
-red because a single 15 s attempt stalled after a successful upload.
+never commits. Each attempt builds a new client, acquires its access token as
+its own time-limited stage (`authenticate`, `acquire-client`,
+`acquire-token`), creates its own edit, reads it and deletes it; nothing read in
+one attempt is reused. The token stage needs its own limit because
+google-auth-library sends the external-account STS exchange with no timeout of
+its own: a stalled exchange is abandoned at the limit, and the command exits
+explicitly so the abandoned socket cannot keep it running. A timeout, a network
+failure, a 408, a 429 (waiting for `Retry-After` when it is longer) or a 5xx is
+retried after 2 s and then 5 s, up to three attempts. Each phase is limited to
+15 s and never past a 60 s budget, and no attempt starts with less than 10 s
+left. An edit cleanup that starts at the deadline still gets 5 s, so the
+readback ends within 65 s; the verifier allows it 90 s, and the workflow step
+allows 3 minutes, after which the unknown claim is recorded. Still fail-closed:
+any other HTTP status (a 403 or 404 means the identity or grant is wrong), an
+observation the parser rejects, a spent budget, and a cleanup that fails after
+a failed read. A cleanup that fails after a good read is a stderr warning that
+names the phase and the edit, because an uncommitted edit never changes the
+live app and Play invalidates it when the same account next creates one. Each
+failure names the phase and the attempt, never the provider's own error text.
+Not verified: stable releases upload a different package with the same service
+account, and if Play's one-open-edit rule spans apps, a readback's edit (up to
+three on the retry path) could invalidate an overlapping stable upload's edit.
+Four Nightly runs (43418305981, 43530636495, 44019513466 and 44705853565) went
+red because a single 15 s attempt stalled after a committed upload.
 
 The protected verifier (`protected-finalize`) runs whenever at least one of
 Android or the shared desktop release published. It joins all three platform

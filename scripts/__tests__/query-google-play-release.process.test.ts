@@ -71,7 +71,7 @@ describe('query-google-play-release CLI', () => {
       observed: { versionCode: 242801, status: 'completed' },
     });
     expect(result.stderr.trim()).toBe(
-      'Google Play cohort verification failed: create temporary edit failed with HTTP 503: Request failed with status code 503 (attempt 1 of 3); retrying in 2000 ms from a new edit',
+      'Google Play cohort verification failed: create-edit failed with HTTP 503 (attempt 1 of 3); retrying in 2000 ms from a new edit',
     );
   });
 
@@ -82,7 +82,7 @@ describe('query-google-play-release CLI', () => {
       provider: 'google-play',
     });
     expect(result.stderr).toContain(
-      'Google Play readback warning: temporary edit edit-1 was not deleted: delete temporary edit failed with HTTP 500',
+      'Google Play readback warning: delete-edit failed with HTTP 500 (attempt 1 of 3) for temporary edit edit-1;',
     );
   });
 
@@ -90,7 +90,7 @@ describe('query-google-play-release CLI', () => {
     const result = await cli('forbidden');
     expect(result).toMatchObject({ status: 1, killed: false, stdout: '' });
     expect(result.stderr.trim()).toBe(
-      'Google Play cohort verification failed: create temporary edit failed with HTTP 403: Request failed with status code 403 (attempt 1 of 3)',
+      'Google Play cohort verification failed: create-edit failed with HTTP 403 (attempt 1 of 3)',
     );
   });
 });
@@ -137,15 +137,23 @@ describe('query-google-play-release token time limit', () => {
       }),
     );
     const entry = `import(${JSON.stringify(pathToFileURL(SCRIPT).href)}).then((m) => m.runCli(['query-json', ${JSON.stringify(IDENTITY)}], { requestTimeoutMs: 2000, totalBudgetMs: 8000, minAttemptBudgetMs: 100 }))`;
+    const started = Date.now();
     const result = await runChild(['--input-type=module', '--eval', entry], {
       GOOGLE_APPLICATION_CREDENTIALS: credentials,
+      // Without a project id, GoogleAuth#getClient itself fetches a token to
+      // look one up, and the stall would land in acquire-client; both run in
+      // the same time-limited stage. A known project puts it in acquire-token.
+      GOOGLE_CLOUD_PROJECT: 'readback-test',
     });
     expect(result).toMatchObject({ status: 1, killed: false, stdout: '' });
+    // The 8 s budget plus node start-up; an abandoned STS socket that kept
+    // the process alive would run to the 45 s kill instead.
+    expect(Date.now() - started).toBeLessThan(20_000);
     expect(result.stderr).toContain(
-      'acquire access token timed out after 2000 ms (attempt 1 of 3); retrying in 2000 ms from a new edit',
+      'acquire-token local deadline elapsed (attempt 1 of 3); retrying in 2000 ms from a new edit',
     );
     expect(result.stderr).toContain(
-      'last failure: acquire access token timed out after 2000 ms (attempt 2 of 3)',
+      'last failure: acquire-token local deadline elapsed (attempt 2 of 3)',
     );
     // Each attempt built a new client, so each reached STS on its own.
     expect(seen.filter((url) => url.startsWith('/sts'))).toHaveLength(2);
