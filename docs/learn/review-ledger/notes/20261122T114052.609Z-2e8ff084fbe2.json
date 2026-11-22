@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/design/registry-trust-policy.md","note":"The fix round keeps source confinement and refusals identical (resolved once per entry); trust and allow-list behaviour are unchanged.","inputs":["docs/design/registry-trust-policy.md","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Rechecked the catalog app facts paragraph after the fix round: fields, none for screenless plugins, remote not fetched, per-row absence on failure are unchanged. Reads now also refuse a layout outside its package, consistent with the confinement bullets.","inputs":["docs/guides/plugins.md","packages/contracts/src/catalog.ts","src-server/providers/registries/json-manifest-registry.ts"]}
+  ]
+}
