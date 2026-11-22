@@ -704,14 +704,16 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     }) as HTMLButtonElement;
     const reason = 'A server URL is required to save this connection.';
     expect(create.disabled).toBe(true);
+    expect(create.closest('header')?.textContent).toContain(reason);
     const describedBy = (create.getAttribute('aria-describedby') ?? '').split(
       ' ',
     );
-    const reasonNode = screen.getByText(reason);
-    expect(describedBy).toContain(reasonNode.id);
-    expect(
-      screen.getByLabelText('Server URL').getAttribute('aria-describedby'),
-    ).toBe(reasonNode.id);
+    const fieldReasonId = screen
+      .getByLabelText('Server URL')
+      .getAttribute('aria-describedby');
+    expect(fieldReasonId).toBeTruthy();
+    expect(document.getElementById(fieldReasonId!)?.textContent).toBe(reason);
+    expect(describedBy).toContain(fieldReasonId);
     fireEvent.click(create);
     expect(saveMutate).not.toHaveBeenCalled();
 
@@ -754,9 +756,17 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       name: 'Save',
     }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
+    // The same sentence sits in the header beside Save, not only under the
+    // Server URL field, which a phone shows below the fold.
+    const header = save.closest('header');
+    expect(header).toBeTruthy();
+    expect(header?.textContent).toContain(
+      'A server URL is required to save this connection.',
+    );
     expect(
-      screen.getByText('A server URL is required to save this connection.'),
-    ).toBeTruthy();
+      document.getElementById(save.getAttribute('aria-describedby') ?? '')
+        ?.textContent,
+    ).toBe('A server URL is required to save this connection.');
   });
 
   test('defers a dirty draft selection change until discard is confirmed', () => {

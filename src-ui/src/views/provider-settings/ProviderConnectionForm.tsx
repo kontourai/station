@@ -20,6 +20,9 @@ import { hasConnectionAddress } from './utils';
 
 /** The inline reason Create/Save is unavailable; the header button points at it. */
 export const CONNECTION_ADDRESS_REQUIRED_ID = 'provider-address-required';
+/** Same sentence the server answers with (`connection_address_required`). */
+export const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
+  'A server URL is required to save this connection.';
 
 /**
  * The connection's default model (archive#3652, archive#3654, and their review's).
@@ -604,7 +607,7 @@ export function ProviderConnectionForm({
             />
             {!hasConnectionAddress(form.config) && (
               <div id={CONNECTION_ADDRESS_REQUIRED_ID} className="editor-error">
-                A server URL is required to save this connection.
+                {CONNECTION_ADDRESS_REQUIRED_MESSAGE}
               </div>
             )}
           </div>

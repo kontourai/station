@@ -31,6 +31,7 @@ import {
 } from './connections-hub/connection-health';
 import {
   CONNECTION_ADDRESS_REQUIRED_ID,
+  CONNECTION_ADDRESS_REQUIRED_MESSAGE,
   ProviderConnectionForm,
 } from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
@@ -649,6 +650,15 @@ export function ProviderSettingsView({
         >
           <DetailHeader
             title={isNew ? `Connect ${form.name}` : form.name || form.type}
+            // The field-level reason can sit below the fold (a phone opening a
+            // connection saved without an address); the sticky header keeps
+            // the same sentence beside the disabled Create/Save.
+            subtitle={
+              form.type === 'openai-compat' &&
+              !hasConnectionAddress(form.config)
+                ? CONNECTION_ADDRESS_REQUIRED_MESSAGE
+                : undefined
+            }
           >
             {!isNew && selectedProviderId && (
               <button
