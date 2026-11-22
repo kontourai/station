@@ -1,0 +1,11 @@
+{
+  "revision": "8d861da1494bb0518bd049acf9b2c419a87383ef",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked pages citing contracts.md (glossary, integrating guide, contracts AGENTS): the edit adds handoff and fork codes to the orchestration row and failure-kind table only; their cited claims are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked pages citing contracts.md (glossary, integrating guide, contracts AGENTS): the edit adds handoff and fork codes to the orchestration row and failure-kind table only; their cited claims are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked pages citing contracts.md (glossary, integrating guide, contracts AGENTS): the edit adds handoff and fork codes to the orchestration row and failure-kind table only; their cited claims are unaffected.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
