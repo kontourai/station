@@ -170,6 +170,7 @@ export function ActionOverflowMenu({
   triggerText,
   triggerGlyph,
   reserveGlyphColumn = false,
+  closeWhen,
 }: {
   actions: readonly OverflowAction[];
   /**
@@ -231,6 +232,13 @@ export function ActionOverflowMenu({
    * when some row has a glyph.
    */
   reserveGlyphColumn?: boolean;
+  /**
+   * A value whose change closes an open menu, keeping the trigger mounted.
+   * The approval queue passes its requests: a card arriving or leaving must
+   * not leave a fixed-position list over another card. Focus inside the menu
+   * returns to this trigger. Left out, nothing closes the menu this way.
+   */
+  closeWhen?: string;
 }) {
   const [open, setOpen] = useState(false);
   if (disabled && open) setOpen(false);
@@ -244,6 +252,24 @@ export function ActionOverflowMenu({
   const reasonIdPrefix = useId();
   const ownRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
+
+  const closeWhenRef = useRef(closeWhen);
+  const refocusTrigger = useRef(false);
+  useEffect(() => {
+    if (closeWhenRef.current === closeWhen) return;
+    closeWhenRef.current = closeWhen;
+    if (!openRef.current) return;
+    refocusTrigger.current = Boolean(
+      menuRef.current?.contains(document.activeElement),
+    );
+    setOpen(false);
+  }, [closeWhen, menuRef]);
+  // After the close has committed, so the menu's own focus return has run.
+  useEffect(() => {
+    if (open || !refocusTrigger.current) return;
+    refocusTrigger.current = false;
+    ownRef.current?.focus();
+  }, [open]);
 
   const setTrigger = useCallback(
     (node: HTMLButtonElement | null) => {

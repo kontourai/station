@@ -375,7 +375,7 @@ function ToastCard({
           )}
           {menuActions.length > 0 && (
             <ActionOverflowMenu
-              key={queueKey}
+              closeWhen={queueKey}
               label={notification.actionsMenuLabel ?? 'More actions'}
               actions={menuActions}
             />

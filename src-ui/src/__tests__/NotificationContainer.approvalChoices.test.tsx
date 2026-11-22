@@ -232,6 +232,30 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
     expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
   });
 
+  test('a request leaving the queue closes the menu and returns focus to its own trigger', async () => {
+    raise(claudeBash([rule('npm ls *')]), 'req-1');
+    raise(browserCall(true), 'req-2');
+    render(<NotificationContainer />);
+    const card = screen
+      .getAllByTestId('toast-card')
+      .find((candidate) =>
+        candidate.textContent?.includes('wants to use Bash'),
+      );
+    if (!card) throw new Error('no Bash card');
+    const trigger = within(card).getByRole('button', { name: MENU });
+    fireEvent.click(trigger);
+    const [first] = await screen.findAllByRole('menuitem');
+    act(() => first.focus());
+    expect(document.activeElement).toBe(first);
+    act(() => toastStore.dismissApprovalRequest('thread-1', 'req-2'));
+    expect(screen.getAllByTestId('toast-card')).toHaveLength(1);
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    // The same trigger, still mounted, holds focus.
+    expect(trigger.isConnected).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+  });
+
   test.each([
     ['Allow once', claudeBash([rule('npm ls *')]), 'accept', undefined],
     ['Deny', claudeBash([rule('npm ls *')]), 'decline', undefined],

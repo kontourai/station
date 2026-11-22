@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 type ApprovalToastOptions = {
   toolName: string;
   toolPreview?: string;
-  actions: Array<{ label: string; onClick: () => void }>;
+  actions: Array<{ label: string; variant?: string; onClick: () => void }>;
 };
 
 const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
@@ -973,7 +973,7 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
     showToolApproval.mockClear();
   });
 
-  test('a request whose bound call holds spilled arguments offers Review and Deny only', () => {
+  test('a request whose bound call holds spilled arguments offers Deny and Review only', async () => {
     getChatForExecutionSession.mockReturnValue({
       agentName: 'Codex',
       approvalToasts: new Map(),
@@ -996,13 +996,34 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
       'http://station.test',
       requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
     );
-    expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Review',
-      'Deny',
+    const toast = approvalToast();
+    expect(
+      toast.actions.map((action) => [action.label, action.variant]),
+    ).toEqual([
+      ['Deny', 'danger-outline'],
+      ['Review', 'primary'],
     ]);
+    // Review opens the chat and answers nothing; Deny declines.
+    toast.actions.find((action) => action.label === 'Review')!.onClick();
+    expect(navigate).toHaveBeenCalledWith(
+      '/',
+      expect.objectContaining({ dock: 'open' }),
+    );
+    expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+    toast.actions.find((action) => action.label === 'Deny')!.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ decision: 'decline' }),
+      ),
+    );
+    expect(
+      vi
+        .mocked(resolveOrchestrationRequest)
+        .mock.calls.some(([call]) => call.decision !== 'decline'),
+    ).toBe(false);
   });
 
-  test('after the server refuses an allow for unloaded content, the re-shown toast offers Review and Deny', async () => {
+  test('after the server refuses an allow for unloaded content, the re-shown toast offers Deny and Review', async () => {
     const chat = {
       agentName: 'Codex',
       approvalToasts: new Map(),
@@ -1038,7 +1059,7 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
     await vi.waitFor(() => expect(showToolApproval).toHaveBeenCalledTimes(2));
     expect(
       showToolApproval.mock.calls[1]![0].actions.map((action) => action.label),
-    ).toEqual(['Review', 'Deny']);
+    ).toEqual(['Deny', 'Review']);
   });
 
   test('the same request without spilled content offers Allow', () => {

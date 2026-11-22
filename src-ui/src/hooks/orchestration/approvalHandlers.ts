@@ -329,6 +329,11 @@ function showApprovalToast(
     actionsMenuLabel: APPROVAL_SESSION_GRANTS_MENU_LABEL,
     actions: needsContentLoad
       ? [
+          // Secondary then primary, as on every approval row: Deny, then
+          // Review (open the card), which stands in for Allow once.
+          ...approvalDecisionBody(undefined)
+            .options.filter((option) => option.effect === 'deny')
+            .map((option) => toastDecision(option, 'danger-outline')),
           {
             label: 'Review',
             variant: 'primary' as const,
@@ -340,9 +345,6 @@ function showApprovalToast(
               });
             },
           },
-          ...approvalDecisionBody(undefined)
-            .options.filter((option) => option.effect === 'deny')
-            .map((option) => toastDecision(option, 'danger')),
         ]
       : [
           // Deny, Allow once, then the menu: the order and tones of the
