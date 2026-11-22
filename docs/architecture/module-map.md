@@ -3448,13 +3448,14 @@ same-protocol coordination guarantee, not an upgrade-wide filesystem lock.
 **Seam, Implementation, callers, and tests.** `skill-local-mutation.ts` is the one local
 writer/revision capability; `SkillService`, registry installation, and the setup-import
 module compose it with their owned helpers and the guarded receipt-store Adapter.
-Routes, React-free SDK transport, React query Adapter, CLI JSON, and the shared stepper
-pass that canonical receipt through without client reconstruction. Focused evidence is
+Routes, React-free SDK transport, React query Adapter, CLI JSON, and the Skills page's
+Codex import dialog pass that canonical receipt through without client reconstruction. Focused evidence is
 `src-server/services/agents/__tests__/skill-revision.test.ts`,
 `src-server/services/agents/__tests__/skill-service-install.test.ts`,
 `src-server/services/agents/__tests__/skill-service.test.ts`,
-`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`, and
-`src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx`. **Do not
+`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`,
+`src-server/routes/__tests__/setup-imports.routes.test.ts`, and
+`src-ui/src/components/setup/__tests__/CodexPromptImportDialog.test.tsx`. **Do not
 reintroduce:** a setup-only lock, a conditional check outside the local capability,
 direct import target writes, pre-effect consumption without a durable item record, a
 terminal aggregate that hides an unresolved item, browser-invented receipt rows, or a

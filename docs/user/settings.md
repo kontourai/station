@@ -516,9 +516,9 @@ servers have no license list.
 ## People and setup access
 
 Open **Settings → People** to see who can connect. If your Device has limited
-access, the section directs you to the Station operator. Under **Settings →
-System**, checking for existing setup also requires permission. Ask the
-Station operator for setup import access.
+access, the section directs you to the Station operator. Importing Codex
+prompts from **Skills** also requires permission. Ask the Station operator for
+setup import access.
 
 ## Settings your organization manages
 

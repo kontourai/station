@@ -1230,6 +1230,13 @@ files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
 scripts or supporting files. Load plugin packages through Registry.
 
+When the Station's computer has saved Codex prompts, **Import from Codex…**
+lists them with nothing selected. Tick the ones you want and choose
+**Import**. A prompt whose name matches one of your skills asks for a new name
+in its row. Station copies the prompt text into new skills and leaves the
+Codex files unchanged. When the import finishes, **Undo import** removes the
+skills it created. Only the Station operator can import from Codex.
+
 For a writable skill, **Edit skill** opens its definition and command settings.
 **Back to overview** asks before discarding unsaved edits. Package-owned or
 plugin-served skills show the server's read-only reason and keep editing

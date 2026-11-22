@@ -110,7 +110,7 @@ On a phone: A bottom sheet. Row status wraps under the row.
 1. **Titled "Import your Codex prompts as skills".** That is all the importer does. There is no Claude Code import, and drawing one would be invented. _(copy; slice 1.11)_
 2. **Nothing is pre-selected (two are shown picked), and a name conflict is solved inline.** _(new screen state; slice 1.11)_
 3. **The copy promises "undo the whole import".** The rollback exists in the product. _(copy; slice 1.11)_
-4. **The entry point is Customize › Skills › New skill › Import from Codex…, and it is offered once on a fresh Home.** It is a menu item on the Skills page's single button, not a second button. We need to check the cost of looking for sources when Home first paints. _(layout, backend check first; slice 1.11)_
+4. **The entry point is Customize › Skills › New skill › Import from Codex…, and it is offered once on a fresh Home.** It is a menu item on the Skills page's single button, not a second button. Looking for sources is one folder check on the host, so it is cheap when Home first paints. It needs the operator's setup-import permission, so the offer stays hidden for anyone else. _(layout, backend check first; slice 1.11)_
 
 ### `first-run-09` Unpaired device, connect screen
 
