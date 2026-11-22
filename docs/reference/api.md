@@ -6081,9 +6081,14 @@ POST /scheduler/jobs
 }
 ```
 
-`name` and `prompt` are required. Use either legacy `cron` or the `schedule`
-union, not both. Other schedule variants are `{kind: "every", everyMs}` and
-`{kind: "at", timeMs, deleteAfterRun?}`. The
+`name` and `prompt` are required. `name` is the job's slug and identity
+(lowercase letters, digits and hyphens); an optional `displayName` (one line,
+at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS` characters, trimmed) is what
+people read, and `GET /scheduler/jobs` returns it when set. Use either legacy
+`cron` or the `schedule` union, not both. Other schedule variants are
+`{kind: "every", everyMs}` and `{kind: "at", timeMs, deleteAfterRun?}`; the
+scheduler removes a one-time job after its run only when `deleteAfterRun` is
+`true`. The
 [request schemas](../../src-server/routes/schemas/schema-definitions/scheduler.ts)
 apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
@@ -6279,8 +6284,9 @@ are the coordinator's account, not live work status.
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
 that schedule union and `target` (`null` removes it, under the same admission
-as create), and returns `{success: true, data: {output}}`. An edit never
-changes `createdBy`. Re-enabling a disabled job resets its
+as create), and `displayName` (`null` removes it), and returns
+`{success: true, data: {output}}`. Renaming changes only `displayName`: the
+slug, the job id and its runs stay. An edit never changes `createdBy`. Re-enabling a disabled job resets its
 `consecutiveFailures`.
 
 Every job records `createdBy`, the owner its runs act as, resolved from the

@@ -226,8 +226,18 @@ export function automationRunClientTurnId(runId: string): string {
   return `scheduler:${runId}`;
 }
 
+/**
+ * Longest display name an automation may carry. The name a person reads is
+ * plain words; the job's `name` stays the internal slug every route, run and
+ * grant is keyed by, so renaming changes only this.
+ */
+export const SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS = 120;
+
 export interface SchedulerJob {
+  /** Internal slug: the identity routes, runs and stats are keyed by. */
   name: string;
+  /** What a person calls it. Absent: show `name`. */
+  displayName?: string;
   provider: string;
   cron?: string;
   schedule?: SchedulerSchedule;
@@ -309,6 +319,8 @@ export interface SchedulerLogEntry {
 
 export interface AddJobOpts {
   name: string;
+  /** See {@link SchedulerJob.displayName}. */
+  displayName?: string;
   provider?: string;
   cron?: string;
   schedule?: SchedulerSchedule;
@@ -338,6 +350,8 @@ export type SchedulerAutomationCreator = Readonly<{
 }>;
 
 export interface UpdateJobOpts {
+  /** Renames the job for people; `null` removes it so `name` shows. */
+  displayName?: string | null;
   cron?: string;
   schedule?: SchedulerSchedule;
   prompt?: string;

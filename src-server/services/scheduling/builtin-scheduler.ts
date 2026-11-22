@@ -1952,6 +1952,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     const createdAt = new Date().toISOString();
     const result = this.ledger.create({
       name: opts.name,
+      ...(opts.displayName ? { displayName: opts.displayName } : {}),
       cron: opts.cron,
       schedule,
       prompt: opts.prompt,
@@ -1992,6 +1993,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
             schedule: { kind: 'cron' as const, expr: opts.cron },
           }
         : { ...opts };
+    // A rename never touches `name`: the ledger skips it. `null` removes the
+    // display name, and an undefined key is not stored.
+    if (normalized.displayName === null) normalized.displayName = undefined;
     const schedule = normalized.schedule as Schedule | undefined;
     if (schedule !== undefined) {
       const error = validateSchedule(schedule);

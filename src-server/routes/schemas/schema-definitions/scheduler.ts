@@ -1,4 +1,5 @@
 import { validateSchedule } from '@kontourai/ephemeris';
+import { SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS } from '@kontourai/station-contracts/scheduler';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 
@@ -9,6 +10,23 @@ import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.j
 // carry the same concept (the job's prompt), so both derive from the same
 // declared authored-text maximum the composer and chat routes use.
 const jobPrompt = z.string().min(1).max(CHAT_INPUT_MAX_CHARS);
+
+// What a person calls an automation. The slug `name` stays its identity, so
+// this is plain words of bounded length on one line; blank is refused rather
+// than stored as a name nobody can read.
+const jobDisplayName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS)
+  .refine(
+    (value) =>
+      ![...value].some((character) => {
+        const code = character.charCodeAt(0);
+        return code <= 31 || code === 127;
+      }),
+    { message: 'A name is one line of text' },
+  );
 
 const optionalCron = z
   .string()
@@ -132,6 +150,7 @@ export const addJobSchema = z
       .string()
       .min(1)
       .regex(/^[a-z0-9-]+$/, 'lowercase alphanumeric + hyphens only'),
+    displayName: jobDisplayName.optional(),
     cron: optionalCron,
     schedule: scheduleSchema.optional(),
     prompt: jobPrompt,
@@ -197,6 +216,9 @@ export const addJobSchema = z
 
 export const editJobSchema = z
   .object({
+    // A rename: the slug and everything keyed by it stay. `null` removes the
+    // display name so the slug shows again.
+    displayName: jobDisplayName.nullable().optional(),
     cron: optionalCron,
     schedule: scheduleSchema.optional(),
     // Same concept as addJobSchema.prompt — the job's prompt, edited — so

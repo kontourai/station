@@ -967,6 +967,9 @@ untargeted run; absent for older records),
 `AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline),
 `automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
 (the separate pool a targeted run holds only until its turn is queued).
+It also owns a job's name: `SchedulerJob.name` is the internal slug, and the
+optional `displayName` (at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`) is
+what people read and rename.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies

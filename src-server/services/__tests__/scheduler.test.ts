@@ -2391,6 +2391,76 @@ describe('Scheduler Routes', () => {
     expect((await jobNamed('edit-route'))?.prompt).toBe('updated');
   });
 
+  test('PUT /jobs/:target renames a job without changing its id or runs', async () => {
+    const created = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'repo-digest',
+        displayName: 'Repo digest',
+        prompt: 'Summarize the repos',
+      }),
+    });
+    expect((await json(created)).success).toBe(true);
+    chatFnBehavior = { ok: true, text: 'digest written' };
+    const ran = await app.request('/jobs/repo-digest/run', { method: 'POST' });
+    expect((await json(ran)).data.receipt.outcome).toBe('completed');
+    const before = await jobNamed('repo-digest');
+    expect(before?.displayName).toBe('Repo digest');
+    const runsBefore = (await json(await app.request('/jobs/repo-digest/logs')))
+      .data;
+    expect(runsBefore).toHaveLength(1);
+
+    const res = await app.request('/jobs/repo-digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: '  Morning repo digest  ' }),
+    });
+    expect((await json(res)).success).toBe(true);
+
+    const after = await jobNamed('repo-digest');
+    expect(after).toMatchObject({
+      name: 'repo-digest',
+      displayName: 'Morning repo digest',
+      prompt: 'Summarize the repos',
+    });
+    expect(after?.unattendedPrincipal).toEqual(before?.unattendedPrincipal);
+    const runsAfter = (await json(await app.request('/jobs/repo-digest/logs')))
+      .data;
+    expect(runsAfter).toEqual(runsBefore);
+
+    // Removing the display name shows the slug again; the job stays.
+    await app.request('/jobs/repo-digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: null }),
+    });
+    const cleared = await jobNamed('repo-digest');
+    expect(cleared?.displayName).toBeUndefined();
+    expect(cleared?.unattendedPrincipal).toEqual(before?.unattendedPrincipal);
+  });
+
+  test('PUT /jobs/:target refuses a blank or multi-line display name', async () => {
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'keep-name',
+        displayName: 'Keep',
+        prompt: 'x',
+      }),
+    });
+    for (const displayName of ['   ', 'two\nlines', 'x'.repeat(121)]) {
+      const res = await app.request('/jobs/keep-name', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName }),
+      });
+      expect(res.status).toBe(400);
+    }
+    expect((await jobNamed('keep-name'))?.displayName).toBe('Keep');
+  });
+
   test('DELETE /jobs/:target removes a job', async () => {
     await app.request('/jobs', {
       method: 'POST',
