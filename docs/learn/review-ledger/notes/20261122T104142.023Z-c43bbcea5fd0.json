@@ -1,0 +1,7 @@
+{
+  "revision": "70659bd2ae0c0e2e09f10722eea772e2d5b3db5c",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"The provider-failure inventory change adds one exclusion for a connection save validation code; no SDK reference claim depends on it.","inputs":["docs/reference/sdk.md","scripts/__tests__/provider-failure-inventory.test.ts"]}
+  ]
+}
