@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -781,25 +784,33 @@ describe('model refusal (model_not_advertised)', () => {
   });
 });
 
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
+
 describe('describeProviderDefaultFailure (slice 0.17)', () => {
-  it('names the refusal the provider service throws, wrapped by the relay or bare', () => {
-    const expected = {
-      summary:
-        'Couldn’t start: more than one model connection is turned on and none is the default.',
-      actionLabel: 'Open model connections',
-      actionHref: '/connections/models',
-    };
-    expect(
-      describeProviderDefaultFailure(
-        `Station agent did not accept the task turn: ${AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE}`,
-      ),
-    ).toEqual(expected);
-    expect(
-      describeProviderDefaultFailure(
-        AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
-      ),
-    ).toEqual(expected);
-  });
+  const expected = {
+    summary:
+      'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+    actionLabel: 'Open model connections',
+    actionHref: '/connections/models',
+  };
+
+  it.each(AMBIGUITY_CASES)(
+    'names the refusal thrown for %s, wrapped by the relay or bare',
+    (_source, message) => {
+      expect(
+        describeProviderDefaultFailure(
+          `Station agent did not accept the task turn: ${message}`,
+        ),
+      ).toEqual(expected);
+      expect(describeProviderDefaultFailure(message)).toEqual(expected);
+    },
+  );
 
   it('leaves every other cause alone', () => {
     expect(

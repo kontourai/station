@@ -3,7 +3,10 @@ import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
-import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   SESSION_CONFIGURATION_REPLACED_CODE,
@@ -276,19 +279,26 @@ export function describeInternalStreamFailure(text: string): string | null {
 }
 
 /**
- * The provider service refuses a turn when more than one model connection is
- * turned on and none is the default. The refusal reaches the UI with no
- * structured code, only that sentence (wrapped by the station-agent relay as
- * "Station agent did not accept the task turn: …"), so it is recognised by the
- * exact sentence the server throws, imported from the contract both sides
- * share. The notification surfaces use this to say it in plain words and offer
- * the page that holds the connections; the recorded text stays behind Details.
+ * The server refuses a turn when more than one model connection is turned on
+ * and nothing names which one to use. It says so in one of two sentences: the
+ * provider service's (no project or Station default) and the managed-binding
+ * refusal an unbound agent's `/chat` answers with. Neither carries a structured
+ * code to the UI, only the sentence (wrapped by the station-agent relay as
+ * "Station agent did not accept the task turn: …"), so each is recognised by
+ * the exact text the server throws, imported from the contract both sides
+ * share. The notification surfaces say it in plain words and offer the page
+ * that holds the connections; the recorded text stays behind Details.
  *
- * The action opens the model connections list rather than promising a choice:
- * no Station-wide screen sets the default model connection yet. From that list
- * each connection opens to its Enabled switch, and one enabled connection is
- * a choice the server can make on its own.
+ * The words do not say "none is the default": an agent bound to one connection
+ * reaches the provider service's sentence too, and its owner did choose. The
+ * action opens the model connections list, where a connection can be turned
+ * off, rather than promising a choice of default.
  */
+const AMBIGUOUS_MODEL_CONNECTION_MESSAGES = [
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+];
+
 interface ProviderDefaultFailure {
   summary: string;
   actionLabel: string;
@@ -298,10 +308,12 @@ interface ProviderDefaultFailure {
 export function describeProviderDefaultFailure(
   text: string,
 ): ProviderDefaultFailure | null {
-  return text.includes(AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE)
+  return AMBIGUOUS_MODEL_CONNECTION_MESSAGES.some((message) =>
+    text.includes(message),
+  )
     ? {
         summary:
-          'Couldn’t start: more than one model connection is turned on and none is the default.',
+          'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
         actionLabel: 'Open model connections',
         actionHref: '/connections/models',
       }

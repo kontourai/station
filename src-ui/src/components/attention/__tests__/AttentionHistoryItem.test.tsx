@@ -2,7 +2,10 @@
  * @vitest-environment jsdom
  */
 
-import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import type {
   ApprovalAttentionItem,
   GateBlockedAttentionItem,
@@ -472,28 +475,41 @@ describe('AttentionHistoryItem Flow gate rows', () => {
   });
 });
 
-describe('AttentionHistoryItem: a failed turn caused by provider setup (slice 0.17)', () => {
-  const RAW = `Station agent did not accept the task turn: ${AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE}`;
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
 
-  test('the bell row says it in plain words, raw text only under Details, with one fixing step', () => {
-    renderRow(baseFailure({ body: RAW }));
+describe.each(AMBIGUITY_CASES)(
+  'AttentionHistoryItem: a failed turn refused by %s (slice 0.17)',
+  (_source, message) => {
+    const RAW = `Station agent did not accept the task turn: ${message}`;
 
-    expect(screen.getByTestId('attention-cause').textContent).toBe(
-      'Couldn’t start: more than one model connection is turned on and none is the default.',
-    );
-    const details = screen.getByTestId('attention-raw');
-    // Closed until asked for.
-    expect((details as HTMLDetailsElement).open).toBe(false);
-    expect(details.textContent).toContain(RAW);
-    const outside = document.body.cloneNode(true) as HTMLElement;
-    outside.querySelector('[data-testid="attention-raw"]')?.remove();
-    expect(outside.textContent).not.toContain('application default');
+    test('the bell row says it in plain words, raw text only under Details, with one fixing step', () => {
+      renderRow(baseFailure({ body: RAW }));
 
-    fireEvent.click(
-      screen.getByRole('link', { name: 'Open model connections' }),
-    );
-    expect(navigate).toHaveBeenCalledWith('/connections/models');
-    // Opening the fix's target acknowledges the row, as "Open session" does.
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-  });
-});
+      expect(screen.getByTestId('attention-cause').textContent).toBe(
+        'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+      );
+      const details = screen.getByTestId('attention-raw');
+      // Closed until asked for.
+      expect((details as HTMLDetailsElement).open).toBe(false);
+      expect(details.textContent).toContain(RAW);
+      const outside = document.body.cloneNode(true) as HTMLElement;
+      outside.querySelector('[data-testid="attention-raw"]')?.remove();
+      expect(outside.textContent).not.toContain(message);
+
+      fireEvent.click(
+        screen.getByRole('link', { name: 'Open model connections' }),
+      );
+      expect(navigate).toHaveBeenCalledWith('/connections/models');
+      // Opening the fix's target acknowledges the row, as "Open session" does.
+      expect(acknowledgeAsync).toHaveBeenCalledWith(
+        'session-failed:thread-boom',
+      );
+    });
+  },
+);
