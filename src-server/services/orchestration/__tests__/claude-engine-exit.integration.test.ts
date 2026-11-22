@@ -651,14 +651,16 @@ describe('a Claude engine that dies after its launch configuration was replaced'
     });
     const first = await send(T);
     const second = await during!;
-    expect(first).toMatchObject({ ok: true });
-    // Refused because the restarted engine is running the first message,
-    // which is true, and not with a claim about the old settings.
-    expect(second).toMatchObject({ ok: false });
-    expect(second.ok ? '' : second.message).toMatch(
+    // Both sends wait for the park and either may reach the restarted engine
+    // first: one runs there, and the other is refused because that turn is
+    // running, which is true, and not with a claim about the old settings.
+    const outcomes = [first, second];
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
+    const refused = outcomes.find((o) => !o.ok);
+    expect(refused?.ok ? '' : refused?.message).toMatch(
       /already has an active turn/,
     );
-    expect(second.ok ? undefined : second.code).not.toBe(
+    expect(refused?.ok ? undefined : refused?.code).not.toBe(
       'session_configuration_replaced',
     );
     expect(mockQuery.mock.calls).toHaveLength(2);
