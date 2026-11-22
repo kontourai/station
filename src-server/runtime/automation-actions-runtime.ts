@@ -2,6 +2,7 @@ import type { SessionStartResult } from '@kontourai/monument';
 import {
   AUTOMATION_EXECUTION_LIMITS,
   type AutomationActionIntent,
+  type AutomationActionsUnavailable,
   type AutomationRevocationCause,
   type AutomationRule,
 } from '@kontourai/station-contracts/automation';
@@ -17,6 +18,7 @@ import {
 } from '../services/automation/automation-intent.js';
 import type { AutomationLedger } from '../services/automation/automation-ledger.js';
 import type { AutomationStore } from '../services/automation/automation-store.js';
+import { modelOptionsRefusal } from '../services/execution-target/execution-target-resolver.js';
 import type {
   FeaturePreviewRegistry,
   FeaturePreviewSelector,
@@ -53,6 +55,12 @@ interface AutomationActionsOptions {
    * listed, which stops the tick without refusing anything.
    */
   projects: ProjectIdentityLookup;
+  /**
+   * The engine the Task's Agent would start on in this Project, resolved as
+   * the dispatch resolves it (without per-invocation settings). Used to ask
+   * `modelOptionsRefusal` which settings that Agent accepts.
+   */
+  agentEngine(input: { agentId: string; projectSlug: string }): Promise<string>;
   ledger: () => AutomationLedger;
   existingLedger: () => AutomationLedger | undefined;
   taskGraph: Pick<
@@ -80,6 +88,11 @@ interface AutomationActionsOptions {
 
 export interface AutomationActions extends AutomationInboxPlacement {
   tick(): Promise<void>;
+  /**
+   * Why no automation action can start right now, while that lasts (the
+   * last tick failed); undefined once a tick completes.
+   */
+  unavailable(): AutomationActionsUnavailable | undefined;
   close(): void;
 }
 
@@ -134,6 +147,7 @@ class AutomationActionsRuntime implements AutomationActions {
   private closed = false;
   private journalObserved = false;
   private projectsUnreadable = false;
+  private stalled: AutomationActionsUnavailable | undefined;
   private recoveryUnavailable = false;
 
   constructor(
@@ -673,14 +687,75 @@ class AutomationActionsRuntime implements AutomationActions {
           receipt,
         );
       }
+      this.stalled = undefined;
     } catch (error) {
       this.recoveryUnavailable = true;
-      this.options.logger.warn('Automation actions are unavailable', {
-        error: error instanceof Error ? error.message : 'unknown',
-      });
+      const reason = this.projectsUnreadable
+        ? 'projects-unreadable'
+        : 'unavailable';
+      // Logged when the stall starts or its reason changes, not every tick.
+      if (this.stalled?.reason !== reason) {
+        this.options.logger.warn('Automation actions are unavailable', {
+          reason,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+        this.stalled = { reason, since: new Date().toISOString() };
+      }
     } finally {
       this.busy = false;
     }
+  }
+
+  unavailable(): AutomationActionsUnavailable | undefined {
+    return this.stalled;
+  }
+
+  private async cancelUnstartedTask(taskId: string, intentId: string) {
+    try {
+      await this.options.taskGraph.updateTaskStatus(taskId, 'canceled');
+    } catch (error) {
+      this.options.logger.warn('Automation Task could not be canceled', {
+        intentId,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  /**
+   * The per-invocation engine settings this Task starts with. A rule's own
+   * approval mode is sent as stated, and refused (with the explicit reason)
+   * when the Agent cannot take it. Without one, `ask` is sent where the
+   * Agent accepts it, so the start is never more permissive than before; an
+   * Agent that takes no per-invocation settings gets none.
+   */
+  private async startOptions(
+    intent: NativeAutomationIntent,
+    projectSlug: string,
+  ): Promise<
+    | { kind: 'options'; modelOptions?: { approvalMode: 'ask' | 'auto' } }
+    | { kind: 'refused'; message: string }
+  > {
+    const requested = intent.action.approvalMode;
+    const modelOptions = { approvalMode: requested ?? ('ask' as const) };
+    let engine: string;
+    try {
+      engine = await this.options.agentEngine({
+        agentId: intent.action.agentId,
+        projectSlug,
+      });
+    } catch {
+      // The Agent cannot be resolved now: send what the rule states (or
+      // `ask`) and let the dispatch's own start resolution answer it.
+      return { kind: 'options', modelOptions };
+    }
+    const refusal = modelOptionsRefusal(
+      engine,
+      modelOptions,
+      intent.action.agentId,
+    );
+    if (!refusal) return { kind: 'options', modelOptions };
+    if (requested) return { kind: 'refused', message: refusal };
+    return { kind: 'options' };
   }
 
   private async dispatch(
@@ -701,6 +776,22 @@ class AutomationActionsRuntime implements AutomationActions {
       const project = this.intentProject(intent);
       if (!project) {
         claim.release();
+        return;
+      }
+      // Before any Task exists: an Agent that cannot take the rule's
+      // approval mode is refused here, with the explicit reason, once.
+      const start = await this.startOptions(intent, project.slug);
+      if (start.kind === 'refused') {
+        claim.release();
+        ledger.updateIntent(
+          intent.intentId,
+          { state: 'refused', reason: 'agent_option_unsupported' },
+          Date.now(),
+        );
+        this.options.logger.warn(
+          'Automation rule asks for an engine setting its Agent cannot take; no Task started',
+          { ruleId: intent.ruleId, reason: start.message },
+        );
         return;
       }
       // Authority holds the id; the Task names its Project by slug, the
@@ -750,11 +841,9 @@ class AutomationActionsRuntime implements AutomationActions {
             ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
             sourceSurface: 'automation-rule',
             signal: controller.signal,
-            runtimeConfig: {
-              modelOptions: {
-                approvalMode: intent.action.approvalMode ?? 'ask',
-              },
-            },
+            ...(start.modelOptions
+              ? { runtimeConfig: { modelOptions: start.modelOptions } }
+              : {}),
             monitor: {
               agentId: intent.action.agentId,
               signal: controller.signal,
@@ -827,6 +916,10 @@ class AutomationActionsRuntime implements AutomationActions {
             now: Date.now(),
             taskId: task.id,
           });
+        // Nothing ran: cancel the Task so no leftover can be started outside
+        // the rule's authority. A retry creates the episode's next Task.
+        if (!invoked && !uncertain && !deferred)
+          await this.cancelUnstartedTask(task.id, intent.intentId);
         if (!uncertain) this.releaseKnown(intent.intentId);
         return;
       }

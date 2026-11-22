@@ -185,3 +185,75 @@ test('an open episode whose start failed says the Agent did not start and offers
   fireEvent.click(buttons[0]!);
   expect(retry).toHaveBeenCalledWith({ ruleId: 'rule-1', episodeId: '43' });
 });
+
+test('a failed start on a rule that may not act says so and offers no retry', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [{ ...RULE, mode: 'off' }],
+    }),
+  );
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        { ...EPISODE('43', 'open'), attemptCount: 0, startFailed: true },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      'The Agent did not start, so nothing ran. The rule is not live, so it cannot be retried.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /^Retry episode/ })).toEqual(
+    [],
+  );
+});
+
+test('an Agent that cannot take the rule approval mode is named', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [
+        { ...RULE, action: { kind: 'dispatch-task', agentId: 'helper' } },
+      ],
+    }),
+  );
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        {
+          ...EPISODE('43', 'open'),
+          attemptCount: 0,
+          startFailed: true,
+          startFailure: 'agent-option-unsupported',
+        },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      "Agent helper cannot take this rule's approval mode, so nothing ran. Retry is available.",
+    ),
+  ).toBeTruthy();
+});
+
+test('paused automation Tasks are shown while Station cannot read its Projects', () => {
+  episodes.mockReturnValue(
+    ok({
+      episodes: [],
+      actionsUnavailable: {
+        reason: 'projects-unreadable',
+        since: '2026-11-06T00:00:00.000Z',
+      },
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      'Automation Tasks are paused: Station cannot read its Projects. Pending runs start once it can.',
+    ),
+  ).toBeTruthy();
+});

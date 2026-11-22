@@ -16,6 +16,7 @@
 
 import {
   AUTOMATION_ACTION_KINDS,
+  type AutomationActionsUnavailable,
   type AutomationDeliveryRecord,
   type AutomationEpisodeRecord,
   type AutomationPollRecord,
@@ -69,6 +70,8 @@ export interface AutomationRouteDependencies {
     | 'setEnabled'
   >;
   listOpenEpisodes?(limit: number): AutomationEpisodeRecord[];
+  /** Why no automation Task can start now, while that lasts. */
+  actionsUnavailable?(): AutomationActionsUnavailable | undefined;
   retryEpisode?(ruleId: string, episodeId: string): RetryEpisodeOutcome;
   /** Throws unless the request is a person acting in person. */
   operator?(request: Request): Promise<AutomationOperator>;
@@ -594,7 +597,13 @@ export function createAutomationRoutes(
         throw new RouteRefusal(404, 'Automations not found');
       return c.json({
         success: true,
-        data: { episodes: deps.listOpenEpisodes(limit) },
+        data: {
+          episodes: deps.listOpenEpisodes(limit),
+          ...(() => {
+            const unavailable = deps.actionsUnavailable?.();
+            return unavailable ? { actionsUnavailable: unavailable } : {};
+          })(),
+        },
       });
     }),
   );

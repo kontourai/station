@@ -13658,6 +13658,7 @@ export function configureRuntimeRoutes(
                   .get()
                   .listOpenEpisodes(limit)
                   .map(projectAutomationEpisode),
+              actionsUnavailable: () => automationActions?.unavailable(),
               retryEpisode: (ruleId: string, episodeId: string) =>
                 retryAutomationEpisode({
                   ledger: automationLedger.get(),

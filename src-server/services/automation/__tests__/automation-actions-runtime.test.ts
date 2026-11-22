@@ -162,6 +162,8 @@ async function world(
     maxAttempts?: number;
     /** The store compares Project references as written (no lookup). */
     unresolvedStore?: boolean;
+    /** The engine the Task's Agent resolves to (default `claude`). */
+    agentEngine?: string;
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
@@ -353,6 +355,7 @@ async function world(
         listProjects: () => [...projectIds].map((id) => ({ id, slug: id })),
       },
       featurePreviews: previews,
+      agentEngine: async () => options.agentEngine ?? 'claude',
       store,
       ledger: ledgerReads,
       existingLedger: () => ledger,
@@ -1851,8 +1854,19 @@ test('an unreadable Project list stops the tick as unavailable, refuses nothing,
       String(message).includes('was not found'),
     ),
   ).toBe(false);
+  // The stall is logged when it starts, not on every tick, and is visible.
+  await w.runtime.tick();
+  expect(
+    w.warnings.mock.calls.filter(
+      ([message]) => message === 'Automation actions are unavailable',
+    ),
+  ).toHaveLength(1);
+  expect(w.runtime.unavailable()).toMatchObject({
+    reason: 'projects-unreadable',
+  });
   list.mockRestore();
   await w.runtime.tick();
+  expect(w.runtime.unavailable()).toBeUndefined();
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
 });
 
@@ -1898,4 +1912,139 @@ test('the runtime acts only for an exact current Project id, even when the rule 
   await w.runtime.tick();
   expect(w.agentStarts).toEqual([]);
   expect(w.graph.listTasks()).toEqual([]);
+});
+
+/** The per-invocation settings each dispatch was sent. */
+function dispatchSettings(w: World) {
+  const dispatch = vi.spyOn(w.dispatcher, 'dispatch');
+  return () =>
+    dispatch.mock.calls.map(([, input]) => input.runtimeConfig?.modelOptions);
+}
+
+for (const engine of ['station-agent', 'acp'])
+  test(`a rule with no approval mode starts an Agent on ${engine}, which takes no approval setting, with none`, async () => {
+    const w = await world({ projects: [STATION_PROJECT], agentEngine: engine });
+    const settings = dispatchSettings(w);
+    await liveTick(w);
+    await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+    expect(settings()).toEqual([undefined]);
+  });
+
+test('a rule with no approval mode still starts an Agent that takes one at ask, never more permissive', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const settings = dispatchSettings(w);
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(settings()).toEqual([{ approvalMode: 'ask' }]);
+});
+
+test('a rule asking for an approval mode passes it to an Agent that takes it', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    approvalMode: 'ask',
+    agentEngine: 'codex',
+  });
+  const settings = dispatchSettings(w);
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(settings()).toEqual([{ approvalMode: 'ask' }]);
+});
+
+test('a rule asking for an approval mode its Agent cannot take is refused visibly, before any Task', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    approvalMode: 'ask',
+    agentEngine: 'station-agent',
+  });
+  const settings = dispatchSettings(w);
+  const first = w.ledger.listActionIntents()[0]!;
+  await liveTick(w);
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(first.intentId)).toMatchObject({
+    state: 'refused',
+    reason: 'agent_option_unsupported',
+  });
+  expect(settings()).toEqual([]);
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.ledger.listOpenEpisodes()[0]).toMatchObject({
+    startFailed: true,
+    startFailure: 'agent-option-unsupported',
+  });
+  expect(
+    w.warnings.mock.calls.filter(([message]) =>
+      String(message).includes('engine setting its Agent cannot take'),
+    ),
+  ).toEqual([
+    [
+      expect.any(String),
+      {
+        ruleId: w.rule.id,
+        reason: `Station Agent '${FIXTURE_TASK_AGENT}' does not support per-invocation engine settings`,
+      },
+    ],
+  ]);
+});
+
+test("a start that fails before its Agent cancels its Task; the retry starts the episode's only live Task", async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const first = await failedStart(w);
+  const firstTask = w.ledger.readIntent(first.intentId)!.taskId!;
+  await vi.waitFor(() =>
+    expect(w.graph.readTaskView(firstTask)?.status).toBe('canceled'),
+  );
+  expect(retryOf(w, first)().kind).toBe('retried');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(
+    w.graph.listTasks().filter((task) => task.status !== 'canceled'),
+  ).toHaveLength(1);
+});
+
+test('after a failed start and a green close no Task is left that could be started', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const first = await failedStart(w);
+  const green = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 37423043599,
+      conclusion: 'success',
+      updatedAt: new Date(Date.now() - 200).toISOString(),
+    }),
+    { source: w.store.read().sources[0]!, receivedAt: Date.now() },
+  );
+  if (green.kind !== 'event') throw new Error(green.reason);
+  w.intake(green.event);
+  await w.runtime.tick();
+  expect(w.ledger.episode(first.episodeKey)).toBeUndefined();
+  expect(w.graph.listTasks().map((task) => task.status)).toEqual(['canceled']);
+});
+
+test('a retry acts under the rule as it is now, never the one its failed start ran under', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const first = await failedStart(w);
+  await editRule(w, (rule) => ({
+    action: { ...rule.action, instructions: 'Investigate with the new brief.' },
+  }));
+  const retried = retryOf(w, first)();
+  expect(retried.kind).toBe('retried');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.sends[0]?.input).toContain(
+    'Investigate with the new brief.',
+  );
+  expect(w.adapter.sends[0]?.input).not.toContain('Investigate the failure.');
+});
+
+test("a retry is refused once the rule's source no longer grants it", async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const first = await failedStart(w);
+  const config = w.store.read();
+  writeFileSync(
+    w.store.path,
+    JSON.stringify({
+      ...config,
+      sources: config.sources.map((source) => ({ ...source, enabled: false })),
+    }),
+    { mode: 0o600 },
+  );
+  expect(retryOf(w, first)().kind).toBe('policy-unavailable');
 });

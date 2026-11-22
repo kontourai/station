@@ -288,7 +288,32 @@ event older than 72 hours, or a rule that is not `live` or no longer granted.
 It is also accepted for an `open` episode whose latest intent ended `failed`
 or `refused` before anything was invoked (the Agent never started, so the
 attempt was not used); the open-episode list marks it `startFailed` and
-Settings offers Retry. An invoked or `indeterminate` intent never qualifies.
+Settings offers Retry while the rule may act (live, on an enabled source)
+and otherwise says the rule is not live. An invoked or `indeterminate`
+intent never qualifies. A start that fails before anything is invoked
+cancels its Task, so no leftover Task can be started outside the rule's
+authority; the retry creates the episode's next Task.
+
+A rule's `approvalMode` is sent as stated. Before any Task is created the
+runtime resolves the Agent's engine and asks the start resolution's
+`modelOptionsRefusal` whether the Agent takes it; if not, the intent is
+refused (`agent_option_unsupported`, named in Settings and logged with the
+explicit reason). Without an `approvalMode`, `ask` is sent to an Agent that
+takes it, as before, and an Agent that takes no per-invocation settings
+(a Station-engine or ACP Agent) gets none, so a rule never becomes more
+permissive than it states.
+
+While the Project list cannot be read, or authority cannot be checked, no
+automation Task starts and nothing is refused; the warning is logged when
+that starts or changes, and Settings shows that automation Tasks are paused
+until a tick succeeds. The list is read as a whole, so one unreadable
+Project record pauses rules for every Project.
+
+Three limits of pinning a stored slug: any read pins it, including a plain
+listing (`station automation rules`), by rewriting the file with the id; on
+a read-only directory the pin fails silently and lands on a later read; and
+between a read and its pin, a Project replaced under the same slug could
+still be named by that read.
 
 A held claim writes its reason to the delivery row as `suppressed(reason)`:
 `rate-limited`, `rule-active-limit`, `concurrency-limit` or `episode-active`

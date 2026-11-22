@@ -616,3 +616,29 @@ describe('a rule names its Project by slug through the SDK and the route', () =>
     expect(s.store.read().rules).toEqual([]);
   });
 });
+
+test('the open episodes say while automation Tasks cannot start, and stop saying it when they can', async () => {
+  let unavailable:
+    | { reason: 'projects-unreadable'; since: string }
+    | undefined = {
+    reason: 'projects-unreadable',
+    since: '2026-11-21T00:00:00.000Z',
+  };
+  const app = createAutomationRoutes(
+    {
+      listPolls: () => [],
+      listDeliveries: () => [],
+      preview: enabledPreview,
+      listOpenEpisodes: () => [],
+      actionsUnavailable: () => unavailable,
+    },
+    logger,
+  );
+  expect(await json(await app.request('/episodes'))).toMatchObject({
+    data: { episodes: [], actionsUnavailable: unavailable },
+  });
+  unavailable = undefined;
+  expect(
+    ((await json(await app.request('/episodes'))) as { data: object }).data,
+  ).toEqual({ episodes: [] });
+});

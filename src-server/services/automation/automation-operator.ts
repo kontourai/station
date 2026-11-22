@@ -76,6 +76,7 @@ export function projectAutomationEpisode(
     openedAt: record.openedAt,
     updatedAt: record.updatedAt,
     ...(record.startFailed ? { startFailed: true as const } : {}),
+    ...(record.startFailure ? { startFailure: record.startFailure } : {}),
   };
 }
 

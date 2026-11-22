@@ -14,6 +14,7 @@ import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
 import { isManagedEngineRefusal } from '../../security/managed-engine-limits.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
@@ -89,6 +90,7 @@ import {
   type TaskFollowUpWakePorts,
 } from '../../services/work-item-providers/task-follow-up-wake.js';
 import { stationSetupRequirementProbeOutcomes } from '../../telemetry/metrics.js';
+import { resolveTaskDispatchAgentStart } from '../../tools/station-control-delegation.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -788,6 +790,17 @@ export function configureRuntimeSupportServices(
           featurePreviews: context.featurePreviews,
           store: automationStore,
           projects: context.projectService,
+          // The dispatch's own start resolution, without per-invocation
+          // settings, so a rule's preflight asks the same engine.
+          agentEngine: async ({ agentId, projectSlug }) =>
+            (
+              await runAsStationServer(() =>
+                resolveTaskDispatchAgentStart(
+                  { agentId, projectSlug },
+                  context.orchestrationService,
+                ),
+              )
+            ).provider,
           ledger: () => automationLedger.get(),
           existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,

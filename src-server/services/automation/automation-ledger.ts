@@ -228,6 +228,8 @@ export type AutomationEpisodeRecord = Readonly<{
   updatedAt: string;
   /** Its latest start failed before the Agent started; a retry is accepted. */
   startFailed?: true;
+  /** Set when the Agent cannot take the rule's approval mode. */
+  startFailure?: 'agent-option-unsupported';
 }>;
 
 /**
@@ -1451,18 +1453,28 @@ class SqliteAutomationLedger implements AutomationLedger {
     ruleId: string,
     episodeId: string,
   ): boolean {
+    return this.failedStart(ruleId, episodeId) !== undefined;
+  }
+
+  /** The latest intent's failure reason when it failed before invocation. */
+  private failedStart(
+    ruleId: string,
+    episodeId: string,
+  ): { reason: string | undefined } | undefined {
     const row = this.db
       .prepare(
-        'SELECT state, invoked_ms FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
+        'SELECT state, invoked_ms, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
       )
       .get(ruleId, episodeId) as
-      | { state: string; invoked_ms: number | null }
+      | { state: string; invoked_ms: number | null; body: string }
       | undefined;
-    return (
-      row !== undefined &&
-      row.invoked_ms === null &&
-      (row.state === 'failed' || row.state === 'refused')
-    );
+    if (
+      row === undefined ||
+      row.invoked_ms !== null ||
+      (row.state !== 'failed' && row.state !== 'refused')
+    )
+      return undefined;
+    return { reason: decodeAutomationActionIntent(row.body).reason };
   }
 
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome {
@@ -1723,10 +1735,18 @@ class SqliteAutomationLedger implements AutomationLedger {
           .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as EpisodeRow[]
       ).map((row) => {
         const episode = episodeFromRow(row);
-        return episode.state === 'open' &&
-          this.startFailedBeforeInvocation(episode.ruleId, episode.episodeId)
-          ? { ...episode, startFailed: true as const }
-          : episode;
+        const failed =
+          episode.state === 'open'
+            ? this.failedStart(episode.ruleId, episode.episodeId)
+            : undefined;
+        if (!failed) return episode;
+        return {
+          ...episode,
+          startFailed: true as const,
+          ...(failed.reason === 'agent_option_unsupported'
+            ? { startFailure: 'agent-option-unsupported' as const }
+            : {}),
+        };
       }),
     );
   }

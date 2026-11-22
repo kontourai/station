@@ -254,22 +254,31 @@ function connectionProvider(connection: ConnectionConfig): EngineId {
   return provider;
 }
 
+/**
+ * Why an Agent on `provider` cannot take these per-invocation engine
+ * settings, or undefined when it can. The one answer the start resolution
+ * and an automation rule's preflight both use.
+ */
+export function modelOptionsRefusal(
+  provider: EngineId,
+  options: Readonly<Record<string, unknown>> | undefined,
+  agent: string,
+): string | undefined {
+  if (provider === 'station-agent' && options && Object.keys(options).length)
+    return `Station Agent '${agent}' does not support per-invocation engine settings`;
+  const unsupported = unsupportedModelOptionKeys(provider, options);
+  return unsupported.length
+    ? unsupportedModelOptionError(provider, unsupported[0]!, agent)
+    : undefined;
+}
+
 function assertModelOptionsSupported(
   provider: EngineId,
   options: Readonly<Record<string, unknown>> | undefined,
   agent: AgentId,
 ): void {
-  if (provider === 'station-agent' && options && Object.keys(options).length) {
-    throw new Error(
-      `Station Agent '${agent}' does not support per-invocation engine settings`,
-    );
-  }
-  const unsupported = unsupportedModelOptionKeys(provider, options);
-  if (unsupported.length) {
-    throw new Error(
-      unsupportedModelOptionError(provider, unsupported[0], agent),
-    );
-  }
+  const refusal = modelOptionsRefusal(provider, options, agent);
+  if (refusal) throw new Error(refusal);
 }
 
 const REMOTE_HOME_UNVERIFIED_REASON =

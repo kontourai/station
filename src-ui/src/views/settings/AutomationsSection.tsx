@@ -1,4 +1,5 @@
 import type {
+  AutomationActionsUnavailable,
   AutomationDeliveryRecord,
   AutomationEpisodeRecord,
   AutomationRule,
@@ -87,16 +88,47 @@ function AutomationList<T>({
   );
 }
 
+const STALLED: Record<AutomationActionsUnavailable['reason'], string> = {
+  'projects-unreadable':
+    'Automation Tasks are paused: Station cannot read its Projects. Pending runs start once it can.',
+  unavailable:
+    'Automation Tasks are paused: Station could not check their rules. Pending runs start once it can.',
+};
+
+/** Why the Agent did not start, and whether Retry can help now. */
+function startFailedNote(
+  episode: AutomationEpisodeRecord,
+  rule: AutomationRule | undefined,
+  mayAct: boolean,
+): string {
+  const why =
+    episode.startFailure === 'agent-option-unsupported'
+      ? `Agent ${rule?.action.agentId ?? ''} cannot take this rule's approval mode, so nothing ran.`
+      : 'The Agent did not start, so nothing ran.';
+  return mayAct
+    ? `${why} Retry is available.`
+    : `${why} The rule is not live, so it cannot be retried.`;
+}
+
 function EpisodeRow({
   episode,
   rules,
+  sources,
 }: {
   episode: AutomationEpisodeRecord;
   rules: readonly AutomationRule[] | undefined;
+  sources: readonly AutomationSourceProjection[] | undefined;
 }) {
   const retry = useRetryAutomationEpisode();
-  const ruleName =
-    rules?.find((rule) => rule.id === episode.ruleId)?.name ?? episode.ruleId;
+  const rule = rules?.find((candidate) => candidate.id === episode.ruleId);
+  const ruleName = rule?.name ?? episode.ruleId;
+  const source = sources?.find((candidate) => candidate.id === rule?.sourceId);
+  // The rule may act: live, on an enabled source that is not revoked. The
+  // server still checks the grant when the retry is sent.
+  const mayAct =
+    rule?.mode === 'live' &&
+    source?.enabled === true &&
+    source.revokedAt === undefined;
   return (
     <li className="automations__item">
       <span>
@@ -109,10 +141,10 @@ function EpisodeRow({
       />
       {episode.startFailed ? (
         <span className="automations__note" role="status">
-          The Agent did not start, so nothing ran. Retry is available.
+          {startFailedNote(episode, rule, mayAct)}
         </span>
       ) : null}
-      {episode.state === 'exhausted' || episode.startFailed ? (
+      {episode.state === 'exhausted' || (episode.startFailed && mayAct) ? (
         <Button
           disabled={retry.isPending}
           aria-label={`Retry episode ${episode.episodeId} of ${ruleName}`}
@@ -202,6 +234,11 @@ export function AutomationsSection() {
                 </li>
               )}
             />
+            {episodes.data?.actionsUnavailable ? (
+              <p className="automations__note" role="status">
+                {STALLED[episodes.data.actionsUnavailable.reason]}
+              </p>
+            ) : null}
             <AutomationList<AutomationEpisodeRecord>
               id="episodes"
               title="Open episodes"
@@ -213,6 +250,7 @@ export function AutomationsSection() {
                   key={`${episode.ruleId}:${episode.episodeId}`}
                   episode={episode}
                   rules={rules.data?.rules}
+                  sources={sources.data?.sources}
                 />
               )}
             />

@@ -1,5 +1,6 @@
 ---
 '@kontourai/station-contracts': minor
+'@kontourai/station-sdk': minor
 ---
 
 An Automation rule's action and a source's grant may name their Project by
@@ -11,4 +12,8 @@ rule names a Project that no longer exists is refused with the new reason
 
 `AutomationEpisodeRecord` gains an optional `startFailed: true` for an open
 episode whose latest start failed before its Agent started; retry-episode
-now accepts such an episode.
+now accepts such an episode, with `startFailure: 'agent-option-unsupported'`
+when the rule asks for an approval mode its Agent cannot take.
+`AutomationEpisodeList` (`GET /automations/episodes`) adds
+`actionsUnavailable` while no automation Task can start, and
+`listAutomationEpisodes` returns it.

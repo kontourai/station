@@ -595,6 +595,27 @@ export type AutomationEpisodeRecord = Readonly<{
    * invoked). The episode is still `open`; `retry-episode` accepts it.
    */
   startFailed?: true;
+  /**
+   * Why, when known: the rule asks for an approval mode its Agent cannot
+   * take (no Task was created).
+   */
+  startFailure?: 'agent-option-unsupported';
+}>;
+
+/**
+ * Why no automation Task can start right now, while that lasts: the
+ * Project list cannot be read, or the action runtime could not check
+ * authority. Absent once it can act again.
+ */
+export type AutomationActionsUnavailable = Readonly<{
+  reason: 'projects-unreadable' | 'unavailable';
+  since: string;
+}>;
+
+/** `GET /automations/episodes`. */
+export type AutomationEpisodeList = Readonly<{
+  episodes: readonly AutomationEpisodeRecord[];
+  actionsUnavailable?: AutomationActionsUnavailable;
 }>;
 
 /** `POST /automations/sources`: a disabled `github-poll` source (#4513). */
