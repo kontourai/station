@@ -193,8 +193,14 @@ describe('conversationRefusalMessage', () => {
     expect(conversationRefusalMessage(refusal)).toBe(
       'This answer didn’t finish, so it can’t be forked. Fork from a completed answer.',
     );
-    // Every fork refusal code has copy of its own.
-    for (const code of Object.values(CONVERSATION_FORK_REFUSAL_CODES)) {
+    const { CONVERSATION_HANDOFF_REFUSAL_CODES } = await import(
+      '@kontourai/station-contracts/orchestration'
+    );
+    // Every fork and handoff refusal code has copy of its own.
+    for (const code of [
+      ...Object.values(CONVERSATION_FORK_REFUSAL_CODES),
+      ...Object.values(CONVERSATION_HANDOFF_REFUSAL_CODES),
+    ]) {
       if (code === CONVERSATION_FORK_REFUSAL_CODES.invalidRequest) continue;
       expect(
         conversationRefusalMessage(Object.assign(new Error('x'), { code })),

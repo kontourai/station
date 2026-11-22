@@ -1,6 +1,7 @@
 import {
   CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
 } from '@kontourai/station-contracts/orchestration';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -29,6 +30,14 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
     'Station couldn’t confirm who is asking. Reconnect, then try again.',
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]:
     'The current agent is still working. Wait for it to finish, then try again.',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict]:
+    'This switch request is out of date. Close this and switch again.',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget]:
+    'An earlier agent switch hasn’t started yet. Wait for it, or check the chat, then try again.',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged]:
+    'This chat moved on since you chose. Review the agent change, then send again.',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending]:
+    'Finish the pending context reset before switching agents.',
 };
 
 export function conversationRefusalMessage(error: unknown): string {
