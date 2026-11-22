@@ -1786,9 +1786,11 @@ export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
 /**
  * Machine codes on a refused `POST /agents/:slug/conversations/:id/fork`, so a
  * client says what to do instead of showing the server's sentence. Every 4xx
- * envelope that route answers carries one of these, a Station Control scope
- * code, or {@link CONVERSATION_CONTEXT_UNAVAILABLE_CODE} (a saved fork context
- * that needs reconciling).
+ * envelope that route answers for a JSON body within the size limit carries
+ * one of these, a Station Control scope code, `conversation_lineage_too_long`,
+ * or {@link CONVERSATION_CONTEXT_UNAVAILABLE_CODE} (a saved fork context that
+ * needs reconciling). A body that is not JSON (400) or is too large (413)
+ * gets the shared request-validation envelope, without a code.
  */
 export const CONVERSATION_FORK_REFUSAL_CODES = Object.freeze({
   /** The request names a malformed Agent or conversation identity (400). */
@@ -1801,7 +1803,10 @@ export const CONVERSATION_FORK_REFUSAL_CODES = Object.freeze({
   callerUnresolved: 'conversation_fork_caller_unresolved',
   /** The source history could not be read in full right now (409). */
   historyUnavailable: 'conversation_fork_history_unavailable',
-  /** Even the text of the history up to the selected turn is too large to save (409). */
+  /**
+   * The history is past the fork read bound (decided before it is read), or
+   * even its text up to the selected turn is too large to save (409).
+   */
   historyTooLarge: 'conversation_fork_history_too_large',
   /** The selected turn is not a completed assistant answer (409). */
   turnIncomplete: 'conversation_fork_turn_incomplete',

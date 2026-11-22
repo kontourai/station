@@ -1,0 +1,15 @@
+{
+  "revision": "13483c4f23ed6cc521785732b1b65a8da58be452",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reworded the fork refusal code comments: the history-too-large code also covers the pre-read bound, and the all-4xx claim now names the uncoded non-JSON and too-large envelopes. Citing pages (ADR 0012, chat composer, placement, self-configuring agent, contracts) make no claim these touch.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reworded the fork refusal code comments: the history-too-large code also covers the pre-read bound, and the all-4xx claim now names the uncoded non-JSON and too-large envelopes. Citing pages (ADR 0012, chat composer, placement, self-configuring agent, contracts) make no claim these touch.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reworded the fork refusal code comments: the history-too-large code also covers the pre-read bound, and the all-4xx claim now names the uncoded non-JSON and too-large envelopes. Citing pages (ADR 0012, chat composer, placement, self-configuring agent, contracts) make no claim these touch.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reworded the fork refusal code comments: the history-too-large code also covers the pre-read bound, and the all-4xx claim now names the uncoded non-JSON and too-large envelopes. Citing pages (ADR 0012, chat composer, placement, self-configuring agent, contracts) make no claim these touch.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reworded the fork refusal code comments: the history-too-large code also covers the pre-read bound, and the all-4xx claim now names the uncoded non-JSON and too-large envelopes. Citing pages (ADR 0012, chat composer, placement, self-configuring agent, contracts) make no claim these touch.","inputs":["packages/contracts/src/orchestration.ts"]}
+  ]
+}

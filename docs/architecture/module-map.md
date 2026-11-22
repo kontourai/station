@@ -2252,7 +2252,9 @@ The fork route reads its source through
 [`readConversationForkSource`](../../src-server/services/orchestration/conversation-lineage.ts),
 the same authorized whole-Session read a handoff's carried history uses
 (including rows an earlier fork copied in), before any stored Agent record,
-and cuts it at the branch-point turn. The copy keeps messages whole within its
+and cuts it at the branch-point turn. Its size is read from SQL first (event count and
+stored bytes, out-of-line content included), after authorization, and a history
+past the fork read bound is refused before any payload loads. The copy keeps messages whole within its
 2 MB bound and only their text past it.
 Opening it returns `fork-ready` without inventing a provider Session. First send
 creates the actual Session and carries the saved text projection; canonical
