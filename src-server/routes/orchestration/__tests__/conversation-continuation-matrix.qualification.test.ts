@@ -666,6 +666,91 @@ describe('fork and handoff deliver the transcript seed across engine families', 
     expect(sent.ambientContext).not.toContain(AFTER);
   });
 
+  /**
+   * The reported chat: started on the Station agent (which also keeps its own
+   * stored record), then continued with Codex and with Claude Code. Each Agent
+   * answers one turn before the next takes over, and Claude Code answers once
+   * more after the turns the forks branch at.
+   */
+  async function continuedStationChat(h: Harness) {
+    const id = 'station:1795307294529';
+    await h.turn(STATION_AGENT, id, 'STATION-EARLY-4480');
+    const station = await h.turn(STATION_AGENT, id, 'STATION-LATE-4481');
+    const codex = await h.turn('codex', id, 'CODEX-TURN-4482', 'to-codex');
+    const claude = await h.turn('claude', id, 'CLAUDE-TURN-4483', 'to-claude');
+    await h.turn('claude', id, AFTER);
+    const stored = h.memory.get('default')!;
+    await stored.createConversation({
+      id,
+      resourceId: 'default',
+      userId: OWNER,
+      title: 'Station agent chat',
+      metadata: {},
+    });
+    await stored.addMessages(
+      ['STATION-EARLY-4480', 'STATION-LATE-4481'].flatMap((text, index) => [
+        {
+          id: `stored-user-${index}`,
+          role: 'user' as const,
+          parts: [{ type: 'text' as const, text }],
+        },
+        {
+          id: `stored-answer-${index}`,
+          role: 'assistant' as const,
+          parts: [{ type: 'text' as const, text: `Answer ${index}.` }],
+        },
+      ]),
+      OWNER,
+      id,
+    );
+    expect(h.store.conversationSessions(id)).toHaveLength(3);
+    return { id, station, codex, claude };
+  }
+
+  test.each(['codex', 'claude'] as const)(
+    'a Station agent chat continued with other Agents forks from a later %s answer with its whole earlier history',
+    async (later) => {
+      const h = harness();
+      const chat = await continuedStationChat(h);
+      const forkId = await h.forkedId(
+        await h.fork(later, chat.id, 'opencode', chat[later].turnId),
+      );
+      const { sent } = await h.turn('opencode', forkId, 'First fork turn.');
+      const before =
+        later === 'codex'
+          ? ['STATION-EARLY-4480', 'STATION-LATE-4481', 'CODEX-TURN-4482']
+          : [
+              'STATION-EARLY-4480',
+              'STATION-LATE-4481',
+              'CODEX-TURN-4482',
+              'CLAUDE-TURN-4483',
+            ];
+      for (const text of before) expect(sent.ambientContext).toContain(text);
+      if (later === 'codex')
+        expect(sent.ambientContext).not.toContain('CLAUDE-TURN-4483');
+      expect(sent.ambientContext).not.toContain(AFTER);
+    },
+  );
+
+  test('a Station agent chat continued with other Agents forks from an early Station agent answer', async () => {
+    const h = harness();
+    const chat = await continuedStationChat(h);
+    const forkId = await h.forkedId(
+      await h.fork(STATION_AGENT, chat.id, 'acp', chat.station.turnId),
+    );
+    const { sent } = await h.turn('acp', forkId, 'First fork turn.');
+    for (const text of ['STATION-EARLY-4480', 'STATION-LATE-4481'])
+      expect(sent.ambientContext).toContain(text);
+    for (const text of ['CODEX-TURN-4482', 'CLAUDE-TURN-4483', AFTER])
+      expect(sent.ambientContext).not.toContain(text);
+    // A later Agent still cannot claim the Station agent's turn.
+    const claimed = await h.fork('codex', chat.id, 'muse', chat.station.turnId);
+    expect(claimed.status).toBe(409);
+    expect(await claimed.json()).toMatchObject({
+      code: CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch,
+    });
+  });
+
   test('every fork refusal names a stable code a client can act on', async () => {
     const h = harness();
     const { id } = await sourceConversation(h, 'codex');

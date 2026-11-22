@@ -1248,12 +1248,19 @@ export function createConversationRoutes(
                 sourceConversationId,
                 authority,
               );
+        // The stored record names its owner only when the history read falls
+        // back to it. A runtime history read is owned turn by turn: a chat
+        // continued with another Agent keeps the first Agent's record while
+        // later Sessions belong to others, so the selected turn's Session
+        // Agent below is the owner check there.
         let recordedSourceAgent: string | undefined;
-        const storedResourceId = (
-          sourceRecord as {
-            resourceId?: unknown;
-          } | null
-        )?.resourceId;
+        const storedResourceId = lineageSource
+          ? undefined
+          : (
+              sourceRecord as {
+                resourceId?: unknown;
+              } | null
+            )?.resourceId;
         if (typeof storedResourceId === 'string') {
           try {
             recordedSourceAgent = publicAgentIdFromRuntimeKey(storedResourceId);
