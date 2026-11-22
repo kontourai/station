@@ -41,6 +41,12 @@ import { DEFAULT_KNOWLEDGE_NAMESPACE } from './knowledge-storage.js';
 const DEFAULT_NS = DEFAULT_KNOWLEDGE_NAMESPACE;
 /** The built-in `rules` namespace (`project-rules.md`), superseded by the Project brief. */
 const BUILTIN_RULES_NAMESPACE = 'rules';
+/** Where "Index directory" puts the project's files when no namespace is named. */
+const DEFAULT_SCAN_NAMESPACE: KnowledgeNamespaceConfig = {
+  id: 'code',
+  label: 'Code',
+  behavior: 'rag',
+};
 
 // ── Service ────────────────────────────────────────────────────────
 
@@ -343,13 +349,28 @@ export class KnowledgeService {
 
   // ── Directory scanning ──
 
+  /**
+   * Index the project's directory. With no namespace named, the files go to
+   * the `code` namespace, which is registered on the project first: the
+   * project-wide document list, status counts and search read registered
+   * namespaces only, so an unregistered `code` held every scanned file out of
+   * sight while the scan reported them indexed.
+   */
   async scanDirectories(
     projectSlug: string,
     extensions?: string[],
     includePatterns?: string[],
     excludePatterns?: string[],
-    namespace: string = 'code',
+    explicitNamespace?: string,
   ): Promise<{ indexed: number; skipped: number }> {
+    const namespace = explicitNamespace ?? DEFAULT_SCAN_NAMESPACE.id;
+    if (
+      !explicitNamespace &&
+      this.storageAdapter &&
+      !this.getNamespaceConfig(projectSlug, namespace)
+    ) {
+      await this.registerNamespace(projectSlug, DEFAULT_SCAN_NAMESPACE);
+    }
     return scanKnowledgeDirectories({
       projectSlug,
       namespace,
