@@ -232,4 +232,122 @@ describe('foldLineageUsageEvents (#5389)', () => {
       14, 700,
     ]);
   });
+
+  // One turn's report of what the context holds, as each adapter writes it.
+  const contextTurn = (
+    provider: string,
+    threadId: string,
+    turnId: string,
+    context: { contextTokens?: number; contextPercent?: number },
+  ) => [
+    ev({
+      method: 'token-usage.updated',
+      provider,
+      threadId,
+      turnId,
+      ...context,
+    }),
+    ev({ method: 'turn.completed', provider, threadId, turnId }),
+  ];
+
+  it("has no context figure after an engine change until the new engine reports one, never the previous engine's", () => {
+    const claude = [
+      ev({ method: 'session.started', provider: 'claude', threadId: 's1' }),
+      ...contextTurn('claude', 's1', 'c1', { contextTokens: 120_000 }),
+    ];
+    const codexStarted = [
+      ev({
+        method: 'session.started',
+        provider: 'codex',
+        threadId: 's2',
+        metadata: { codexThreadId: 'X' },
+      }),
+    ];
+    const switched = foldLineageUsageEvents([claude, codexStarted]);
+    expect(switched.provider).toBe('codex');
+    expect(switched.contextTokens).toBeUndefined();
+    expect(switched.contextWindowTokens).toBeUndefined();
+    expect(switched.contextPercent).toBeUndefined();
+
+    const reported = foldLineageUsageEvents([
+      claude,
+      [
+        ...codexStarted,
+        ...contextTurn('codex', 's2', 'x1', { contextTokens: 9_000 }),
+      ],
+    ]);
+    expect(reported.contextTokens).toBe(9_000);
+
+    // An engine that reports only its own reading (a percentage) is held to
+    // the same rule.
+    const fromPercent = foldLineageUsageEvents([
+      [
+        ev({ method: 'session.started', provider: 'acp', threadId: 's1' }),
+        ...contextTurn('acp', 's1', 'a1', { contextPercent: 64 }),
+      ],
+      [ev({ method: 'session.started', provider: 'claude', threadId: 's2' })],
+    ]);
+    expect(fromPercent.contextPercent).toBeUndefined();
+  });
+
+  it("keeps a single engine's context across its own runs, as before", () => {
+    // A fresh Codex thread is a new run of the same engine; until it reports,
+    // the conversation keeps the figure it had.
+    const aggregate = foldLineageUsageEvents([
+      [
+        ev({
+          method: 'session.started',
+          provider: 'codex',
+          threadId: 's1',
+          metadata: { codexThreadId: 'X' },
+        }),
+        ...contextTurn('codex', 's1', 'x1', { contextTokens: 50_000 }),
+      ],
+      [
+        ev({
+          method: 'session.started',
+          provider: 'codex',
+          threadId: 's2',
+          metadata: { codexThreadId: 'Y' },
+        }),
+      ],
+    ]);
+    expect(aggregate.contextTokens).toBe(50_000);
+  });
+
+  it('takes the latest figures from the run that holds the newest Session, even when it is not the last run', () => {
+    // Unreachable while a resume only continues the immediate predecessor:
+    // a Codex Session that resumes thread X after a Claude Code one continues
+    // the first run, which is then the newest.
+    const aggregate = foldLineageUsageEvents([
+      [
+        ev({
+          method: 'session.started',
+          provider: 'codex',
+          threadId: 's1',
+          metadata: { codexThreadId: 'X' },
+        }),
+        ...contextTurn('codex', 's1', 'x1', { contextTokens: 10_000 }),
+      ],
+      [
+        ev({ method: 'session.started', provider: 'claude', threadId: 's2' }),
+        ...contextTurn('claude', 's2', 'c1', { contextTokens: 70_000 }),
+      ],
+      [
+        ev({
+          method: 'session.started',
+          provider: 'codex',
+          threadId: 's3',
+          metadata: { codexThreadId: 'X' },
+        }),
+        ...contextTurn('codex', 's3', 'x2', { contextTokens: 12_000 }),
+      ],
+    ]);
+    expect(aggregate.provider).toBe('codex');
+    expect(aggregate.contextTokens).toBe(12_000);
+    expect(aggregate.engines?.map((engine) => engine.provider)).toEqual([
+      'codex',
+      'claude',
+    ]);
+  });
 });

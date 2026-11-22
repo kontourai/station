@@ -299,6 +299,29 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
     });
   });
 
+  test("after a move to Codex the context figure is not Claude Code's until Codex reports one", async () => {
+    const f = fixture();
+    f.session(CONVERSATION, 'claude').claudeTurn({
+      input: 10,
+      output: 5,
+      cacheRead: 100,
+      cacheWrite: 20,
+      runningCostUsd: 0.1,
+    });
+    const before = await f.stats();
+    expect(before.contextTokens).toBe(130);
+
+    // Codex started and ran a turn; its running totals carry no context.
+    f.session(`${CONVERSATION}:session:codex`, 'codex', {
+      codexThreadId: 'codex-thread-a',
+    }).codexTurn({ input: 300, output: 40, total: 340, cachedInput: 200 });
+
+    const after = await f.stats();
+    expect(after.measurement).toMatchObject({ provider: 'codex' });
+    expect(after.contextTokens).toBeUndefined();
+    expect(after.contextWindowPercentage).toBeUndefined();
+  });
+
   test('a return to Codex starts a new Codex thread whose running total adds to the first one', async () => {
     const f = fixture();
     f.session(CONVERSATION, 'codex', {
