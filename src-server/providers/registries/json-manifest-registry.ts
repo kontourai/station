@@ -346,6 +346,14 @@ const MANIFEST_FETCH_TIMEOUT_MS = 20_000;
 /** Bytes of a folder source's `registry.json`, the source read bound. */
 const REGISTRY_SOURCE_MANIFEST_MAX_BYTES = 1024 * 1024;
 
+/** A resolved source's location; a refused one is thrown, as before. */
+function resolvedLocation(
+  resolved: ResolvedManifestSource | RegistrySourceConfinementError,
+): string {
+  if (resolved instanceof RegistrySourceConfinementError) throw resolved;
+  return resolved.location;
+}
+
 export class JsonManifestRegistryProvider
   implements
     IAgentRegistryProvider,
@@ -479,8 +487,14 @@ export class JsonManifestRegistryProvider
   ): Promise<PluginRegistryCatalogSnapshot> {
     const manifest = await this.fetchManifest(true);
     const entries = this.manifestEntriesOfKind(manifest, kind);
-    const facts = await mapWithConcurrency(entries, 4, (plugin) =>
-      kind === 'plugin' ? this.appFactsOf(plugin) : Promise.resolve(undefined),
+    // Each entry's source is resolved once and read by every column below.
+    const resolutions = entries.map((plugin) =>
+      this.tryResolveManifestSource(plugin.source),
+    );
+    const facts = await mapWithConcurrency(entries, 4, (plugin, index) =>
+      kind === 'plugin'
+        ? this.appFactsOf(plugin, resolutions[index]!)
+        : Promise.resolve(undefined),
     );
     return {
       revision: createHash('sha256')
@@ -496,14 +510,14 @@ export class JsonManifestRegistryProvider
           displayName: plugin.displayName,
           description: plugin.description,
           version: plugin.version,
-          source: this.listedSource(plugin.id, plugin.source),
+          source: this.listedSourceOf(plugin.id, resolutions[index]!),
           installed: false,
           ...(app === undefined ? {} : { app }),
         };
       }),
-      packages: entries.map((plugin) => ({
+      packages: entries.map((plugin, index) => ({
         id: plugin.id,
-        source: this.resolveManifestSource(plugin.source).location,
+        source: resolvedLocation(resolutions[index]!),
         ...(plugin.claim === undefined
           ? {}
           : { claim: structuredClone(plugin.claim) }),
@@ -522,14 +536,9 @@ export class JsonManifestRegistryProvider
    */
   private async appFactsOf(
     plugin: ManifestPlugin,
+    resolved: ResolvedManifestSource | RegistrySourceConfinementError,
   ): Promise<RegistryAppFacts | undefined> {
-    let resolved: ResolvedManifestSource;
-    try {
-      resolved = this.resolveManifestSource(plugin.source);
-    } catch (error) {
-      if (error instanceof RegistrySourceConfinementError) return undefined;
-      throw error;
-    }
+    if (resolved instanceof RegistrySourceConfinementError) return undefined;
     if (resolved.kind !== 'local') return undefined;
     this.appFactsReader ??= new RegistryAppFactsReader(this.logger);
     return this.appFactsReader.read(plugin.id, {
@@ -667,15 +676,31 @@ export class JsonManifestRegistryProvider
    * take the whole catalog down.
    */
   private listedSource(id: string, source: string): string | undefined {
+    return this.listedSourceOf(id, this.tryResolveManifestSource(source));
+  }
+
+  private listedSourceOf(
+    id: string,
+    resolved: ResolvedManifestSource | RegistrySourceConfinementError,
+  ): string | undefined {
+    if (!(resolved instanceof RegistrySourceConfinementError))
+      return resolved.location;
+    this.logger?.warn('Registry manifest source refused', {
+      entryId: id,
+      error: resolved.message,
+    });
+    return undefined;
+  }
+
+  /** {@link resolveManifestSource}, with a confinement refusal as a value. */
+  private tryResolveManifestSource(
+    source: string,
+  ): ResolvedManifestSource | RegistrySourceConfinementError {
     try {
-      return this.resolveManifestSource(source).location;
+      return this.resolveManifestSource(source);
     } catch (error) {
-      if (!(error instanceof RegistrySourceConfinementError)) throw error;
-      this.logger?.warn('Registry manifest source refused', {
-        entryId: id,
-        error: error.message,
-      });
-      return undefined;
+      if (error instanceof RegistrySourceConfinementError) return error;
+      throw error;
     }
   }
 

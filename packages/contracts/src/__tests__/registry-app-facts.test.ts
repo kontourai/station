@@ -30,6 +30,18 @@ describe('deriveRegistryAppFacts', () => {
     });
   });
 
+  test('a Coding layout record is repository-bound even without the binding', () => {
+    expect(
+      deriveRegistryAppFacts({
+        manifest: {},
+        layouts: [{ type: 'coding', tabs: tabs(1) }],
+      }),
+    ).toMatchObject({
+      opensAs: ['project-view'],
+      worksWith: ['files-and-code'],
+    });
+  });
+
   test('a pane that needs a Task works with Tasks', () => {
     expect(
       deriveRegistryAppFacts({
@@ -76,6 +88,10 @@ describe('parseRegistryAppFacts', () => {
     expect(app).not.toBeNull();
     expect(parseRegistryAppFacts(JSON.parse(JSON.stringify(app)))).toEqual(app);
     expect(parseRegistryAppFacts({ kind: 'none' })).toEqual({ kind: 'none' });
+    // A field a newer writer adds does not make it unknown.
+    expect(parseRegistryAppFacts({ kind: 'none', reason: 'skills' })).toEqual({
+      kind: 'none',
+    });
   });
 
   test('refuses values outside the shape or its bounds', () => {
@@ -88,7 +104,6 @@ describe('parseRegistryAppFacts', () => {
     expect(parseRegistryAppFacts({ ...app, screens: ['A', 'A'] })).toBeNull();
     expect(parseRegistryAppFacts({ ...app, opensAs: ['window'] })).toBeNull();
     expect(parseRegistryAppFacts({ ...app, agents: -1 })).toBeNull();
-    expect(parseRegistryAppFacts({ kind: 'none', screens: [] })).toBeNull();
     expect(parseRegistryAppFacts('app')).toBeNull();
   });
 });

@@ -12,12 +12,13 @@
  *
  * Each listing re-reads the catalog index, so the facts are cached per
  * package and reused while the files they came from are unchanged: a listing
- * of an unchanged catalog costs one `lstat` per file read before.
+ * of an unchanged catalog costs an `lstat` and a `stat` per file read before.
  */
-import { lstatSync } from 'node:fs';
+import { lstatSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   deriveRegistryAppFacts,
+  REGISTRY_APP_LIST_BOUND,
   type RegistryAppFacts,
 } from '@kontourai/station-contracts/catalog';
 import { PLUGIN_MANIFEST_MAX_BYTES } from '../../services/plugins/plugin-manifest-bounded-read.js';
@@ -32,8 +33,6 @@ import { readBoundedFile, readConfinedFile } from './confined-local-read.js';
 
 /** The bound the install-time layout read uses. */
 const LAYOUT_MAX_BYTES = 256 * 1024;
-/** More layouts than an app's facts can list; refused before any is read. */
-const LAYOUT_SOURCE_BOUND = 32;
 /** Packages whose facts are remembered; the whole cache resets past it. */
 const CACHE_BOUND = 512;
 
@@ -53,13 +52,21 @@ interface LocalRegistryPackage {
 
 class AppFactsRefusal extends Error {}
 
-function fileSignature(path: string): string {
+function statSignature(stat: () => ReturnType<typeof lstatSync>): string {
   try {
-    const info = lstatSync(path);
-    return `${path}:${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+    const info = stat();
+    return `${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
   } catch {
-    return `${path}:missing`;
+    return 'missing';
   }
+}
+
+/**
+ * The file as named and as read: a link inside the package is signed by
+ * itself and by its target, so a change to either is a change.
+ */
+function fileSignature(path: string): string {
+  return `${path}:${statSignature(() => lstatSync(path))}:${statSignature(() => statSync(path))}`;
 }
 
 export class RegistryAppFactsReader {
@@ -109,7 +116,8 @@ export class RegistryAppFactsReader {
         ...(manifest.layout ? [manifest.layout.source] : []),
         ...(manifest.layouts ?? []).map((layout) => layout.source),
       ];
-      if (layoutSources.length > LAYOUT_SOURCE_BOUND)
+      // The contract's bound, checked before any layout is read.
+      if (layoutSources.length > REGISTRY_APP_LIST_BOUND)
         throw new AppFactsRefusal('it declares too many layouts');
       const layouts: unknown[] = [];
       for (const source of layoutSources)

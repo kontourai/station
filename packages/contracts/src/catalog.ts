@@ -1,3 +1,5 @@
+import { layoutUsesRepositoryWorkspace } from './layout.js';
+
 export interface SkillSourceContext {
   kind: 'agent' | 'plugin' | 'user' | 'asset';
   agentSlug?: string;
@@ -256,7 +258,8 @@ export type RegistryAppFacts =
     }
   | { readonly kind: 'none' };
 
-const REGISTRY_APP_LIST_BOUND = 32;
+/** The most entries any list in {@link RegistryAppFacts} may hold. */
+export const REGISTRY_APP_LIST_BOUND = 32;
 const REGISTRY_APP_LABEL_BOUND = 120;
 const REGISTRY_APP_PLACEMENTS: readonly RegistryAppPlacement[] = [
   'screen',
@@ -317,8 +320,8 @@ function isDistinctListOf<T>(
  */
 export function parseRegistryAppFacts(value: unknown): RegistryAppFacts | null {
   if (!isAppRecord(value)) return null;
-  if (value.kind === 'none')
-    return Object.keys(value).length === 1 ? { kind: 'none' } : null;
+  // Fields a newer writer adds beside `kind` do not change what it is.
+  if (value.kind === 'none') return { kind: 'none' };
   if (value.kind !== 'app') return null;
   const lists: Partial<
     Record<(typeof REGISTRY_APP_LABEL_LISTS)[number], string[]>
@@ -412,7 +415,13 @@ export function deriveRegistryAppFacts(input: {
     if (!isAppRecord(layout) || !Array.isArray(layout.tabs)) return null;
     if (layout.tabs.length > REGISTRY_APP_LIST_BOUND) return null;
     // A repository-bound layout derives its workspace from a project.
-    if (layout.workspaceBinding === 'repository')
+    if (
+      layoutUsesRepositoryWorkspace({
+        type: typeof layout.type === 'string' ? layout.type : undefined,
+        workspaceBinding:
+          layout.workspaceBinding === 'repository' ? 'repository' : undefined,
+      })
+    )
       worksWith.add('files-and-code');
     else opensAs.add('screen');
     opensAs.add('project-view');
