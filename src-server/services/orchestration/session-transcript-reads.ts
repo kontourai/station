@@ -171,6 +171,10 @@ export class SessionTranscriptReads {
    * under its own budget, so a long reply must count at its real size. The
    * read check runs first; nothing is listed or resolved for a caller that
    * may not read the Session.
+   *
+   * Ids are the stable, event-derived ones the conversation reader shows, so
+   * a fork's branch point and copied rows name the same messages the person
+   * picked from; a seed renders text only and never reads them.
    */
   readSessionSeedMessages(
     threadId: string,
@@ -181,6 +185,7 @@ export class SessionTranscriptReads {
     }
     return projectRuntimeEventsToMessages(
       this.deps.listResolvedEventPayloads(threadId),
+      { stableIds: true },
     );
   }
 

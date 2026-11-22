@@ -1,0 +1,7 @@
+{
+  "revision": "9c6cd71fdbb02bf397c7166fbbd8f3f2315e1689",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped topics: only the architecture module-map topic text changed (the fork read-bound sentence); station-docs.md topic inventory and serving claims are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -6,8 +6,17 @@ const MAX_ATTEMPTS = 64;
 type AttemptMap = Record<string, string>;
 const memoryAttempts: AttemptMap = {};
 
-function coordinate(sourceConversationId: string, turnId: string): string {
-  return `${sourceConversationId}\u0000${turnId}`;
+/**
+ * One retry-safe request per source turn AND target Agent: a retry to the same
+ * Agent reuses its key, while choosing another Agent is a different request
+ * (the server refuses a key that already names another target).
+ */
+function coordinate(
+  sourceConversationId: string,
+  turnId: string,
+  targetAgentId: string,
+): string {
+  return `${sourceConversationId}\u0000${turnId}\u0000${targetAgentId}`;
 }
 
 function read(storage: Pick<Storage, 'getItem'>): AttemptMap {
@@ -41,11 +50,12 @@ function write(storage: Pick<Storage, 'setItem'>, attempts: AttemptMap) {
 export function getOrCreateForkAttemptKey(
   sourceConversationId: string,
   turnId: string,
+  targetAgentId: string,
   storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
   generate: () => string = () => randomCorrelationId(),
 ): string {
   const attempts = read(storage);
-  const key = coordinate(sourceConversationId, turnId);
+  const key = coordinate(sourceConversationId, turnId, targetAgentId);
   if (typeof attempts[key] === 'string' && attempts[key]) return attempts[key];
   const idempotencyKey = generate();
   attempts[key] = idempotencyKey;
@@ -56,12 +66,66 @@ export function getOrCreateForkAttemptKey(
 export function completeForkAttempt(
   sourceConversationId: string,
   turnId: string,
+  targetAgentId: string,
   idempotencyKey: string,
   storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
 ): void {
   const attempts = read(storage);
-  const key = coordinate(sourceConversationId, turnId);
+  const key = coordinate(sourceConversationId, turnId, targetAgentId);
   if (attempts[key] !== idempotencyKey) return;
   delete attempts[key];
   write(storage, attempts);
+}
+
+/**
+ * One fork attempt's key lifecycle, as `ChatDock.runFork` runs it. `run` gets
+ * the retry-safe key for (source turn, target Agent) and creates and opens
+ * the fork. The key is released only once `run` resolves (the fork is open),
+ * so a retry after a failed open replays the same fork rather than making a
+ * second. A refusal naming the key's conflict (another request or a deleted
+ * fork) releases it too, so forking again is a new request.
+ */
+export async function runForkAttempt<T>(
+  coordinate: {
+    sourceConversationId: string;
+    turnId: string;
+    targetAgentId: string;
+  },
+  run: (idempotencyKey: string) => Promise<T>,
+  options: {
+    isKeyConflict: (error: unknown) => boolean;
+    storage?: Pick<Storage, 'getItem' | 'setItem'>;
+    generate?: () => string;
+  },
+): Promise<T> {
+  const { sourceConversationId, turnId, targetAgentId } = coordinate;
+  const storage = options.storage ?? localStorage;
+  const idempotencyKey = getOrCreateForkAttemptKey(
+    sourceConversationId,
+    turnId,
+    targetAgentId,
+    storage,
+    options.generate,
+  );
+  try {
+    const result = await run(idempotencyKey);
+    completeForkAttempt(
+      sourceConversationId,
+      turnId,
+      targetAgentId,
+      idempotencyKey,
+      storage,
+    );
+    return result;
+  } catch (error) {
+    if (options.isKeyConflict(error))
+      completeForkAttempt(
+        sourceConversationId,
+        turnId,
+        targetAgentId,
+        idempotencyKey,
+        storage,
+      );
+    throw error;
+  }
 }

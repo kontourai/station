@@ -26,6 +26,7 @@ import { ContinueInProjectDialog } from './ContinueInProjectDialog';
 import '../chat/TaskShaping.css';
 import './ChatDockDeepLinkOpening.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
@@ -243,6 +244,7 @@ import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
+import { conversationRefusalMessage } from './conversationRefusalCopy';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 
 import { NewChatUnavailableError } from './newChatErrors';
@@ -1337,7 +1339,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ? projects.find((project) => project.slug === inventoryProjectSlug)?.id
     : undefined;
   const conversationBoundaryDialogs = useConversationBoundaryDialogs({
-    agents,
     apiBase,
     activeSession: hostConversation ? activeSession : null,
     allSessions: allSessions.filter((session) => chatBelongsToStation(session)),
@@ -1366,7 +1367,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     forkAbortRef,
     forkGenerationRef,
     cancelFork,
-    forkEligibleAgents,
     contextResetSource,
     setContextResetSource,
     contextBoundaryLabel,
@@ -1422,15 +1422,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (newChatRequestEpoch > 0) revealNewChatDraft();
   }, [newChatRequestEpoch]);
   // What the dock's title slot calls an open draft, as the draft names itself.
-  const newChatDraftTitle = forkSource
-    ? forkSource.followUp?.mode === 'regenerate'
-      ? 'Regenerate'
-      : forkSource.followUp
-        ? 'Edit and resend'
-        : 'Fork from here'
-    : newChatTaskShaping
-      ? 'New Task'
-      : 'New chat';
+  const newChatDraftTitle = newChatTaskShaping ? 'New Task' : 'New chat';
   // Closes the draft without touching the dock's size: leaving it for a chat
   // (a tab, the inbox, a toast's Open, `?chat=`, Back/Forward to a chat) is
   // going to that chat, which must stay on screen.
@@ -1439,9 +1431,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setShowNewChatModal(false);
     setNewChatProjectOverride(null);
     setHandoffSource(null);
-    cancelFork();
-  }, [setShowNewChatModal, setHandoffSource, cancelFork]);
-  // The draft's own dismissal (Escape, Back, Cancel fork): the dock goes back
+  }, [setShowNewChatModal, setHandoffSource]);
+  // The draft's own dismissal (Escape, Back): the dock goes back
   // to the size it had before the draft forced it, maximize memory included.
   const dismissNewChatDraft = useCallback(() => {
     const before = dockBeforeDraft.current;
@@ -3683,14 +3674,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openForkDraft = async (
     source: ForkTurnSource,
     followUp?: ForkFollowUp,
+    quiet = false,
   ) => {
     const generation = ++forkGenerationRef.current;
     const [
-      { getOrCreateForkAttemptKey },
       { resolveHistoricalForkExecution },
       { getConversationTimelineContext, returnToLatestConversation },
     ] = await Promise.all([
-      import('./forkAttemptKey'),
       import('./forkSourceExecution'),
       import('../../hooks/orchestration/replay/controller'),
     ]);
@@ -3717,13 +3707,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerId: sourceExecution.providerId,
       providerOptions: sourceExecution.providerOptions,
       sourceSessionId: source.sessionId,
-      idempotencyKey: getOrCreateForkAttemptKey(conversationId, source.turnId),
       followUp,
+      quiet,
     };
     setForkSource(next);
     setForkOperation({ pending: false, error: null });
     if (timeline) returnToLatestConversation();
-    setShowNewChatModal(true);
     return next;
   };
 
@@ -3815,78 +3804,93 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     forkAbortRef.current = controller;
     setForkOperation({ pending: true, error: null });
     try {
-      const sameAgent = agent.slug === source.agentSlug;
-      const { forkConversation } = await import('@kontourai/station-sdk');
+      const [{ forkConversation }, { runForkAttempt }, { forkOpenExecution }] =
+        await Promise.all([
+          import('@kontourai/station-sdk'),
+          import('./forkAttemptKey'),
+          import('./forkSourceExecution'),
+        ]);
       if (generation !== forkGenerationRef.current) return;
-      const result = await forkConversation(
-        source.agentSlug,
-        source.id,
-        agent.slug,
+      const opened = await runForkAttempt(
         {
-          branchPointTurnId: source.turnId,
-          targetProjectSlug,
-          idempotencyKey: source.idempotencyKey,
-          signal: controller.signal,
+          sourceConversationId: source.id,
+          turnId: source.turnId,
+          targetAgentId: agent.slug,
+        },
+        async (idempotencyKey) => {
+          const result = await forkConversation(
+            source.agentSlug,
+            source.id,
+            agent.slug,
+            {
+              branchPointTurnId: source.turnId,
+              targetProjectSlug,
+              idempotencyKey,
+              signal: controller.signal,
+            },
+          );
+          // Superseded: throw rather than finish, so the key is kept and a
+          // later attempt to this Agent replays the fork Station created.
+          if (generation !== forkGenerationRef.current)
+            throw new DOMException('Fork superseded', 'AbortError');
+          const open = await openConversation(
+            result.conversationId,
+            agent.slug,
+            {
+              projectSlug: targetProjectSlug,
+              projectName: targetProjectName,
+              ...forkOpenExecution(source, agent.slug, choice),
+              hydrateMessages: true,
+              signal: controller.signal,
+              revealDock: !isFullscreenPlacement,
+              beforeFocus: () => {
+                // The fork's open navigates, which dismisses the draft's Back
+                // entry: settle first.
+                settleDockForStartedDraft();
+                return commitForkOpenBoundary({
+                  signal: controller.signal,
+                  generation,
+                  currentGeneration: () => forkGenerationRef.current,
+                  route: () => routeToScopedChatProject(targetProjectSlug),
+                });
+              },
+            },
+          );
+          // Superseded: throw rather than finish, so the key is kept and a
+          // later attempt to this Agent replays the fork Station created.
+          if (generation !== forkGenerationRef.current)
+            throw new DOMException('Fork superseded', 'AbortError');
+          // A failed open keeps the attempt's key, so a retry replays this
+          // same fork instead of creating a second one.
+          if (!open)
+            throw new Error('The fork was created but could not be opened.');
+          return result.conversationId;
+        },
+        {
+          isKeyConflict: (error) =>
+            (error as { code?: unknown } | null)?.code ===
+            CONVERSATION_FORK_REFUSAL_CODES.idempotencyConflict,
         },
       );
       if (generation !== forkGenerationRef.current) return;
-      const { completeForkAttempt } = await import('./forkAttemptKey');
-      completeForkAttempt(source.id, source.turnId, source.idempotencyKey);
-      const inherited = <T,>(chosen: T | undefined, recorded: T | undefined) =>
-        chosen ?? (sameAgent ? recorded : undefined);
-      const opened = await openConversation(result.conversationId, agent.slug, {
-        projectSlug: targetProjectSlug,
-        projectName: targetProjectName,
-        model: inherited(choice?.modelOverride, source.model),
-        requestedModel: inherited(choice?.modelOverride, source.model),
-        modelSource: inherited(choice?.modelSource, source.modelSource),
-        defaultModel: inherited(choice?.defaultModel, source.defaultModel),
-        defaultModelSource: inherited(
-          choice?.defaultModelSource,
-          source.defaultModelSource,
-        ),
-        providerOptions: inherited(
-          choice?.providerOptions,
-          source.providerOptions,
-        ),
-        requestedProviderOptions: inherited(
-          choice?.providerOptions,
-          source.providerOptions,
-        ),
-        providerId: inherited(choice?.providerId, source.providerId),
-        providerType: inherited(choice?.providerType, source.providerType),
-        hydrateMessages: true,
-        signal: controller.signal,
-        revealDock: !isFullscreenPlacement,
-        beforeFocus: () => {
-          // The fork's open navigates, which dismisses the draft's Back
-          // entry: settle first.
-          settleDockForStartedDraft();
-          return commitForkOpenBoundary({
-            signal: controller.signal,
-            generation,
-            currentGeneration: () => forkGenerationRef.current,
-            route: () => routeToScopedChatProject(targetProjectSlug),
-          });
-        },
-      });
-      if (generation !== forkGenerationRef.current) return;
-      if (!opened)
-        throw new Error('The fork was created but could not be opened.');
-      if (source.followUp)
-        applyForkFollowUp(result.conversationId, source.followUp);
+      // Close the dialog first (its request is done, so nothing to abort):
+      // its focus return then yields to the composer the follow-up focuses.
+      if (forkAbortRef.current === controller) forkAbortRef.current = null;
+      cancelFork();
+      if (source.followUp) applyForkFollowUp(opened, source.followUp);
       invalidate(conversationQueries.inventory().queryKey);
       invalidate(orchestrationQueries.sessions().queryKey);
-      cancelFork();
-      setShowNewChatModal(false);
     } catch (error) {
       if (generation !== forkGenerationRef.current || controller.signal.aborted)
         return;
+      // A quiet fork (Regenerate / Edit and resend) that failed now shows its
+      // dialog, and keeps showing it through a retry from there.
+      if (source.quiet) setForkSource({ ...source, quiet: false });
       setForkOperation({
         pending: false,
         error:
           error instanceof Error
-            ? userFacingErrorMessage(error)
+            ? conversationRefusalMessage(error)
             : 'Could not create the fork. Try again.',
       });
     } finally {
@@ -3951,14 +3955,23 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       requestComposerFocus(sessionId, { whileBusy: true });
       return;
     }
-    const source = await openForkDraft(request.fork, followUp);
-    if (!source) return;
+    // The message's own Agent runs it: with that Agent runnable there is
+    // nothing to pick, so the fork runs without the dialog, which shows only
+    // if it fails (with the reason and a retry) or the Agent cannot run.
     const agent = agents.find(
       (entry) =>
-        entry.slug === source.agentSlug && agentRunnability(entry).runnable,
+        entry.slug === request.fork?.agentSlug &&
+        agentRunnability(entry).runnable,
     );
-    if (agent)
+    const source = await openForkDraft(request.fork, followUp, Boolean(agent));
+    if (!source) return;
+    if (agent) {
+      // No dialog while it runs: say so, as a fork takes a moment to open.
+      showToast(
+        request.mode === 'regenerate' ? 'Regenerating…' : 'Opening the edit…',
+      );
       await runFork(source, agent, source.projectSlug, source.projectName);
+    }
   };
 
   const parentRequestScope =
@@ -4651,7 +4664,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   visibleNewChatEpoch === newChatRequestEpoch
                                 }
                                 componentProps={{
-                                  agents: forkEligibleAgents,
+                                  agents,
                                   projects:
                                     hasImmutableProjectScope && projectSlug
                                       ? projects.filter(
@@ -4823,47 +4836,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                     navigate(pathname, { chat: sessionId });
                                     setNewChatProjectOverride(null);
                                     setHandoffSource(null);
-                                  },
-                                  forkMode: forkSource
-                                    ? {
-                                        kind: 'fork',
-                                        preferredAgentSlug:
-                                          forkSource.agentSlug,
-                                        sourceModel: forkSource.model,
-                                        pending: forkOperation.pending,
-                                        error: forkOperation.error,
-                                      }
-                                    : undefined,
-                                  onForkAgentSelect: (
-                                    agent,
-                                    projectSlug,
-                                    projectName,
-                                    _initialMessage,
-                                    modelOverride,
-                                    modelSource,
-                                    defaultModel,
-                                    defaultModelSource,
-                                    providerOptions,
-                                    providerId,
-                                    providerType,
-                                  ) => {
-                                    if (!forkSource || forkOperation.pending)
-                                      return;
-                                    return runFork(
-                                      forkSource,
-                                      agent,
-                                      projectSlug,
-                                      projectName,
-                                      {
-                                        modelOverride,
-                                        modelSource,
-                                        defaultModel,
-                                        defaultModelSource,
-                                        providerOptions,
-                                        providerId,
-                                        providerType,
-                                      },
-                                    );
                                   },
                                   onConversationStarted: (agent, start) => {
                                     const sessionId =
@@ -5345,7 +5317,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             {((handoffSource &&
               !stagedAgentChange.previewChecking &&
               !stagedAgentChange.pending) ||
-              contextResetSource) && (
+              contextResetSource ||
+              (forkSource && (!forkSource.quiet || forkOperation.error))) && (
               <LazyBoundary
                 load={loadConversationBoundaryDialogs}
                 componentProps={{
@@ -5364,6 +5337,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   showToast,
                   refetchOrchestrationSessions,
                   continueOnStation,
+                  onFork: (agent, choice) => {
+                    if (!forkSource || forkOperation.pending) return;
+                    void runFork(
+                      forkSource,
+                      agent,
+                      forkSource.projectSlug,
+                      forkSource.projectName,
+                      choice,
+                    );
+                  },
                   handoffAvailable:
                     !stagedAgentChange.previewChecking &&
                     !stagedAgentChange.pending,
@@ -5379,7 +5362,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               load={loadChatDockModalStack}
               componentProps={{
                 goalSessionId: activeSession?.currentSessionId,
-                agents: forkEligibleAgents,
+                agents,
                 projects:
                   hasImmutableProjectScope && projectSlug
                     ? projects.filter((project) => project.slug === projectSlug)

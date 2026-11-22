@@ -6,6 +6,7 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { approxInjectedTokens } from '../../../routes/chat/chat-context-injection.js';
+import { composeAmbientTurnText } from '../../../utils/ambient-context.js';
 import {
   renderForkTranscript,
   selectForkTranscriptSlice,
@@ -14,6 +15,7 @@ import { ConversationLineage } from '../conversation-lineage.js';
 import {
   buildTranscriptSeed,
   TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET,
+  TRANSCRIPT_SEED_END,
   TRANSCRIPT_SEED_MAX_TOKEN_BUDGET,
   TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
   TRANSCRIPT_SEED_OMITTED_NOTICE,
@@ -706,10 +708,33 @@ describe('rows another Station sent (importedFrom)', () => {
           .slice(1)
           .filter(
             (line) =>
-              line !== '' && !line.startsWith('>') && !line.startsWith('[…'),
+              line !== '' &&
+              line !== TRANSCRIPT_SEED_END &&
+              !line.startsWith('>') &&
+              !line.startsWith('[…'),
           );
         expect(unquoted, `budget ${budgetTokens}`).toEqual([]);
       }
     },
   );
+});
+
+describe('the seed ends before the new request', () => {
+  test('a request after a seed ending in an assistant reply is not part of that reply', () => {
+    const seed = buildTranscriptSeed({
+      heading: 'Continued from a previous conversation.',
+      entries: [
+        { role: 'user', text: 'First question.' },
+        { role: 'assistant', text: 'You said: First question.' },
+      ],
+    });
+    // The literal, beside the constant, so a reworded marker is a decision.
+    expect(TRANSCRIPT_SEED_END).toBe(
+      'End of the earlier transcript. The new request follows.',
+    );
+    const turn = composeAmbientTurnText(seed.text, 'Repeat my first message.');
+    expect(turn).toMatch(
+      /Assistant: You said: First question\.\n\nEnd of the earlier transcript\. The new request follows\.\nRepeat my first message\.$/,
+    );
+  });
 });

@@ -26,7 +26,6 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InstalledSkillExperienceV1,
   SkillExperienceDefinitionV1,
@@ -351,77 +350,6 @@ function renderModal(onSelect = vi.fn()) {
   return onSelect;
 }
 
-function renderForkModal(
-  onSelect = vi.fn(),
-  mode: {
-    pending?: boolean;
-    error?: string | null;
-  } = {},
-) {
-  render(
-    <NewChatModal
-      projectIconBySlug={new Map()}
-      agents={selectionModelState.agents}
-      projects={[]}
-      onSelect={onSelect}
-      onClose={vi.fn()}
-      mode={{
-        kind: 'fork',
-        preferredAgentSlug: 'assistant',
-        sourceModel: 'historical-source-model',
-        disclosure:
-          'Engine cursor, tool state, and approval state do not carry.',
-        ...mode,
-      }}
-    />,
-  );
-  return onSelect;
-}
-
-test('late project context preserves the preferred fork Agent', () => {
-  selectionModelState.agents = [
-    { ...AGENT, slug: agentId('other'), name: 'Other' },
-    AGENT,
-  ];
-  const props = {
-    agents: selectionModelState.agents,
-    activeProjectSlug: 'dev',
-    onSelect: vi.fn(),
-    onClose: vi.fn(),
-    mode: {
-      kind: 'fork' as const,
-      preferredAgentSlug: 'assistant',
-      sourceModel: 'historical-source-model',
-      disclosure: 'Fork independently',
-    },
-  };
-  const view = render(
-    <NewChatModal projectIconBySlug={new Map()} {...props} projects={[]} />,
-  );
-  const source = () =>
-    document.querySelector('button[data-agent-slug="assistant"]')!;
-  expect(source().className).toContain('new-chat-modal__agent--selected');
-  view.rerender(
-    <NewChatModal
-      projectIconBySlug={new Map()}
-      {...props}
-      projects={[
-        {
-          id: 'dev',
-          slug: 'dev',
-          name: 'Dev',
-          description: '',
-          workingDirectory: '/workspace/dev',
-          hasWorkingDirectory: true,
-          layoutCount: 0,
-          hasKnowledge: false,
-        },
-      ]}
-    />,
-  );
-  expect(source().className).toContain('new-chat-modal__agent--selected');
-});
-
 function clickAgent(slug: string) {
   // Two buttons carry the agent's accessible name (the row and its model
   // configurator); target the row by its slug attribute.
@@ -434,67 +362,6 @@ function clickAgent(slug: string) {
 }
 
 describe('NewChatModal select dispatch invariant (#3013)', () => {
-  test.each([
-    ['none', 'Native engine fork unavailable'],
-    ['emulated', 'Engine fork is emulated'],
-    ['native', 'Native engine fork declared'],
-  ] as const)(
-    'fork disclosure follows the selected engine durability profile: %s',
-    (state, label) => {
-      const profile = ENGINE_CAPABILITY_MATRICES.station.durability.fork;
-      const original = profile.state;
-      try {
-        profile.state = state;
-        renderForkModal();
-        expect(screen.getByText(label)).toBeTruthy();
-      } finally {
-        profile.state = original;
-      }
-    },
-  );
-  test('fork mode defaults to the source Agent and explicitly discloses replay-only state', async () => {
-    selectionModelState.agents = [AUTHORED_CODEX, AGENT];
-    renderForkModal();
-
-    expect(screen.getByRole('region', { name: 'Fork from here' })).toBeTruthy();
-    expect(screen.getByRole('note').textContent).toMatch(
-      /new independent conversation.*engine cursor.*tool state.*approval state do not carry/i,
-    );
-    await waitFor(() => {
-      const preferred = document.querySelector(
-        'button[data-agent-slug="assistant"]',
-      ) as HTMLButtonElement;
-      expect(preferred.className).toContain('new-chat-modal__agent--selected');
-    });
-  });
-
-  test('fork pending state blocks duplicate selection and keeps cancel available', () => {
-    const onSelect = renderForkModal(vi.fn(), { pending: true });
-    const row = document.querySelector(
-      'button[data-agent-slug="assistant"]',
-    ) as HTMLButtonElement;
-    expect(row.disabled).toBe(true);
-    fireEvent.click(row);
-    expect(onSelect).not.toHaveBeenCalled();
-    expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
-    expect(
-      (screen.getByRole('button', { name: 'Cancel fork' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
-  });
-
-  test('fork failure remains visible so the same selection can retry', () => {
-    const onSelect = renderForkModal(vi.fn(), {
-      error: 'Temporary fork failure',
-    });
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Temporary fork failure',
-    );
-    clickAgent('assistant');
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect.mock.calls[0][4]).toBe('historical-source-model');
-  });
-
   test('global context dispatches', () => {
     selectionModelState.isGlobal = true;
     const onSelect = renderModal();

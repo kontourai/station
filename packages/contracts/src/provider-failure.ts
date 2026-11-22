@@ -19,7 +19,9 @@ import {
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   SESSION_CONFIGURATION_REPLACED_CODE,
 } from './orchestration.js';
@@ -214,6 +216,12 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // A handoff that conflicts with the conversation's state
+  // (`CONVERSATION_HANDOFF_REFUSAL_CODES`): the person resolves it first.
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending]: 'conflict',
   // A replaced Session still runs work from before the change; sending again
   // once it ends restarts the Session.
   [SESSION_CONFIGURATION_REPLACED_CODE]: 'busy',
@@ -260,6 +268,17 @@ export const PROVIDER_FAILURE_KINDS = {
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
+  // A refused fork (`CONVERSATION_FORK_REFUSAL_CODES`): only a history read
+  // that could not complete is worth retrying as sent.
+  [CONVERSATION_FORK_REFUSAL_CODES.invalidRequest]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.sourceNotFound]: 'session_gone',
+  [CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.callerUnresolved]: 'auth',
+  [CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable]: 'unavailable',
+  [CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch]: 'conflict',
+  [CONVERSATION_FORK_REFUSAL_CODES.idempotencyConflict]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
   // No such Project on this Station (#4855): like `stage_not_found`, an

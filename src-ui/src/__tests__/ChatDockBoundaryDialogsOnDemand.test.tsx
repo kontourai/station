@@ -414,13 +414,14 @@ describe('conversation-boundary dialogs are on demand', () => {
     await expectWrapperAbsent();
   });
 
-  test('a fork in progress does not mount them either', async () => {
+  // The fork picker is one of the boundary dialogs (`ConversationForkDialog`).
+  test('a fork in progress mounts them', async () => {
     sourceOverride.value = {
       kind: 'fork',
       value: { id: 'conversation-under-fork', agentSlug: 'codex' },
     };
     renderDockedChat();
-    await expectWrapperAbsent();
+    await expectWrapperPresent();
   });
 
   test('a context reset in progress mounts them', async () => {

@@ -1,0 +1,9 @@
+{
+  "revision": "68d8bc403f08de0c1371a676eb48fbf9a82193c0",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Mapped the nine fork refusal codes to failure kinds; the provider-failure section's claims about the closed map and inventory guard still hold.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Mapped the nine fork refusal codes to failure kinds; the provider-failure section's claims about the closed map and inventory guard still hold.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}
