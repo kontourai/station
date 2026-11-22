@@ -75,6 +75,8 @@ each change amends its record in the same pull request:
   above Projects and pinned Customize items reverse the rejected "global views
   band" alternative and the footer placement (slices 1.5 and 1.6); removing
   the Review layout and `#general` from the sidebar revisits D4 (slice 3.3).
+- [Placement](../design/placement.md): Layout and Workspace view become View
+  for people, with the Projects slices that rename them (from slice 3.3).
 - [Module map](../architecture/module-map.md): the DestinationRegistry rule
   that a Customize row cannot also be a sidebar entry (slice 1.6).
 - [Connections overhaul](../design/connections-overhaul.md) is superseded,
