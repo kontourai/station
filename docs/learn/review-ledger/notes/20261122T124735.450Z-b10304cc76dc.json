@@ -1,0 +1,7 @@
+{
+  "revision": "8536887899340a426582526113b7607cbf423a29",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Slice 4.10 delta: the approval queue closes an open toast menu with ActionOverflowMenu's closeWhen instead of remounting it, keeping its trigger and returning focus there. Toast decisions and their conversation routing are unchanged; native push still carries no approval buttons. No prose change.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx"]}
+  ]
+}
