@@ -474,53 +474,37 @@ describe('inbox dismissal through the rendered panel', () => {
     expect(row()).toBeNull();
   });
 
-  it.each([
-    {
-      saved: { 'inbox.undoDismiss': { key: 'u', modifiers: ['cmd'] } },
-      expected: { key: 'u', modifiers: ['cmd'] },
-      chord: { key: 'u', ctrlKey: true },
-    },
-    {
-      saved: {
-        'inbox.undoDismiss': { key: 'u', modifiers: ['cmd'] },
-        'app.undoLastAction': { key: 'y', modifiers: ['cmd'] },
-      },
-      expected: { key: 'y', modifiers: ['cmd'] },
-      chord: { key: 'y', ctrlKey: true },
-    },
-    {
-      saved: { 'inbox.undoDismiss': null },
-      expected: { key: 'z', modifiers: ['cmd'] },
-      chord: { key: 'z', ctrlKey: true },
-    },
-  ])(
-    'a key saved for the retired inbox Undo carries to Undo last action unless it has its own: $saved',
-    ({ saved, expected, chord }) => {
-      localStorage.setItem(
-        'station-device-settings-v1',
-        JSON.stringify({ version: 2, values: { shortcutOverrides: saved } }),
-      );
-      deviceSettingsStore.reloadFromStorage();
-      render(<Harness items={[thread]} />);
-      const undo = registeredShortcuts.find(
-        (shortcut) => shortcut.id === 'app.undoLastAction',
-      );
-      expect(undo && { key: undo.key, modifiers: [...undo.modifiers] }).toEqual(
-        expected,
-      );
-      expect(
-        registeredShortcuts.some(
-          (shortcut) => shortcut.id === 'inbox.undoDismiss',
-        ),
-      ).toBe(false);
+  it('a key still saved for the removed inbox Undo command is harmless: Cmd+Z restores, the stale key does nothing', () => {
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({
+        version: 2,
+        values: {
+          shortcutOverrides: {
+            'inbox.undoDismiss': { key: 'u', modifiers: ['cmd'] },
+          },
+        },
+      }),
+    );
+    deviceSettingsStore.reloadFromStorage();
+    render(<Harness items={[thread]} />);
+    const undo = registeredShortcuts.find(
+      (shortcut) => shortcut.id === 'app.undoLastAction',
+    );
+    expect(undo && { key: undo.key, modifiers: [...undo.modifiers] }).toEqual({
+      key: 'z',
+      modifiers: ['cmd'],
+    });
+    const row = () =>
+      screen.queryByRole('button', { name: /^Review the inbox\b/ });
 
-      dismiss();
-      fireEvent.keyDown(window, chord);
-      expect(
-        screen.getByRole('button', { name: /^Review the inbox\b/ }),
-      ).toBeTruthy();
-    },
-  );
+    dismiss();
+    fireEvent.keyDown(window, { key: 'u', ctrlKey: true });
+    expect(row()).toBeNull();
+    expect(dismissNoticeShown()).toBe(true);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(row()).toBeTruthy();
+  });
 
   it('changing Station closes the dismissal notice, and Cmd+Z then restores nothing', () => {
     const view = render(<Harness items={[thread]} />);

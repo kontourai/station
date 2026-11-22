@@ -99,8 +99,8 @@ searching the inbox for it and choosing **Restore to inbox** under
 Changing Station closes the dismissal notice, so its Undo is not offered for
 another Station.
 
-A key saved for the retired **Undo inbox dismissal** command carries over to
-**Undo last action** unless that command has a key of its own.
+A key saved for the removed **Undo inbox dismissal** command no longer does
+anything; rebind **Undo last action** in Keyboard shortcuts instead.
 
 ## Dispatch and limits
 
