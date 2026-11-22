@@ -151,7 +151,7 @@ async function recordSurfaceTiming(
                 (resource) => resource.startMs >= 0,
               ).length,
               resources: observed.resources.filter((resource) =>
-                /ConnectionsSectionFrame|ProviderSettings|ChatDockMobileOverflowSheet|MobileTaskSwitcher|ChatDockInbox|AgentPicker/.test(
+                /CustomizeSectionFrame|ProviderSettings|ChatDockMobileOverflowSheet|MobileTaskSwitcher|ChatDockInbox|AgentPicker/.test(
                   resource.asset,
                 ),
               ),
@@ -632,7 +632,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // the same page — `heading "Connections"` beside `status "Loading view"` — for
     // the whole 15 s action timeout, twice with the shell header reading "Can't
     // connect". The view had not mounted. The route needs TWO lazy chunks under
-    // one Suspense boundary (`ConnectionsSectionFrame` and `ProviderSettingsView`,
+    // one Suspense boundary (`CustomizeSectionFrame` and `ProviderSettingsView`,
     // both in `AppViewContent`), so a slow second chunk withholds the first one's
     // action too — and the URL and the "Connections" heading both settle OUTSIDE
     // that boundary, which is why every signal this step had was already green.

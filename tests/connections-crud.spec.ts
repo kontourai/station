@@ -1195,7 +1195,7 @@ test.describe('Connections CRUD', () => {
    * Return-focus for a section's add action, moved onto the one add entry the
    * IA guarantees will keep opening a Dialog rather than a route: Computers ->
    * Add computer (`connection-sections.ts:38-45`,
-   * `ConnectionsSectionFrame.tsx:40-53` — every other section's add action
+   * `CustomizeSectionFrame.tsx:40-53` — every other section's add action
    * navigates). The claim is unchanged and is not covered elsewhere:
    * `tests/dialog-return-focus.spec.ts` exercises synthetic survivor/inert
    * cases and the connect modal, never a Connections add action.
@@ -1356,7 +1356,7 @@ test.describe('Connections CRUD', () => {
 
     await page.goto('/customize/engines');
     // The section's own empty copy (`views/AgentConnectionView.tsx:257`), and
-    // its ONE add action, which the frame owns (`ConnectionsSectionFrame.tsx`).
+    // its ONE add action, which the frame owns (`CustomizeSectionFrame.tsx`).
     await expect(page.getByText('Add an engine to get started')).toBeVisible();
     await page
       .locator('.page__actions')

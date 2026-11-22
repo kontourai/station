@@ -618,7 +618,7 @@ but not prompts, credentials, endpoints, connection IDs, or model configuration.
 
 Each candidate's evidence level comes from its model connection's
 live readiness state (`discovered` → `prerequisite-ready` → `catalog-ready` →
-`smoke-passed`, the same ladder shown on the Connections page), mapped onto
+`smoke-passed`, the same ladder shown in Customize → Providers), mapped onto
 Dispatch's three-level scale:
 
 | Connection evidence | Dispatch level | Meaning |
@@ -640,10 +640,10 @@ same live grading: `abort`/`usage` are present once a candidate has any live
 evidence at all. `"structured-tools"` (station#1430) is present once a
 candidate additionally has any live evidence AND its bound model's own
 provider catalog genuinely reported tool-calling support — the same
-`toolSurface` shown on the Connections page's model inventory, resolved
+`toolSurface` shown in the Providers item's model inventory, resolved
 fresh every TTL window through the same deterministic, compute-on-demand
 inventory accessor as the rest of this grading (never a cache that depends
-on whether the Connections page happened to be open). It is satisfiable
+on whether the Providers item happened to be open). It is satisfiable
 today, but only for a connection whose provider adapter actually reports
 this: as of station#1430, that is Ollama (`/api/show`'s `capabilities`
 array) — Bedrock, OpenAI-compatible, Anthropic, and Google all leave it
@@ -662,7 +662,7 @@ within a 60-second window a call reuses the last grade (still one batched
 connection-readiness lookup, covering every candidate connection, not one
 per candidate); once the window elapses, the next call re-resolves live
 evidence the same batched way. So: running an explicit smoke on a connection
-(Connections page, or the smoke API) and then waiting up to 60 seconds is now
+(Customize → Providers, or the smoke API) and then waiting up to 60 seconds is now
 enough — no rebuild required — for an agent's `minimumEvidence: "confirmed"`
 policy to start admitting that candidate. A connection or agent configuration
 save still triggers a full agent rebuild as before (saving a connection

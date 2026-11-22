@@ -160,11 +160,11 @@ The rule now:
   had — the audit named it the canonical instance for the header's SHAPE. Schedule is no longer a
   canonical instance of the EYEBROW specifically: archive#4463 slice 1 retired its self-referential
   `SCHEDULE`-above-**Schedule** eyebrow (Schedule is top-level, so it now renders none). For a
-  current eyebrow example, see a subpage instead — Connections → Models renders eyebrow
-  `Connections`, title `Models`. That eyebrow is deliberately **static text**: an eyebrow ancestor
-  is linked only when it has a real landing surface, and `/connections` is a redirect-only
-  resolver, so a link there would be a no-op or a sibling jump dressed as "up"
-  (`ConnectionsSectionFrame.tsx` carries the full rationale). Note eyebrows are produced on two
+  current eyebrow example, see a subpage instead — Customize → Providers renders eyebrow
+  `Customize`, title `Providers`. That eyebrow is a link because Customize has a real landing
+  page; an eyebrow ancestor is linked only when it has one (`CustomizeSectionFrame.tsx`). The
+  retired Connections eyebrow was static text for the opposite reason: `/connections` was a
+  redirect-only resolver. Note eyebrows are produced on two
   paths — `SplitPaneLayout`'s breadcrumb trail and `PageEyebrowTrail` — and the linked-only-when-
   navigable rule governs both.
 - **`src-ui/src/app-shell/page-frame-registry.ts` decides which routes get one.** It is a `Record`
@@ -244,10 +244,10 @@ one exception entry per `null` route.
 
 This table preserves the original port-time inspection (`wc -c` and source
 reads). Its wrappers, sizes, and delivery labels are historical measurements,
-not the current inventory. For example, Connections now resolves into a section
-instead of rendering the old hub, and Project Settings has a `page page--full`
-root; current owners are [ConnectionsHub](../../src-ui/src/views/ConnectionsHub.tsx)
-and [ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
+not the current inventory. For example, the Connections hub is gone (its parts are
+Customize items, framed by `CustomizeSectionFrame.tsx`), and Project Settings has a
+`page page--full` root; its current owner is
+[ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
 
 | # | View | Current root wrapper (verified) | Target skeleton | Status |
 |---|---|---|---|---|
@@ -361,5 +361,5 @@ happen rather than after the fact.
 The Engines collection uses `SplitPaneLayout`. **Add engine** leaves that
 collection for a narrow flow page: choose an engine, complete setup, then
 return to the collection with the new engine selected. Both the plain
-`/connections/engines/new` route and engine-specific setup links use this frame.
+`/customize/engines/new` route and engine-specific setup links use this frame.
 The collection rail and its Add action stay on the collection page.

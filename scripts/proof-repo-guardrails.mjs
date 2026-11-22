@@ -1519,22 +1519,19 @@ if (!knowledgeConnectionView.includes('useGlobalKnowledgeStatusQuery')) {
   );
 }
 
-const connectionsHubView = readRequiredSource(
-  '../src-ui/src/views/ConnectionsHub.tsx',
+const customizeGroups = readRequiredSource(
+  '../src-ui/src/views/customize/useCustomizeGroups.ts',
 );
-if (connectionsHubView.includes('fetch(')) {
-  errors.push('ConnectionsHub must not issue raw fetch() calls.');
+if (customizeGroups.includes('fetch(')) {
+  errors.push('The Customize list must not issue raw fetch() calls.');
 }
-// station#3879: `ConnectionsHub` is no longer a page. #3733 turned it into a
-// resolver that renders `null` and redirects to whichever section needs
-// attention, so it has no UI to delegate and no connection list to query. The
-// derivation it DOES own is asserted instead — it must ask the same signals
-// hook the rail's warn dots ask, which is the defect its own docblock
-// records (its private copy read `/api/connections` raw and ignored
-// Knowledge, so the rail and this resolver disagreed about where to go).
-if (!connectionsHubView.includes('useConnectionSectionSignals')) {
+// The `/connections` resolver this replaced once carried its own attention
+// derivation (it read `/api/connections` raw and ignored Knowledge), so it
+// and the section rail disagreed about what needed attention. The Customize
+// list's dots must ask the one shared derivation.
+if (!customizeGroups.includes('useConnectionSectionSignals')) {
   errors.push(
-    'ConnectionsHub must resolve its destination through the shared connection-section signals.',
+    'The Customize list must take its attention dots from the shared connection-section signals.',
   );
 }
 

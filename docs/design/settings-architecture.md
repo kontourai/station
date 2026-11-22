@@ -20,7 +20,8 @@ has no subscriber), #802 (layout removal discoverability).
 
 The first visible increment shipped through #1354: `/settings` explains the
 Station, Defaults, and This-device scopes up front; provider, developer-service,
-and computer setup has one canonical home in Connections; host detection is
+and computer setup has one canonical home (Customize for providers and developer
+services, the Computers page for computers); host detection is
 clearly labeled as describing the Station host; Agent defaults remain behind
 progressive disclosure; and keyboard shortcuts use the versioned device-settings
 record. The [keyboard shortcuts editor](../guides/keyboard-shortcuts.md) explains
