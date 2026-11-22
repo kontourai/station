@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readPluginLifecycleResponse } from '@kontourai/station-contracts/plugin';
 import { expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   PLUGIN_ACTIVATION_STOPPED_REASON,
   StationRuntime,
@@ -12,6 +12,8 @@ import { ConsentChannelService } from '../../../services/consent/consent-channel
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createPluginRoutes } from '../plugins.js';
 import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
+
+const makeTempDir = trackTempDirs();
 
 /**
  * The install a slow host produces: the real route and the real runtime
@@ -22,7 +24,7 @@ import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
 test('an install whose activation outruns its deadline is saved but not active, says so, stays inactive until recovered, and owes its trusted approval until then', {
   timeout: 30_000,
 }, async () => {
-  const home = mkdtempSync(join(tmpdir(), 'station-install-pending-'));
+  const home = makeTempDir('station-install-pending-');
   const store = new EventStore(join(home, 'events.sqlite'));
   const channel = new ConsentChannelService();
   channel.markListening(4978);
@@ -222,6 +224,5 @@ test('an install whose activation outruns its deadline is saved but not active, 
     release();
     for (const timer of runtime.timers) clearTimeout(timer);
     store.close();
-    rmSync(home, { recursive: true, force: true });
   }
 });

@@ -1,13 +1,15 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createPluginRoutes } from '../plugins.js';
 import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
+
+const makeTempDir = trackTempDirs();
 
 /**
  * The install a slow host produces: the real route and the real runtime
@@ -23,7 +25,7 @@ import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
 test('the plugin list reports an in-flight activation as activating, and needs recovery only once it was stopped', {
   timeout: 30_000,
 }, async () => {
-  const home = mkdtempSync(join(tmpdir(), 'station-install-pending-'));
+  const home = makeTempDir('station-install-pending-');
   const store = new EventStore(join(home, 'events.sqlite'));
   const channel = new ConsentChannelService();
   channel.markListening(4978);
@@ -141,6 +143,5 @@ test('the plugin list reports an in-flight activation as activating, and needs r
     release();
     for (const timer of runtime.timers) clearTimeout(timer);
     store.close();
-    rmSync(home, { recursive: true, force: true });
   }
 });
