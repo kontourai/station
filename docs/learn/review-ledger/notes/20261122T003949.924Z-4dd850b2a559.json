@@ -1,0 +1,35 @@
+{
+  "revision": "2772906b0097d635f9c9c393cc031e171376ce28",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/architecture/module-map.md","src-server/services/plugins/plugin-catalog-installation.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/contexts/extension-ecosystem/CONTEXT.md","packages/contracts/src/plugin.ts","src-server/services/plugins/plugin-catalog-installation.ts"]},
+
+    {"path":"docs/design/plugin-knowledge-store-contributions.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/design/plugin-knowledge-store-contributions.md","packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/guides/distribution-profiles.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Activating row and Needs recovery described; checked against view-utils.ts and RegistryView.tsx.","inputs":["docs/guides/plugins.md","src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Plugin list rows carry activationInFlight while the install request is open, with readiness still pending; checked against plugin-install-routes.ts and plugin-catalog-installation.ts.","inputs":["docs/reference/api.md","src-server/routes/plugins/plugin-install-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Readiness states unchanged; the row flag is named; checked against contracts plugin.ts and client/plugins.ts.","inputs":["docs/reference/contracts.md","packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"listPlugins rows carry activationInFlight and the Plugins view stops re-reading at 15 seconds; checked against client/plugins.ts and PluginRecoveryPanel.tsx.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/plugins.ts","src-server/routes/plugins/plugin-install-routes.ts","src-server/services/plugins/plugin-catalog-installation.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/reference/shared.md","packages/contracts/src/plugin.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["docs/reference/station-docs.md","packages/contracts/src/plugin.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Follow-up round: the in-flight activation is a row-level activationInFlight flag with readiness still pending (an older client's validator accepts it), the activating row re-read stops at a ceiling, and the removal toast is short. Checked this page cites no claim about these behaviours that the change contradicts.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -700,3 +700,51 @@ describe('registry verification on the plugin detail (#1521)', () => {
     ).toContain('No verified registry claim.');
   });
 });
+
+describe('a plugin installed but not active', () => {
+  test('its row says Needs recovery in the plugin list', async () => {
+    const { buildPluginListItems } = await import(
+      '../views/plugin-management/view-utils'
+    );
+    const inactive = {
+      name: 'slow-activation',
+      displayName: 'Slow Activation',
+      version: '1.0.0',
+      installationReadiness: { state: 'pending', recovery: 'review' },
+    };
+    viewModel = baseViewModel({
+      plugins: [inactive],
+      filtered: [inactive],
+      // The real projection the view model uses, so the label is guarded.
+      items: buildPluginListItems([inactive as never]),
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText((text) => text.startsWith('Needs recovery · v1.0.0')),
+    ).toBeTruthy();
+  });
+  test('its row says Activating while the server is still activating it, not Needs recovery', async () => {
+    const { buildPluginListItems } = await import(
+      '../views/plugin-management/view-utils'
+    );
+    const activating = {
+      name: 'slow-activation',
+      displayName: 'Slow Activation',
+      version: '1.0.0',
+      installationReadiness: { state: 'pending', recovery: 'review' },
+      activationInFlight: true,
+    };
+    viewModel = baseViewModel({
+      plugins: [activating],
+      filtered: [activating],
+      items: buildPluginListItems([activating as never]),
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText((text) => text.startsWith('Activating… · v1.0.0')),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Needs recovery/)).toBeNull();
+  });
+});

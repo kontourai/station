@@ -56,6 +56,7 @@ export function PluginManagementView({
     layoutAssignment,
     loadingProviderDetails,
     message,
+    setMessage,
     plugins,
     previewData,
     previewMutation,
@@ -218,6 +219,7 @@ export function PluginManagementView({
               })
             }
             onRemove={setRemoveConfirm}
+            onRecoveryOutcome={setMessage}
             onToggleProviders={toggleExpandedProviders}
             onToggleProvider={toggleProvider}
             onSaveSetting={savePluginSetting}

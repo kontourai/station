@@ -1,11 +1,12 @@
-import type {
-  PluginInstallationReadiness,
-  PluginInstallationRevision,
-  PluginInstallResult,
-  PluginManifest,
-  PluginPermissionPrompt,
-  PluginUpdateCheck,
-  RejectedInstalledPluginRecord,
+import {
+  type PluginInstallationReadiness,
+  type PluginInstallationRevision,
+  type PluginInstallResult,
+  type PluginManifest,
+  type PluginPermissionPrompt,
+  type PluginUpdateCheck,
+  type RejectedInstalledPluginRecord,
+  readPluginLifecycleResponse,
 } from '@kontourai/station-contracts/plugin';
 import {
   isPluginRegistryTrust,
@@ -90,6 +91,12 @@ export type InstalledPluginRecord =
       hasBundle?: boolean;
       retainedOnRemoval?: boolean;
       installationReadiness?: PluginInstallationReadiness;
+      /**
+       * Set while this server is still activating the plugin: its install
+       * request is open and settles on its own, so no recovery is offered.
+       * Absent from an older server, and once the activation was stopped.
+       */
+      activationInFlight?: true;
       /** The selected generation's persisted registry verification receipt. */
       registryTrust?: PluginRegistryTrust;
       /**
@@ -372,10 +379,8 @@ export interface PluginRecoveryPreview {
   }>;
   skip: string[];
 }
-export type PluginRecoveryResult = PluginInstallResult & {
-  /** Acceptance-time receipt, not a live activation subscription. */
-  configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
-};
+/** `configurationActivation` is an acceptance-time receipt, not a live activation subscription. */
+export type PluginRecoveryResult = PluginInstallResult;
 
 export async function previewPluginRecovery(
   apiBase: string,
@@ -448,12 +453,7 @@ export async function recoverPlugin(
   }
   // The server uses 202 + success:false for persisted work awaiting activation.
   if (
-    !response.ok ||
-    (!result.success &&
-      !(
-        response.status === 202 &&
-        result.configurationActivation?.status === 'pending'
-      ))
+    readPluginLifecycleResponse(response.status, result).state === 'refused'
   ) {
     throw envelopeError(response, result, refused);
   }

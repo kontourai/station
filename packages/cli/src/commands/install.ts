@@ -1,6 +1,11 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  describeActivationDeadline,
+  type PluginLifecycleUnapplied,
+  type PluginManifest,
+  readPluginLifecycleResponse,
+} from '@kontourai/station-contracts/plugin';
 import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
@@ -69,11 +74,81 @@ function resolvePluginTarget(parsed: ParsedCoreArgs): ResolvedApiBase {
   return target;
 }
 
+/**
+ * A plugin lifecycle request whose designed `202` (saved, not applied) is an
+ * accepted outcome rather than a failure.
+ */
+async function pluginLifecycleRequest<T>(
+  parsed: ParsedCoreArgs,
+  path: string,
+  init: AuthenticatedFetchInit,
+  target?: ResolvedApiBase,
+): Promise<{ payload: T; unapplied?: PluginLifecycleUnapplied }> {
+  let unapplied: PluginLifecycleUnapplied | undefined;
+  const payload = await pluginRequest<T>(parsed, path, init, target, (o) => {
+    if (o.state === 'saved') unapplied = o.unapplied;
+    return o.state !== 'refused';
+  });
+  return { payload, ...(unapplied ? { unapplied } : {}) };
+}
+
+/**
+ * What a saved-but-unapplied install or update means, from the receipt's
+ * `recovery` (never its reason text): `required` is a plugin activation that
+ * nothing resumes; `none` finishes on its own; `unknown` is an older server.
+ */
+function unappliedLines(
+  verb: 'Installed' | 'Updated',
+  name: string,
+  unapplied: PluginLifecycleUnapplied,
+): string[] {
+  if (unapplied.kind === 'projection')
+    return [
+      `⚠️ ${verb} ${name}, but Station has not finished listing it.`,
+      '  Reload plugins on the Station host to pick it up; its code and data are kept.',
+    ];
+  if (unapplied.recovery === 'none')
+    return [
+      `✅ ${verb} ${name} through Station; it finishes applying in the background.`,
+    ];
+  if (unapplied.recovery === 'unknown')
+    return [
+      `⚠️ ${verb} ${name}, but Station did not say whether it is active.`,
+      '  Open Plugins on the Station host; if it reads Needs recovery, recover it there.',
+    ];
+  const stopped = unapplied.deadlineMs
+    ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
+    : 'its activation did not finish';
+  return [
+    `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
+    '  Run `station plugin recover <name>`, or choose Recover plugin in Plugins on the Station host, to activate it.',
+    `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
+  ];
+}
+
+/**
+ * Exit status for a saved-but-unapplied change, after the CLI's precedent
+ * for distinct outcomes (`home recovery-plan` exits 2): a plugin left
+ * inactive is not a success a script should continue from. A change Station
+ * finishes on its own (`recovery: 'none'`) keeps exit 0, and so does one from
+ * a server that did not say (`unknown`): the CLI cannot claim the plugin is
+ * inactive, so its text defers to the plugin's row.
+ */
+function markUnappliedExit(unapplied: PluginLifecycleUnapplied): void {
+  if (
+    unapplied.kind === 'activation' &&
+    (unapplied.recovery === 'none' || unapplied.recovery === 'unknown')
+  )
+    return;
+  process.exitCode = 2;
+}
+
 async function pluginRequest<T>(
   parsed: ParsedCoreArgs,
   path: string,
   init?: AuthenticatedFetchInit,
   target: ResolvedApiBase = resolvePluginTarget(parsed),
+  accept?: (outcome: ReturnType<typeof readPluginLifecycleResponse>) => boolean,
 ): Promise<T> {
   const apiBase = target.apiBase;
   let response: Response;
@@ -93,7 +168,11 @@ async function pluginRequest<T>(
     success?: boolean;
     error?: string;
   };
-  if (!response.ok || payload.success === false) {
+  if (
+    accept
+      ? !accept(readPluginLifecycleResponse(response.status, payload))
+      : !response.ok || payload.success === false
+  ) {
     throw new Error(
       payload.error || `Plugin request failed with HTTP ${response.status}`,
     );
@@ -230,6 +309,22 @@ function describeInstall(
   return lines;
 }
 
+/**
+ * The plugin's list row, or undefined when the inventory cannot be read: the
+ * server stays the authority on what it accepts. Rejected rows carry neither
+ * readiness nor the activating flag.
+ */
+async function readPluginRow(apiBase: string, name: string) {
+  try {
+    const row = (await listPlugins(apiBase)).find(
+      (entry) => entry.name === name,
+    );
+    return row && 'installationReadiness' in row ? row : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function install(
   source: string,
   skipList: string[] = [],
@@ -256,6 +351,29 @@ export async function install(
     throw new Error(
       `Station at ${target.apiBase} did not report what installing this plugin requires, so there is nothing to approve. Upgrade Station, or install the plugin from its Plugins page.`,
     );
+  }
+  // Installed but not active (Needs recovery): recover it rather than add
+  // another copy of its code. `--reinstall` installs again on purpose, for a
+  // source that changed since. An inventory that cannot be read does not
+  // block the install; the server remains the authority on what it accepts.
+  const previewedName = previewed.manifest?.name;
+  if (previewedName && parsed.flags.reinstall !== true) {
+    const row = await readPluginRow(target.apiBase, previewedName);
+    if (row?.activationInFlight === true) {
+      // Not stopped: the server is still activating it, so there is nothing
+      // to recover yet and a second install would race the first.
+      console.log(
+        `${previewedName} is still activating. Check again shortly with \`station plugin list\`. Nothing was installed.`,
+      );
+      return {
+        pluginName: previewedName,
+        version: previewed.manifest?.version ?? '',
+      };
+    }
+    if (row?.installationReadiness?.state === 'pending')
+      throw new Error(
+        `${previewedName} is already installed but not active. Run \`station plugin recover ${previewedName}\` to activate it, or pass --reinstall to install another copy of its code. Nothing was installed.`,
+      );
   }
 
   const revisionPresent = (value: unknown) =>
@@ -291,9 +409,9 @@ export async function install(
     }
   }
 
-  const result = await pluginRequest<{
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
     success: boolean;
-    plugin: { name: string; version: string };
+    plugin?: { name: string; version: string };
     permissions?: {
       pendingConsent?: Array<{ permission: string; tier: string }>;
       dependencies?: Array<{
@@ -347,9 +465,26 @@ export async function install(
     },
     target,
   );
+  if (unapplied) {
+    // A designed `202`: saved, not applied. Host approvals cannot be
+    // reviewed until the plugin is active, so none are listed here.
+    const name = result.plugin?.name ?? previewed.manifest?.name ?? source;
+    const version = result.plugin?.version ?? previewed.manifest?.version;
+    for (const line of unappliedLines(
+      'Installed',
+      version ? `${name}@${version}` : name,
+      unapplied,
+    ))
+      console.log(line);
+    markUnappliedExit(unapplied);
+    return { pluginName: name, version: version ?? '' };
+  }
+  const installed = result.plugin;
+  if (!installed)
+    throw new Error('Station did not return the installed plugin details.');
   const pendingHostApprovals = [
     ...(result.permissions?.pendingConsent ?? []).map((entry) => ({
-      plugin: result.plugin.name,
+      plugin: installed.name,
       ...entry,
     })),
     ...(result.permissions?.dependencies ?? []).flatMap((dependency) =>
@@ -360,7 +495,7 @@ export async function install(
   ];
   if (pendingHostApprovals.length > 0) {
     console.log(
-      `⚠️ Installed ${result.plugin.name}@${result.plugin.version}, but activation is incomplete.`,
+      `⚠️ Installed ${installed.name}@${installed.version}, but activation is incomplete.`,
     );
     for (const pending of pendingHostApprovals) {
       console.log(
@@ -379,17 +514,169 @@ export async function install(
     )
   ) {
     console.log(
-      `Installed ${result.plugin.name}@${result.plugin.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
+      `Installed ${installed.name}@${installed.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
     );
   } else {
     console.log(
-      `✅ Installed ${result.plugin.name}@${result.plugin.version} through Station`,
+      `✅ Installed ${installed.name}@${installed.version} through Station`,
     );
   }
   return {
-    pluginName: result.plugin.name,
-    version: result.plugin.version,
+    pluginName: installed.name,
+    version: installed.version,
   };
+}
+
+/** What `GET /api/plugins/:name/recovery-preview` reports: the review. */
+interface PluginRecoveryReview {
+  manifest?: { name?: string; displayName?: string; version?: string };
+  recoveryRevision: string;
+  contentDigest: string;
+  grantRevision: string;
+  registryTrustRevision?: string;
+  registryTrust?: { state?: string };
+  permissions: {
+    required: string[];
+    pendingConsent: Array<{ permission: string; tier: string }>;
+  };
+  dependencies: Array<{
+    id: string;
+    consent: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      grantRevision: string;
+      registryTrustRevision?: string;
+    };
+  }>;
+}
+
+/**
+ * Recover an installed plugin whose activation did not finish (Needs
+ * recovery), as the Plugins view does: read the recovery review, print what
+ * it found, take the operator's explicit decision (interactively, or
+ * `--yes` typed with the name), then send exactly the reviewed revisions.
+ * Nothing is approved that the review did not show, and a non-interactive
+ * run without `--yes` is refused, as for `install`.
+ */
+export async function recover(
+  name: string,
+  parsed: ParsedCoreArgs = NO_FLAGS,
+  confirm: ((question: string) => Promise<boolean>) | null = process.stdin.isTTY
+    ? promptYN
+    : null,
+): Promise<void> {
+  if (!name) throw new Error('Usage: station plugin recover <name> [--yes]');
+  const target = resolvePluginTarget(parsed);
+  const path = `/${encodeURIComponent(name)}`;
+  if (
+    (await readPluginRow(target.apiBase, name))?.activationInFlight === true
+  ) {
+    console.log(
+      `${name} is still activating. Check again shortly with \`station plugin list\`. Nothing was recovered.`,
+    );
+    return;
+  }
+  const review = await pluginRequest<PluginRecoveryReview>(
+    parsed,
+    `${path}/recovery-preview`,
+    { readOnly: true },
+    target,
+  );
+  const label = review.manifest?.displayName || review.manifest?.name || name;
+  const required = review.permissions.required;
+  const lines = [
+    `Recover ${label}${review.manifest?.version ? `@${review.manifest.version}` : ''} from its retained code and data?`,
+    `  contents  ${review.contentDigest}`,
+    `  registry  ${review.registryTrust?.state ?? 'no verified registry claim'}`,
+    `  requires  ${required.length > 0 ? required.join(', ') : 'no permissions'}`,
+  ];
+  if (review.permissions.pendingConsent.length > 0)
+    lines.push(
+      `  approving ${review.permissions.pendingConsent
+        .map((entry) => `${entry.permission} (${entry.tier})`)
+        .join(', ')}`,
+    );
+  for (const dependency of review.dependencies)
+    lines.push(
+      `  dependency ${dependency.id} requires ${dependency.consent.permissions.join(', ') || 'no permissions'}`,
+    );
+  if (
+    review.permissions.pendingConsent.some((entry) => entry.tier === 'trusted')
+  )
+    lines.push(
+      '  Trusted permissions still need the separate host approval in Plugins afterwards.',
+    );
+  for (const line of lines) console.log(line);
+  if (parsed.flags.yes !== true) {
+    if (!confirm)
+      throw new Error(
+        'Not recovered: nothing approved it, and there is no terminal to ask. Re-run with --yes to approve what is listed above. Nothing was changed.',
+      );
+    if (!(await confirm('Recover it?')))
+      throw new Error(
+        'Not recovered: the recovery was not approved. Nothing was changed.',
+      );
+  }
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
+    success: boolean;
+    permissions?: {
+      pendingConsent?: Array<{ permission: string; tier: string }>;
+    };
+  }>(
+    parsed,
+    `${path}/recover`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        recoveryRevision: review.recoveryRevision,
+        consent: {
+          contentDigest: review.contentDigest,
+          grantRevision: review.grantRevision,
+          ...(review.registryTrustRevision
+            ? { registryTrustRevision: review.registryTrustRevision }
+            : {}),
+          permissions: required,
+          dependencies: review.dependencies.map((dependency) => dependency.id),
+          dependencyApprovals: review.dependencies.map(({ id, consent }) => ({
+            id,
+            ...consent,
+          })),
+        },
+      }),
+    },
+    target,
+  );
+  if (unapplied) {
+    if (unapplied.kind === 'activation' && unapplied.recovery !== 'none') {
+      const stopped = unapplied.deadlineMs
+        ? `its activation did not finish within ${describeActivationDeadline(unapplied.deadlineMs)}`
+        : 'its activation did not finish';
+      console.log(
+        `⚠️ Recovery of ${label} was saved, but it is still not active: ${stopped}.`,
+      );
+      console.log(
+        '  Trying again may work; `station plugin remove` is the way out.',
+      );
+    } else
+      for (const line of unappliedLines('Installed', label, unapplied))
+        console.log(line);
+    markUnappliedExit(unapplied);
+    return;
+  }
+  const owed = result.permissions?.pendingConsent ?? [];
+  if (owed.length > 0) {
+    console.log(
+      `⚠️ Recovered ${label}; it is active but still needs host approval.`,
+    );
+    for (const entry of owed)
+      console.log(`  ${label} requires host approval for ${entry.permission}.`);
+    console.log(
+      '  Finish these reviews on the Station host in the Plugins page.',
+    );
+    return;
+  }
+  console.log(`✅ Recovered ${label}; it is active.`);
 }
 
 async function installedPlugins(
@@ -455,7 +742,7 @@ export async function remove(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  const result = await pluginRequest<{
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
     success: boolean;
     commandEffects?: CommandEffectsWithdrawal;
     commandEffectsUnavailable?: boolean;
@@ -464,11 +751,12 @@ export async function remove(
     result.commandEffects,
     result.commandEffectsUnavailable,
   );
-  console.log(
-    note
-      ? `✅ Removed ${name} through Station.${note}`
-      : `✅ Removed ${name} through Station`,
-  );
+  // A removal activates nothing: a saved removal whose runtime reload did not
+  // finish is completed by Station's next reconciliation.
+  const removed = unapplied
+    ? `✅ Removed ${name} through Station; it finishes unloading in the background`
+    : `✅ Removed ${name} through Station`;
+  console.log(note ? `${removed}.${note}` : removed);
 }
 
 export async function info(
@@ -492,7 +780,7 @@ export async function update(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  const result = await pluginRequest<{
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
     success: boolean;
     plugin?: { name?: string; version?: string };
     commandEffects?: CommandEffectsWithdrawal;
@@ -500,6 +788,16 @@ export async function update(
   }>(parsed, `/${encodeURIComponent(name)}/update`, { method: 'POST' });
   const updatedName = result.plugin?.name ?? name;
   const version = result.plugin?.version ? `@${result.plugin.version}` : '';
+  if (unapplied) {
+    for (const line of unappliedLines(
+      'Updated',
+      `${updatedName}${version}`,
+      unapplied,
+    ))
+      console.log(line);
+    markUnappliedExit(unapplied);
+    return;
+  }
   const note = commandEffectsNote(
     result.commandEffects,
     result.commandEffectsUnavailable,
@@ -543,12 +841,23 @@ export async function installRegistryPlugin(
     error?: string;
     message?: string;
   };
-  if (!response.ok || result.success === false) {
+  const outcome = readPluginLifecycleResponse(response.status, result);
+  if (outcome.state === 'refused') {
     throw new Error(
       result.error ||
         result.message ||
         `Registry install failed with HTTP ${response.status}`,
     );
+  }
+  if (outcome.state === 'saved') {
+    for (const line of unappliedLines(
+      'Installed',
+      `registry plugin ${id}`,
+      outcome.unapplied,
+    ))
+      console.log(line);
+    markUnappliedExit(outcome.unapplied);
+    return;
   }
   console.log(`✅ Installed registry plugin ${id} through Station`);
 }

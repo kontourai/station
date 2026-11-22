@@ -73,6 +73,8 @@ const mocks = vi.hoisted(() => ({
   removeMutate: vi.fn(),
   // #2323 S4: what `GET /api/plugin-sources` reported.
   localSources: [] as unknown[],
+  // Absent unless a test mounts the toast surface.
+  toast: null as null | { showToast: ReturnType<typeof vi.fn> },
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -88,6 +90,10 @@ vi.mock('../contexts/NavigationContext', () => ({
     setLayout: mocks.setLayout,
     updateParams: mocks.updateParams,
   }),
+}));
+
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => mocks.toast,
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
@@ -203,6 +209,7 @@ describe('usePluginManagementViewModel', () => {
     mocks.proposalError = null;
     mocks.proposalQueryIds = [];
     mocks.updateMutate.mockReset();
+    mocks.toast = null;
     mocks.removeMutate.mockReset();
     mocks.localSources = [];
     window.history.replaceState(null, '', '/plugins');
@@ -673,7 +680,7 @@ describe('usePluginManagementViewModel', () => {
         { tier: 'active' },
       ]),
     ).toBe(
-      "Provider Kit is installed but requires host approval before it is ready. Open Plugins, select it, and choose Review Permissions when you're ready.",
+      'Provider Kit is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.',
     );
     expect(consentFailureMessage('Network Kit', [{ tier: 'active' }])).toBe(
       'Network Kit was installed, but required permissions were not approved.',
@@ -1288,7 +1295,7 @@ describe('usePluginManagementViewModel', () => {
     await waitFor(() => {
       expect(result.current.message).toEqual({
         type: 'error',
-        text: "Network Kit is installed but requires host approval before it is ready. Open Plugins, select it, and choose Review Permissions when you're ready.",
+        text: 'Network Kit is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.',
       });
     });
     expect(mocks.requestConsent).toHaveBeenCalledWith(
@@ -1296,6 +1303,272 @@ describe('usePluginManagementViewModel', () => {
       'Network Kit',
       [{ permission: 'plugin.server', tier: 'trusted' }],
     );
+  });
+
+  /**
+   * The designed `202` from a slow host: saved, activation not finished in
+   * time. The SDK resolves it (plugin-install-pending.test.tsx); this is what
+   * the person is shown, and what they can do next.
+   */
+  const PENDING_INSTALL = {
+    success: false,
+    plugin: { name: 'network-kit', displayName: 'Network Kit', agents: [] },
+    permissions: {
+      pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+    },
+    configurationActivation: {
+      status: 'pending',
+      recovery: 'required',
+      reason: 'The plugin was saved, but its activation did not finish.',
+    },
+  };
+
+  async function installPending(
+    result: { current: ReturnType<typeof usePluginManagementViewModel> },
+    data: Record<string, unknown> = PENDING_INSTALL,
+  ) {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    await primePreview(result, {
+      ...PREVIEW,
+      permissions: {
+        required: ['plugin.server'],
+        autoGranted: [],
+        pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+      },
+    });
+    await act(async () => {
+      await result.current.install([]);
+    });
+    await act(async () => {
+      await mocks.installOnSuccess?.(data as never);
+    });
+  }
+
+  test('an install saved without completing its activation is reported as installed but not active, on its Needs recovery row, not as failed and not as ready', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result);
+
+    expect(result.current.message).toEqual({
+      type: 'warning',
+      text: 'Network Kit was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
+    });
+    expect(result.current.showInstallModal).toBe(false);
+    expect(result.current.installMessage).toBeNull();
+    // The row that finishes it: Needs recovery, with the recovery review.
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
+    // Not the ready path: no "Setting up tools", no reload that would claim it.
+    expect(mocks.reloadPlugins).not.toHaveBeenCalled();
+  });
+
+  test('the trusted approval owed by an inactive install is not asked while its host review cannot record it', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result);
+
+    // Asked once, before the install, as the decision...
+    expect(mocks.requestInstallConsent).toHaveBeenCalledTimes(1);
+    // ...and not again now: the host review refuses a plugin that is not
+    // active (plugin-install-activation-pending.test.ts), so a yes here
+    // would be lost and reported as a refusal.
+    expect(mocks.requestConsent).not.toHaveBeenCalled();
+  });
+
+  test('pressing Install again after a saved-but-inactive install does not send a second install', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result);
+
+    await act(async () => {
+      await result.current.install([]);
+      await result.current.install();
+    });
+    expect(mocks.installMutate).toHaveBeenCalledTimes(1);
+    expect(mocks.previewMutate).toHaveBeenCalledTimes(1);
+  });
+
+  test('installing a plugin that is already installed but not active offers Recover, and installs again only when asked', async () => {
+    mocks.pluginsData = [
+      {
+        name: 'network-kit',
+        displayName: 'Network Kit',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+      },
+    ];
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result);
+    await act(async () => {
+      await result.current.install([]);
+    });
+
+    expect(mocks.installMutate).not.toHaveBeenCalled();
+    expect(mocks.requestInstallConsent).not.toHaveBeenCalled();
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
+    expect(result.current.message).toMatchObject({
+      type: 'warning',
+      text: 'Network Kit is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.',
+      action: { label: 'Install again anyway' },
+    });
+    await act(async () => {
+      result.current.message?.action?.invoke();
+    });
+    await waitFor(() => expect(mocks.installMutate).toHaveBeenCalledOnce());
+    expect(mocks.requestInstallConsent).toHaveBeenCalledOnce();
+  });
+
+  test('a recorded selection whose listing is unfinished reloads plugins rather than reporting a failure', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result, {
+      success: false,
+      error:
+        'Plugin selection is recorded but its catalog projection is pending. Reload plugins to reconcile it; stored code and data are retained.',
+      lifecycle: { status: 'pending', code: 'plugin-projection-pending' },
+    });
+
+    expect(result.current.message?.type).toBe('warning');
+    expect(result.current.message?.text).toContain(
+      'plugins are being reloaded to pick it up',
+    );
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.requestConsent).not.toHaveBeenCalled();
+  });
+});
+
+describe('update and remove saved without being applied', () => {
+  const SAVED = {
+    success: false,
+    plugin: { name: 'network-kit', version: '1.1.0' },
+    configurationActivation: {
+      status: 'pending',
+      recovery: 'required',
+      deadlineMs: 10_000,
+      reason: 'saved',
+    },
+  };
+
+  test('an update whose activation did not finish says the plugin is not active and opens its row', () => {
+    mocks.updateMutate.mockImplementation((_target, options) =>
+      options.onSuccess(SAVED),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    act(() => result.current.updatePlugin('network-kit'));
+
+    expect(result.current.message).toEqual({
+      type: 'warning',
+      text: 'network-kit was updated, but its activation did not finish within 10 seconds, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
+    });
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
+  });
+
+  test('an update the server says finishes on its own reads as a success, and an older server defers to the row', () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    mocks.updateMutate.mockImplementationOnce((_target, options) =>
+      options.onSuccess({
+        ...SAVED,
+        configurationActivation: { status: 'pending', recovery: 'none' },
+      }),
+    );
+    act(() => result.current.updatePlugin('network-kit'));
+    expect(result.current.message).toEqual({
+      type: 'success',
+      text: 'network-kit was updated. Station finishes applying it in the background.',
+    });
+    mocks.updateMutate.mockImplementationOnce((_target, options) =>
+      options.onSuccess({
+        ...SAVED,
+        configurationActivation: { status: 'pending' },
+      }),
+    );
+    act(() => result.current.updatePlugin('network-kit'));
+    expect(result.current.message).toEqual({
+      type: 'warning',
+      text: 'network-kit was updated, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.',
+    });
+  });
+
+  test('a removal is reported as a toast, which reads at phone width where the empty list hides the detail message', async () => {
+    mocks.toast = { showToast: vi.fn() };
+    mocks.removeMutate.mockImplementation((_target, options) =>
+      options.onSuccess({ success: true }),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await act(async () => {
+      result.current.remove('network-kit');
+    });
+    expect(mocks.toast.showToast).toHaveBeenCalledWith(
+      'Removed network-kit.',
+      undefined,
+      undefined,
+      undefined,
+      'success',
+    );
+    expect(result.current.message).toBeNull();
+    mocks.toast = null;
+  });
+
+  test.each([
+    ['applied', { success: true }, 'Removed marker-d.'],
+    [
+      'retained data',
+      { success: true, lifecycle: { reclamation: 'not-proven' } },
+      'Removed marker-d. Its data and code are retained.',
+    ],
+    [
+      'finishing in the background',
+      { ...SAVED, success: false },
+      'Removed marker-d. It finishes unloading in the background.',
+    ],
+    [
+      'both',
+      { ...SAVED, success: false, lifecycle: { reclamation: 'not-proven' } },
+      'Removed marker-d, still unloading. Data and code kept.',
+    ],
+  ])(
+    'at phone width a removal (%s) is announced by a short toast and not by the inline message',
+    async (_case, response, text) => {
+      const width = window.innerWidth;
+      window.innerWidth = 390;
+      mocks.toast = { showToast: vi.fn() };
+      mocks.removeMutate.mockImplementation((_target, options) =>
+        options.onSuccess(response),
+      );
+      try {
+        const { result } = renderHook(() => usePluginManagementViewModel());
+        await act(async () => {
+          result.current.remove('marker-d');
+        });
+        expect(mocks.toast.showToast).toHaveBeenCalledWith(
+          text,
+          undefined,
+          undefined,
+          undefined,
+          'success',
+        );
+        // The list hides the detail pane at phone width, so nothing may rely
+        // on the inline message; and a toast of two lines at 320px (about 70
+        // characters) is the most the space under the toolbar holds.
+        expect(result.current.message).toBeNull();
+        expect(text.length).toBeLessThanOrEqual(60);
+      } finally {
+        window.innerWidth = width;
+        mocks.toast = null;
+      }
+    },
+  );
+
+  test('a saved removal is reported as removed, finishing in the background, not as a failure', async () => {
+    mocks.removeMutate.mockImplementation((_target, options) =>
+      options.onSuccess(SAVED),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await act(async () => {
+      result.current.remove('network-kit');
+    });
+
+    expect(result.current.message).toEqual({
+      type: 'success',
+      text: 'Removed network-kit. It finishes unloading in the background.',
+    });
+    expect(mocks.deselectPlugin).toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,9 @@
+{
+  "revision": "49bacf9e3d2336fb2912e7f8b545862980c96dde",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Contracts reference row now names the readiness states, including activating; checked this page makes no claim that contradicts it.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Contracts reference row now names the readiness states, including activating; checked this page makes no claim that contradicts it.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

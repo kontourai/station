@@ -29,6 +29,34 @@ interface Session {
   notifications: Array<() => void>;
 }
 const sessions = new WeakMap<PluginActivationSession, Session>();
+/** Sessions whose activation is still open in this process: registered a
+ * plugin and neither completed nor closed. */
+const openSessions = new Set<Session>();
+const settleSession = (state: Session, phase: 'completed' | 'closed') => {
+  state.phase = phase;
+  openSessions.delete(state);
+};
+
+/**
+ * Whether this process is still activating the plugin's current generation:
+ * its session is open, so the install request that owns it has not yet
+ * finished or been stopped at its deadline. Computed from the session itself,
+ * never from elapsed time.
+ */
+export function pluginActivationInFlight(
+  journal: PackageMcpAdmissionJournal,
+  pluginId: string,
+): boolean {
+  for (const state of openSessions)
+    if (
+      state.entries.some(
+        (entry) =>
+          entry.journal === journal && entry.installation.pluginId === pluginId,
+      )
+    )
+      return true;
+  return false;
+}
 const compositions = new WeakMap<PluginActivationComposition, Session>();
 
 export function createPluginActivationSession(): PluginActivationSession {
@@ -74,6 +102,7 @@ export function registerPluginActivation(
     journal.closeActivationPermit(state.entries[existingIndex]!.permit);
     state.entries[existingIndex] = entry;
   } else state.entries.push(entry);
+  openSessions.add(state);
   return permit;
 }
 
@@ -229,13 +258,13 @@ export async function completePluginActivationComposition(
       state.phase !== 'composing' ||
       entry.journal.completeActivation(entry.permit).state !== 'applied'
     ) {
-      state.phase = 'closed';
+      settleSession(state, 'closed');
       throw new Error(
         'Plugin activation publication is uncertain; pending resources are retained',
       );
     }
   }
-  state.phase = 'completed';
+  settleSession(state, 'completed');
 }
 
 /** Closing does not withdraw, erase, or declare any effect terminated. The
@@ -245,7 +274,7 @@ export function closePluginActivationSession(
 ): void {
   const state = sessions.get(session);
   if (state && state.phase !== 'completed') {
-    state.phase = 'closed';
+    settleSession(state, 'closed');
     for (const entry of state.entries)
       entry.journal.closeActivationPermit(entry.permit);
   }
@@ -255,7 +284,7 @@ export function closePluginActivationComposition(
 ): void {
   const state = compositions.get(capability);
   if (state && state.phase !== 'completed') {
-    state.phase = 'closed';
+    settleSession(state, 'closed');
     for (const entry of state.entries)
       entry.journal.closeActivationPermit(entry.permit);
   }

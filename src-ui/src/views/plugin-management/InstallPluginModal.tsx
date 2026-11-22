@@ -6,6 +6,7 @@ import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
 } from '../../components/ResponsiveDialogSurface';
+import type { PluginMessage } from './types';
 
 export function InstallPluginModal({
   installSource,
@@ -21,7 +22,7 @@ export function InstallPluginModal({
   /** #2323 S5: the proposal this install came from, when it did. */
   proposal?: PluginLifecycleProposal | null;
   installSource: string;
-  installMessage: { type: 'success' | 'error'; text: string } | null;
+  installMessage: PluginMessage | null;
   installPending: boolean;
   previewPending: boolean;
   onChangeSource: (value: string) => void;
