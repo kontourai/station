@@ -2,7 +2,6 @@ import { type Schedule, validateSchedule } from '@kontourai/ephemeris';
 import {
   AUTOMATION_RUN_POLICY,
   SCHEDULER_EXECUTION_LIMITS,
-  SCHEDULER_JOB_NAME_TAKEN,
   type SchedulerAutomationCreator,
   type SchedulerAutomationTarget,
   type SchedulerConcurrencyDisposition,
@@ -81,7 +80,6 @@ function storageError(outcome: SchedulerUnavailable): Error {
 }
 
 export class SchedulerJobConflictError extends Error {
-  readonly code = SCHEDULER_JOB_NAME_TAKEN;
   constructor(name: string, message = `Job '${name}' already exists`) {
     super(message);
     this.name = 'SchedulerJobConflictError';

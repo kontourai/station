@@ -2,11 +2,12 @@
  * Scheduler Routes — scheduled job management
  */
 
-import type {
-  SchedulerAutomationCreator,
-  SchedulerAutomationTarget,
-  SchedulerJob,
-  SchedulerManualRunReceipt,
+import {
+  SCHEDULER_JOB_NAME_TAKEN,
+  type SchedulerAutomationCreator,
+  type SchedulerAutomationTarget,
+  type SchedulerJob,
+  type SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
 import {
   isHostedSessionReadAuthority,
@@ -707,7 +708,7 @@ export function createSchedulerRoutes(
           success: false,
           error: errorMessage(error),
           ...(error instanceof SchedulerJobConflictError
-            ? { code: error.code }
+            ? { code: SCHEDULER_JOB_NAME_TAKEN }
             : {}),
         },
         schedulerErrorStatus(error),
