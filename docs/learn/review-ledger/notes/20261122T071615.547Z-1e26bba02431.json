@@ -1,0 +1,7 @@
+{
+  "revision": "016f5106e259573caeba7474046ebf6fd3fa0b39",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Rechecked the scanner and both dialogs without a camera API: no Scan a QR code entry, Enter a pairing code title with the secure-connection note, no Scan QR method, alert role on scanner errors, play failures are errors, hasCameraApi exported.","inputs":["docs/reference/connect.md","packages/connect/src/index.ts","packages/connect/src/react/DevicePairingPanel.tsx","packages/connect/src/react/QRScanner.tsx","packages/connect/src/react/connection-manager-modal-utils.ts","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}
