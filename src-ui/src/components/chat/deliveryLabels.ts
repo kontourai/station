@@ -93,7 +93,7 @@ function answerSentences(
     case 'not-received':
       return {
         answer: `Station did not receive ${some}.`,
-        action: `Open the chat to send ${them} again`,
+        action: `Open the chat to retry ${them}`,
       };
     case 'cannot-confirm':
       return {

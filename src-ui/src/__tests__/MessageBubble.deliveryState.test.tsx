@@ -366,24 +366,30 @@ describe('MessageBubble delivery state', () => {
     fetchSpy.mockRestore();
   });
 
-  it('unconfirmed: Check keeps keyboard focus while it runs, and a double press asks once', async () => {
-    let answer: (outcome: 'indeterminate') => void = () => {};
-    recheckOutboundTurn.mockImplementationOnce(
-      () => new Promise((resolve) => (answer = resolve)),
+  it('unconfirmed: presses while Check runs are ignored, and Check keeps keyboard focus', async () => {
+    const pending: ((outcome: 'indeterminate') => void)[] = [];
+    recheckOutboundTurn.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
     );
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
-    const check = within(bubble).getByRole('button', { name: 'Check' });
+    const check = within(bubble).getByRole<HTMLButtonElement>('button', {
+      name: 'Check',
+    });
     check.focus();
-    fireEvent.click(check);
-    fireEvent.click(check);
-    await waitFor(() =>
-      expect(check.getAttribute('aria-disabled')).toBe('true'),
-    );
-    expect(check.hasAttribute('disabled')).toBe(false);
-    answer('indeterminate');
-    await within(bubble).findByText('Station still can’t confirm it.');
+    // Three presses before React renders again, as fast key repeats land.
+    act(() => {
+      check.click();
+      check.click();
+      check.click();
+    });
+    await waitFor(() => expect(recheckOutboundTurn).toHaveBeenCalled());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(recheckOutboundTurn).toHaveBeenCalledTimes(1);
+    expect(check.getAttribute('aria-disabled')).toBe('true');
+    expect(check.hasAttribute('disabled')).toBe(false);
+    for (const resolve of pending) resolve('indeterminate');
+    await within(bubble).findByText('Station still can’t confirm it.');
     expect(document.activeElement).toBe(check);
   });
 

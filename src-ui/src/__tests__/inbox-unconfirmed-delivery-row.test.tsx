@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FOLD_FIXTURES,
@@ -251,7 +257,7 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
       fireEvent.click(screen.getByRole('button', { name: CHECK }));
       await waitFor(() =>
         expect(screen.getByRole('status').textContent).toBe(
-          'Station did not receive 1 of 2 messages. Open the chat to send it again.',
+          'Station did not receive 1 of 2 messages. Open the chat to retry it.',
         ),
       );
     },
@@ -324,28 +330,34 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
     },
   );
 
-  it('a double press while Check runs asks once, and Check keeps keyboard focus', async () => {
-    let answer: (outcome: string) => void = () => {};
+  it('presses while Check runs are ignored, and Check keeps keyboard focus', async () => {
+    const pending: ((outcome: string) => void)[] = [];
     recheck.mockImplementation(
-      () => new Promise((resolve) => (answer = resolve)),
+      () => new Promise((resolve) => pending.push(resolve)),
     );
     renderRow({ [CONVERSATION]: chatState(UNCONFIRMED) });
-    const check = screen.getByRole('button', { name: CHECK });
+    const check = screen.getByRole<HTMLButtonElement>('button', {
+      name: CHECK,
+    });
     check.focus();
-    fireEvent.click(check);
-    fireEvent.click(check);
-    await waitFor(() =>
-      expect(check.getAttribute('aria-disabled')).toBe('true'),
-    );
+    // Three presses before React renders again, as fast key repeats land.
+    act(() => {
+      check.click();
+      check.click();
+      check.click();
+    });
+    await waitFor(() => expect(recheck).toHaveBeenCalled());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(recheck).toHaveBeenCalledTimes(1);
+    expect(check.getAttribute('aria-disabled')).toBe('true');
     // Never disabled: a disabled button would drop focus to the page.
     expect(check.hasAttribute('disabled')).toBe(false);
-    answer('indeterminate');
+    for (const resolve of pending) resolve('indeterminate');
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toContain(
         'Station still can’t confirm it.',
       ),
     );
-    expect(recheck).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(check);
   });
 
