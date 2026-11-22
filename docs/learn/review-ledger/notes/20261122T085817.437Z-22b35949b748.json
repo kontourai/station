@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Starter scheduler intent compares only its own definition fields; the new optional displayName is never set on the starter job, so its stated behaviour is unchanged.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}
