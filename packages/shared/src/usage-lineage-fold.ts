@@ -97,43 +97,8 @@ export function foldLineageUsageEvents(
   sessions: readonly (readonly CanonicalRuntimeEvent[])[],
   onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
 ): LineageUsageAggregate {
-  const runs: {
-    provider: string;
-    events: CanonicalRuntimeEvent[];
-    lastThread?: string;
-  }[] = [];
-  for (const events of sessions) {
-    // The Session's engine as its own fold names it: the newest event's.
-    let provider: string | undefined;
-    for (const event of events) if (event.provider) provider = event.provider;
-    if (!provider) continue;
-    let run: (typeof runs)[number] | undefined;
-    let threads: string[] = [];
-    if (CUMULATIVE_USAGE_PROVIDERS.has(provider)) {
-      // Thread ids come from NATIVE_THREAD_METADATA_KEY; a cumulative
-      // provider with no key there records none, so each of its Sessions
-      // starts a run and every Session sums (the fail-safe direction).
-      threads = nativeThreads(events, provider);
-      const first = threads[0];
-      if (first !== undefined)
-        for (let index = runs.length - 1; index >= 0 && !run; index -= 1)
-          if (
-            runs[index]!.provider === provider &&
-            runs[index]!.lastThread === first
-          )
-            run = runs[index];
-    } else if (runs[runs.length - 1]?.provider === provider) {
-      run = runs[runs.length - 1];
-    }
-    if (run) run.events.push(...events);
-    else {
-      run = { provider, events: [...events] };
-      runs.push(run);
-    }
-    if (threads.length > 0) run.lastThread = threads[threads.length - 1];
-  }
+  const runs = groupRuns(sessions);
   if (runs.length === 0) return foldUsageEvents([]);
-
   const folds = runs.map(({ provider, events }) => ({
     provider,
     usage: foldUsageEvents(events, onDroppedFigure),
@@ -147,11 +112,78 @@ export function foldLineageUsageEvents(
     };
     engines.set(provider, addRunUsage(engine, usage));
   }
+  const perEngine = [...engines.values()];
+  const aggregate = latestFigures(folds.map(({ usage }) => usage));
+  for (const engine of perEngine) addEngineToConversation(aggregate, engine);
+  const counted = perEngine.filter(reportsEngineTokens);
+  if (counted.length === 1)
+    for (const field of TOKEN_FIGURES) {
+      const value = counted[0]![field];
+      if (value !== undefined) aggregate[field] = value;
+    }
+  aggregate.engines = perEngine;
+  return aggregate;
+}
 
-  const latest = folds[folds.length - 1]!.usage;
+interface UsageRun {
+  provider: string;
+  events: CanonicalRuntimeEvent[];
+  lastThread?: string;
+}
+
+/** Sessions grouped into runs, by the rules on {@link foldLineageUsageEvents}. */
+function groupRuns(
+  sessions: readonly (readonly CanonicalRuntimeEvent[])[],
+): UsageRun[] {
+  const runs: UsageRun[] = [];
+  for (const events of sessions) {
+    // The Session's engine as its own fold names it: the newest event's.
+    let provider: string | undefined;
+    for (const event of events) if (event.provider) provider = event.provider;
+    if (!provider) continue;
+    let run: UsageRun | undefined;
+    let threads: string[] = [];
+    if (CUMULATIVE_USAGE_PROVIDERS.has(provider)) {
+      // Thread ids come from NATIVE_THREAD_METADATA_KEY; a cumulative
+      // provider with no key there records none, so each of its Sessions
+      // starts a run and every Session sums (the fail-safe direction).
+      threads = nativeThreads(events, provider);
+      run = runOnThread(runs, provider, threads[0]);
+    } else if (runs[runs.length - 1]?.provider === provider) {
+      run = runs[runs.length - 1];
+    }
+    if (run) run.events.push(...events);
+    else {
+      run = { provider, events: [...events] };
+      runs.push(run);
+    }
+    if (threads.length > 0) run.lastThread = threads[threads.length - 1];
+  }
+  return runs;
+}
+
+/** The newest earlier run of this engine whose last thread is `thread`. */
+function runOnThread(
+  runs: readonly UsageRun[],
+  provider: string,
+  thread: string | undefined,
+): UsageRun | undefined {
+  if (thread === undefined) return undefined;
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index]!;
+    if (run.provider === provider && run.lastThread === thread) return run;
+  }
+  return undefined;
+}
+
+/** Model, context, MCP servers and provider from the newest run with one. */
+function latestFigures(
+  folds: readonly SessionUsageAggregate[],
+): LineageUsageAggregate {
+  const latest = folds[folds.length - 1]!;
   const newest = (key: keyof SessionUsageAggregate) => {
     for (let index = folds.length - 1; index >= 0; index -= 1)
-      if (folds[index]!.usage[key] !== undefined) return folds[index]!.usage;
+      if (folds[index]![key] !== undefined) return folds[index];
     return undefined;
   };
   const aggregate: LineageUsageAggregate = {
@@ -169,30 +201,26 @@ export function foldLineageUsageEvents(
   }
   const percent = newest('contextPercent')?.contextPercent;
   if (percent !== undefined) aggregate.contextPercent = percent;
-
-  const perEngine = [...engines.values()];
-  for (const engine of perEngine) {
-    aggregate.turns += engine.turns;
-    aggregate.toolCalls += engine.toolCalls;
-    if (engine.reportedCostUsd !== undefined)
-      aggregate.reportedCostUsd = addOptional(
-        aggregate.reportedCostUsd,
-        engine.reportedCostUsd,
-      );
-    if (engine.reportedCosts)
-      aggregate.reportedCosts = addReportedCosts(
-        aggregate.reportedCosts,
-        engine.reportedCosts,
-      );
-  }
-  const counted = perEngine.filter(reportsEngineTokens);
-  if (counted.length === 1)
-    for (const field of TOKEN_FIGURES) {
-      const value = counted[0]![field];
-      if (value !== undefined) aggregate[field] = value;
-    }
-  aggregate.engines = perEngine;
   return aggregate;
+}
+
+/** Counts and costs that are one scale across engines. */
+function addEngineToConversation(
+  aggregate: LineageUsageAggregate,
+  engine: EngineUsageAggregate,
+): void {
+  aggregate.turns += engine.turns;
+  aggregate.toolCalls += engine.toolCalls;
+  if (engine.reportedCostUsd !== undefined)
+    aggregate.reportedCostUsd = addOptional(
+      aggregate.reportedCostUsd,
+      engine.reportedCostUsd,
+    );
+  if (engine.reportedCosts)
+    aggregate.reportedCosts = addReportedCosts(
+      aggregate.reportedCosts,
+      engine.reportedCosts,
+    );
 }
 
 /**
