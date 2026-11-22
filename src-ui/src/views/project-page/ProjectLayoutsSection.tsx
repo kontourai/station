@@ -91,6 +91,7 @@ export function ProjectLayoutsSection({
 export function ProjectAddLayoutModal({
   show,
   available,
+  boardAvailable = false,
   appliedLayouts = [],
   adding,
   applyError,
@@ -102,6 +103,8 @@ export function ProjectAddLayoutModal({
 }: {
   show: boolean;
   available: AvailableLayout[];
+  /** The Project has a Builder run, so its Session Board can open. */
+  boardAvailable?: boolean;
   appliedLayouts?: LayoutMetadata[];
   adding: string | null;
   /** The last apply failure, surfaced in the picker (4-HOME-014). */
@@ -138,6 +141,7 @@ export function ProjectAddLayoutModal({
       </p>
       <ProjectLayoutCatalog
         available={available}
+        boardAvailable={boardAvailable}
         appliedLayouts={appliedLayouts}
         adding={adding}
         applyError={applyError}

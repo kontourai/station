@@ -212,8 +212,8 @@ On a phone: This screen is phone only.
 | Models and effort section | Remove | It has a hard-coded engine list and a free-text model box. Effort folds into Chat defaults once it is a real per-model setting. |
 | Project Usage | Hide for the first release | Token rollups are real, but cost is unpriced except for Bedrock. Usage belongs in Customize › Providers first. |
 | Project coordinator | Hide for the first release | A large subsystem with almost no tests. It lives in #general, which v1 hides. |
-| Pause and Archive | Turn on by default | Graduate Archive only and keep Pause hidden. Archive solves sidebar clutter. Fix the held banner and Archived toggle, which show even with the preview off. |
-| Project Schedules | Hide for the first release | Rows cannot be edited or deleted after creation. Fix the rail item that shows with the preview off, which causes the blank page. Project-scoped automation belongs in Automations with a project filter. |
+| Pause and Archive | Turn on by default | Graduate Archive only and keep Pause hidden. Archive solves sidebar clutter. Fix the held banner and Archived toggle, which show even with the preview off. Built (0.13): both now follow the preview, and with it off the sidebar lists archived projects normally rather than hiding them behind a toggle that is not shown. |
+| Project Schedules | Hide for the first release | Rows cannot be edited or deleted after creation. Fix the rail item that shows with the preview off, which causes the blank page. Built (0.13): the Schedules item is in the rail only while the preview is on. Project-scoped automation belongs in Automations with a project filter. |
 | Apps library | Remove | Superseded by the Apps destination (Discover, Library and Updates). Apps appear in projects through "+ Add view". |
 | Starter layout and Browse all in New Project | Remove | Chats and Tasks are always there. Apps are added later as views from the plus. |
 | Recovery panel | Keep | Simplified to a step list. It is honest and survives reload. |
@@ -224,7 +224,7 @@ On a phone: This screen is phone only.
 | Coding layout | Keep | Kept as the Chats view. It is where work happens. |
 | Tasks section and Tasks layout | Simplify | Merged into one Tasks view. |
 | Review layout | Remove | Removed from v1. It renders in a 140px column. Task review status lives in the In review lane. |
-| Session Board | Hide for the first release | Only with a Builder run, as now. Drop it from the Add view catalogue. |
+| Session Board | Hide for the first release | Only with a Builder run, as now. Drop it from the Add view catalogue. Built (0.13): the Add Layout pickers list it only for a project with a Builder run, the same fact that gates its sidebar entry; the catalogue itself is unchanged. The feature stays, because #3054 builds live Session progress on it. |
 | Flow console | Remove | The route has no inbound link and no tests. |
 | Panes: Basis, Plugin preview, Trust and Readiness | Hide for the first release | Hidden from the default chooser. They are internal or context-only. |
 | Phone and emulator pane | Hide for the first release | It needs a connected device host most first users lack. It also collides with Station › Devices with access. |

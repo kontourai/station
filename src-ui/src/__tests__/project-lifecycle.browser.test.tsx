@@ -32,6 +32,7 @@ const sdkFixture: Plugin = {
           export * from ${JSON.stringify(resolve(ROOT, 'packages/sdk/src/index.ts'))};
           const idle = { mutate() {}, mutateAsync: async () => ({ interrupted: 0, stillRunning: 0, failed: 0 }), isPending: false, error: null };
           export const useProjectLifecycleMutation = () => idle;
+          export const useFeaturePreviewsQuery = () => ({ data: [{ id: 'project-pause-archive', enabled: true }] });
           export const useDeleteProjectMutation = () => idle;
           export const useProjectDeletionPreviewQuery = (_slug, config) => config && config.enabled
             ? { data: { removes: { layouts: 2, knowledgeDocuments: 14, schedules: 2 }, stops: { runningSessions: 3 }, keeps: { tasks: 27, sessions: 41 } }, error: null, isError: false, refetch() {} }

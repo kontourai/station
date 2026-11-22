@@ -33,7 +33,7 @@ const fixtures: Plugin = {
         export const useProjectIconCandidatesQuery=()=>query([]),useModelConnectionsQuery=()=>query([]),
           useEngineConnectionsQuery=()=>query([]),useAgentsQuery=()=>query(agents),
           useProjectLayoutsQuery=()=>query([{id:'code',slug:'code',name:'Coding',type:'coding'}]),
-          useAvailableProjectLayoutsQuery=()=>query([]),useKnowledgeDocsQuery=()=>query([{id:'readme',filename:'README.md',chunkCount:4}]),
+          useAvailableProjectLayoutsQuery=()=>query([]),useBoardAvailabilityQuery=()=>query({hasBuilderRun:false}),useKnowledgeDocsQuery=()=>query([{id:'readme',filename:'README.md',chunkCount:4}]),
           useKnowledgeStatusQuery=()=>query({totalChunks:4,documentCount:1}),
           useIntegrationsQuery=()=>query([]),useKnowledgeRootsQuery=()=>query([]),
           useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true},{id:'project-overview',enabled:true},{id:'project-coordination',enabled:true}]);

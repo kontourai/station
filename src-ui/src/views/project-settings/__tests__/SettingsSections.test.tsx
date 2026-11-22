@@ -22,6 +22,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: reads.retryLayouts,
   }),
   useAvailableProjectLayoutsQuery: () => ({ data: [] }),
+  useBoardAvailabilityQuery: () => ({ data: undefined }),
   useDeleteProjectLayoutMutation: () => ({ isPending: false }),
   useApplyProjectLayoutMutation: () => ({ isPending: false }),
 }));

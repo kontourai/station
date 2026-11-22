@@ -5,6 +5,7 @@ import {
   StationHttpError,
   useApplyProjectLayoutMutation,
   useAvailableProjectLayoutsQuery,
+  useBoardAvailabilityQuery,
   useKnowledgeDocsQuery,
   useKnowledgeNamespacesQuery,
   useKnowledgeStatusQuery,
@@ -295,6 +296,9 @@ function ProjectOperatorPage({
     enabled: showAddLayout,
   });
   const available = layoutCatalog.data ?? [];
+  const boardAvailability = useBoardAvailabilityQuery(slug, {
+    enabled: showAddLayout,
+  });
 
   const applyLayoutMutation = useApplyProjectLayoutMutation(slug);
 
@@ -695,6 +699,7 @@ function ProjectOperatorPage({
         <ProjectAddLayoutModal
           show={showAddLayout}
           available={available}
+          boardAvailable={boardAvailability.data?.hasBuilderRun === true}
           appliedLayouts={layouts}
           adding={adding}
           applyError={applyError}

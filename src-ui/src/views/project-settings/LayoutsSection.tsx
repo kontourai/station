@@ -2,6 +2,7 @@ import type { LayoutMetadata } from '@kontourai/station-contracts/layout';
 import {
   useApplyProjectLayoutMutation,
   useAvailableProjectLayoutsQuery,
+  useBoardAvailabilityQuery,
   useDeleteProjectLayoutMutation,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
@@ -29,6 +30,9 @@ export function LayoutsSection({ slug }: { slug: string }) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const layoutCatalog = useAvailableProjectLayoutsQuery({ enabled: showAdd });
   const availableLayouts = layoutCatalog.data ?? [];
+  const boardAvailability = useBoardAvailabilityQuery(slug, {
+    enabled: showAdd,
+  });
 
   const layoutsQuery = useProjectLayoutsQuery(slug);
   const { data: projectLayouts = [] } = layoutsQuery as {
@@ -161,6 +165,7 @@ export function LayoutsSection({ slug }: { slug: string }) {
           </p>
           <ProjectLayoutCatalog
             available={availableLayouts}
+            boardAvailable={boardAvailability.data?.hasBuilderRun === true}
             appliedLayouts={projectLayouts}
             adding={adding}
             applyError={applyError}

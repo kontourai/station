@@ -14,6 +14,7 @@ do not select executable code or replace Home-role consent; see
 
 `standard` is the default. Coding, Tasks and Session Board have installed and
 enabled catalog defaults; they do not require a separate plugin installation.
+The Add Layout pickers list Session Board only for a project with a Builder run, because it opens nowhere else.
 Review is another built-in entry, initially installable rather than enabled.
 The profile also admits layouts from installed local plugins, subject to their
 current installation readiness. It does not fetch a registry to render them.

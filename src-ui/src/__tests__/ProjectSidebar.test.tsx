@@ -18,6 +18,10 @@ import { openChatsStore } from '../contexts/open-chats-store';
 // `RegionModelProvider` wraps the whole application, so `useShowSurface`
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
+const featurePreviews = vi.hoisted(
+  () => [] as Array<{ id: string; enabled: boolean }>,
+);
+
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
 }));
@@ -206,7 +210,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // useSurfaceVisibilityFlags, which reads enabled previews from here. A
   // hand-rolled module mock owes every export its subject reaches, so this
   // file went red on main the moment that hook was added.
-  useFeaturePreviewsQuery: () => ({ data: [] }),
+  useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
   // archive#3780 gave ProjectSidebarRow the Board-availability read, and this
   // file went red again for exactly the reason recorded above — the same
   // hazard, one hook later. `undefined` is the honest shape while no row is
@@ -278,6 +282,7 @@ function resetState() {
   projects.length = 0;
   sessions.length = 0;
   boards.length = 0;
+  featurePreviews.length = 0;
   boardCreateSpy.mockClear();
   navigate.mockClear();
   setProject.mockClear();
@@ -443,6 +448,39 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
     });
     expect(screen.getByText('Apps')).toBeTruthy();
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
+  });
+});
+
+describe('ProjectSidebar archived projects follow the project-pause-archive preview', () => {
+  const archivedProject = {
+    id: 'p2',
+    slug: 'ferry',
+    name: 'Ferry',
+    lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
+  } as (typeof projects)[number];
+
+  function seed() {
+    resetState();
+    projects.push(
+      { id: 'p1', slug: 'station', name: 'Station' },
+      archivedProject,
+    );
+  }
+
+  test('with the preview off there is no Archived toggle and no project is hidden', () => {
+    seed();
+    renderSidebar(<ProjectSidebar />);
+    expect(screen.queryByText(/^Archived \(/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
+  });
+
+  test('with the preview on the toggle appears and the archived project waits behind it', () => {
+    seed();
+    featurePreviews.push({ id: 'project-pause-archive', enabled: true });
+    renderSidebar(<ProjectSidebar />);
+    expect(screen.queryByRole('button', { name: 'Ferry' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
+    expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
   });
 });
 

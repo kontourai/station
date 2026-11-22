@@ -1,16 +1,25 @@
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutMetadata } from '@kontourai/station-contracts/layout';
+import { BUILTIN_SESSION_BOARD_LAYOUT } from '@kontourai/station-contracts/layout';
 import { layoutCatalogErrorReason, telemetry } from '@kontourai/station-sdk';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import './ProjectLayoutCatalog.css';
 
+/**
+ * `boardAvailable` is the Project's Builder-run fact. The Session Board only
+ * opens where a Builder run exists, so it is offered only then; with no
+ * Project (the new-Project starter) it is never offered.
+ */
 export function mergeAvailableProjectLayouts(
   available: LayoutCatalogItem[],
+  { boardAvailable = false }: { boardAvailable?: boolean } = {},
 ): LayoutCatalogItem[] {
   const merged = new Map<string, LayoutCatalogItem>();
   for (const item of available) {
+    if (item.type === BUILTIN_SESSION_BOARD_LAYOUT.type && !boardAvailable)
+      continue;
     // A profile/catalog response, not the client, decides whether a starter
     // exists and is safe to create.
     if (item.visible && item.enabled && item.lifecycle.state === 'installed') {
@@ -197,8 +206,11 @@ export function ProjectLayoutCatalog({
   onSelect,
   selectedId,
   appliedLayouts = [],
+  boardAvailable = false,
 }: {
   available: LayoutCatalogItem[];
+  /** The Project has a Builder run, so its Session Board can open. */
+  boardAvailable?: boolean;
   /**
    * A stable catalog ID for selection-only callers such as New Project.
    * Omit it to retain the immediate-apply behavior used by existing callers.
@@ -214,7 +226,7 @@ export function ProjectLayoutCatalog({
   onRetry: () => void;
   onSelect: (item: LayoutCatalogItem) => void;
 }) {
-  const items = mergeAvailableProjectLayouts(available);
+  const items = mergeAvailableProjectLayouts(available, { boardAvailable });
   const hasCatalogError = Boolean(catalogError);
 
   return (
