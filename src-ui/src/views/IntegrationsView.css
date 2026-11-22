@@ -173,6 +173,7 @@
   overflow-y: auto;
 }
 
-.integration-editor-stack:has(.secret-bindings__disclosure[open]) > .split-pane {
+.integration-editor-stack:has(.secret-bindings__disclosure[open])
+  > .split-pane {
   flex: 1 0 min(32rem, 100%);
 }

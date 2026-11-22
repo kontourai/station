@@ -1649,11 +1649,17 @@ test.describe('Connections CRUD', () => {
     await summary.click();
     await expect(section).toHaveJSProperty('open', true);
     await expect
-      .poll(async () => {
-        const box = (await summary.boundingBox())!;
-        const column = (await stack.boundingBox())!;
-        return box.y < column.y + column.height;
-      })
+      .poll(
+        async () => {
+          const box = (await summary.boundingBox())!;
+          const column = (await stack.boundingBox())!;
+          return box.y < column.y + column.height;
+        },
+        {
+          message:
+            'the Secret bindings summary should be scrolled into the column view',
+        },
+      )
       .toBe(true);
     const paneBox = (await pane.boundingBox())!;
     expect(paneBox.height).toBeGreaterThan(200);
