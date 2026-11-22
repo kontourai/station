@@ -93,6 +93,38 @@ for (const [name, viewport] of [
     }
   });
 
+  test(`(${name}) scrolling away and back to the end releases the hold`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      const row = lastToolRow(page);
+      await row.click();
+      await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+      await page.waitForTimeout(1_500);
+      // The reader scrolls up, then all the way back to the end.
+      const log = (await page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .boundingBox())!;
+      await page.mouse.move(log.x + log.width / 2, log.y + log.height / 2);
+      await page.mouse.wheel(0, -600);
+      await frames(page);
+      await page.mouse.wheel(0, 8000);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await page.waitForTimeout(1_500);
+      // The opened row grows again: back at the end, the end is followed.
+      await row.evaluate((button) => {
+        const late = document.createElement('div');
+        late.style.height = '600px';
+        button.closest('.chat-message-anchor')!.append(late);
+      });
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`(${name}) a shorter view keeps the opened row in sight and the hold on`, async () => {
     const { browser, page, errors } = await tailFixture(viewport);
     try {
