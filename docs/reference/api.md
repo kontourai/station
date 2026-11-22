@@ -3084,9 +3084,12 @@ the empty view, and a system prompt Station cannot see is absent too.
 
 For a Station-agent conversation, the stored stats count every turn that
 ended with an answer or reported usage, including answered turns whose model
-reported no usage and turns a person stopped, so per-turn averages divide by
-all counted turns. A turn that failed with nothing reported is not counted;
-one that failed after reporting usage keeps its tokens. `systemPromptTokens` there is
+reported no usage, so per-turn averages divide by all counted turns. A turn
+that failed with nothing reported is not counted; one that failed after
+reporting usage keeps its tokens. On the built-in Station agent a turn a
+person stops is not counted; on a Strands Agent a stopped turn that ended in
+an assistant message is. A turn's tokens are the sum over all its model steps,
+so a turn that called tools counts every step. `systemPromptTokens` there is
 an estimate of the prompt the Agent was built with (its configured or
 bootstrap prompt, a quarter token per character), as for a persisted Agent.
 The built-in Station Assistant records stats from #5390 on, so a conversation

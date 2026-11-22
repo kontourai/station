@@ -17,7 +17,6 @@ import {
   type AgentHooks,
   createHooks,
   createTool,
-  isAbortError,
   Memory,
   type StorageAdapter,
   type Tool,
@@ -1152,7 +1151,7 @@ export function createVoltAgentLifecycleHooks(
           ),
       );
     },
-    onEnd: async ({ context, output, error }) => {
+    onEnd: async ({ context, output }) => {
       try {
         // Abort and error arrive here with no output; the turn still ends.
         try {
@@ -1166,16 +1165,17 @@ export function createVoltAgentLifecycleHooks(
           /* Releasing turn state never fails the invocation. */
         }
         // What VoltAgent hands this hook (#5390): a stream that fails before
-        // any content arrives with `error` and no output; one whose provider
-        // sent an error part, before or after partial text, arrives WITH
-        // output and `finishReason: 'error'` but no `error`; a person's Stop
-        // arrives as an abort `error` with no output. A failure is passed on
-        // as one, so a failed turn that reported nothing is not counted; a
-        // stopped turn ran, so it counts, with nothing reported.
-        const stopped = !output && isAbortError(error);
-        if (!context.conversationId || (!output && !stopped)) return;
-        const failed = output?.finishReason === 'error';
-        const usage = output && 'usage' in output ? output.usage : undefined;
+        // any content, a person's Stop and a denied tool arrive with `error`
+        // and no output, and are not recorded. VoltAgent's abort listener can
+        // also call this again with no output after a turn completed, so an
+        // abort must never count. A stream whose provider sent an error part
+        // arrives WITH output and `finishReason: 'error'` but no `error`; that
+        // failure is passed on, so it counts only if usage was reported.
+        if (!context.conversationId || !output) return;
+        const failed = output.finishReason === 'error';
+        // `usage` is the final model step's; `totalUsage` sums every step of
+        // a turn that called tools (VoltAgent's own finish usage prefers it).
+        const usage = output.totalUsage ?? output.usage;
         const toolCallCount =
           (context.context.get('toolCallCount') as number) || 0;
         await sharedHooks?.afterInvocation?.({
