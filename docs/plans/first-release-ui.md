@@ -2,11 +2,11 @@
 
 Status: implementation plan for [#5386](https://github.com/kontourai/station/issues/5386). GitHub owns live delivery state.
 
-This plan delivers [the first-release design](../design/first-release.md) as 89 slices in six phases. Each slice is one issue and one pull request. Every numbered change in the design belongs to exactly one slice, or is listed under [Not in the first release](#not-in-the-first-release).
+This plan delivers [the first-release design](../design/first-release.md) as 90 slices in six phases. Each slice is one issue. Each phase lands as one pull request that carries its slices, so the phase's changes are reviewed and merged together. Every numbered change in the design belongs to exactly one slice, or is listed under [Not in the first release](#not-in-the-first-release).
 
 ## Rules
 
-- A slice cites the screens and change numbers it delivers. Its pull request shows a running build beside the agreed render for each screen, at 1440px and 390px.
+- A slice cites the screens and change numbers it delivers. Its phase's pull request shows a running build beside the agreed render for each screen, at 1440px and 390px.
 - A change marked "backend check first" is settled before the slice builds. If the answer changes the design, the design record is amended in the same pull request with the reason.
 - A slice that changes a recorded decision, a glossary term or another design record amends that record in the same pull request.
 - A slice lands only after the slices it depends on. Sizes: S is a sitting, M a day or two, L is large and kept whole for a stated reason.
@@ -29,9 +29,9 @@ Done when: Usage counts, pairing by code, New Project failures, the inbox duplic
 | 0.9 | #5393 | Keep New Project on its form when a clone fails, and label Create while pending | defects only | S |  |
 | 0.10 | #5394 | Scope project search to its project, and make the knowledge index counts agree | defects only | M |  |
 | 0.12 | #5395 | Keep the tool server editor usable with Secret bindings open | defects only | S |  |
-| 0.13 | #5396 | Hide preview-only project rail items, and drop Session Board from the view catalogue | defects only | S |  |
+| 0.13 | #5396 | Hide the Schedules item in Project settings while its preview is off | defects only | S |  |
 | 0.14 | #5397 | Stop a maximised chat dock following you, and give cmd+z one owner | defects only | M |  |
-| 0.16 | #5398 | Show each chat once in the inbox, with "Last reply may not have arrived" as a flag | `automations-inbox-11` 9 | M |  |
+| 0.16 | #5398 | Show each chat once in the inbox, with "Last message may not have arrived" as a flag | `automations-inbox-11` 9 | M |  |
 | 0.17 | #5399 | Translate the failed-turn notification into plain words | `automations-inbox-11` 8 | S |  |
 | 0.18 | #5400 | Fix one-time automation defaults and give automations a display name | `automations-inbox-04` 8 | M |  |
 
@@ -46,7 +46,8 @@ Done when: A new user lands on Home with what Station found, a stable default fo
 | 1.1 | #5401 | Store a default for new chats | `first-run-01` 2, 3; `first-run-02` 1 | M |  |
 | 1.2 | #5402 | Make Customize a page and retire Connections as a destination | `navigation-08` 1, 6 | M |  |
 | 1.3 | #5403 | Add the Customize landing with what needs you | `navigation-08` 2, 3, 4; `customize-20` 1, 2, 3, 4 | M | 1.1, 1.2 |
-| 1.4 | #5404 | Turn Plugins and Registry into Apps › Discover | `apps-03` 1, 2, 3, 4, 5, 6 | M |  |
+| 1.4a | #5479 | Add what an app is to plugin catalog entries, for Apps › Discover | `apps-03` 3 (the facts the facets read) | M |  |
+| 1.4 | #5404 | Turn Plugins and Registry into Apps › Discover | `apps-03` 1, 2, 3, 4, 5, 6 | M | 1.4a |
 | 1.5 | #5405 | Build the quiet sidebar behind one preview | `navigation-06` 1, 2, 3; `navigation-07` 1, 2; `navigation-10` 1; `navigation-11` 1; `apps-01` 1; `apps-02` 1, 4 | M | 1.2, 1.4 |
 | 1.6 | #5406 | Let any Customize item be pinned to the sidebar | `navigation-08` 5; `navigation-09` 1, 2, 3 | M | 1.3, 1.5 |
 | 1.7 | #5407 | Replace the setup wizard and tour with what Station found | `first-run-01` 1, 4, 5; `first-run-02` 2, 3; `apps-01` 2 | M | 1.1 |
