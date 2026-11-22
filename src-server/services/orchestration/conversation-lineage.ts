@@ -1317,6 +1317,12 @@ export class ConversationLineage {
         { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
       );
     }
+    // A failed Session reads as at rest, but its engine may still run: the
+    // target would start beside it, as an ordinary successor would.
+    if (
+      bindingEndedWithEngineLive(detail.session, this.deps.engineStillRunning)
+    )
+      throw new ConversationPredecessorEngineLiveError();
     const nativeReturn =
       !boundary && !target.stagedHandoff
         ? await this.findNativeReturnContext(

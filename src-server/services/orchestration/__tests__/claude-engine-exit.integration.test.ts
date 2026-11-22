@@ -300,6 +300,43 @@ describe('a Claude engine that dies, through the real service and adapter', () =
     expect(alive()).toHaveLength(1);
   });
 
+  test('Continue with another Agent while the failed engine will not die: refused, nothing reserved', async () => {
+    const { q, child } = await start();
+    await settle();
+    child.kill = () => true;
+    q.crash(new Error('Unexpected token in JSON at position 0'));
+    await vi.waitFor(() => expect(methods()).toContain('runtime.error'));
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(adapter.engineEnded(T)).toBe(false);
+    const handoff = (n: number) =>
+      service.prepareConversationHandoff(T, INTERNAL_SESSION_READ_SCOPE, {
+        agentId: 'other-agent',
+        environmentId: 'local',
+        idempotencyKey: `handoff-${n}`,
+        messageDigest: 'digest',
+      });
+    const refused = await handoff(1).then(
+      () => undefined,
+      (error: unknown) => error as { code?: string },
+    );
+    expect(refused).toMatchObject({
+      code: 'conversation_predecessor_engine_live',
+    });
+    expect(store.conversationHandoffForPredecessor(T)).toBeFalsy();
+    expect(engines).toHaveLength(1);
+    // A fork is another conversation and starts no engine: not refused.
+    await expect(
+      service.readConversationForkSource(T, INTERNAL_SESSION_READ_SCOPE),
+    ).resolves.not.toBeNull();
+    // Once the process exits, the same Agent change is accepted.
+    child.exit(null, 'SIGKILL');
+    child.closeStderr();
+    await vi.waitFor(() => expect(adapter.engineEnded(T)).toBe(true));
+    await expect(handoff(2)).resolves.toMatchObject({
+      marker: { predecessorSessionId: T },
+    });
+  });
+
   test('a message sent after the exit is seen but before the Session ends is never accepted into the dead engine', async () => {
     const childWorkload = await import(
       '@kontourai/station-shared/child-workload'
@@ -421,6 +458,35 @@ describe('a Claude engine that dies, through the real service and adapter', () =
     expect(cont.sessionId).not.toBe(T);
     expect(sent).toMatchObject({ ok: true });
     expect(alive()).toHaveLength(1);
+  });
+
+  test('the engine dies inside the turn start, then Continue with another Agent: the held start is settled and the change is accepted', async () => {
+    const { q, child } = await start();
+    await settle();
+    q.setModel.mockImplementation(async () => {
+      child.exit(null, 'SIGTERM');
+      child.closeStderr();
+      throw new Error('Claude Code process terminated by signal SIGTERM');
+    });
+    expect(await send(T, { modelId: 'claude-other-model' })).toMatchObject({
+      ok: false,
+      code: 'foreground_message_indeterminate',
+    });
+    await vi.waitFor(() => expect(methods()).toContain('session.exited'), {
+      timeout: 5000,
+    });
+    await expect(
+      service.prepareConversationHandoff(T, INTERNAL_SESSION_READ_SCOPE, {
+        agentId: 'other-agent',
+        environmentId: 'local',
+        idempotencyKey: 'handoff-held',
+        messageDigest: 'digest',
+      }),
+    ).resolves.toMatchObject({ marker: { predecessorSessionId: T } });
+    expect(
+      store.listEvents(T).some((e) => e.id.startsWith('turn-interrupted:')),
+    ).toBe(true);
+    expect(alive()).toHaveLength(0);
   });
 
   for (const during of ['a tool call', 'streaming'] as const) {
