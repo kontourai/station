@@ -3674,6 +3674,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openForkDraft = async (
     source: ForkTurnSource,
     followUp?: ForkFollowUp,
+    quiet = false,
   ) => {
     const generation = ++forkGenerationRef.current;
     const [
@@ -3707,6 +3708,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerOptions: sourceExecution.providerOptions,
       sourceSessionId: source.sessionId,
       followUp,
+      quiet,
     };
     setForkSource(next);
     setForkOperation({ pending: false, error: null });
@@ -3950,12 +3952,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       requestComposerFocus(sessionId, { whileBusy: true });
       return;
     }
-    const source = await openForkDraft(request.fork, followUp);
-    if (!source) return;
+    // The message's own Agent runs it: with that Agent runnable there is
+    // nothing to pick, so the fork runs without the dialog, which shows only
+    // if it fails (with the reason and a retry) or the Agent cannot run.
     const agent = agents.find(
       (entry) =>
-        entry.slug === source.agentSlug && agentRunnability(entry).runnable,
+        entry.slug === request.fork?.agentSlug &&
+        agentRunnability(entry).runnable,
     );
+    const source = await openForkDraft(request.fork, followUp, Boolean(agent));
+    if (!source) return;
     if (agent)
       await runFork(source, agent, source.projectSlug, source.projectName);
   };
@@ -5304,7 +5310,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               !stagedAgentChange.previewChecking &&
               !stagedAgentChange.pending) ||
               contextResetSource ||
-              forkSource) && (
+              (forkSource && (!forkSource.quiet || forkOperation.error))) && (
               <LazyBoundary
                 load={loadConversationBoundaryDialogs}
                 componentProps={{

@@ -201,8 +201,7 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
 - **Header.** The dock's title slot (and the phone header) reads **New chat**
   or **New Task**. The start composer's Project chip is the single owner of
   destination choice; dock headers have no project picker.
-- **Fork.** **Fork from here** (and **Regenerate** or **Edit and resend**,
-  which fork before a message) is not a draft. It opens a compact dialog with
+- **Fork.** **Fork from here** is not a draft. It opens a compact dialog with
   the same Agent and model choice as **Switch agent**
   ([`AgentModelChoice`](../../src-ui/src/components/chat-dock/AgentModelChoice.tsx),
   [dialog](../../src-ui/src/components/chat-dock/ConversationForkDialog.tsx)):
@@ -211,6 +210,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   here, and what carries over under **Details**. Cancel fork stays available
   while the fork is being created and aborts it; a refusal stays in the
   dialog so the same choice can retry. The fork keeps the source Project.
+  **Regenerate** and **Edit and resend** fork before a message with that
+  message's Agent, so they open no picker while it can run; the same dialog
+  appears only when that fork fails or the Agent cannot run.
 - **Leaving.** Escape, Back or **Cancel return** dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start closes it as started before

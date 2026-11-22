@@ -126,7 +126,7 @@ export function ConversationBoundaryDialogs({
   );
   return (
     <>
-      {forkSource && (
+      {forkSource && (!forkSource.quiet || forkOperation.error) && (
         <ConversationForkDialog
           // A new dialog per fork source: no choice crosses turns.
           key={`${forkSource.id}\0${forkSource.turnId}`}

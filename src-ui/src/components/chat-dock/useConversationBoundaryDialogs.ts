@@ -73,6 +73,11 @@ export function useConversationBoundaryDialogs({
      * again, Edit and resend puts it in the composer.
      */
     followUp?: ForkFollowUp;
+    /**
+     * Regenerate / Edit and resend with a runnable Agent: the fork runs
+     * without the dialog, which appears only if it fails.
+     */
+    quiet?: boolean;
   } | null>(null);
   const [forkOperation, setForkOperation] = useState<{
     pending: boolean;
