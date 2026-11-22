@@ -2348,6 +2348,14 @@ const UNREADABLE_DISPLAY_NAMES = [
   'soft\u00ADhyphen',
   // A subdivision flag: tag characters are refused, so it is too.
   'Flag \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
+  'note\uFFF9annotated\uFFFAgloss\uFFFB',
+  'grapheme\u034Fjoiner',
+  'vowel\u180Eseparator',
+  // Only blank glyphs: Hangul fillers and the braille blank draw nothing.
+  '\u3164',
+  '\u115F\u1160',
+  '\uFFA0\uFFA0',
+  '\u2800',
 ];
 
 describe('Scheduler Routes', () => {
@@ -2489,6 +2497,38 @@ describe('Scheduler Routes', () => {
     expect((await jobNamed('keep-name'))?.displayName).toBe('Keep');
   });
 
+  test('a display name over the length bound is refused with its own sentence', async () => {
+    const tooLong = 'x'.repeat(121);
+    const lengthSentence = 'A name can be at most 120 characters.';
+    const created = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'long', displayName: tooLong, prompt: 'x' }),
+    });
+    expect(created.status).toBe(400);
+    expect((await json(created)).details.fieldErrors.displayName).toEqual([
+      lengthSentence,
+    ]);
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'short',
+        displayName: 'Short',
+        prompt: 'x',
+      }),
+    });
+    const renamed = await app.request('/jobs/short', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: tooLong }),
+    });
+    expect(renamed.status).toBe(400);
+    expect((await json(renamed)).details.fieldErrors.displayName).toEqual([
+      lengthSentence,
+    ]);
+  });
+
   test('POST /jobs refuses the same unreadable display names and creates nothing', async () => {
     for (const [index, displayName] of UNREADABLE_DISPLAY_NAMES.entries()) {
       const res = await app.request('/jobs', {
@@ -2591,7 +2631,10 @@ describe('Scheduler Routes', () => {
     expect(await json(explicit)).toMatchObject({ code: 'job_name_taken' });
     expect((await jobNamed('taken'))?.prompt).toBe('first');
 
-    for (let suffix = 2; suffix <= SCHEDULER_JOB_SLUG_ATTEMPTS; suffix += 1)
+    // The bound is 50 slugs: `taken` and `taken-2` up to `taken-50`. A
+    // literal, so a changed constant fails here rather than moving with it.
+    expect(SCHEDULER_JOB_SLUG_ATTEMPTS).toBe(50);
+    for (let suffix = 2; suffix <= 50; suffix += 1)
       await service.addJob({ name: `taken-${suffix}`, prompt: 'filler' });
     const exhausted = await app.request('/jobs', {
       method: 'POST',

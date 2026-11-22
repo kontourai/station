@@ -1972,8 +1972,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
 
   /**
    * Validates and stores a new job synchronously, so `addJob` settles in the
-   * same turn it always has: callers that start a run right after it rely on
-   * no extra await between the two.
+   * same turn it always has. No production caller depends on that; the
+   * scheduler's retry-capacity test does, because it starts each run right
+   * after `addJob` and expects the earlier runs to still be invoking.
    */
   private storeNewJob(opts: AddJobOpts): {
     readonly output: string;

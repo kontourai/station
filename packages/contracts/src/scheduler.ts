@@ -238,13 +238,23 @@ export const SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS = 120;
  * separators, the bidi embedding, override and isolate controls (they
  * reorder what is shown), and the invisible fillers that make two names
  * look identical (zero-width space, word joiner, byte-order mark, soft
- * hyphen). Tag characters are refused too, so subdivision flags (England,
- * Scotland, Wales) are not accepted. Other format characters stay allowed:
+ * hyphen, combining grapheme joiner, Mongolian vowel separator, and the
+ * interlinear annotation marks). Tag characters are refused too, so
+ * subdivision flags (England, Scotland, Wales) are not accepted. Other
+ * format characters stay allowed:
  * the zero-width non-joiner and joiner that Persian and Indic text and emoji
  * sequences need, and the left-to-right and right-to-left marks.
  */
 const HIDDEN_OR_REORDERING =
-  /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069\u200B\u2060\uFEFF\u00AD\u{E0000}-\u{E007F}]/u;
+  // U+034F is a combining mark, so it sits outside the class.
+  /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069\u200B\u2060\uFEFF\u00AD\u180E\uFFF9-\uFFFB\u{E0000}-\u{E007F}]|\u034F/u;
+
+/**
+ * Letters and symbols that draw nothing: the Hangul fillers and the braille
+ * blank. A name made only of them reads as empty, so they do not count as
+ * its visible character.
+ */
+const BLANK_GLYPHS = /[\u115F\u1160\u3164\uFFA0\u2800]/gu;
 
 /**
  * Whether `value` (already trimmed) is a name a person can read: within the
@@ -255,7 +265,7 @@ export function isSchedulerJobDisplayName(value: string): boolean {
   if (value.length === 0 || value.length > SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS)
     return false;
   if (HIDDEN_OR_REORDERING.test(value)) return false;
-  return /[\p{L}\p{N}\p{S}\p{P}]/u.test(value);
+  return /[\p{L}\p{N}\p{S}\p{P}]/u.test(value.replace(BLANK_GLYPHS, ''));
 }
 
 /** Longest slug the scheduler derives from a display name. */

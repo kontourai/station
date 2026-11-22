@@ -2386,7 +2386,9 @@ station schedule delete <job> [--api-base=<url>]
 schedule object: `{kind:"cron",expr,timezone?}`,
 `{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
 optional `target` that runs each time in a conversation (see
-[Automations](../user/automations.md)). There is no `station automations`
+[Automations](../user/automations.md)). `create` prints the create answer,
+`output` and `name` (the slug the job was stored under), and the Station
+Control `add_job` tool returns the same `data`. There is no `station automations`
 alias for these verbs: that name's `enable`, `disable` and `delete` are
 reserved for automation rules (`AUTOMATION_OPERATOR_SURFACE`). The same
 operator lifecycle is exposed by the HTTP API, React-free SDK client, and

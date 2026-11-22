@@ -1,5 +1,8 @@
 import { validateSchedule } from '@kontourai/ephemeris';
-import { isSchedulerJobDisplayName } from '@kontourai/station-contracts/scheduler';
+import {
+  isSchedulerJobDisplayName,
+  SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS,
+} from '@kontourai/station-contracts/scheduler';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 
@@ -15,10 +18,22 @@ const jobPrompt = z.string().min(1).max(CHAT_INPUT_MAX_CHARS);
 // this is bounded text a person can read: trimmed, with at least one visible
 // character and no control, bidi or separator characters
 // (`isSchedulerJobDisplayName`).
-const jobDisplayName = z.string().trim().refine(isSchedulerJobDisplayName, {
-  message:
-    'A name needs a visible character and cannot contain line breaks or invisible formatting characters',
-});
+const jobDisplayName = z
+  .string()
+  .trim()
+  .max(SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS, {
+    message: `A name can be at most ${SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS} characters.`,
+  })
+  // Length has its own sentence above, so this one is about characters only.
+  .refine(
+    (value) =>
+      value.length > SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS ||
+      isSchedulerJobDisplayName(value),
+    {
+      message:
+        'A name needs a visible character and cannot contain line breaks or invisible formatting characters',
+    },
+  );
 
 const optionalCron = z
   .string()
