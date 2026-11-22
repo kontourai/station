@@ -231,6 +231,7 @@ import {
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import { ConversationPickerRecovery } from './ConversationPickerRecovery';
 import type { ContinuedOnStation } from './ConversationStationHandoff';
+import { conversationRefusalMessage } from './conversationRefusalCopy';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -3675,11 +3676,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   ) => {
     const generation = ++forkGenerationRef.current;
     const [
-      { getOrCreateForkAttemptKey },
       { resolveHistoricalForkExecution },
       { getConversationTimelineContext, returnToLatestConversation },
     ] = await Promise.all([
-      import('./forkAttemptKey'),
       import('./forkSourceExecution'),
       import('../../hooks/orchestration/replay/controller'),
     ]);
@@ -3706,7 +3705,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerId: sourceExecution.providerId,
       providerOptions: sourceExecution.providerOptions,
       sourceSessionId: source.sessionId,
-      idempotencyKey: getOrCreateForkAttemptKey(conversationId, source.turnId),
       followUp,
     };
     setForkSource(next);
@@ -3804,8 +3802,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setForkOperation({ pending: true, error: null });
     try {
       const sameAgent = agent.slug === source.agentSlug;
-      const { forkConversation } = await import('@kontourai/station-sdk');
+      const [{ forkConversation }, { getOrCreateForkAttemptKey }] =
+        await Promise.all([
+          import('@kontourai/station-sdk'),
+          import('./forkAttemptKey'),
+        ]);
       if (generation !== forkGenerationRef.current) return;
+      const idempotencyKey = getOrCreateForkAttemptKey(
+        source.id,
+        source.turnId,
+        agent.slug,
+      );
       const result = await forkConversation(
         source.agentSlug,
         source.id,
@@ -3813,13 +3820,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         {
           branchPointTurnId: source.turnId,
           targetProjectSlug,
-          idempotencyKey: source.idempotencyKey,
+          idempotencyKey,
           signal: controller.signal,
         },
       );
       if (generation !== forkGenerationRef.current) return;
       const { completeForkAttempt } = await import('./forkAttemptKey');
-      completeForkAttempt(source.id, source.turnId, source.idempotencyKey);
+      completeForkAttempt(source.id, source.turnId, agent.slug, idempotencyKey);
       const inherited = <T,>(chosen: T | undefined, recorded: T | undefined) =>
         chosen ?? (sameAgent ? recorded : undefined);
       const opened = await openConversation(result.conversationId, agent.slug, {
@@ -3873,7 +3880,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         pending: false,
         error:
           error instanceof Error
-            ? userFacingErrorMessage(error)
+            ? conversationRefusalMessage(error)
             : 'Could not create the fork. Try again.',
       });
     } finally {

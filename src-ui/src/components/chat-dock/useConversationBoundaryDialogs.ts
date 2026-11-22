@@ -68,7 +68,6 @@ export function useConversationBoundaryDialogs({
     providerId?: string;
     providerType?: string;
     sourceSessionId?: string;
-    idempotencyKey: string;
     /**
      * #4406: what the fork does once open — Regenerate sends the message
      * again, Edit and resend puts it in the composer.

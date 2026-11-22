@@ -6,8 +6,17 @@ const MAX_ATTEMPTS = 64;
 type AttemptMap = Record<string, string>;
 const memoryAttempts: AttemptMap = {};
 
-function coordinate(sourceConversationId: string, turnId: string): string {
-  return `${sourceConversationId}\u0000${turnId}`;
+/**
+ * One retry-safe request per source turn AND target Agent: a retry to the same
+ * Agent reuses its key, while choosing another Agent is a different request
+ * (the server refuses a key that already names another target).
+ */
+function coordinate(
+  sourceConversationId: string,
+  turnId: string,
+  targetAgentId: string,
+): string {
+  return `${sourceConversationId}\u0000${turnId}\u0000${targetAgentId}`;
 }
 
 function read(storage: Pick<Storage, 'getItem'>): AttemptMap {
@@ -41,11 +50,12 @@ function write(storage: Pick<Storage, 'setItem'>, attempts: AttemptMap) {
 export function getOrCreateForkAttemptKey(
   sourceConversationId: string,
   turnId: string,
+  targetAgentId: string,
   storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
   generate: () => string = () => randomCorrelationId(),
 ): string {
   const attempts = read(storage);
-  const key = coordinate(sourceConversationId, turnId);
+  const key = coordinate(sourceConversationId, turnId, targetAgentId);
   if (typeof attempts[key] === 'string' && attempts[key]) return attempts[key];
   const idempotencyKey = generate();
   attempts[key] = idempotencyKey;
@@ -56,11 +66,12 @@ export function getOrCreateForkAttemptKey(
 export function completeForkAttempt(
   sourceConversationId: string,
   turnId: string,
+  targetAgentId: string,
   idempotencyKey: string,
   storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
 ): void {
   const attempts = read(storage);
-  const key = coordinate(sourceConversationId, turnId);
+  const key = coordinate(sourceConversationId, turnId, targetAgentId);
   if (attempts[key] !== idempotencyKey) return;
   delete attempts[key];
   write(storage, attempts);

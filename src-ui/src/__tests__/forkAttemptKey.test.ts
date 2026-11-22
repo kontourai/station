@@ -18,30 +18,54 @@ describe('fork attempt idempotency persistence', () => {
     let generated = 0;
     const generate = () => `attempt-${++generated}`;
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', persisted, generate),
+      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, generate),
     ).toBe('attempt-1');
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', persisted, generate),
+      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, generate),
     ).toBe('attempt-1');
     expect(generated).toBe(1);
   });
 
   test('only a known terminal success releases the coordinate for a new fork', () => {
     const persisted = storage();
-    const first = getOrCreateForkAttemptKey(
-      'parent',
-      'turn-1',
+    const first = getOrCreateForkAttemptKey('parent', 'turn-1', 'codex',
       persisted,
       () => 'attempt-1',
     );
-    completeForkAttempt('parent', 'turn-1', 'different', persisted);
+    completeForkAttempt('parent', 'turn-1', 'codex', 'different', persisted);
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', persisted, () => 'new'),
+      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, () => 'new'),
     ).toBe(first);
-    completeForkAttempt('parent', 'turn-1', first, persisted);
+    completeForkAttempt('parent', 'turn-1', 'codex', first, persisted);
     expect(
-      getOrCreateForkAttemptKey('parent', 'turn-1', persisted, () => 'new'),
+      getOrCreateForkAttemptKey('parent', 'turn-1', 'codex', persisted, () => 'new'),
     ).toBe('new');
+  });
+
+  test('another target Agent for the same turn is a separate request', () => {
+    const persisted = storage();
+    let generated = 0;
+    const generate = () => `attempt-${++generated}`;
+    const toCodex = getOrCreateForkAttemptKey(
+      'retarget-parent',
+      'turn-1',
+      'codex',
+      persisted,
+      generate,
+    );
+    const toClaude = getOrCreateForkAttemptKey(
+      'retarget-parent',
+      'turn-1',
+      'claude',
+      persisted,
+      generate,
+    );
+    expect(toCodex).toBe('attempt-1');
+    expect(toClaude).toBe('attempt-2');
+    // A retry to either target still reuses its own key.
+    expect(
+      getOrCreateForkAttemptKey('retarget-parent', 'turn-1', 'codex', persisted, generate),
+    ).toBe(toCodex);
   });
 
   test('quota/private write failure still reuses the in-memory key on cancel/reopen', () => {
@@ -51,16 +75,12 @@ describe('fork attempt idempotency persistence', () => {
         throw new DOMException('quota', 'QuotaExceededError');
       },
     };
-    const first = getOrCreateForkAttemptKey(
-      'quota-parent',
-      'quota-turn',
+    const first = getOrCreateForkAttemptKey('quota-parent', 'quota-turn', 'codex',
       unavailable,
       () => 'quota-attempt',
     );
     expect(
-      getOrCreateForkAttemptKey(
-        'quota-parent',
-        'quota-turn',
+      getOrCreateForkAttemptKey('quota-parent', 'quota-turn', 'codex',
         unavailable,
         () => 'must-not-regenerate',
       ),
@@ -75,17 +95,13 @@ describe('fork attempt idempotency persistence', () => {
       },
     };
     expect(
-      getOrCreateForkAttemptKey(
-        'malformed-parent',
-        'turn-a',
+      getOrCreateForkAttemptKey('malformed-parent', 'turn-a', 'codex',
         malformed,
         () => 'safe-a',
       ),
     ).toBe('safe-a');
     expect(
-      getOrCreateForkAttemptKey(
-        'malformed-parent',
-        'turn-b',
+      getOrCreateForkAttemptKey('malformed-parent', 'turn-b', 'codex',
         malformed,
         () => 'safe-b',
       ),

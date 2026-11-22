@@ -129,7 +129,7 @@ export function ConversationBoundaryDialogs({
       {forkSource && (
         <ConversationForkDialog
           // A new dialog per fork source: no choice crosses turns.
-          key={`${forkSource.id}\0${forkSource.turnId}\0${forkSource.idempotencyKey}`}
+          key={`${forkSource.id}\0${forkSource.turnId}`}
           title={
             forkSource.followUp?.mode === 'regenerate'
               ? 'Regenerate'

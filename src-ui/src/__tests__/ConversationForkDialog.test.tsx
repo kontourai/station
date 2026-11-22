@@ -173,3 +173,32 @@ describe('ConversationForkDialog', () => {
     expect(screen.getByText(/Messages up to this point/)).toBeTruthy();
   });
 });
+
+describe('conversationRefusalMessage', () => {
+  test('a coded fork refusal reads as its own words, not the generic fallback', async () => {
+    const { conversationRefusalMessage } = await import(
+      '../components/chat-dock/conversationRefusalCopy'
+    );
+    const { CONVERSATION_FORK_REFUSAL_CODES } = await import(
+      '@kontourai/station-contracts/orchestration'
+    );
+    const refusal = Object.assign(
+      new Error('Conversation history is incomplete: page limit reached.'),
+      {
+        status: 409,
+        code: CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete,
+        stationEnvelope: true,
+      },
+    );
+    expect(conversationRefusalMessage(refusal)).toBe(
+      'This answer didn’t finish, so it can’t be forked. Fork from a completed answer.',
+    );
+    // Every fork refusal code has copy of its own.
+    for (const code of Object.values(CONVERSATION_FORK_REFUSAL_CODES)) {
+      if (code === CONVERSATION_FORK_REFUSAL_CODES.invalidRequest) continue;
+      expect(
+        conversationRefusalMessage(Object.assign(new Error('x'), { code })),
+      ).not.toBe('Try again in a moment.');
+    }
+  });
+});

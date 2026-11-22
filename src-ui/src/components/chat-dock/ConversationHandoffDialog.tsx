@@ -2,10 +2,7 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import {
-  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
-  type ConversationHandoffEffectStatus,
-} from '@kontourai/station-contracts/orchestration';
+import type { ConversationHandoffEffectStatus } from '@kontourai/station-contracts/orchestration';
 import {
   type ConversationHandoffReceipt,
   getConversationHandoffStatus,
@@ -41,6 +38,7 @@ import {
   parseDraftQuote,
 } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { conversationRefusalMessage } from './conversationRefusalCopy';
 import {
   type ContinuedOnStation,
   ConversationStationChoice,
@@ -248,14 +246,7 @@ const NO_QUOTES: readonly DraftQuote[] = [];
  * where Station says which refusal it is.
  */
 function handoffRefusalFeedback(error: unknown): string {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: unknown }).code ===
-      CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE
-  )
-    return 'The current agent is still working. Wait for it to finish, then try again.';
-  return error instanceof Error ? userFacingErrorMessage(error) : String(error);
+  return conversationRefusalMessage(error);
 }
 
 /**
